@@ -226,7 +226,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var stamp = ExportSourceFingerprint.Compute(fixture.Source);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.Copy.GetComponentInChildren<Vrm10RotationConstraint>().enabled, Is.EqualTo(enabled));
                 if (recordFace)
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
@@ -256,7 +256,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var stamp = ExportSourceFingerprint.Compute(fixture.Source); var color = material.GetColor("_Color");
                 RecoveryCallbackProbe.ResetCounters(); RecoveryCallbackProbe.Armed = true;
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 if (recordFace)
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
                 var bytes = session.Export("Callback-safe export", "Tests", recordFace ? Listed(clip) : Listed(), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -515,12 +515,12 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             var pet = new GameObject("Excluded pet"); pet.transform.SetParent(fixture.Source.transform, false);
             var stamp = ExportSourceFingerprint.Compute(fixture.Source);
-            using (var kept = new ExperimentalExpressionCaptureSession(fixture.Source, false))
+            using (var kept = new ExperimentalExpressionCaptureSession(fixture.Source))
             {
                 Assert.That(kept.Copy.transform.Find("Excluded pet"), Is.Not.Null);
                 Assert.That(kept.ExcludedObjects, Is.Empty);
             }
-            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source, false, new[] { pet }, new ExportGimmickOptions()))
+            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source, new[] { pet }, new ExportGimmickOptions()))
             {
                 Assert.That(session.Copy.transform.Find("Excluded pet"), Is.Null, "The board previews what the export leaves out.");
                 Assert.That(session.ExcludedObjects, Is.EqualTo(new[] { pet }), "The ordinary export route gets the same objects.");
@@ -552,7 +552,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var stamp = ExportSourceFingerprint.Compute(fixture.Source);
                 ExperimentalExpressionCaptureSession session = null;
-                Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source, false));
+                Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source));
                 using (session)
                 {
                     Assert.That(session.Channels.Any(channel => channel.Path.Contains("Twin")), Is.False);
@@ -595,7 +595,7 @@ namespace VRVlog.LilToonExporter.Tests
             added.sharedMesh = fixture.Mesh; added.sharedMaterials = front.sharedMaterials;
             added.bones = front.bones; added.rootBone = front.rootBone;
             ExperimentalExpressionCaptureSession session = null;
-            Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source, false));
+            Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source));
             using (session)
             {
                 Assert.That(session.Channels.Select(channel => channel.Path), Does.Not.Contain("Slash/Part/Face"));
@@ -618,7 +618,7 @@ namespace VRVlog.LilToonExporter.Tests
             added.bones = front.bones; added.rootBone = front.rootBone; added.SetBlendShapeWeight(0, float.NaN);
             Assume.That(float.IsNaN(added.GetBlendShapeWeight(0)), "Unity keeps the weight as set.");
             ExperimentalExpressionCaptureSession session = null;
-            Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source, false));
+            Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source));
             using (session)
             {
                 Assert.That(session.Channels.Select(channel => channel.Path), Does.Not.Contain("Broken"));
@@ -855,7 +855,7 @@ namespace VRVlog.LilToonExporter.Tests
                     ? new[] { layer, new AnimatorControllerLayer { name = "Broken", defaultWeight = 1 } }
                     : new[] { layer };
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 // Still a candidate, so an exclusion saved before keeps counting.
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
                 var expected = usable ? null : ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange);
@@ -897,7 +897,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
                 var error = session.ClipErrors(new[] { clip })[clip];
                 if (expected == "usable")
@@ -946,7 +946,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var error = session.ClipErrors(new[] { clip })[clip];
                 if (expected == "usable")
                 {
@@ -980,7 +980,7 @@ namespace VRVlog.LilToonExporter.Tests
                 controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
                 child.AddComponent<Animator>().runtimeAnimatorController = controller;
                 var stamp = ExportSourceFingerprint.Compute(fixture.Source);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
                 Assert.That(session.ClipError(clip, clip.length), Is.Null);
                 session.PreviewClip(clip, clip.length);
@@ -1018,12 +1018,12 @@ namespace VRVlog.LilToonExporter.Tests
                     var child = new GameObject("Registered library"); child.transform.SetParent(fixture.Source.transform, false);
                     var component = child.AddComponent(type);
                     var data = Activator.CreateInstance(type.GetField("data").FieldType); SetPoseMember(component, "data", data);
-                    var category = AddPoseListItem((IList)PoseMenuResolver.Member(data, "categories")); SetPoseMember(category, "name", "Body");
-                    var entry = AddPoseListItem((IList)PoseMenuResolver.Member(category, "poses")); SetPoseMember(entry, "name", "Registered body"); SetPoseMember(entry, "animationClip", registeredClip);
+                    var category = AddPoseListItem((IList)VrChatExpressionMenu.Member(data, "categories")); SetPoseMember(category, "name", "Body");
+                    var entry = AddPoseListItem((IList)VrChatExpressionMenu.Member(category, "poses")); SetPoseMember(entry, "name", "Registered body"); SetPoseMember(entry, "animationClip", registeredClip);
                 }
                 else ConfigureRegisteredMenuPose(fixture.Source, registeredClip, assets);
                 var sourceBefore = ExportSourceFingerprint.Compute(fixture.Source);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 session.PoseOptions.Manual.Add(new ManualPose { Clip = manualClip, Name = "Manual body" });
                 var bytes = session.Export("Registered poses", "Tests", recordFace ? Listed(face) : Listed(), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var document = GlbDocument.Read(bytes);
@@ -1074,12 +1074,12 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < layers.Length; i++)
                 {
                     var layer = layers.GetValue(i); var empty = new AnimatorController(); assets.Add(empty);
-                    SetPoseMember(layer, "isDefault", false); SetPoseMember(layer, "animatorController", PoseMenuResolver.Member(layer, "type").ToString() == "Gesture" ? controller : empty); layers.SetValue(layer, i);
+                    SetPoseMember(layer, "isDefault", false); SetPoseMember(layer, "animatorController", VrChatExpressionMenu.Member(layer, "type").ToString() == "Gesture" ? controller : empty); layers.SetValue(layer, i);
                 }
                 field.SetValue(descriptor, layers);
             }
             var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu")); assets.Add(menu);
-            var control = AddPoseListItem((IList)PoseMenuResolver.Member(menu, "controls")); SetPoseMember(control, "name", "Registered body"); SetPoseMember(control, "type", "Toggle"); SetPoseMember(control, "value", 1f);
+            var control = AddPoseListItem((IList)VrChatExpressionMenu.Member(menu, "controls")); SetPoseMember(control, "name", "Registered body"); SetPoseMember(control, "type", "Toggle"); SetPoseMember(control, "value", 1f);
             var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType); SetPoseMember(parameter, "name", "Pose"); SetPoseMember(control, "parameter", parameter); SetPoseMember(descriptor, "expressionsMenu", menu);
             var parameters = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters")); assets.Add(parameters);
             var parametersField = parameters.GetType().GetField("parameters"); var element = parametersField.FieldType.GetElementType(); var definition = Activator.CreateInstance(element); SetPoseMember(definition, "name", "Pose"); SetPoseMember(definition, "valueType", "Int");
@@ -1362,7 +1362,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // Two listed faces are written as "A" and "B": the shared "Face " is left out (ExpressionNameAffix).
                 Assert.That(custom.Keys.Where(key => names.Any(name => name == key || name.EndsWith(" " + key))),
                     Is.EquivalentTo(ExpressionNameAffix.Trim(names.Take(listed).ToArray())));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
                 Assert.That(saved.Expressions, Is.EqualTo(listed), "The saved count is the listed faces.");
@@ -1456,7 +1456,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
                 Assert.That(custom.Keys, Is.SupersetOf(names.Append(listOnly.name).Append(moving.name)));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length + 2), "Every listed face is registered as the ordinary export registers its faces.");
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(names.Length + 2), "Every listed face is registered as the ordinary export registers its faces.");
                 var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
                 var animation = document.Animations.Single();
                 Assert.That(animation.Expression, Is.EqualTo(moving.name));
@@ -1506,7 +1506,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
                 // Both names end with " face", which the export leaves out (ExpressionNameAffix).
                 Assert.That(custom.Keys, Is.SupersetOf(new[] { "Still", "Moving" }));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(2));
                 var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
                 var animation = document.Animations.Single();
                 Assert.That(animation.Expression, Is.EqualTo("Moving"));
@@ -1789,7 +1789,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.Copy.transform.Find("Auxiliary fallback")?.GetComponent<Renderer>(), Is.Null);
                 Assert.That(session.Copy.GetComponentsInChildren<Renderer>(true).Any(renderer =>
                     renderer.sharedMaterials.Any(material => material != null && material.shader == hiddenMaterial.shader)), Is.False);
@@ -1827,7 +1827,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
                 if (moveRendererWithMa) MoveFrontWithInstalledMa(fixture.Source);
                 var sourceBefore = ExportSourceFingerprint.Compute(fixture.Source);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 imported = await Vrm10.LoadBytesAsync(session.Export("Functional presets", "Tests", Listed(face), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }),
                     canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var reloaded = imported.Vrm.Expression.Clips.ToDictionary(pair => pair.Preset, pair => pair.Clip);
@@ -1908,7 +1908,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var bytes = session.Export("Read only meshes", "Tests", recordFace ? Listed(face) : Listed(), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
@@ -1988,7 +1988,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 if (moveRendererWithMa) MoveFrontWithInstalledMa(fixture.Source);
                 var sourceBefore = ExportSourceFingerprint.Compute(fixture.Source);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var bytes = session.Export("Explicit blink", "Tests", recordFace ? Listed(face) : Listed());
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
@@ -2049,7 +2049,7 @@ namespace VRVlog.LilToonExporter.Tests
                     fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
                 }
                 else fixture.Mesh.ClearBlendShapes();
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.Expressions, Is.Empty);
                 var before = ExportSourceFingerprint.Compute(fixture.Source);
                 var bytes = session.Export("Model only", "Tests", Listed(), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -2074,7 +2074,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 AnimationUtility.SetEditorCurve(face, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 75));
                 AnimationUtility.SetEditorCurve(wrong, EditorCurveBinding.FloatCurve("Front", typeof(Transform), "m_LocalPosition.x"), AnimationCurve.Constant(0, 1, 1));
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var weights = session.Channels.Select(channel => channel.Renderer.GetBlendShapeWeight(0)).ToArray();
                 var errors = session.ClipErrors(new[] { face, wrong, face });
                 Assert.That(errors.Count, Is.EqualTo(2)); Assert.That(errors[face], Is.Null); Assert.That(errors[wrong], Is.Not.Null);
@@ -2212,7 +2212,7 @@ namespace VRVlog.LilToonExporter.Tests
                         material.EnableKeyword("_MAPPING_6_FRAMES_LAYOUT"); material.EnableKeyword("_SUNDISK_HIGH_QUALITY");
                     }
                 skins[1].sharedMaterial = extra;
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var warnings = new System.Collections.Generic.List<string>();
                 var bytes = session.Export("Test", "Tests", Listed(smile), warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(warnings.Any(warning => warning.IndexOf("AudioLink", StringComparison.OrdinalIgnoreCase) >= 0), Is.False);
@@ -2311,15 +2311,11 @@ namespace VRVlog.LilToonExporter.Tests
         // A face listed by its clip exports from an avatar with a menu and a
         // descriptor, and the source stays as it was. Listing a clip does not
         // play the menu, so the controller check only guards against that.
-        [TestCase("listed")]
-        [TestCase("audio-reactive")]
-        public async Task ExistingMenuFaceExportsFromTheBoardListWithoutChangingItsController(string callback)
+        [Test]
+        public async Task ExistingMenuFaceExportsFromTheBoardListWithoutChangingItsController()
         {
             var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
-            // VRCAnimatorPlayAudio first ships in VRChat SDK 3.5.2; 3.5.0 and 3.5.1 have no audio behaviour to omit.
-            if (callback == "audio-reactive" && Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio") == null)
-                Assert.Ignore("VRCAnimatorPlayAudio is in VRChat SDK 3.5.2 and later.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -2330,7 +2326,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var machine = controller.layers[0].stateMachine;
                 var neutral = machine.AddState("Neutral"); neutral.writeDefaultValues = false;
                 var smile = machine.AddState("Smile"); smile.writeDefaultValues = false;
-                if (callback == "audio-reactive") smile.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio"));
                 var clip = new AnimationClip();
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 75));
                 AssetDatabase.AddObjectToAsset(clip, controller); smile.motion = clip; machine.defaultState = neutral;
@@ -2357,14 +2352,6 @@ namespace VRVlog.LilToonExporter.Tests
                     layer.FindPropertyRelative("isDefault").boolValue = false;
                     layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
                     data.ApplyModifiedPropertiesWithoutUndo();
-                }
-                if (callback == "audio-reactive")
-                {
-                    var material = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMaterial;
-                    material.shader = Shader.Find("lilToon"); material.SetFloat("_UseAudioLink", 1);
-                    Assert.Throws<InvalidOperationException>(() => new ExperimentalExpressionCaptureSession(fixture.Source));
-                    Assert.That(smile.behaviours.Length, Is.EqualTo(1), "Refusing an audio-reactive face cannot remove the source callback.");
-                    return;
                 }
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
@@ -2411,7 +2398,7 @@ namespace VRVlog.LilToonExporter.Tests
             GameObject native = null;
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.RecommendClips(), Is.Empty, "A name does not make an unreferenced clip a recommendation.");
                 session.Channels[1].Renderer.SetBlendShapeWeight(0, 99);
                 session.PreviewClip(clip, .5f);
@@ -2442,7 +2429,7 @@ namespace VRVlog.LilToonExporter.Tests
             }).ToArray();
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var inputs = clips.Select(clip => new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = 0 }).ToArray();
                 var result = session.ReplaceClipRecords(inputs, null);
                 Assert.That(result, Has.Length.EqualTo(100), "There is no limit on the number of recorded faces.");
@@ -2462,7 +2449,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ExplicitClipErrorsNeverPartiallyRecordOrAlterThePreview(string mode)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var valid = new AnimationClip(); var invalid = new AnimationClip();
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
             AnimationUtility.SetEditorCurve(valid, binding, AnimationCurve.Constant(0, 1, 80));
@@ -2496,7 +2483,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ShapesTheAvatarNeverHadAreSkippedLikeTheMenuExport()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var clip = new AnimationClip { name = "Partly stale" };
             try
             {
@@ -2521,7 +2508,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ShapesLostByPreparationStayUnsupportedOnTheBoard()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var preparation = (NdmfExportPreparation)typeof(ExperimentalExpressionCaptureSession).GetField("preparation", flags).GetValue(session);
             var before = (System.Collections.Generic.Dictionary<SkinnedMeshRenderer, System.Collections.Generic.HashSet<string>>)typeof(NdmfExportPreparation).GetField("shapesBeforeProcessing", flags).GetValue(preparation);
@@ -2562,7 +2549,7 @@ namespace VRVlog.LilToonExporter.Tests
                     data.FindProperty("animator").objectReferenceValue = controller;
                     data.ApplyModifiedPropertiesWithoutUndo();
                 }
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
             }
             finally { AssetDatabase.DeleteAsset(folder); }
@@ -2846,7 +2833,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void FileRecordsUpdateNamesAndTimeAndDeselectWithoutDeletingManualFaces()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var clip = new AnimationClip();
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Linear(0, 35, 1, 80));
             try
@@ -2881,7 +2868,7 @@ namespace VRVlog.LilToonExporter.Tests
                 board.SetItems(null, new[] { new ExpressionBoard.Item { Clip = clip, Source = "Fixture" } });
                 Assert.That(board.Rename(clip, "笑顔 2"), Is.True);
                 Assert.That(board.UsesRecordRoute, Is.True);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var listed = new[] { (board.NameOf(clip), clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip)) };
                 var bytes = session.Export("Test", "Tests", listed, new System.Collections.Generic.List<string>(), new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
@@ -2900,7 +2887,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InvalidUpdatesPreserveEveryPreviouslyRecordedFace()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var clip = new AnimationClip();
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 75));
             try
@@ -2922,7 +2909,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ReplaceClipRecordsNumbersRepeatedNames()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var clips = new[] { new AnimationClip(), new AnimationClip() };
             for (var index = 0; index < clips.Length; index++) AnimationUtility.SetEditorCurve(clips[index],
                 EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70 + index * 10));
@@ -3219,7 +3206,7 @@ namespace VRVlog.LilToonExporter.Tests
             var check = typeof(ExperimentalExpressionCaptureSession).GetMethod("HasGeometryChange", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var index = session.Channels.FindIndex(channel => channel.Path == "Face");
                 foreach (var (shape, expected) in new[] { ("Moves", true), ("Normals only", true), ("Still", false) })
                 {
@@ -3244,7 +3231,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ABatchChecksTheSourceOnceAndTheNextOneSeesAnEdit()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var front = fixture.Source.transform.Find("Front");
             using (ExperimentalExpressionCaptureSession.Batch())
             {
@@ -3268,7 +3255,7 @@ namespace VRVlog.LilToonExporter.Tests
             ExperimentalExpressionCaptureSession session;
             using (ExperimentalExpressionCaptureSession.Batch())
             {
-                session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 front.name = "Front edited";
                 Assert.DoesNotThrow(session.RestoreBaseline, "The batch the session was made in is already checked.");
             }
@@ -3476,7 +3463,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var assignment = ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
             using (ExperimentalExpressionCaptureSession.Batch())
             {
@@ -3681,7 +3668,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var clip = SmileFile(100);
             try
             {
@@ -3765,7 +3752,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.Window.ObjectsPreview, Is.Null);
             board.Window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage);
             board.Advance();
-            using (new ExperimentalExpressionCaptureSession(board.Fixture.Source, false)) { }
+            using (new ExperimentalExpressionCaptureSession(board.Fixture.Source)) { }
             board.Choose(ExpressionPreset.sad, "Front");
             Assert.That(board.Session, Is.SameAs(before));
             Assert.DoesNotThrow(board.Session.RequireCurrentSource);

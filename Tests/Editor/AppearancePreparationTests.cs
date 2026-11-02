@@ -32,7 +32,7 @@ namespace VRVlog.LilToonExporter.Tests
                 prepared.SetBlendShapeWeight(1, restChanges ? 50 : 0);
                 bindings.Capture(menu);
                 AvatarBaseShape.Preserve(clone, clone, owned, null);
-                var expressions = VrChatExpressionBaker.Bake(null, clone, menu, owned, null, bindings);
+                var expressions = VrChatExpressionBaker.Bake(clone, menu, owned, null, bindings);
                 Assert.That(prepared.sharedMesh.vertices[0], Is.EqualTo(new Vector3(restChanges ? 4 : 1, restChanges ? 1 : 0, 0)));
                 // Raising Blink to its 100 frame references the prepared shape
                 // directly at full weight instead of baking a target.

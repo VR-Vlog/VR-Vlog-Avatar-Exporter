@@ -189,10 +189,10 @@ assert "Vrm10AppearanceExporter.Export" in one_click
 assert one_click.index("NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true)") < one_click.index("VrChatExpressionMenu.Read(source)")
 assert one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)") < one_click.index("NdmfExportPreparation.ValidateCopy(source, clone,") < one_click.index("MaAppearanceSnapshot.Apply(source, clone,")
 assert "target => exclusions.ContainsCopyTransform(clone, target)" in one_click
-assert one_click.index("VrChatExpressionSampler.Analyze(clone,") < one_click.index("FaceEmoExpressions.ApplyPreparedDefaultFace(clone,") < one_click.index("NeutralShapeSnapshot.Capture(clone)") < one_click.index("preparedMenuBindings.Capture(menu)") < one_click.index("VrChatExpressionBaker.Bake(null, clone,") < one_click.index("ExportOptimizationBindings.Capture(clone,")
+assert one_click.index("VrChatExpressionSampler.Analyze(clone,") < one_click.index("FaceEmoExpressions.ApplyPreparedDefaultFace(clone,") < one_click.index("NeutralShapeSnapshot.Capture(clone)") < one_click.index("preparedMenuBindings.Capture(menu)") < one_click.index("VrChatExpressionBaker.Bake(clone,") < one_click.index("ExportOptimizationBindings.Capture(clone,")
 assert "VrChatExpressionSampler.ApplyMergedDefaults(source, clone," not in one_click
 assert one_click.index("optimizerBindings.ValidateAndApply(") < one_click.index("LilToonFullSnapshot.Capture(clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
-assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("VrChatExpressionBaker.Bake(null, clone,")
+assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("VrChatExpressionBaker.Bake(clone,")
 assert one_click.index("SkinnedMeshFallbackWeights.Preserve(clone,") < one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("AvatarBaseShape.Preserve(clone, clone,")
 assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.rindex("SkinnedMeshFallbackWeights.Preserve(clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
 assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure)") == 2

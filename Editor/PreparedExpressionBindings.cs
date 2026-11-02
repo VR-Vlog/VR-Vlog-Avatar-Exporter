@@ -4,6 +4,7 @@ using System.Linq;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter
@@ -105,12 +106,6 @@ namespace VRVlog.LilToonExporter
                 var renderer = VrChatExpressionSampler.FindRenderer(clone, path);
                 bindings[path] = originalRenderers[renderer].Binding;
             }
-        }
-
-        internal string AuthoringPath(string preparedPath)
-        {
-            var paths = AuthoringPaths(preparedPath);
-            return paths.Length == 1 ? paths[0] : null;
         }
 
         internal string[] AuthoringPaths(string preparedPath)
@@ -216,7 +211,7 @@ namespace VRVlog.LilToonExporter
                     if (value.RelativePath != old.Value.RelativePath || value.Index != old.Value.Index ||
                         !value.Weight.Equals(old.Value.Weight)) continue;
                     var clipZero = captured.FromFx && value.Weight == 0;
-                    var inert = !clipZero && (value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1);
+                    var inert = !clipZero && (value.Weight == 0 || !Finite(value.Weight) || value.Weight < 0 || value.Weight > 1);
                     LostAuthoredMorph Lost(bool followed) => new LostAuthoredMorph {
                         Clip = current.name, Path = old.Value.RelativePath, Shape = old.Shape, Followed = followed };
                     if (old.Shape == null)
@@ -269,7 +264,7 @@ namespace VRVlog.LilToonExporter
                 if (lostHere.Count > 0)
                 {
                     // A clip zero still resets a default face shape.
-                    var emptied = !kept.Any(value => (value.Weight > 0 || captured.FromFx && value.Weight == 0) && value.Weight <= 1 && NeutralShapeSnapshot.Finite(value.Weight) &&
+                    var emptied = !kept.Any(value => (value.Weight > 0 || captured.FromFx && value.Weight == 0) && value.Weight <= 1 && Finite(value.Weight) &&
                             value.Index >= 0 && value.Index != int.MaxValue) &&
                         (current.MaterialColorBindings?.Length ?? 0) == 0 && (current.MaterialUVBindings?.Length ?? 0) == 0;
                     foreach (var item in lostHere) item.ClipEmptied = emptied;

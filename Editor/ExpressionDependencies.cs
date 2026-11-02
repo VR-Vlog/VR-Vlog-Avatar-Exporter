@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -245,7 +246,7 @@ namespace VRVlog.LilToonExporter
             // VRChat stores a Set as the parameter's type; declared Ints clamp to a byte.
             float? SetValue(VrChatParameterDriver.Operation op, (AnimatorControllerParameterType Type, bool Declared) target)
             {
-                if (op.Kind != "Set" || op.Error != null || !NeutralShapeSnapshot.Finite(op.Value)) return null;
+                if (op.Kind != "Set" || op.Error != null || !Finite(op.Value)) return null;
                 if (target.Type == AnimatorControllerParameterType.Bool) return op.Value == 0 ? 0 : 1;
                 var value = Math.Truncate((double)op.Value);
                 if (target.Declared) value = Math.Max(0, Math.Min(255, value));
@@ -277,9 +278,9 @@ namespace VRVlog.LilToonExporter
                             !source.ExpressionParameterTypes.TryGetValue(name, out var declaredType) || declaredType != parameter.type.ToString() ||
                             parameter.type == AnimatorControllerParameterType.Trigger) continue;
                         var initial = Default(parameter);
-                        if (!NeutralShapeSnapshot.Finite(initial) || !source.Defaults.TryGetValue(name, out var declaredDefault) ||
-                            !NeutralShapeSnapshot.Finite(declaredDefault) || declaredDefault != initial ||
-                            declarations[name].Any(value => !NeutralShapeSnapshot.Finite(Default(value)) || Default(value) != initial)) continue;
+                        if (!Finite(initial) || !source.Defaults.TryGetValue(name, out var declaredDefault) ||
+                            !Finite(declaredDefault) || declaredDefault != initial ||
+                            declarations[name].Any(value => !Finite(Default(value)) || Default(value) != initial)) continue;
                         invariant[name] = initial;
                     }
                     // An internal signal that only FX Set drivers write holds its
@@ -423,7 +424,7 @@ namespace VRVlog.LilToonExporter
                     if (defaults != null && defaults.TryGetValue(name, out var supplied)) initial = supplied;
                     if (fixedContext != null && fixedContext.Values.TryGetValue(name, out supplied)) initial = supplied;
                     var final = selection != null && selection.TryGetValue(name, out supplied) ? supplied : initial;
-                    if (NeutralShapeSnapshot.Finite(initial) && NeutralShapeSnapshot.Finite(final) && initial == final) invariant[name] = initial;
+                    if (Finite(initial) && Finite(final) && initial == final) invariant[name] = initial;
                 }
                 weightScope = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, invariant);
                 RemapWeights(weightScope);
@@ -694,7 +695,7 @@ namespace VRVlog.LilToonExporter
                     {
                         var producers = weightControls.Where(control => !control.AnimatorLayer || control.LayerIndex == target).ToArray();
                         return producers.All(control => control.AnimatorLayer && control.SourceState != null && control.BlendDuration == 0 &&
-                            NeutralShapeSnapshot.Finite(controller.layers[target].defaultWeight) &&
+                            Finite(controller.layers[target].defaultWeight) &&
                             control.GoalWeight == (control.FixedBaseLayer ? 1 : controller.layers[target].defaultWeight));
                     }));
                 var unresolvedWeight = weightControls.FirstOrDefault(control => !control.AnimatorLayer ||
@@ -761,7 +762,7 @@ namespace VRVlog.LilToonExporter
             {
                 var declarations = UniqueParameters(controller).Where(parameter => parameter.name == signal).ToArray();
                 if (declarations.Length != 1 || declarations[0].type != AnimatorControllerParameterType.Float ||
-                    !NeutralShapeSnapshot.Finite(declarations[0].defaultFloat) || VrChatParameterDriver.BuiltIn.Contains(signal) ||
+                    !Finite(declarations[0].defaultFloat) || VrChatParameterDriver.BuiltIn.Contains(signal) ||
                     source?.ExternalParameters.Contains(signal) == true || source?.MenuInputs.Contains(signal) == true ||
                     source?.ExpressionParameters.Contains(signal) == true || raw.Any(layer => layer.DriverWrites.Contains(signal)) ||
                     other.Any(item => item.Layers.Any(layer => layer.Writes.Contains(signal)))) return false;
@@ -780,9 +781,9 @@ namespace VRVlog.LilToonExporter
                         var inputs = tree.blendType == BlendTreeType.Direct ? children.Select(child => child.directBlendParameter) :
                             tree.blendType == BlendTreeType.Simple1D ? new[] { tree.blendParameter } : new[] { tree.blendParameter, tree.blendParameterY };
                         return inputs.All(input => !string.IsNullOrEmpty(input) && fixedValues.TryGetValue(input, out var value) &&
-                            NeutralShapeSnapshot.Finite(value)) && children.All(child => NeutralShapeSnapshot.Finite(child.threshold) &&
-                            NeutralShapeSnapshot.Finite(child.position.x) && NeutralShapeSnapshot.Finite(child.position.y) &&
-                            NeutralShapeSnapshot.Finite(child.timeScale) && NeutralShapeSnapshot.Finite(child.cycleOffset) && StaticMotion(child.motion));
+                            Finite(value)) && children.All(child => Finite(child.threshold) &&
+                            Finite(child.position.x) && Finite(child.position.y) &&
+                            Finite(child.timeScale) && Finite(child.cycleOffset) && StaticMotion(child.motion));
                     }
                     if (!(motion is AnimationClip clip)) return false;
                     if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
@@ -817,13 +818,13 @@ namespace VRVlog.LilToonExporter
                 {
                     if (state.writeDefaultValues != first.writeDefaultValues || state.iKOnFeet || state.timeParameterActive ||
                         state.speedParameterActive || state.mirrorParameterActive || state.cycleOffsetParameterActive ||
-                        !NeutralShapeSnapshot.Finite(state.speed) || !NeutralShapeSnapshot.Finite(state.cycleOffset) ||
+                        !Finite(state.speed) || !Finite(state.cycleOffset) ||
                         (controller.GetStateEffectiveMotion(state, index) ?? state.motion) != motion ||
                         state.transitions.Any(transition => transition.isExit || transition.destinationStateMachine != null ||
                             !members.Contains(transition.destinationState) || control &&
-                            (!NeutralShapeSnapshot.Finite(transition.duration) || transition.duration < 0 ||
-                                !NeutralShapeSnapshot.Finite(transition.exitTime) || transition.exitTime < 0 ||
-                                !NeutralShapeSnapshot.Finite(transition.offset)))) return false;
+                            (!Finite(transition.duration) || transition.duration < 0 ||
+                                !Finite(transition.exitTime) || transition.exitTime < 0 ||
+                                !Finite(transition.offset)))) return false;
                     foreach (var behaviour in controller.GetStateEffectiveBehaviours(state, index) ?? Array.Empty<StateMachineBehaviour>())
                     {
                         if (IsInertAuthoringMarker(behaviour)) continue;
@@ -1155,11 +1156,11 @@ namespace VRVlog.LilToonExporter
 
         private static bool? TypedCondition(AnimatorCondition condition, float value, IDictionary<string, AnimatorControllerParameterType> types)
         {
-            if (!NeutralShapeSnapshot.Finite(value) || !types.TryGetValue(condition.parameter, out var type)) return null;
+            if (!Finite(value) || !types.TryGetValue(condition.parameter, out var type)) return null;
             if (type == AnimatorControllerParameterType.Bool)
                 return condition.mode == AnimatorConditionMode.If ? value != 0 :
                     condition.mode == AnimatorConditionMode.IfNot ? value == 0 : (bool?)null;
-            if (type != AnimatorControllerParameterType.Float && type != AnimatorControllerParameterType.Int || !NeutralShapeSnapshot.Finite(condition.threshold) ||
+            if (type != AnimatorControllerParameterType.Float && type != AnimatorControllerParameterType.Int || !Finite(condition.threshold) ||
                 type == AnimatorControllerParameterType.Int && (value != Math.Truncate(value) || condition.threshold != Math.Truncate(condition.threshold))) return null;
             switch (condition.mode)
             {

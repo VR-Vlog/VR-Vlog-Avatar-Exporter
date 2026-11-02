@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using static VRVlog.LilToonExporter.NumericChecks;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter
@@ -176,8 +177,41 @@ namespace VRVlog.LilToonExporter
             }
             root.layers = layers;
             if (preserveSyncedOverrides)
-                ExperimentalExpressionControllerScope.RemapSyncedOverrides(root, original, State, Motion, Behaviours);
+                RemapSyncedOverrides(root, original, State, Motion, Behaviours);
             return root;
+        }
+
+        private static void RemapSyncedOverrides(AnimatorController target, AnimatorController original,
+            Func<AnimatorState, AnimatorState> state, Func<Motion, Motion> motion,
+            Func<IEnumerable<StateMachineBehaviour>, StateMachineBehaviour[]> behaviours)
+        {
+            var authored = original.layers;
+            var current = target.layers;
+            target.layers = current.Select(layer => new AnimatorControllerLayer { name = layer.name,
+                stateMachine = layer.stateMachine, avatarMask = layer.avatarMask, blendingMode = layer.blendingMode,
+                defaultWeight = layer.defaultWeight, iKPass = layer.iKPass, syncedLayerIndex = layer.syncedLayerIndex,
+                syncedLayerAffectsTiming = layer.syncedLayerAffectsTiming }).ToArray();
+            for (var index = 0; index < authored.Length; index++)
+            {
+                if (authored[index].syncedLayerIndex < 0 || current[index].syncedLayerIndex < 0) continue;
+                var source = index; var seen = new HashSet<int>();
+                while (authored[source].syncedLayerIndex >= 0)
+                {
+                    if (!seen.Add(source)) throw new InvalidOperationException("表情の同期レイヤー参照が循環しています。");
+                    source = authored[source].syncedLayerIndex;
+                    if (source >= authored.Length) throw new InvalidOperationException("表情の同期レイヤー参照が不正です。");
+                }
+                void Visit(AnimatorStateMachine machine)
+                {
+                    foreach (var child in machine.states)
+                    {
+                        target.SetStateEffectiveMotion(state(child.state), motion(original.GetStateEffectiveMotion(child.state, index)), index);
+                        target.SetStateEffectiveBehaviours(state(child.state), index, behaviours(original.GetStateEffectiveBehaviours(child.state, index) ?? Array.Empty<StateMachineBehaviour>()));
+                    }
+                    foreach (var child in machine.stateMachines) Visit(child.stateMachine);
+                }
+                Visit(authored[source].stateMachine);
+            }
         }
 
         internal static void Enter(int sessionId, int programIndex, Animator animator, AnimatorControllerPlayable playable)
@@ -291,7 +325,7 @@ namespace VRVlog.LilToonExporter
                     var value = type == AnimatorControllerParameterType.Float ? playable.GetFloat(condition.parameter) :
                         type == AnimatorControllerParameterType.Int ? playable.GetInteger(condition.parameter) :
                         type == AnimatorControllerParameterType.Bool ? (playable.GetBool(condition.parameter) ? 1 : 0) : float.NaN;
-                    if (!NeutralShapeSnapshot.Finite(value)) return false;
+                    if (!Finite(value)) return false;
                     switch (condition.mode)
                     {
                         case AnimatorConditionMode.If: return value == 0;

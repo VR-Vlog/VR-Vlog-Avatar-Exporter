@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -108,8 +109,6 @@ namespace VRVlog.LilToonExporter
             return curve.keys.All(key => Finite(key.time) && key.value == constant && (key.inTangent == 0 || float.IsInfinity(key.inTangent)) &&
                 (key.outTangent == 0 || float.IsInfinity(key.outTangent)));
         }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         static IEnumerable<AnimatorState> AllStates(AnimatorStateMachine root)
         {

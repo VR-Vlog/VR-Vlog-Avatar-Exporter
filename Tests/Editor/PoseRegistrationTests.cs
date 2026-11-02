@@ -59,11 +59,11 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var data = Activator.CreateInstance(type.GetField("data").FieldType); Set(component, "data", data);
-                var category = Add((IList)PoseMenuResolver.Member(data, "categories")); Set(category, "name", "座り");
-                var entry = Add((IList)PoseMenuResolver.Member(category, "poses")); Set(entry, "name", "登録名"); Set(entry, "animationClip", clip);
+                var category = Add((IList)VrChatExpressionMenu.Member(data, "categories")); Set(category, "name", "座り");
+                var entry = Add((IList)VrChatExpressionMenu.Member(category, "poses")); Set(entry, "name", "登録名"); Set(entry, "animationClip", clip);
                 for (var i = 0; i < 128; i++)
                 {
-                    var duplicate = Add((IList)PoseMenuResolver.Member(category, "poses")); Set(duplicate, "name", "重複" + i); Set(duplicate, "animationClip", clip);
+                    var duplicate = Add((IList)VrChatExpressionMenu.Member(category, "poses")); Set(duplicate, "name", "重複" + i); Set(duplicate, "animationClip", clip);
                 }
                 var before = EditorJsonUtility.ToJson(component);
                 var options = new PoseExportOptions(); options.Manual.Add(new ManualPose { Clip = clip });
@@ -192,8 +192,8 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 RuntimeAnimatorController effective = controller;
                 if (overrideClip) { var replacement = new AnimatorOverrideController(controller); replacement[clip] = unrelated; owned.Add(replacement); effective = replacement; }
-                var folder = Add((IList)PoseMenuResolver.Member(menu, "controls")); Set(folder, "name", "カテゴリー"); Set(folder, "type", "SubMenu"); Set(folder, "subMenu", sub);
-                var toggle = Add((IList)PoseMenuResolver.Member(sub, "controls")); Set(toggle, "name", "メニュー名"); Set(toggle, "type", buttonRelease == null ? "Toggle" : "Button");
+                var folder = Add((IList)VrChatExpressionMenu.Member(menu, "controls")); Set(folder, "name", "カテゴリー"); Set(folder, "type", "SubMenu"); Set(folder, "subMenu", sub);
+                var toggle = Add((IList)VrChatExpressionMenu.Member(sub, "controls")); Set(toggle, "name", "メニュー名"); Set(toggle, "type", buttonRelease == null ? "Toggle" : "Button");
                 Set(toggle, "value", expressionCase == "BoolZero" ? 0f : expressionCase == "FloatRange" ? 2f : expressionCase == "FractionalInt" ? 1.5f : 1f);
                 var parameter = Activator.CreateInstance(toggle.GetType().GetField("parameter").FieldType); Set(parameter, "name", "Pose"); Set(toggle, "parameter", parameter);
                 // Supported fixtures use explicitly neutral other layers;
@@ -408,7 +408,7 @@ namespace VRVlog.LilToonExporter.Tests
             parameterField.SetValue(parameters, parameterArray); Set(descriptor, "expressionParameters", parameters);
             var blendTree = scenario.StartsWith("BlendTree", StringComparison.Ordinal);
             var name = scenario == "Clothing" || blendTree ? "Sweater_OFF" : "Toggle_" + scenario;
-            var toggle = Add((IList)PoseMenuResolver.Member(menu, "controls")); Set(toggle, "name", name); Set(toggle, "type", "Toggle"); Set(toggle, "value", 1f);
+            var toggle = Add((IList)VrChatExpressionMenu.Member(menu, "controls")); Set(toggle, "name", name); Set(toggle, "type", "Toggle"); Set(toggle, "value", 1f);
             var parameter = Activator.CreateInstance(toggle.GetType().GetField("parameter").FieldType); Set(parameter, "name", "Toggle_A"); Set(toggle, "parameter", parameter);
             Set(descriptor, "expressionsMenu", menu);
             new GameObject("Sweater").transform.SetParent(f.Source.transform, false);
@@ -485,7 +485,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var forwardMachine = new AnimatorStateMachine(); owned.Add(forwardMachine);
                     var always = forwardMachine.AddState("Always"); always.writeDefaultValues = false;
                     var driver = always.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver"));
-                    var write = Add((IList)PoseMenuResolver.Member(driver, "parameters"));
+                    var write = Add((IList)VrChatExpressionMenu.Member(driver, "parameters"));
                     Set(write, "name", "Pose_B"); Set(write, "type", "Copy"); Set(write, "source", "Toggle_A");
                     fx.layers = fx.layers.Concat(new[] { new AnimatorControllerLayer { name = "Forward", defaultWeight = 1, stateMachine = forwardMachine } }).ToArray();
                 }

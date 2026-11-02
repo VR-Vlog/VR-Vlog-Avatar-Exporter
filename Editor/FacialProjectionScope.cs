@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -97,7 +98,7 @@ namespace VRVlog.LilToonExporter
                         {
                             if (offset >= weights.Length) { valid = false; break; }
                             var weight = weights[offset++]; sum += weight.weight;
-                            if (!NeutralShapeSnapshot.Finite(weight.weight) || weight.weight < 0) valid = false;
+                            if (!Finite(weight.weight) || weight.weight < 0) valid = false;
                             if (weight.weight == 0) continue;
                             if (weight.boneIndex < 0 || weight.boneIndex >= bones.Length || bones[weight.boneIndex] == null)
                             { valid = false; continue; }
@@ -152,8 +153,8 @@ namespace VRVlog.LilToonExporter
                 // tolerance to turn an accessory into connected facial mesh.
                 var seams = components.Select(_ => new HashSet<int>()).ToArray();
                 var edgeOwners = new Dictionary<(float, float, float, float, float, float), List<int>>();
-                bool FinitePoint(Vector3 point) => NeutralShapeSnapshot.Finite(point.x) &&
-                    NeutralShapeSnapshot.Finite(point.y) && NeutralShapeSnapshot.Finite(point.z);
+                bool FinitePoint(Vector3 point) => Finite(point.x) &&
+                    Finite(point.y) && Finite(point.z);
                 int Compare(Vector3 a, Vector3 b)
                 {
                     var comparison = a.x.CompareTo(b.x); if (comparison != 0) return comparison;
@@ -217,7 +218,7 @@ namespace VRVlog.LilToonExporter
                 var facialBounds = new Bounds(vertices[enclosureSurface.First()], Vector3.zero);
                 foreach (var vertex in enclosureSurface) facialBounds.Encapsulate(vertices[vertex]);
                 var extent = facialBounds.size.magnitude;
-                if (NeutralShapeSnapshot.Finite(extent) && extent > 0)
+                if (Finite(extent) && extent > 0)
                 {
                     facialBounds.Expand(extent * .1f);
                     // A viseme-connected surface can be only the front of a
@@ -239,8 +240,8 @@ namespace VRVlog.LilToonExporter
                         while (queue.Count > 0)
                             foreach (var neighbour in adjacency[queue.Dequeue()])
                                 if (visited.Add(neighbour)) { island.Add(neighbour); queue.Enqueue(neighbour); }
-                        if (island.All(index => !nonHeadBoundary[index] && NeutralShapeSnapshot.Finite(vertices[index].x) &&
-                            NeutralShapeSnapshot.Finite(vertices[index].y) && NeutralShapeSnapshot.Finite(vertices[index].z)) &&
+                        if (island.All(index => !nonHeadBoundary[index] && Finite(vertices[index].x) &&
+                            Finite(vertices[index].y) && Finite(vertices[index].z)) &&
                             (hasDepthEnvelope ? island.All(index => depthEnvelope.Contains(meshToAvatar.MultiplyPoint3x4(vertices[index]))) :
                                 island.All(index => facialBounds.Contains(vertices[index])))) domain.UnionWith(island);
                     }
@@ -258,11 +259,11 @@ namespace VRVlog.LilToonExporter
 
         private static bool FiniteInvertible(Matrix4x4 matrix)
         {
-            for (var i = 0; i < 16; i++) if (!NeutralShapeSnapshot.Finite(matrix[i])) return false;
-            if (!NeutralShapeSnapshot.Finite(matrix.determinant) || matrix.determinant == 0) return false;
+            for (var i = 0; i < 16; i++) if (!Finite(matrix[i])) return false;
+            if (!Finite(matrix.determinant) || matrix.determinant == 0) return false;
             var inverse = matrix.inverse;
-            for (var i = 0; i < 16; i++) if (!NeutralShapeSnapshot.Finite(inverse[i])) return false;
-            return inverse.determinant != 0 && NeutralShapeSnapshot.Finite(inverse.determinant);
+            for (var i = 0; i < 16; i++) if (!Finite(inverse[i])) return false;
+            return inverse.determinant != 0 && Finite(inverse.determinant);
         }
 
         private static bool TryDepthEnvelope(Vector3[] vertices, HashSet<int> domain, Matrix4x4 meshToAvatar,
@@ -272,14 +273,14 @@ namespace VRVlog.LilToonExporter
             if (headIndex < 0 || headIndex >= bindposes.Length || !FiniteInvertible(meshToAvatar) ||
                 !FiniteInvertible(bindposes[headIndex])) return false;
             var anchor = meshToAvatar.MultiplyPoint3x4(bindposes[headIndex].inverse.MultiplyPoint3x4(Vector3.zero));
-            if (!NeutralShapeSnapshot.Finite(anchor.x) || !NeutralShapeSnapshot.Finite(anchor.y) ||
-                !NeutralShapeSnapshot.Finite(anchor.z)) return false;
+            if (!Finite(anchor.x) || !Finite(anchor.y) ||
+                !Finite(anchor.z)) return false;
             var first = true;
             foreach (var vertex in domain)
             {
                 var point = meshToAvatar.MultiplyPoint3x4(vertices[vertex]);
-                if (!NeutralShapeSnapshot.Finite(point.x) || !NeutralShapeSnapshot.Finite(point.y) ||
-                    !NeutralShapeSnapshot.Finite(point.z)) return false;
+                if (!Finite(point.x) || !Finite(point.y) ||
+                    !Finite(point.z)) return false;
                 if (first) { envelope = new Bounds(point, Vector3.zero); first = false; }
                 else envelope.Encapsulate(point);
             }
@@ -288,13 +289,13 @@ namespace VRVlog.LilToonExporter
             var extent = envelope.size.magnitude;
             // An anchor outside the connected face's projection, or a surface
             // spanning both sides of it, cannot prove a new depth region.
-            if (!NeutralShapeSnapshot.Finite(extent) || extent <= 0 ||
+            if (!Finite(extent) || extent <= 0 ||
                 anchor.x < minimum.x || anchor.x > maximum.x || anchor.y < minimum.y || anchor.y > maximum.y ||
                 !(minimum.z >= anchor.z || maximum.z <= anchor.z)) return false;
             var front = minimum.z >= anchor.z;
             minimum.z = Mathf.Min(minimum.z, anchor.z);
             maximum.z = Mathf.Max(maximum.z, anchor.z);
-            if (!NeutralShapeSnapshot.Finite(minimum.z) || !NeutralShapeSnapshot.Finite(maximum.z)) return false;
+            if (!Finite(minimum.z) || !Finite(maximum.z)) return false;
             envelope.SetMinMax(minimum, maximum);
             envelope.Expand(extent * .1f);
             // The lateral/vertical overlay margin cannot authorize a detached

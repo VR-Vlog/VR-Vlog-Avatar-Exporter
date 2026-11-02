@@ -119,7 +119,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => guard.VerifyIdentityAndDeformation());
             bindings.Capture(menu);
             Assert.That(entry.Error, Is.Null);
-            Assert.That(bindings.AuthoringPath("Final face"), Is.EqualTo("Face"));
+            Assert.That(bindings.AuthoringPaths("Final face"), Is.EqualTo(new[] { "Face" }));
             Assert.That(bindings.Get("Face").Renderer, Is.SameAs(current));
             var clip = prepared.GetComponent<Vrm10Instance>().Vrm.Expression.CustomClips.Single();
             Assert.That(clip.MorphTargetBindings.Select(value => value.RelativePath), Is.EqualTo(new[] { "Final face", "Final face", "Face" }));
@@ -219,7 +219,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var preparation = Capture(prepared, registry);
             bindings.RebindPrepared(preparation.PreparedRendererFor);
             Assert.That(preparation.PreparedRendererFor(old), Is.SameAs(replacement));
-            Assert.That(bindings.AuthoringPath("Final face"), Is.Null);
+            Assert.That(bindings.AuthoringPaths("Final face"), Is.Empty);
             Assert.That(Assert.Throws<InvalidOperationException>(() => bindings.RebindAuthoredExpressions(value => value)).Message,
                 Does.Contain("一意に確定"));
         }

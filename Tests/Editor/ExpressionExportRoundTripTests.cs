@@ -97,7 +97,7 @@ namespace VRVlog.LilToonExporter.Tests
                     exporterVersion: fullLilToon ? "expression-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Face / Smile", smileClip, 0f), ("Animated gesture", animatedClip, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
                 var glb = GlbDocument.Read(bytes);
                 var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
                 var animations = document.Animations;

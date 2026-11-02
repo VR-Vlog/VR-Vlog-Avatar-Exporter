@@ -116,7 +116,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var installed = LilToonInstallation.Find().Version;
                 Assert.That(LilToonExporterWindow.RequireLilToon(fixture.Source, warnings), Is.EqualTo(installed));
                 // The board's export: lilToon extension written, installed version recorded.
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var bytes = session.Export("Installed lilToon", "Tests", System.Array.Empty<(string, AnimationClip, float)>(), new List<string>());
                 var glb = GlbDocument.Read(bytes);
                 Assert.That(VRVlog.LilToon.LilToonFullContract.Text(VRVlog.LilToon.LilToonFullContract.Root(glb.Json), "sourceLilToonVersion"), Is.EqualTo("2.3.4"));

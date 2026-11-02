@@ -21,7 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
             var parent = new GameObject("Folder");
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 fixture.Source.transform.position = new Vector3(3, 0, -2);
                 fixture.Source.transform.rotation = Quaternion.Euler(0, 140, 0);
                 Assert.That(session.HasCurrentSource, Is.True, "The copy is exported at the origin facing forward.");
@@ -44,7 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 texture.SetPixels(Enumerable.Repeat(Color.white, 4).ToArray()); texture.Apply();
                 front.sharedMaterial.SetTexture("_MainTex", texture);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 Assert.That(session.HasCurrentSource, Is.True);
                 switch (change)
                 {
@@ -82,7 +82,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             target.localRotation = Quaternion.Euler(10, 20, 30);
             var original = target.localRotation;
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var reencoded = original;
             reencoded.x = BitConverter.Int32BitsToSingle(BitConverter.SingleToInt32Bits(reencoded.x) + 1);
             target.localRotation = reencoded;

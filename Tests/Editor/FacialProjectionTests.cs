@@ -444,7 +444,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(avatar, "Projected face", "Tests", warnings: warnings,
                     exporterVersion: "face-projection-regression", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Gesture", (AnimationClip)selected.motion, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.GreaterThan(0), string.Join("\n", warnings));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.GreaterThan(0), string.Join("\n", warnings));
                 Assert.That(warnings.Any(message => message.Contains(ExporterLocalization.T(FacialProjectionScope.Notice))), Is.True, string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name == "Gesture");

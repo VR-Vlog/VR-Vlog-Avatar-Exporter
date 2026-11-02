@@ -18,15 +18,6 @@ namespace VRVlog.LilToonExporter
         // Read the prepared clip after NDMF has retargeted its object paths, then
         // map those paths back to the source menu's renderer identities.
         internal static void ApplyPreparedDefaultFace(GameObject prepared, VrChatExpressionMenu.Source source,
-            Func<string, string> toAuthoringPath, Func<string, bool> excludedPath = null)
-        {
-            ApplyPreparedDefaultFace(prepared, source, path => {
-                var original = toAuthoringPath?.Invoke(path) ?? (toAuthoringPath == null ? path : null);
-                return original == null ? Array.Empty<string>() : new[] { original };
-            }, null, excludedPath);
-        }
-
-        internal static void ApplyPreparedDefaultFace(GameObject prepared, VrChatExpressionMenu.Source source,
             PreparedExpressionBindings bindings, Func<string, bool> excludedPath = null, BindingSnapshot registeredBindings = null)
         {
             if (bindings == null) throw new ArgumentNullException(nameof(bindings));
@@ -78,17 +69,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Normalize the prepared common clip by final channel before overlay.
-        // Explicit branch channels win across every authoring alias; defaults
-        // never inherit the alternative mode state's pose. Validate all plans
-        // before publishing any values into the source menu.
-        internal static void ComposeCommonValues(GameObject prepared, VrChatExpressionMenu.Source source,
-            IEnumerable<VrChatExpressionMenu.MorphValue> underlay, PreparedExpressionBindings bindings)
-        {
-            var entries = source.Entries.Where(entry => entry.Error == null && entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true).ToArray();
-            ComposeCommonValues(prepared, entries, underlay, bindings.AuthoringPaths, path => bindings.Get(path)?.Renderer);
-        }
-
         private sealed class BranchChannel
         {
             internal SkinnedMeshRenderer Renderer;
@@ -98,6 +78,10 @@ namespace VRVlog.LilToonExporter
             internal VRVlog.Expressions.ExpressionAnimationData.Curve Curve;
         }
 
+        // Normalize the prepared common clip by final channel before overlay.
+        // Explicit branch channels win across every authoring alias; defaults
+        // never inherit the alternative mode state's pose. Validate all plans
+        // before publishing any values into the source menu.
         private static void ComposeCommonValues(GameObject prepared, VrChatExpressionMenu.Entry[] entries,
             IEnumerable<VrChatExpressionMenu.MorphValue> underlay, Func<string, string[]> toAuthoringPaths,
             Func<string, SkinnedMeshRenderer> toPreparedRenderer)

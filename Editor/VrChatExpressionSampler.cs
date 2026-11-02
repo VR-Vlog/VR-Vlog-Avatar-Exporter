@@ -9,15 +9,13 @@ using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
+using static VRVlog.LilToonExporter.NumericChecks;
 using MorphValue = VRVlog.LilToonExporter.VrChatExpressionMenu.MorphValue;
 
 namespace VRVlog.LilToonExporter
 {
     internal static class VrChatExpressionSampler
     {
-        // Tests count the override probe analyses that actually run.
-        internal static Action<string> ProbeAnalysisObserver;
-
         // A layer or clip weight at or below this counts as not playing.
         private const float NegligibleWeight = 0.00001f;
 
@@ -464,7 +462,6 @@ namespace VRVlog.LilToonExporter
                     {
                         if (selection == null)
                         {
-                            ProbeAnalysisObserver?.Invoke("randomRest");
                             var found = HeldAutomaticExpressionLayers.Find(probeRuntime, metadata,
                                 ExpressionInspectCache.Current?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
                                 layerIndex.Value, explicitMorphs);
@@ -508,7 +505,6 @@ namespace VRVlog.LilToonExporter
                     }
                     ExpressionDependencies AnalyzeProbe()
                     {
-                        ProbeAnalysisObserver?.Invoke("dependencies");
                         return ExpressionDependencies.AnalyzeNeutral(probeRuntime, scalarPlan.CommittedMorphs,
                             excludedPath, metadata, fixedContext: context, preserveCommittedMorphs: true, evaluateLayerWeights: true,
                             weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0);
@@ -783,7 +779,6 @@ namespace VRVlog.LilToonExporter
         private static AnimationClip NativeTerminalClip(AnimatorControllerPlayable playable,
             AnimatorController controller, int layer)
         {
-            bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
             var definition = controller.layers[layer];
             if (definition.syncedLayerIndex >= 0 || playable.IsInTransition(layer)) return null;
             var info = playable.GetCurrentAnimatorStateInfo(layer);
@@ -937,7 +932,7 @@ namespace VRVlog.LilToonExporter
                         // Only a convex Simple1D blend is proven here.
                         var children = tree.children;
                         var convex = tree.blendType == BlendTreeType.Simple1D && children.Length > 0 &&
-                            children.Select((child, index) => NeutralShapeSnapshot.Finite(child.threshold) &&
+                            children.Select((child, index) => Finite(child.threshold) &&
                                 (index == 0 || child.threshold > children[index - 1].threshold)).All(value => value);
                         foreach (var child in children) Motion(child.motion, normalized && convex);
                     }
@@ -971,7 +966,7 @@ namespace VRVlog.LilToonExporter
                 SelectedExpressionAppearance.ValidateClipData(clip, excludedPath, probe: true);
                 return true;
             }
-            if (unchangedAppearanceClips == null) return IsHarmlessNeutralActivation(avatar, clip, binding);
+            if (unchangedAppearanceClips == null) return NeutralShapePlan.HarmlessActivation(avatar, clip, binding);
             if (!unchangedAppearanceClips.Contains(clip) || !SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding)) return false;
             SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
             return true;
@@ -1415,7 +1410,6 @@ namespace VRVlog.LilToonExporter
         {
             index = 0;
             if (curve == null || curve.length == 0) return null;
-            bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
             var keys = curve.keys;
             for (index = 0; index < keys.Length; index++)
             {
@@ -1447,13 +1441,6 @@ namespace VRVlog.LilToonExporter
             return keys.All(k => k.value == keys[0].value &&
                 (k.inTangent == 0 || float.IsInfinity(k.inTangent)) && (k.outTangent == 0 || float.IsInfinity(k.outTangent)));
         }
-
-        // Neutral capture writes morph weights only. A constant activation is
-        // harmless when Unity cannot resolve its dummy target, or when it
-        // exactly preserves the prepared object's current appearance. Never
-        // infer an object identity from an ambiguous path or accept a toggle.
-        private static bool IsHarmlessNeutralActivation(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
-            => NeutralShapePlan.HarmlessActivation(avatar, clip, binding);
 
         // Unsupported appearance support is not invalid VRM data. Only neutral
         // preparation can retain its authored rest; selected expression endpoints

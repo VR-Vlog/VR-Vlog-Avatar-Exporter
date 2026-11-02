@@ -233,7 +233,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Bindings.Capture(menu); Assert.That(menu.Entries.All(entry => entry.Error == null), Is.True);
             }
             internal List<VrmMenuExpressions.Expression> Bake(VrChatExpressionMenu.Source menu)
-                => VrChatExpressionBaker.Bake(null, Avatar.Copy, menu, Owned, null, Bindings);
+                => VrChatExpressionBaker.Bake(Avatar.Copy, menu, Owned, null, Bindings);
             public void Dispose()
             {
                 Bindings?.Dispose(); Avatar.Dispose();

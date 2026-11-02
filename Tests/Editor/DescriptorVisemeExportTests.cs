@@ -191,7 +191,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             DescriptorType();
             using var fixture = ExportAvatar(LipNames.Take(present), LipNames);
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var warnings = new List<string>();
             var glb = GlbDocument.Read(session.Export("Board visemes", "Tests", Array.Empty<(string, AnimationClip, float)>(), warnings,
                 new BlinkExportOptions { Mode = BlinkExportMode.None }));
