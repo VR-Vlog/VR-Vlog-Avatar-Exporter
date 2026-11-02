@@ -563,7 +563,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             internal void UseLilToon()
             {
-                var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon.");
+                var shader = OptionalTools.RequireShader("lilToon", "Install lilToon.");
                 foreach (var target in Targets) target.GetComponent<Renderer>().sharedMaterial.shader = shader;
             }
             internal (string Mesh, float[] Weights) Snapshot() => (EditorJsonUtility.ToJson(Mesh),

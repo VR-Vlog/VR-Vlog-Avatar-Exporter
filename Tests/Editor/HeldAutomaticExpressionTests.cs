@@ -140,8 +140,7 @@ namespace VRVlog.LilToonExporter.Tests
             else if (kind == "unselected permanent morph") AnimationUtility.SetEditorCurve(closeClip, Binding("Rest"), AnimationCurve.Constant(0, 1, 0));
             else if (kind == "weight control")
             {
-                var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")).FirstOrDefault(value => value != null);
-                if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+                var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK.");
                 var control = selected.AddStateMachineBehaviour(type);
                 using var data = new SerializedObject(control); var playable = data.FindProperty("playable"); playable.enumValueIndex = Array.IndexOf(playable.enumNames, "FX");
                 data.FindProperty("layer").intValue = 2; data.FindProperty("goalWeight").floatValue = .5f; data.FindProperty("blendDuration").floatValue = 0; data.ApplyModifiedPropertiesWithoutUndo();
@@ -788,9 +787,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         StateMachineBehaviour GlobalFxControl(AnimatorState state, float weight, float duration = 0)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl", "Install the real VRChat SDK.");
             var control = state.AddStateMachineBehaviour(type); using var data = new SerializedObject(control);
             var target = data.FindProperty("layer"); target.enumValueIndex = Array.IndexOf(target.enumNames, "FX");
             data.FindProperty("goalWeight").floatValue = weight; data.FindProperty("blendDuration").floatValue = duration;
@@ -953,8 +950,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             else
             {
-                var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")).FirstOrDefault(value => value != null);
-                if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+                var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK.");
                 var control = selected.AddStateMachineBehaviour(type); using var data = new SerializedObject(control);
                 var playable = data.FindProperty("playable"); playable.enumValueIndex = Array.IndexOf(playable.enumNames, "FX");
                 data.FindProperty("layer").intValue = 2; data.FindProperty("goalWeight").floatValue = .5f; data.FindProperty("blendDuration").floatValue = 0; data.ApplyModifiedPropertiesWithoutUndo();

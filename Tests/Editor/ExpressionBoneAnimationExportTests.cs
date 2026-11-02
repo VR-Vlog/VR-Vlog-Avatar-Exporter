@@ -22,7 +22,6 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp] public void TurnTransformsOn() => transforms = new ExpressionTransformsSwitch(true);
         [TearDown] public void RestoreTransforms() => transforms?.Dispose();
 
-        static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static EditorCurveBinding Bone(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
         static EditorCurveBinding Shown(string path) => EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive");
         static EditorCurveBinding Shape => EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
@@ -138,8 +137,8 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal Scene(bool spring = false)
             {
-                var descriptorType = SdkType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                if (descriptorType == null || Shader.Find("lilToon") == null || spring && SdkType(PhysBoneSpringExport.PhysBoneType) == null)
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                if (descriptorType == null || Shader.Find("lilToon") == null || spring && OptionalTools.Find(PhysBoneSpringExport.PhysBoneType) == null)
                 {
                     Dispose(); Assert.Ignore("Install the real VRChat SDK and lilToon.");
                 }
@@ -171,7 +170,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new GameObject("Marker").transform.SetParent(Fixture.Source.transform, false);
                 if (spring)
                 {
-                    var physBone = Fixture.Source.transform.Find(Joint).gameObject.AddComponent(SdkType(PhysBoneSpringExport.PhysBoneType));
+                    var physBone = Fixture.Source.transform.Find(Joint).gameObject.AddComponent(OptionalTools.Find(PhysBoneSpringExport.PhysBoneType));
                     using var data = new SerializedObject(physBone);
                     data.FindProperty("endpointPosition").vector3Value = new Vector3(0, .1f, 0);
                     data.ApplyModifiedPropertiesWithoutUndo();

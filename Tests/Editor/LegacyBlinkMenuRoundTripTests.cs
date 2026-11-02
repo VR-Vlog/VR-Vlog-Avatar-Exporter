@@ -14,14 +14,11 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class LegacyBlinkMenuRoundTripTests
     {
-        static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         [TestCase(false)]
         [TestCase(true)]
         public async Task SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport(bool fullLilToon)
         {
-            var descriptorType = SdkType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             if (Shader.Find("lilToon") == null) Assert.Ignore("Install lilToon.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__LegacyBlinkMenuRoundTrip_" + Guid.NewGuid().ToString("N");
@@ -56,7 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "FaceMenu");
                 transition = selected.AddTransition(idle); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 0, "FaceMenu");
-                var menu = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -71,7 +68,7 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     data.ApplyModifiedPropertiesWithoutUndo();
                 }
-                var parameters = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+                var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
                 AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
                 using (var data = new SerializedObject(parameters))
                 {

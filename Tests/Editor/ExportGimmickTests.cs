@@ -216,8 +216,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ModularAvatarBoneProxy", "subPath")]
         public void MaPathBasedConnectionsProtectTheHierarchy(string componentName, string pathProperty)
         {
-            var type = FindType("nadena.dev.modular_avatar.core." + componentName);
-            var descriptor = FindType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var type = OptionalTools.Find("nadena.dev.modular_avatar.core." + componentName);
+            var descriptor = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (type == null || descriptor == null) Assert.Ignore("Installed MA and VRChat SDK are required for this connection regression.");
             avatar.AddComponent(descriptor);
             var root = Child("system"); var effect = Render("effect", hidden, root.transform);
@@ -273,7 +273,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(only.Error, Is.Not.Null);
         }
 
-        static Type FindType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static bool PettingSystemRoot(GameObject target) =>
             ExportGimmickDetection.Matches(ExportGimmickRules.All.First(rule => rule.Id == ExportGimmickRules.PettingSystem), target.transform);
 
@@ -444,8 +443,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void UnpackedPettingSystemIsFoundByItsContacts()
         {
-            var receiver = FindType("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver");
-            if (receiver == null) Assert.Ignore("Installed VRChat SDK is required for contact receivers.");
+            var receiver = OptionalTools.Require("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver", "Installed VRChat SDK is required for contact receivers.");
             var root = Child("renamed"); Child("HeadSystem", root.transform); Child("Proxies", root.transform);
             void Contact(string path, string parameter)
             {
@@ -511,12 +509,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(1));
         }
 
-        static Type MaType(string fullName)
-        {
-            var type = FindType(fullName);
-            if (type == null) Assert.Ignore("Installed MA is required for the structural gimmick rules.");
-            return type;
-        }
+        static Type MaType(string fullName) =>
+            OptionalTools.Require(fullName, "Installed MA is required for the structural gimmick rules.");
         Material Plain() => Own(new Material(Shader.Find("Unlit/Texture")));
 
         // A menu or animator entry with a prop that is not drawn like the
@@ -675,7 +669,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void EmptyObjectsLeaveTheVrmOnlyWithTheAutomaticOption()
         {
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var f = new AttachmentConnectionTests.Fixture();
             foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = shader;
             Child("empty holder", Child("empty branch", f.Source.transform).transform);

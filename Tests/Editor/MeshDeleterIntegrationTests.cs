@@ -26,16 +26,12 @@ namespace VRVlog.LilToonExporter.Tests
             MethodInfo remove = null;
             if (useInstalledMeshDeleter)
             {
-                var deleter = AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(a => a.GetType("Gatosyocora.MeshDeleterWithTexture.MeshDeleter"))
-                    .FirstOrDefault(t => t != null);
-                if (deleter == null) Assert.Ignore("Install the official MeshDeleterWithTexture package for this integration test.");
+                var deleter = OptionalTools.Require("Gatosyocora.MeshDeleterWithTexture.MeshDeleter", "Install the official MeshDeleterWithTexture package for this integration test.");
                 remove = deleter.GetMethod("RemoveTriangles", BindingFlags.Public | BindingFlags.Static, null,
                     new[] { typeof(Mesh), typeof(bool[]), typeof(Vector2Int), typeof(List<int>), typeof(bool) }, null);
                 Assert.That(remove, Is.Not.Null, "Requires the public MeshDeleterWithTexture 0.10.5 RemoveTriangles API.");
             }
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
 
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folder = "Assets/__MeshDeleterRoundTrip_" + Guid.NewGuid().ToString("N");

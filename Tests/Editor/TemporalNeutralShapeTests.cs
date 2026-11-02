@@ -23,8 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         private SkinnedMeshRenderer skin;
         private AnimatorController controller;
 
-        private static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
+        private static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         private static EditorCurveBinding Binding(string shape, string path = "Body") =>
             EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
@@ -304,7 +303,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task TemporalRequiredEndpointExportsPreparedRestAndTheExactAuthoredProgram(bool dominatedBlink)
         {
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the actual exporter.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the actual exporter.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             fixture.Mesh.ClearBlendShapes();
             foreach (var item in new[] { (Name: "Blink", Delta: Vector3.down * .03f), (Name: "Static detail", Delta: Vector3.up * .02f) })

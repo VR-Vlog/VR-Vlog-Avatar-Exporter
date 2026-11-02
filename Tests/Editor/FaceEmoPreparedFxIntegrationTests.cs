@@ -193,9 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static object Registry(GameObject avatar, Object original, Object prepared)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.ObjectRegistry"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Optional NDMF ObjectRegistry is not installed in this project.");
+            var type = OptionalTools.Require("nadena.dev.ndmf.ObjectRegistry", "Optional NDMF ObjectRegistry is not installed in this project.");
             var registry = Activator.CreateInstance(type, new object[] { avatar.transform, null });
             var contract = type.GetInterfaces().Single(value => value.FullName == "nadena.dev.ndmf.IObjectRegistry");
             var reference = contract.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) })
@@ -217,9 +215,7 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal Fixture(bool fractionalCommon, bool writeDefaults)
             {
-                var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                    assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
-                if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+                var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
                 var name = "__FaceEmoPreparedFx_" + Guid.NewGuid().ToString("N");
                 AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");

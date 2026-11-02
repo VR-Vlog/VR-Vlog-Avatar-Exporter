@@ -51,8 +51,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape(bool vrchat)
         {
-            var rootType = TypeNamed(vrchat ? "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor" : "nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (rootType == null || TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null) Assert.Ignore("Install MA/NDMF and VRChat SDK.");
+            var rootType = OptionalTools.Find(vrchat ? "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor" : "nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            if (rootType == null || OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null) Assert.Ignore("Install MA/NDMF and VRChat SDK.");
             var source = new GameObject("Avatar"); source.AddComponent(rootType);
             var face = new GameObject("Face"); face.transform.SetParent(source.transform, false);
             var skin = face.AddComponent<SkinnedMeshRenderer>();
@@ -99,17 +99,16 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void InstalledMeshCutterPreservesMorphsAndSourceMesh(bool combineShape)
         {
-            var cutterType = TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter");
-            if (cutterType == null) Assert.Ignore("Install MA/NDMF.");
+            var cutterType = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter", "Install MA/NDMF.");
             var source = new GameObject("Avatar");
-            source.AddComponent(TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
+            source.AddComponent(OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
             var skin = source.AddComponent<SkinnedMeshRenderer>();
             var original = BaseShapeFixture.Create(); skin.sharedMesh = original;
             var cutterObject = new GameObject("Cutter"); cutterObject.transform.SetParent(source.transform, false);
             var cutter = cutterObject.AddComponent(cutterType);
             var reference = cutterType.GetProperty("Object").GetValue(cutter);
             reference.GetType().GetMethod("Set", new[] { typeof(GameObject) }).Invoke(reference, new object[] { source });
-            var filter = cutterObject.AddComponent(TypeNamed("nadena.dev.modular_avatar.core.vertex_filters.VertexFilterByAxisComponent"));
+            var filter = cutterObject.AddComponent(OptionalTools.Find("nadena.dev.modular_avatar.core.vertex_filters.VertexFilterByAxisComponent"));
             filter.GetType().GetProperty("Center").SetValue(filter, new Vector3(-10, 0, 0));
             filter.GetType().GetProperty("Axis").SetValue(filter, Vector3.right);
             if (combineShape) AddRule(source, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", source,
@@ -138,8 +137,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
             // avatar by its descriptor, as a real avatar would be found.
-            var marker=TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if(marker==null || TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger")==null) Assert.Ignore("Install MA/NDMF.");
+            var marker=OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if(marker==null || OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger")==null) Assert.Ignore("Install MA/NDMF.");
             var source=new GameObject("Avatar"); source.AddComponent(marker);
             var face=new GameObject("Face"); face.transform.SetParent(source.transform,false);
             var skin=face.AddComponent<SkinnedMeshRenderer>();
@@ -152,7 +151,7 @@ namespace VRVlog.LilToonExporter.Tests
             AddRule(omitted,"ModularAvatarShapeChanger","Shapes","ChangedShape",face,("ShapeName","Face size"),("ChangeType",1),("Value",75f));
             AddRule(omitted,"ModularAvatarMaterialSetter","Objects","MaterialSwitchObject",face,("Material",replacement),("MaterialIndex",0));
             AddRule(omitted,"ModularAvatarObjectToggle","Objects","ToggledObject",face,("Active",false));
-            var simulator=TypeNamed("nadena.dev.modular_avatar.core.editor.Simulator.ROSimulator");
+            var simulator=OptionalTools.Find("nadena.dev.modular_avatar.core.editor.Simulator.ROSimulator");
             var published=simulator.GetField("PropertyOverrides").GetValue(null);
             var valueProperty=published.GetType().GetProperty("Value");
             var previous=valueProperty.GetValue(published);
@@ -161,8 +160,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 if(disableKeptRule)
                 {
-                    var analyzer=TypeNamed("nadena.dev.modular_avatar.core.editor.ReactiveObjectAnalyzer")
-                        .GetConstructor(new[]{TypeNamed("nadena.dev.ndmf.preview.ComputeContext")}).Invoke(new object[]{null});
+                    var analyzer=OptionalTools.Find("nadena.dev.modular_avatar.core.editor.ReactiveObjectAnalyzer")
+                        .GetConstructor(new[]{OptionalTools.Find("nadena.dev.ndmf.preview.ComputeContext")}).Invoke(new object[]{null});
                     var key=analyzer.GetType().GetMethod("GetGameObjectStateProperty").Invoke(analyzer,new object[]{kept});
                     var dictionary=previous ?? analyzer.GetType().GetProperty("ForcePropertyOverrides").GetValue(analyzer);
                     valueProperty.SetValue(published,dictionary.GetType().GetMethod("SetItem").Invoke(dictionary,new[]{key,(object)0f}));
@@ -197,9 +196,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
             // avatar by its descriptor, as a real avatar would be found.
-            var marker = TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var menuType = TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarMenuItem");
-            if (marker == null || menuType == null || TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null) Assert.Ignore("Install MA/NDMF and VRChat SDK.");
+            var marker = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var menuType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMenuItem");
+            if (marker == null || menuType == null || OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null) Assert.Ignore("Install MA/NDMF and VRChat SDK.");
             var source = new GameObject("Avatar"); source.AddComponent(marker);
             var face = new GameObject("Face"); face.transform.SetParent(source.transform, false);
             var skin = face.AddComponent<SkinnedMeshRenderer>(); var mesh = BaseShapeFixture.Create(); skin.sharedMesh = mesh;
@@ -210,16 +209,16 @@ namespace VRVlog.LilToonExporter.Tests
             menuType.GetField("isDefault").SetValue(item, forceOff);
             AddRule(selected, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", face, ("ShapeName", "Face size"), ("ChangeType", 1), ("Value", 75f));
             var omitted = new GameObject("Excluded gimmick"); omitted.transform.SetParent(source.transform, false);
-            var simulator = TypeNamed("nadena.dev.modular_avatar.core.editor.Simulator.ROSimulator");
+            var simulator = OptionalTools.Find("nadena.dev.modular_avatar.core.editor.Simulator.ROSimulator");
             var published = simulator.GetField("MenuItemOverrides").GetValue(null);
             var property = published.GetType().GetProperty("Value"); var previous = property.GetValue(published);
             var owned = new List<Mesh>(); GameObject clone = null;
             try
             {
-                var assign = TypeNamed("nadena.dev.modular_avatar.core.editor.ParameterAssignerPass").GetMethod("AssignMenuItemParameter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                var assign = OptionalTools.Find("nadena.dev.modular_avatar.core.editor.ParameterAssignerPass").GetMethod("AssignMenuItemParameter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
                 var condition = assign.Invoke(null, new object[] { item, null, null, true });
                 var key = condition.GetType().GetField("Parameter").GetValue(condition);
-                var analyzer = TypeNamed("nadena.dev.modular_avatar.core.editor.ReactiveObjectAnalyzer").GetConstructor(new[] { TypeNamed("nadena.dev.ndmf.preview.ComputeContext") }).Invoke(new object[] { null });
+                var analyzer = OptionalTools.Find("nadena.dev.modular_avatar.core.editor.ReactiveObjectAnalyzer").GetConstructor(new[] { OptionalTools.Find("nadena.dev.ndmf.preview.ComputeContext") }).Invoke(new object[] { null });
                 var dictionary = analyzer.GetType().GetProperty("ForceMenuItems").GetValue(analyzer);
                 property.SetValue(published, dictionary.GetType().GetMethod("SetItem").Invoke(dictionary, new[] { key, forceOff ? null : item }));
                 var before = UnityEditor.EditorJsonUtility.ToJson(item);
@@ -249,7 +248,6 @@ namespace VRVlog.LilToonExporter.Tests
             menu.Entries.Add(entry);
             return menu;
         }
-        static Type TypeNamed(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false)).FirstOrDefault(t => t != null);
         // MA 1.13 wraps the menu control as PortableControl; earlier versions
         // only have the VRChat SDK control in the Control field.
         internal static void SetToggle(Component item, string parameter, float value)
@@ -277,10 +275,10 @@ namespace VRVlog.LilToonExporter.Tests
         {
             const string prefix = "nadena.dev.modular_avatar.core.";
             var node = new GameObject(componentName); node.transform.SetParent(root.transform, false);
-            var component = node.AddComponent(TypeNamed(prefix + componentName));
-            var itemType = TypeNamed(prefix + itemName);
+            var component = node.AddComponent(OptionalTools.Find(prefix + componentName));
+            var itemType = OptionalTools.Find(prefix + itemName);
             var item = Activator.CreateInstance(itemType);
-            var referenceType = TypeNamed(prefix + "AvatarObjectReference");
+            var referenceType = OptionalTools.Find(prefix + "AvatarObjectReference");
             var reference = Activator.CreateInstance(referenceType);
             referenceType.GetMethod("Set", new[] { typeof(GameObject) }).Invoke(reference, new object[] { target });
             itemType.GetField("Object").SetValue(item, reference);

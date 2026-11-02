@@ -54,8 +54,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
 
-        private static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components." + name)).FirstOrDefault(type => type != null);
+        private static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
 
         private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
         {
@@ -887,7 +886,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task MmdControlledNativeRestAndAuthoredEndpointSurviveFullExportAndVrmRoundTrip()
         {
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             Vrm10Instance imported = null; GameObject expected = null;
             try

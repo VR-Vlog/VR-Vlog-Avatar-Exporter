@@ -11,8 +11,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AWideGradationImageAveragesEveryTexel()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the gradation properties.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the gradation properties.");
             const int width = 1024;
             var material = new Material(shader);
             var gradation = new Texture2D(width, 1, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Repeat };

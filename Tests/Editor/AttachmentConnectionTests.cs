@@ -256,8 +256,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledMaBoneProxyAutomaticallyConnectsHairWithoutAnInferredTarget()
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (proxyType == null || markerType == null) Assert.Ignore("Requires installed Modular Avatar and NDMF in Unity.");
             using var f = new Fixture();
             foreach (var avatarRoot in new[] { f.Source, f.Copy })
@@ -377,8 +377,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task OneClickExportsRootLevelMaHairWithoutManualConnectionEvenWithIndependentPet(bool includePet)
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (proxyType == null || markerType == null) Assert.Ignore("Requires installed Modular Avatar and NDMF in Unity.");
             using var f = new Fixture();
             f.Source.AddComponent(markerType);
@@ -389,8 +389,7 @@ namespace VRVlog.LilToonExporter.Tests
             var mode = proxyType.GetField("attachmentMode");
             mode.SetValue(proxy, Enum.Parse(mode.FieldType, "AsChildKeepWorldPose"));
             Mesh petMesh = null;
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             var exportMaterial = new Material(shader);
             foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
                 skin.sharedMaterials = new[] { exportMaterial };
@@ -466,8 +465,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // Instantiate keeps a skin's references to scene objects outside the
             // avatar, which UniVRM cannot look up among the exported nodes.
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var f = new Fixture();
             var exportMaterial = new Material(shader);
             var outside = new GameObject("Outside bone").transform;
@@ -499,8 +497,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(7)]
         public async Task ManualAndMaAppearanceMatchAfterCompleteExportAndReload(int changes)
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (proxyType == null || markerType == null) Assert.Ignore("Requires installed MA/NDMF.");
             using var f = new Fixture();
             var original = new Material(Shader.Find("lilToon"));

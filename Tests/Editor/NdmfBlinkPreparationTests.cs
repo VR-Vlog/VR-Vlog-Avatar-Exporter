@@ -23,9 +23,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         T Own<T>(T item) where T : Object { owned.Add(item); return item; }
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         void AddHumanoidAnimator(GameObject root)
         {
             var human = new List<HumanBone>();
@@ -62,8 +59,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         SkinnedMeshRenderer CreateFixture()
         {
-            var mergeType = InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh");
-            if (mergeType == null || InstalledType("nadena.dev.ndmf.BuildContext") == null)
+            var mergeType = OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh");
+            if (mergeType == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported AAO and NDMF for the native preview/optimization regression.");
             var initialize = mergeType.GetMethod("Initialize", new[] { typeof(int) });
             if (initialize == null || mergeType.GetProperty("MergeBlendShapes") == null)

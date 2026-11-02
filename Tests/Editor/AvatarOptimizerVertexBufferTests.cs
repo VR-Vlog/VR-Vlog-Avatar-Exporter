@@ -10,18 +10,15 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class AvatarOptimizerVertexBufferTests
     {
-        static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         [Test]
         public void InstalledAvatarOptimizerRepeatedlyReadsUnreadableVertexStreamsWithoutChangingSourceBuffers()
         {
-            if (Installed("Anatawa12.AvatarOptimizer.TraceAndOptimize") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize") == null)
                 Assert.Ignore("Install Avatar Optimizer for the real vertex-buffer readback regression.");
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
                 Assert.Ignore("Avatar Optimizer vertex-buffer readback requires a graphics device.");
 
-            var meshInfo = Installed("Anatawa12.AvatarOptimizer.Processors.SkinnedMeshes.MeshInfo2");
+            var meshInfo = OptionalTools.Find("Anatawa12.AvatarOptimizer.Processors.SkinnedMeshes.MeshInfo2");
             Assert.That(meshInfo, Is.Not.Null, "Installed AAO must expose its mesh-processing assembly.");
             var readBuffers = meshInfo.GetMethod("GetVertexBuffers", BindingFlags.Static | BindingFlags.NonPublic,
                 null, new[] { typeof(Mesh) }, null);

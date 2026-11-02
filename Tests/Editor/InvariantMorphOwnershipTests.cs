@@ -179,9 +179,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NativeLayerWeightCommandsKeepIdenticalResetsConservative()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to validate native weight controls.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK to validate native weight controls.");
             var control = face.AddStateMachineBehaviour(type);
             using (var data = new SerializedObject(control))
             {

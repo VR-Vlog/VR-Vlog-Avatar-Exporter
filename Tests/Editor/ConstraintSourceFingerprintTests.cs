@@ -146,7 +146,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("VRCAimConstraint")][TestCase("VRCRotationConstraint")]
         public void InstalledVrcSolverOutputAndExecutionCachesAreDerivedButSettingsRemainGuarded(string typeName)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components." + typeName, false)).FirstOrDefault(t => t != null);
+            var type = OptionalTools.Find("VRC.SDK3.Dynamics.Constraint.Components." + typeName);
             if (type == null) Assert.Ignore("This SDK does not install " + typeName + ".");
             var source = new GameObject("VRC constraint source");
             try
@@ -340,7 +340,7 @@ namespace VRVlog.LilToonExporter.Tests
             internal readonly Component Component;
             internal VrcFixture()
             {
-                var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", false)).FirstOrDefault(t => t != null);
+                var type = OptionalTools.Find("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint");
                 if (type == null) { Object.DestroyImmediate(Source); Assert.Ignore("The VRC constraint SDK is not installed."); }
                 Anchor = new GameObject("Authored input").transform; Anchor.SetParent(Source.transform, false);
                 Target = new GameObject("Partially driven target").transform; Target.SetParent(Source.transform, false);

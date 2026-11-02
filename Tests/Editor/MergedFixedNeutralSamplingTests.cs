@@ -104,9 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private void SetDescriptorFx()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(candidate => candidate != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             var descriptor = avatar.AddComponent(type);
             using var data = new SerializedObject(descriptor);
             data.FindProperty("customizeAnimationLayers").boolValue = true;

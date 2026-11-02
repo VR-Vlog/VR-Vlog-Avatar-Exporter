@@ -81,8 +81,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         internal static StateMachineBehaviour Driver(AnimatorState state, params VrChatParameterDriver.Operation[] operations)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver")).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to run state-entry integration tests.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver", "Install the real VRChat SDK to run state-entry integration tests.");
             var driver = state.AddStateMachineBehaviour(type);
             using (var data = new SerializedObject(driver))
             {
@@ -107,8 +106,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         internal static StateMachineBehaviour SdkBehaviour(AnimatorState state, string name)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to run playable-control integration tests.");
+            var type = OptionalTools.Require(name, "Install the real VRChat SDK to run playable-control integration tests.");
             Assert.That(type.IsAbstract, Is.False, "Only concrete SDK behaviours can be attached: " + name);
             var behaviour = state.AddStateMachineBehaviour(type);
             Assert.That(behaviour, Is.Not.Null, "The SDK behaviour could not be attached: " + name);

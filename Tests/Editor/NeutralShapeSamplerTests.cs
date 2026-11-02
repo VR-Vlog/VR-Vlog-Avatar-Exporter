@@ -25,9 +25,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             var name = "__NeutralShapeSampler_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
@@ -1228,9 +1226,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static Type VrcParentConstraintType()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCParentConstraint")).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCParentConstraint.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCParentConstraint", "Install the real VRChat SDK with VRCParentConstraint.");
             return type;
         }
 
@@ -1265,7 +1261,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void DynamicsEnabledSupportIsHarmless(string typeName, float enabled, int components = 1)
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(typeName)).FirstOrDefault(value => value != null);
+            var type = OptionalTools.Find(typeName);
             if (type == null) Assert.Ignore("Install the real VRChat SDK with " + typeName + ".");
             var target = new GameObject("Ground collider"); target.transform.SetParent(avatar.transform, false);
             var component = (Behaviour)target.AddComponent(type); component.enabled = false;
@@ -1380,8 +1376,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (fxWeight)
             {
                 diagnostic = "VRCPlayableLayerControl";
-                var controlType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                    assembly.GetType("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl")).FirstOrDefault(value => value != null);
+                var controlType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl");
                 Assert.That(controlType, Is.Not.Null);
                 var control = state.AddStateMachineBehaviour(controlType);
                 using var data = new SerializedObject(control);
@@ -1532,9 +1527,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private void Contact(string parameter)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver")).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK contact components.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver", "Install the real VRChat SDK contact components.");
             using var data = new SerializedObject(avatar.AddComponent(type));
             data.FindProperty("parameter").stringValue = parameter;
             data.ApplyModifiedPropertiesWithoutUndo();
@@ -1542,9 +1535,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private void ExpressionDefault(string parameter, float value)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters")).FirstOrDefault(candidate => candidate != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK expression parameters.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters", "Install the real VRChat SDK expression parameters.");
             var asset = ScriptableObject.CreateInstance(type); AssetDatabase.CreateAsset(asset, folder + "/Parameters.asset");
             using (var data = new SerializedObject(asset))
             {
@@ -1683,9 +1674,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         private void ConfigureTransientInputMetadata(string signal, string scenario, bool networkSynced)
         {
-            Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(value => value != null);
-            var parametersType = Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
-            var menuType = Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var parametersType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+            var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
             Assert.That(parametersType, Is.Not.Null); Assert.That(menuType, Is.Not.Null);
             var parametersAsset = ScriptableObject.CreateInstance(parametersType);
             AssetDatabase.CreateAsset(parametersAsset, folder + "/TransientParameters.asset");
@@ -1968,8 +1958,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (kind == "FxWeight")
             {
                 diagnostic = "VRCPlayableLayerControl";
-                var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                    assembly.GetType("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl")).FirstOrDefault(value => value != null);
+                var type = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl");
                 Assert.That(type, Is.Not.Null);
                 var control = idle.AddStateMachineBehaviour(type);
                 using var data = new SerializedObject(control);

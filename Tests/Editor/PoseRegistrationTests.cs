@@ -12,7 +12,6 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class PoseRegistrationTests
     {
-        static Type Find(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static void Set(object target, string name, object value)
         {
             var field = target.GetType().GetField(name);
@@ -23,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         { var value = Activator.CreateInstance(list.GetType().GetGenericArguments()[0]); list.Add(value); return value; }
         static StateMachineBehaviour AnimateBody(AnimatorState state)
         {
-            var tracking = state.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
+            var tracking = state.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
             SetBodyAnimation(tracking); return tracking;
         }
         static void SetBodyAnimation(StateMachineBehaviour tracking)
@@ -32,8 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
         static Component Descriptor(GameObject root)
         {
-            var type = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (type == null) Assert.Ignore("Install VRChat SDK for registration tests.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install VRChat SDK for registration tests.");
             var result = root.AddComponent(type); Set(result, "customExpressions", true); Set(result, "customizeAnimationLayers", true);
             Layers(result, "baseAnimationLayers", new[] { "Base", "Additive", "Gesture", "Action", "FX" });
             Layers(result, "specialAnimationLayers", new[] { "Sitting", "TPose", "IKPose" });
@@ -50,8 +48,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void AplSnapshotKeepsSourceNamesCategoriesExclusionsAndRejectsBeforeAnimation(bool discardedMotion)
         {
-            var type = Find(PoseExportSession.AplType);
-            if (type == null) Assert.Ignore("Install APL runtime for the real serialized registration test.");
+            var type = OptionalTools.Require(PoseExportSession.AplType, "Install APL runtime for the real serialized registration test.");
             using var f = new AttachmentConnectionTests.Fixture(); Descriptor(f.Source);
             var child = new GameObject("Library"); child.transform.SetParent(f.Source.transform, false);
             var component = child.AddComponent(type); var clip = HumanoidPoseTests.Clip(f.Source);
@@ -111,10 +108,10 @@ namespace VRVlog.LilToonExporter.Tests
         public void SubmenuAndMaGeneratedGestureMenuResolveOnlySelectedStaticPose(bool modularAvatar, bool defaultLocomotion, bool overrideClip, string layerType = "Gesture", bool crossLayerWeight = false, float controlWeight = 1f, bool unrelatedSolo = false, int unconditionalFallback = 0, bool propOnly = false, bool maskedSelection = false, int upperDefaults = 0, string trackingPart = null, string trackingLocation = "selected", string expressionCase = null, string historyCase = null, string weightBaseline = null, string buttonRelease = null, bool discardedMotion = false)
         {
             using var f = new AttachmentConnectionTests.Fixture(); var descriptor = Descriptor(f.Source);
-            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
             var menu = ScriptableObject.CreateInstance(menuType); var sub = ScriptableObject.CreateInstance(menuType);
             var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
-            var parameters = ScriptableObject.CreateInstance(Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+            var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
             var parameterField = parameters.GetType().GetField("parameters"); var parameterType = parameterField.FieldType.GetElementType();
             var parameterArray = Array.CreateInstance(parameterType, expressionCase == "Missing" ? 0 : expressionCase == "Duplicate" ? 2 : 1); var parameterRow = Activator.CreateInstance(parameterType);
             var expressionType = expressionCase == "Bool" || expressionCase == "BoolZero" || expressionCase == "TypeMismatch" ? "Bool" : expressionCase == "Float" || expressionCase == "FloatRange" ? "Float" : "Int";
@@ -146,7 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (trackingPart != "Absent" && !(trackingPart == "Animation" && trackingLocation != "selected")) AnimateBody(state);
                 if (layerType == "Action" && !crossLayerWeight)
                 {
-                    var control = state.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"));
+                    var control = state.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"));
                     Set(control, "layer", "Action"); Set(control, "goalWeight", 1f); Set(control, "blendDuration", 0f);
                 }
                 if (!crossLayerWeight)
@@ -213,8 +210,8 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 if (modularAvatar)
                 {
-                    var installType = Find("nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller");
-                    var mergeType = Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+                    var installType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller");
+                    var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
                     if (installType == null || mergeType == null) Assert.Ignore("Install MA/NDMF for generated menus.");
                     var go = new GameObject("Menu authoring"); go.transform.SetParent(f.Source.transform, false);
                     Set(go.AddComponent(installType), "menuToAppend", menu);
@@ -235,14 +232,14 @@ namespace VRVlog.LilToonExporter.Tests
                         var idle = fxMachine.AddState("Idle"); idle.writeDefaultValues = false;
                         var enable = fxMachine.AddState("Enable Action"); enable.writeDefaultValues = false;
                         if (trackingPart != "Absent") AnimateBody(enable);
-                        var control = enable.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"));
+                        var control = enable.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"));
                         Set(control, "layer", layerType); Set(control, "goalWeight", controlWeight); Set(control, "blendDuration", 0f);
                         var t = fxMachine.AddAnyStateTransition(enable); t.canTransitionToSelf = false; t.hasExitTime = false; t.duration = 0; t.AddCondition(AnimatorConditionMode.Equals, 1, "Pose");
                         fx.layers = new[] { new AnimatorControllerLayer { name = "Enable body", defaultWeight = 1, stateMachine = fxMachine } };
                         if (weightBaseline != null)
                         {
                             var alwaysMachine = new AnimatorStateMachine(); var always = alwaysMachine.AddState("Already enabled"); always.writeDefaultValues = false;
-                            var baseline = always.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"));
+                            var baseline = always.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"));
                             Set(baseline, "layer", layerType); Set(baseline, "goalWeight", controlWeight); Set(baseline, "blendDuration", 0f);
                             var alwaysLayer = new AnimatorControllerLayer { name = "Unconditional weight", defaultWeight = 1, stateMachine = alwaysMachine };
                             fx.layers = weightBaseline == "Before" ? new[] { alwaysLayer, fx.layers[0] } : new[] { fx.layers[0], alwaysLayer };
@@ -259,7 +256,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 if (trackingPart != null && trackingPart != "Absent")
                 {
-                    var trackingType = Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl");
+                    var trackingType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl");
                     StateMachineBehaviour tracking;
                     if (trackingLocation == "machine") tracking = machine.AddStateMachineBehaviour(trackingType);
                     else if (trackingLocation == "nested")
@@ -399,9 +396,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void MenuThatCannotReachABodyLayerIsNotAnUnsupportedPose(string scenario)
         {
             using var f = new AttachmentConnectionTests.Fixture(); var descriptor = Descriptor(f.Source);
-            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
             var menu = ScriptableObject.CreateInstance(menuType);
-            var parameters = ScriptableObject.CreateInstance(Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+            var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
             var parameterField = parameters.GetType().GetField("parameters"); var parameterType = parameterField.FieldType.GetElementType();
             var parameterArray = Array.CreateInstance(parameterType, 1); var parameterRow = Activator.CreateInstance(parameterType);
             Set(parameterRow, "name", "Toggle_A"); Set(parameterRow, "valueType", "Bool"); parameterArray.SetValue(parameterRow, 0);
@@ -432,7 +429,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var handMachine = new AnimatorStateMachine(); owned.Add(handMachine);
                 var idle = handMachine.AddState("Idle"); idle.writeDefaultValues = false;
                 var fist = handMachine.AddState("Fist"); fist.writeDefaultValues = false; fist.motion = hand;
-                var tracking = fist.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
+                var tracking = fist.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
                 SetBodyAnimation(tracking); Set(tracking, "trackingLeftHand", "Tracking");
                 Edge(handMachine, fist).AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
                 var gestureLayers = new List<AnimatorControllerLayer> { new AnimatorControllerLayer { name = "Left Hand", defaultWeight = 1, stateMachine = handMachine } };
@@ -484,7 +481,7 @@ namespace VRVlog.LilToonExporter.Tests
                     fx.AddParameter("Pose_B", AnimatorControllerParameterType.Bool);
                     var forwardMachine = new AnimatorStateMachine(); owned.Add(forwardMachine);
                     var always = forwardMachine.AddState("Always"); always.writeDefaultValues = false;
-                    var driver = always.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver"));
+                    var driver = always.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver"));
                     var write = Add((IList)VrChatExpressionMenu.Member(driver, "parameters"));
                     Set(write, "name", "Pose_B"); Set(write, "type", "Copy"); Set(write, "source", "Toggle_A");
                     fx.layers = fx.layers.Concat(new[] { new AnimatorControllerLayer { name = "Forward", defaultWeight = 1, stateMachine = forwardMachine } }).ToArray();

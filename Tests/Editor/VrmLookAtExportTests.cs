@@ -217,8 +217,7 @@ namespace VRVlog.LilToonExporter.Tests
         static void EnableEyeLook(GameObject avatar, Transform left, Transform right, Dictionary<string, (Quaternion Left, Quaternion Right)> poses,
             string[] linked = null)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("VRChat SDK is required for the Eye Look integration test.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the Eye Look integration test.");
             var descriptor = avatar.AddComponent(type);
             type.GetField("enableEyeLook").SetValue(descriptor, true);
             var field = type.GetField("customEyeLookSettings"); var settings = field.GetValue(descriptor);

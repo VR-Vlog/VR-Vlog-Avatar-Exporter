@@ -61,9 +61,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to validate descriptor FX discovery.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK to validate descriptor FX discovery.");
             var descriptor = avatar.AddComponent(type);
             using (var data = new SerializedObject(descriptor))
             {
@@ -91,9 +89,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         StateMachineBehaviour InstalledMaBuildMarker(bool disableInMmd)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarMMDLayerControl")).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real Modular Avatar package to validate its generated data-only build marker.");
+            var type = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarMMDLayerControl", "Install the real Modular Avatar package to validate its generated data-only build marker.");
             var marker = (StateMachineBehaviour)ScriptableObject.CreateInstance(type);
             AssetDatabase.AddObjectToAsset(marker, controller);
             using (var data = new SerializedObject(marker))

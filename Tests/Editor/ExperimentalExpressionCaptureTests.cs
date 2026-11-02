@@ -133,9 +133,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(bool showPreview)
         {
-            var reportType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.ErrorReport"))
-                .FirstOrDefault(type => type != null);
-            if (reportType == null) Assert.Ignore("Requires the installed NDMF integration package.");
+            var reportType = OptionalTools.Require("nadena.dev.ndmf.ErrorReport", "Requires the installed NDMF integration package.");
             var source = new GameObject("Owned diagnostic scene regression");
             GameObject copy = null;
             PreviewRenderUtility preview = null;
@@ -1013,8 +1011,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 if (registration == "APL")
                 {
-                    var type = Sdk(PoseExportSession.AplType);
-                    if (type == null) Assert.Ignore("Install the real Avatar Pose Library package to verify its serialized registration.");
+                    var type = OptionalTools.Require(PoseExportSession.AplType, "Install the real Avatar Pose Library package to verify its serialized registration.");
                     var child = new GameObject("Registered library"); child.transform.SetParent(fixture.Source.transform, false);
                     var component = child.AddComponent(type);
                     var data = Activator.CreateInstance(type.GetField("data").FieldType); SetPoseMember(component, "data", data);
@@ -1064,7 +1061,7 @@ namespace VRVlog.LilToonExporter.Tests
             var machine = new AnimatorStateMachine(); assets.Add(machine);
             var idle = machine.AddState("Idle"); idle.writeDefaultValues = false; machine.defaultState = idle;
             var state = machine.AddState("Selected"); state.writeDefaultValues = false; state.motion = clip;
-            var tracking = state.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
+            var tracking = state.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
             foreach (var part in new[] { "trackingLeftHand", "trackingRightHand", "trackingHip", "trackingLeftFoot", "trackingRightFoot", "trackingLeftFingers", "trackingRightFingers" }) SetPoseMember(tracking, part, "Animation");
             var transition = machine.AddAnyStateTransition(state); transition.canTransitionToSelf = false; transition.hasExitTime = false; transition.duration = 0; transition.AddCondition(AnimatorConditionMode.Equals, 1, "Pose");
             controller.layers = new[] { new AnimatorControllerLayer { name = "Body pose", defaultWeight = 1, stateMachine = machine } };
@@ -1078,10 +1075,10 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 field.SetValue(descriptor, layers);
             }
-            var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu")); assets.Add(menu);
+            var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu")); assets.Add(menu);
             var control = AddPoseListItem((IList)VrChatExpressionMenu.Member(menu, "controls")); SetPoseMember(control, "name", "Registered body"); SetPoseMember(control, "type", "Toggle"); SetPoseMember(control, "value", 1f);
             var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType); SetPoseMember(parameter, "name", "Pose"); SetPoseMember(control, "parameter", parameter); SetPoseMember(descriptor, "expressionsMenu", menu);
-            var parameters = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters")); assets.Add(parameters);
+            var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters")); assets.Add(parameters);
             var parametersField = parameters.GetType().GetField("parameters"); var element = parametersField.FieldType.GetElementType(); var definition = Activator.CreateInstance(element); SetPoseMember(definition, "name", "Pose"); SetPoseMember(definition, "valueType", "Int");
             var definitions = Array.CreateInstance(element, 1); definitions.SetValue(definition, 0); parametersField.SetValue(parameters, definitions); SetPoseMember(descriptor, "expressionParameters", parameters);
         }
@@ -1093,7 +1090,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var sourceSkin = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>(); sourceSkin.SetBlendShapeWeight(0, 0);
-            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             var descriptor = fixture.Source.AddComponent(descriptorType);
             descriptorType.GetField("enableEyeLook").SetValue(descriptor, true);
             var eyeField = descriptorType.GetField("customEyeLookSettings"); var eye = eyeField.GetValue(descriptor);
@@ -1289,8 +1286,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(2)]
         public void ListOnlyExportLeavesOutMenuFacesTheListDoesNotHave(int listed)
         {
-            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
@@ -1317,7 +1313,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var transition = neutral.AddTransition(state); transition.hasExitTime = false; transition.duration = 0;
                     transition.AddCondition(AnimatorConditionMode.Equals, index + 1, "Face");
                 }
-                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -1377,8 +1373,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ListOnlyExportWritesListFacesTheMenuDoesNotHave()
         {
-            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
@@ -1414,7 +1409,7 @@ namespace VRVlog.LilToonExporter.Tests
                     AnimationCurve.Linear(0, 0, 1, 60));
                 var settings = AnimationUtility.GetAnimationClipSettings(moving); settings.loopTime = true;
                 AnimationUtility.SetAnimationClipSettings(moving, settings);
-                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -1609,8 +1604,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ListOnlyExportKeepsAStillGestureSlotFaceInTheGestureTable()
         {
-            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
@@ -1976,8 +1970,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 else
                 {
-                    var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(value => value != null);
-                    if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+                    var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
                     var descriptor = fixture.Source.AddComponent(type);
                     type.GetField("enableEyeLook").SetValue(descriptor, true);
                     var field = type.GetField("customEyeLookSettings"); var settings = field.GetValue(descriptor);
@@ -2016,8 +2009,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void MoveFrontWithInstalledMa(GameObject source)
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(type => type != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(type => type != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             Assert.That(proxyType, Is.Not.Null);
             if (markerType == null) Assert.Ignore("NDMF before 1.8.0 has no NDMFAvatarRoot, and this fixture has no VRChat descriptor to identify the avatar.");
             if (source.GetComponent(markerType) == null) source.AddComponent(markerType);
@@ -2257,8 +2250,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ExistingMenuFaceExportsFromTheBoardListWithoutChangingItsController()
         {
-            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -2274,7 +2266,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.AddObjectToAsset(clip, controller); smile.motion = clip; machine.defaultState = neutral;
                 var transition = neutral.AddTransition(smile); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "Face");
-                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -2480,11 +2472,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var clip = new AnimationClip { name = "An arbitrary user name" };
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70));
                 AssetDatabase.AddObjectToAsset(clip, controller); controller.layers[0].stateMachine.AddState("Face").motion = clip;
-                var mergeType = Sdk("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+                var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
                 Assert.That(mergeType, Is.Not.Null, "This experiment uses the real Modular Avatar integration.");
                 // NDMF before 1.8.0 has no generic platform and builds the FX
                 // that Merge Animator merges into from a VRChat descriptor.
-                if (Sdk("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
+                if (OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
                     typeof(PoseRegistrationTests).GetMethod("Descriptor", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, new object[] { fixture.Source });
                 var merge = fixture.Source.AddComponent(mergeType);
                 using (var data = new SerializedObject(merge))
@@ -3124,8 +3116,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(window); }
         }
-
-        static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
 
         // The quick geometry check skips the mesh copy only when a vertex moves;
         // every face gets the answer the copy gives.

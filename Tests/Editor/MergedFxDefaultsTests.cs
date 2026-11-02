@@ -597,9 +597,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ConstantRelayProofDoesNotAcceptAnSdkBehaviourEvenWhenClipsMatch()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver"))
-                .FirstOrDefault(candidate => candidate != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK for callback equivalence regression.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver", "Install the real VRChat SDK for callback equivalence regression.");
             Menu(controller.layers[0].stateMachine);
             EquivalentRelay(0, true, out var other); Permanent(AddLayer("Permanent pupil"));
             other.AddStateMachineBehaviour(type);
@@ -609,10 +607,9 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledMaConstantParameterRelayKeepsMergedNeutralAndMenuPupilRemoval()
         {
-            Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-            var mergeType = Installed("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-            var rootType = Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            var descriptorType = Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            var rootType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (mergeType == null || rootType == null || descriptorType == null)
                 Assert.Ignore("Install MA, NDMF and the real VRChat SDK for the generated constant-relay regression.");
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -860,9 +857,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void FractionalStationaryFxUsesPreparedBaseOnceForMenuGestureAndFaceEmo(bool additive, bool writeDefaults)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK for neutral FX integration.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK for neutral FX integration.");
             Menu(controller.layers[0].stateMachine, writeDefaults: writeDefaults);
             // Establish the pupil channel in the lower native animation pose.
             // A channel introduced only by a disjoint additive layer may be
@@ -1124,8 +1119,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport(bool additive)
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var menus = new MenuImportSdkRecoveryTests.SdkFixture(fixture.Source);
             var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source, new VrChatMenuImportPolicy { SkipAll = true }).Controller;
@@ -1440,11 +1434,10 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledMaReparentsFaceEmoRendererAndMergesPermanentPupilFxBeforeEvaluation()
         {
-            Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-            var proxyType = Installed("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
-            var mergeType = Installed("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-            var rootType = Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            var descriptorType = Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            var rootType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (proxyType == null || mergeType == null || rootType == null || descriptorType == null)
                 Assert.Ignore("Install MA, NDMF and the real VRChat SDK for FaceEmo's prepared path integration.");
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1556,9 +1549,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, 1f)]
         public void DirectClipProbeAppliesOriginalAnimatorLayerControlUsingNativeWeights(bool standalone, float goalWeight)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl"))
-                .FirstOrDefault(candidate => candidate != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK for animator layer-control integration.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK for animator layer-control integration.");
             var machine = controller.layers[0].stateMachine;
             Menu(machine, true);
             Permanent(AddLayer("Permanent pupil"));

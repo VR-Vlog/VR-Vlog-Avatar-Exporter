@@ -24,11 +24,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, 3)]
         public async Task UnresolvedBodyRestExportsWithIndependentOpenEyesAndAbsoluteEndpoints(bool externalInput, int worldFixMode)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the full exporter entry point.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__NeutralFallbackExport_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -91,9 +88,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 if (worldFixMode == 1 || worldFixMode == 2)
                 {
-                    var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                        assembly.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCParentConstraint")).FirstOrDefault(value => value != null);
-                    if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCParentConstraint.");
+                    var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCParentConstraint", "Install the real VRChat SDK with VRCParentConstraint.");
                     // Keep this on a rendered part so optional-gimmick pruning
                     // cannot make the world-fix regression vacuously pass.
                     constraint = fixture.Source.transform.Find("Front").gameObject.AddComponent(type);

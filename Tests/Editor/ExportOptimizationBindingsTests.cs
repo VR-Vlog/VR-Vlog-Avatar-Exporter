@@ -434,8 +434,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void RegisteredCustomCloneCannotBecomeANewSlotAndDistinctSameNamedCustomIsRetained()
         {
-            var registryType = InstalledType("nadena.dev.ndmf.ObjectRegistry");
-            if (registryType == null) Assert.Ignore("Install supported NDMF to verify public expression replacement provenance.");
+            var registryType = OptionalTools.Require("nadena.dev.ndmf.ObjectRegistry", "Install supported NDMF to verify public expression replacement provenance.");
             var registry = Activator.CreateInstance(registryType, new object[] { source.transform, null });
             var registryInterface = registryType.GetInterface("nadena.dev.ndmf.IObjectRegistry");
             var register = registryInterface.GetMethod("RegisterReplacedObject", new[] { typeof(Object), typeof(Object) });
@@ -658,18 +657,16 @@ namespace VRVlog.LilToonExporter.Tests
             ["extensions"] = new Dictionary<string, object> { ["VRMC_vrm"] = new Dictionary<string, object>() }
         }, Array.Empty<byte>()).Write();
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         void RequireInstalledAvatarOptimizer(string component)
         {
-            if (InstalledType("Anatawa12.AvatarOptimizer." + component) == null || InstalledType("nadena.dev.ndmf.BuildContext") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer." + component) == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported Avatar Optimizer and NDMF to run the optimizer integration fixture.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True, "The installed AAO adapter must compile and register.");
         }
 
         Component AddOptimizer(GameObject target, string name, int initializeVersion)
         {
-            var type = InstalledType("Anatawa12.AvatarOptimizer." + name);
+            var type = OptionalTools.Find("Anatawa12.AvatarOptimizer." + name);
             var initialize = type.GetMethod("Initialize", new[] { typeof(int) });
             if (initialize == null) Assert.Ignore("This AAO version does not expose the fixture's component configuration API.");
             var component = target.AddComponent(type);
@@ -680,8 +677,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledNdmfRootUsesItsPublicEditorOnlyInterface()
         {
-            var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (rootType == null) Assert.Ignore("Install NDMF to verify its public editor-only component detection.");
+            var rootType = OptionalTools.Require("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot", "Install NDMF to verify its public editor-only component detection.");
             source.AddComponent(rootType);
             Assert.That(NdmfExportPreparation.NeedsProcessing(source), Is.True);
         }
@@ -746,7 +742,7 @@ namespace VRVlog.LilToonExporter.Tests
             skin.bones = new[] { bone }; skin.rootBone = bone;
             skin.sharedMaterial = Own(new Material(Shader.Find("Unlit/Color")));
             skin.SetBlendShapeWeight(0, 75);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             var folderName = "__AaoRebasedNeutral_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
             var meshes = new List<Mesh>();
@@ -817,7 +813,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerMergeMapsSameNamedRawTrackingOnDestroyedRenderers()
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This rename-to-avoid-conflict fixture requires the AAO 1.8+ merge configuration API.");
             var first = Skin(source, "first", "UE/JawOpen");
             var second = Skin(source, "second", "UE/JawOpen");
@@ -831,7 +827,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(add, Is.Not.Null, "The supported set API must expose Add.");
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             clone = Object.Instantiate(source);
             Assert.That(NdmfExportPreparation.NeedsProcessing(clone), Is.True, "AAO authoring alone must start the NDMF build.");
             var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
@@ -862,7 +858,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerMergeGivesAppDrivenShapesTheirNamesBack(string secondShape, bool restored)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This rename-to-avoid-conflict fixture requires the AAO 1.8+ merge configuration API.");
             var first = Skin(source, "first", "Blink");
             var second = Skin(source, "second", secondShape);
@@ -875,7 +871,7 @@ namespace VRVlog.LilToonExporter.Tests
             var add = sources.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) });
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             clone = Object.Instantiate(source);
             var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
             var oldSecond = clone.transform.Find("second").GetComponent<SkinnedMeshRenderer>();
@@ -914,7 +910,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerCoalescedTrackingShapesDoNotMultiplyProfileWeights(float weight)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This coalescing fixture requires the AAO 1.8+ merge configuration API.");
             var first = Skin(source, "first", "profile shape"); var second = Skin(source, "second", "profile shape");
             var material = Own(new Material(Shader.Find("Unlit/Color")));
@@ -927,7 +923,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(add, Is.Not.Null);
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             var profile = Own(ScriptableObject.CreateInstance<VrmTrackingProfile>());
             profile.expressions = VrmTrackingExpressions.Names.Select(name => new TrackingExpression { name = name,
                 morphs = new[] { new TrackingMorph { shape = "profile shape", weight = weight } } }).ToArray();
@@ -965,7 +961,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerCoalescedAuthoredShapesDriveOnceOrStopOnConflictingWeights(float firstWeight, float secondWeight, bool conflict, bool custom)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This coalescing fixture requires the AAO 1.8+ merge configuration API.");
             var first = Skin(source, "first", "authored shape"); var second = Skin(source, "second", "authored shape");
             var firstMesh = first.sharedMesh; var secondMesh = second.sharedMesh;
@@ -983,7 +979,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(add, Is.Not.Null);
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             clone = Object.Instantiate(source);
             var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
             var oldSecond = clone.transform.Find("second").GetComponent<SkinnedMeshRenderer>();

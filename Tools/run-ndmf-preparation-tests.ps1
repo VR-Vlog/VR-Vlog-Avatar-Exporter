@@ -11,6 +11,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/ExportStageGuard.cs'),
     (Join-Path $taskRepo 'Editor/ExportTestHooks.cs'),
     (Join-Path $taskRepo 'Tests/Editor/NdmfPreparationTests.cs'),
+    (Join-Path $taskRepo 'Tests/Editor/Support/OptionalTools.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/NdmfSharedAssetFixture.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/NdmfSharedAssetHolder.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/GimmickSettingsProbe.cs'),

@@ -36,9 +36,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         T Own<T>(T item) where T : Object { owned.Add(item); return item; }
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         static Transform Child(Transform parent, string name, Vector3 position)
         {
             var child = new GameObject(name).transform;
@@ -49,9 +46,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         void CreateFixture(bool targetIsAvatarRoot = false)
         {
-            var mergeType = InstalledType(MaNamespace + "ModularAvatarMergeArmature");
-            var markerType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            var referenceType = InstalledType(MaNamespace + "AvatarObjectReference");
+            var mergeType = OptionalTools.Find(MaNamespace + "ModularAvatarMergeArmature");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var referenceType = OptionalTools.Find(MaNamespace + "AvatarObjectReference");
             if (mergeType == null || markerType == null || referenceType?.GetMethod("Get", new[] { typeof(SerializedProperty) }) == null)
                 Assert.Ignore("Install supported Modular Avatar and NDMF for native scene-reference preparation tests.");
             NdmfPreparationTests.IgnoreNonVRChatAvatarBeforeMa113();
@@ -101,7 +98,7 @@ namespace VRVlog.LilToonExporter.Tests
             serialized.ApplyModifiedPropertiesWithoutUndo();
             // Raw edits bypass MA's normal inspector callbacks. Invalidate its
             // read caches explicitly rather than depend on hierarchy event timing.
-            InstalledType(MaNamespace + "AvatarObjectReference")
+            OptionalTools.Find(MaNamespace + "AvatarObjectReference")
                 .GetMethod("InvalidateAll", BindingFlags.Static | BindingFlags.NonPublic)?.Invoke(null, null);
         }
 
@@ -116,7 +113,7 @@ namespace VRVlog.LilToonExporter.Tests
         static GameObject EffectiveSerializedTarget(Component owner, string path)
         {
             using var serialized = new SerializedObject(owner);
-            return (GameObject)InstalledType(MaNamespace + "AvatarObjectReference")
+            return (GameObject)OptionalTools.Find(MaNamespace + "AvatarObjectReference")
                 .GetMethod("Get", new[] { typeof(SerializedProperty) })
                 .Invoke(null, new object[] { serialized.FindProperty(path) });
         }
@@ -342,7 +339,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledMaMergesSelectedAvatarWithoutASourceRootMarker(bool directTarget)
         {
             CreateFixture();
-            var markerType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             Object.DestroyImmediate(source.GetComponent(markerType));
             SetRawReference(merge, "mergeTarget", directTarget ? mainRig.gameObject : null, "MainRig");
             var sourceSettings = EditorJsonUtility.ToJson(merge);
@@ -366,9 +363,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledMaBoneProxyResolvesItsPathUnderTheExportCopyRootWithoutASourceMarker()
         {
             CreateFixture();
-            var markerType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            var proxyType = InstalledType(MaNamespace + "ModularAvatarBoneProxy");
-            if (proxyType == null) Assert.Ignore("Install MA Bone Proxy to test its native path resolution.");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var proxyType = OptionalTools.Require(MaNamespace + "ModularAvatarBoneProxy", "Install MA Bone Proxy to test its native path resolution.");
             Object.DestroyImmediate(source.GetComponent(markerType));
             var accessory = Child(source.transform, "proxy accessory", new Vector3(.5f, 1, 0));
             var proxy = accessory.gameObject.AddComponent(proxyType);
@@ -407,7 +403,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             CreateFixture();
             var enclosing = Own(new GameObject("enclosing recognized avatar"));
-            enclosing.AddComponent(InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
+            enclosing.AddComponent(OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
             var enclosingRig = Child(enclosing.transform, "UnrelatedRig", new Vector3(3, 2, 1));
             var enclosingArm = Child(enclosingRig, "UpperArm.L", mainArm.localPosition);
             source.transform.SetParent(enclosing.transform, false);
@@ -437,7 +433,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             CreateFixture();
             var enclosing = Own(new GameObject("enclosing recognized avatar"));
-            enclosing.AddComponent(InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
+            enclosing.AddComponent(OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
             source.transform.SetParent(enclosing.transform, false);
             var path = source.name + "/MainRig";
             SetRawReference(merge, "mergeTarget", null, path);
@@ -560,9 +556,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void NestedMaReferencesAreResolvedInEverySerializedArrayElementWithoutEditingTheSource()
         {
             CreateFixture();
-            var shapeType = InstalledType(MaNamespace + "ModularAvatarShapeChanger");
-            var entryType = InstalledType(MaNamespace + "ChangedShape");
-            var referenceType = InstalledType(MaNamespace + "AvatarObjectReference");
+            var shapeType = OptionalTools.Find(MaNamespace + "ModularAvatarShapeChanger");
+            var entryType = OptionalTools.Find(MaNamespace + "ChangedShape");
+            var referenceType = OptionalTools.Find(MaNamespace + "AvatarObjectReference");
             if (shapeType == null || entryType == null) Assert.Ignore("Install MA's shape changer to test nested references.");
             var setting = Child(source.transform, "nested shape setting", Vector3.zero).gameObject.AddComponent(shapeType);
             var shapes = (IList)shapeType.GetProperty("Shapes").GetValue(setting);
@@ -621,9 +617,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void ActiveMaPathReferenceRetainsTheRequiredInactiveAuthoringBeforeCanonicalBuild()
         {
             CreateFixture();
-            var toggleType = InstalledType(MaNamespace + "ModularAvatarObjectToggle");
-            var entryType = InstalledType(MaNamespace + "ToggledObject");
-            var referenceType = InstalledType(MaNamespace + "AvatarObjectReference");
+            var toggleType = OptionalTools.Find(MaNamespace + "ModularAvatarObjectToggle");
+            var entryType = OptionalTools.Find(MaNamespace + "ToggledObject");
+            var referenceType = OptionalTools.Find(MaNamespace + "AvatarObjectReference");
             if (toggleType == null || entryType == null)
                 Assert.Ignore("Install MA's object toggle to test an inactive GameObject dependency.");
 

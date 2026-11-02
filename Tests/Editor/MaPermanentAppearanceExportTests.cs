@@ -19,23 +19,19 @@ namespace VRVlog.LilToonExporter.Tests
     // cannot prove that expressions never reveal the permanently hidden pupil.
     public sealed class MaPermanentAppearanceExportTests
     {
-        static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name, false)).FirstOrDefault(type => type != null);
-
         [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
         [TestCase(true, true)]
         public async Task MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry(bool fullLilToon, bool writeDefaults)
         {
-            var descriptorType = Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var mergeType = Installed("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-            var menuType = Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-            var parametersType = Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var parametersType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
             if (descriptorType == null || mergeType == null || menuType == null || parametersType == null)
                 Assert.Ignore("Install the real MA, NDMF and VRChat SDK packages.");
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__MaPermanentAppearance_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -75,7 +71,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // This fixture exercises permanent appearance and both authored
                 // WD policies, independently of MA's MMD-world sensor/relay.
                 // MMD plus dynamic WD layers has a separate fixed-pose contract.
-                var settingsType = Installed("nadena.dev.modular_avatar.core.ModularAvatarVRChatSettings");
+                var settingsType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarVRChatSettings");
                 Assert.That(settingsType, Is.Not.Null);
                 var settings = fixture.Source.AddComponent(settingsType);
                 settingsType.GetProperty("MMDWorldSupport").SetValue(settings, false);

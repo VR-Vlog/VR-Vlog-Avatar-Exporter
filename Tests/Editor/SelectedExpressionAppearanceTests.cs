@@ -30,8 +30,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install the real lilToon package.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install the real lilToon package.");
             var name = "__SelectedAppearance_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
             avatar = new GameObject("Avatar", typeof(Animator));
@@ -212,9 +211,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DynamicsEnabledCurveDoesNotRejectTheGesturePose()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType(PhysBoneSpringExport.ColliderType)).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCPhysBoneCollider.");
+            var type = OptionalTools.Require(PhysBoneSpringExport.ColliderType, "Install the real VRChat SDK with VRCPhysBoneCollider.");
             var collider = (Behaviour)dummy.AddComponent(type); collider.enabled = false;
             Curve("Dummy", type, "m_Enabled", AnimationCurve.Constant(0, 1, 1));
             var before = new[] { avatar, (Object)skin, collider, clip }.Select(EditorJsonUtility.ToJson).ToArray();
@@ -478,9 +475,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, false)]
         public async Task MixedLilToonGesturePreservesPreparedAppearanceAndMorphEndpointsAfterExport(bool fullLilToon, bool controlledLayer)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             Vrm10Instance imported = null; GameObject reference = null;
             try
@@ -498,9 +493,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var faceLayer = controlledLayer ? 4 : 0;
                 if (controlledLayer)
                 {
-                    var controlType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl"))
-                        .FirstOrDefault(type => type != null);
-                    if (controlType == null) Assert.Ignore("Install the real VRChat SDK layer controls.");
+                    var controlType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK layer controls.");
                     for (var index = 1; index <= faceLayer; index++) fx.AddLayer("Authored slot " + index);
                     var layerDefinitions = fx.layers;
                     for (var index = 0; index < faceLayer; index++)

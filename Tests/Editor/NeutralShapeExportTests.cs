@@ -19,10 +19,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, true)]
         public async Task FxDefaultOpeningShapeSurvivesExportWithoutAnExpressionMenu(bool independentBlink, bool resetClosingShape)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName);
@@ -204,9 +201,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-            .FirstOrDefault(type => type != null);
+        static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         // "Mouth" moves every vertex up and "Brow" moves it right.
         static SkinnedMeshRenderer[] MouthAndBrow(AttachmentConnectionTests.Fixture fixture, float mouth)

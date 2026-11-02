@@ -288,8 +288,7 @@ namespace VRVlog.LilToonExporter.Tests
         // An avatar whose descriptor has the Lip Sync mode and the FX layer.
         private bool BuildAvatar(string lipSync, RuntimeAnimatorController controller)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(type => type != null);
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) { Assert.Ignore("Install the real VRChat SDK."); return false; }
             avatar = new GameObject("Avatar", typeof(Animator));
             var descriptor = avatar.AddComponent(descriptorType);

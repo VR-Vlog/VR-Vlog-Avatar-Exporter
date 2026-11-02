@@ -16,9 +16,7 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class PreparedNeutralExportTests
     {
-        static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-            .FirstOrDefault(type => type != null);
+        static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         static void SetFx(Component descriptor, RuntimeAnimatorController controller)
         {
@@ -49,7 +47,7 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task IndependentLoopOnTheInfluencingSkinBoneKeepsPreparedGeometryAndAuthoredEndpoints()
         {
             var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__IndependentSkinBoneNeutral_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;

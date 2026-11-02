@@ -43,8 +43,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Avatar), Is.False, change);
         }
 
-        static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         static void Set(object target, string name, object value)
         {
             var field = target.GetType().GetField(name); Assert.That(field, Is.Not.Null, name);
@@ -68,9 +66,9 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal Fixture()
             {
-                var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                var menuType = Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-                var parameterType = Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+                var parameterType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
                 if (descriptorType == null || menuType == null || parameterType == null)
                     Assert.Ignore("Install the real VRChat SDK to run the expression menu fingerprint tests.");
                 Avatar = new GameObject("Menu fingerprint source");

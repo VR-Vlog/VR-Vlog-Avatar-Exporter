@@ -64,8 +64,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void PartialVrcRotationNoiseKeepsTheBoardCurrent()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", false)).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("The VRC constraint SDK is not installed.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", "The VRC constraint SDK is not installed.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var anchor = new GameObject("Authored input").transform; anchor.SetParent(fixture.Source.transform, false);
             var target = new GameObject("Partially driven target").transform; target.SetParent(fixture.Source.transform, false);

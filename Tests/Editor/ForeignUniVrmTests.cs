@@ -171,8 +171,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void AdoptGivesTheCopyBundledComponentsAndMaterialsOnly()
         {
-            var shader = Shader.Find("VRM10/MToon10");
-            if (shader == null) Assert.Ignore("The project has no UniVRM MToon10.");
+            var shader = OptionalTools.RequireShader("VRM10/MToon10", "The project has no UniVRM MToon10.");
             var source = new GameObject("Avatar"); owned.Add(source);
             Attach(source, ProjectSettings(ProjectBlink(true, 1f)));
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube); body.transform.SetParent(source.transform);

@@ -25,8 +25,6 @@ namespace VRVlog.LilToonExporter.Tests
         GameObject source;
 
         T Own<T>(T value) where T : Object { owned.Add(value); return value; }
-        static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
 
         [TearDown]
         public void TearDown()
@@ -38,22 +36,20 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void RequirePackages()
         {
-            if (Installed("Anatawa12.AvatarOptimizer.RemoveMeshInBox") == null || Installed("nadena.dev.ndmf.BuildContext") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.RemoveMeshInBox") == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported Avatar Optimizer and NDMF for the real box-removal integration tests.");
             // These fixtures are generic-platform avatars (no VRChat descriptor)
             // by design. AAO declares non-VRChat platform support from 1.9.0;
             // older AAO skips its passes there, so the oracle cannot run.
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
-                value.name == "com.anatawa12.avatar-optimizer");
-            if (package != null && Version.TryParse(package.version.Split('-', '+')[0], out var version) && version < new Version(1, 9))
-                Assert.Ignore("The generic-platform box-removal fixtures require Avatar Optimizer 1.9.0 or later (installed " + package.version + ").");
+            OptionalTools.IgnoreBelow("com.anatawa12.avatar-optimizer", new Version(1, 9),
+                "The generic-platform box-removal fixtures require Avatar Optimizer 1.9.0 or later");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
                 "The optional AAO integration assembly must compile and register when supported AAO is installed.");
         }
 
         static Component AddOptimizer(GameObject target, string name, int version)
         {
-            var type = Installed("Anatawa12.AvatarOptimizer." + name);
+            var type = OptionalTools.Find("Anatawa12.AvatarOptimizer." + name);
             Assert.That(type, Is.Not.Null);
             var initialize = type.GetMethod("Initialize", new[] { typeof(int) });
             Assert.That(initialize, Is.Not.Null, "The supported AAO public configuration API is required.");
@@ -196,11 +192,11 @@ namespace VRVlog.LilToonExporter.Tests
                 using (var canonicalBindings = ExportOptimizationBindings.Capture(canonicalCopy))
                 {
                     exporterBindings.ValidateAndApply();
-                    var directory = Installed("nadena.dev.ndmf.OverrideTemporaryDirectoryScope");
+                    var directory = OptionalTools.Find("nadena.dev.ndmf.OverrideTemporaryDirectoryScope");
                     canonicalScope = (IDisposable)Activator.CreateInstance(directory, folder);
-                    var platform = Installed("nadena.dev.ndmf.platform.GenericPlatform").GetProperty("Instance").GetValue(null);
-                    var provider = Installed("nadena.dev.ndmf.platform.INDMFPlatformProvider");
-                    var process = Installed("nadena.dev.ndmf.AvatarProcessor").GetMethod("ProcessAvatar", new[] { typeof(GameObject), provider });
+                    var platform = OptionalTools.Find("nadena.dev.ndmf.platform.GenericPlatform").GetProperty("Instance").GetValue(null);
+                    var provider = OptionalTools.Find("nadena.dev.ndmf.platform.INDMFPlatformProvider");
+                    var process = OptionalTools.Find("nadena.dev.ndmf.AvatarProcessor").GetMethod("ProcessAvatar", new[] { typeof(GameObject), provider });
                     Assert.That(process, Is.Not.Null);
                     canonicalContext = process.Invoke(null, new[] { canonicalCopy, platform });
                     Assert.That(canonicalContext.GetType().GetProperty("Successful").GetValue(canonicalContext), Is.EqualTo(true));
@@ -230,7 +226,7 @@ namespace VRVlog.LilToonExporter.Tests
                         Assert.That(deltas, Is.EqualTo(Enumerable.Repeat(Vector3.forward * .03f, vertices.Length).ToArray()));
                     }
                     Assert.That(renderer.sharedMaterial, Is.SameAs(originalMaterial));
-                    Assert.That(renderer.GetComponent(Installed("Anatawa12.AvatarOptimizer.RemoveMeshInBox")), Is.Not.Null);
+                    Assert.That(renderer.GetComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.RemoveMeshInBox")), Is.Not.Null);
                     Assert.That(source.GetComponent<ExportOptimizationMarker>(), Is.Null);
                 }
                 Assert.That(preparedMesh == null, Is.True, "The exporter lease must destroy its generated mesh after use.");
@@ -253,8 +249,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerFailureAbortsFullExportAndCleansOwnedAssets()
         {
             RequirePackages();
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real one-click exporter failure regression.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real one-click exporter failure regression.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var animator = fixture.Source.GetComponent<Animator>();
             Assert.That(animator.runtimeAnimatorController, Is.Null);
@@ -262,7 +257,7 @@ namespace VRVlog.LilToonExporter.Tests
                 "The generic fixture intentionally has no platform expression provider or valid root controller.");
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
                 skin.sharedMaterial.shader = shader;
-            var optimizer = fixture.Source.AddComponent(Installed("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            var optimizer = fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             Assert.That(NdmfExportPreparation.NeedsProcessing(fixture.Source), Is.True);
 
             var originalAvatar = animator.avatar;
@@ -357,8 +352,7 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task BoxDeletionSurvivesExportReimportWithTraceMergeExpressionsAndMaterialRoutes(bool merge, bool fullLilToon)
         {
             RequirePackages();
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real one-click exporter roundtrip.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real one-click exporter roundtrip.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var mesh = fixture.Mesh; var bindposes = mesh.bindposes;
             mesh.Clear();
@@ -395,7 +389,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var add = set.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) });
                 foreach (var skin in skins) add.Invoke(set, new object[] { skin });
             }
-            fixture.Source.AddComponent(Installed("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             var settings = Own(ScriptableObject.CreateInstance<VRM10Object>());
             var expression = Own(ScriptableObject.CreateInstance<VRM10Expression>());
             expression.name = "Box expression";

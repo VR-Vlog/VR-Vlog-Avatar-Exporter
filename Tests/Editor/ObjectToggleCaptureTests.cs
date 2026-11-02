@@ -317,8 +317,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ExportWritesTheTogglesAndTheMeshesThatAreOffByDefault()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var avatar = new ToggleAvatar();
             var material = new Material(shader) { name = "Toggles" };
             try
@@ -349,8 +348,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFailedToggleStageLeavesTheDefaultOffMeshesOut()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var avatar = new ToggleAvatar();
             var material = new Material(shader) { name = "Toggles" };
             try
@@ -399,9 +397,9 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal ToggleAvatar()
             {
-                var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-                var parameterType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+                var parameterType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
                 if (descriptorType == null || menuType == null || parameterType == null)
                     Assert.Ignore("Install the real VRChat SDK to read Expression Menu toggles.");
                 Avatar = new AttachmentConnectionTests.Fixture();
@@ -496,7 +494,6 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
 
-            static Type Find(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
             static void Set(object target, string name, object value) => MenuImportSdkRecoveryTests.SdkFixture.Set(target, name, value);
 
             ScriptableObject Menu()

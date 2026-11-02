@@ -19,12 +19,9 @@ namespace VRVlog.LilToonExporter.Tests
         const string Opening = "UE/JawOpen";
         const string Closure = "UE/EyeClosed";
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         static Component Optimizer(GameObject target, string name, int version)
         {
-            var type = InstalledType("Anatawa12.AvatarOptimizer." + name);
+            var type = OptionalTools.Find("Anatawa12.AvatarOptimizer." + name);
             var initialize = type.GetMethod("Initialize", new[] { typeof(int) });
             if (initialize == null) Assert.Ignore("Install AAO with the supported component configuration API.");
             var component = target.AddComponent(type); initialize.Invoke(component, new object[] { version }); return component;
@@ -107,10 +104,10 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, true)]
         public async Task MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(bool explicitProfile, bool fullLilToon)
         {
-            var descriptorType = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var mergeType = InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh");
-            if (descriptorType == null || mergeType == null || InstalledType("Anatawa12.AvatarOptimizer.RemoveMeshByMask") == null ||
-                InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize") == null || InstalledType("nadena.dev.ndmf.BuildContext") == null)
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var mergeType = OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh");
+            if (descriptorType == null || mergeType == null || OptionalTools.Find("Anatawa12.AvatarOptimizer.RemoveMeshByMask") == null ||
+                OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize") == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install the real VRChat SDK, AAO and NDMF for this native integration test.");
             if (mergeType.GetProperty("MergeBlendShapes") == null) Assert.Ignore("This rename fixture requires the AAO 1.8+ configuration API.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True);
@@ -141,7 +138,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var sources = mergeType.GetProperty("SourceSkinnedMeshRenderers").GetValue(merge);
                 var add = sources.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) });
                 foreach (var skin in skins) add.Invoke(sources, new object[] { skin });
-                fixture.Source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+                fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller"); Fx(fixture.Source, descriptorType, controller, skins);
                 happy.name = "Authored absolute25";
                 happy.MorphTargetBindings = skins.Select(skin => new MorphTargetBinding(AnimationUtility.CalculateTransformPath(skin.transform, fixture.Source.transform), 0, .25f)).ToArray();

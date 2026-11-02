@@ -140,8 +140,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void WholeMenuOmissionRetainsRealAplAndManualPoseRegistration()
         {
-            var aplType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(PoseExportSession.AplType)).FirstOrDefault(t => t != null);
-            if (aplType == null) Assert.Ignore("Install the real Avatar Pose Library package to verify its serialized registration together with menu omission.");
+            var aplType = OptionalTools.Require(PoseExportSession.AplType, "Install the real Avatar Pose Library package to verify its serialized registration together with menu omission.");
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
             var child = new GameObject("APL registration"); child.transform.SetParent(f.Source.transform, false);
             var apl = child.AddComponent(aplType); var clip = HumanoidPoseTests.Clip(f.Source); GameObject clone = null;
@@ -248,9 +247,9 @@ namespace VRVlog.LilToonExporter.Tests
             internal SdkFixture(GameObject avatar, bool persistMenus, bool persistentRootOnly = false, int wardrobe = 256)
             {
                 this.persistMenus = persistMenus;
-                var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-                var parameterType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+                var parameterType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
                 if (descriptorType == null || menuType == null || parameterType == null)
                     Assert.Ignore("Install the real VRChat SDK to run descriptor/menu retry, prepared pose reread and full VRM round-trip tests.");
                 var folderName = "__MenuRecoverySdk_" + Guid.NewGuid().ToString("N");
@@ -296,7 +295,6 @@ namespace VRVlog.LilToonExporter.Tests
                     EditorUtility.SetDirty(asset); AssetDatabase.SaveAssetIfDirty(asset);
                 }
             }
-            static Type Find(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
             internal static void Set(object target, string name, object value)
             {
                 var field = target.GetType().GetField(name); Assert.That(field, Is.Not.Null, name);

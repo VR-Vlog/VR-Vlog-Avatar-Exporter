@@ -17,8 +17,6 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class MaReactiveExpressionExportTests
     {
         const string Ma = "nadena.dev.modular_avatar.core.";
-        static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name, false)).FirstOrDefault(type => type != null);
 
         [Test]
         public void MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion()
@@ -34,7 +32,7 @@ namespace VRVlog.LilToonExporter.Tests
             var control = MenuItem(source, true);
             AppearancePreparationTests.AddRule(control.gameObject, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", face,
                 ("ShapeName", "Smile"), ("ChangeType", 1), ("Value", 100f));
-            var changer = control.GetComponentInChildren(Installed(Ma + "ModularAvatarShapeChanger"));
+            var changer = control.GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarShapeChanger"));
             AddShape(changer, face, "Permanent delete", "Delete", 100);
             AppearancePreparationTests.AddRule(control.gameObject, "ModularAvatarMaterialSetter", "Objects", "MaterialSwitchObject", face,
                 ("Material", replacement), ("MaterialIndex", 0));
@@ -55,16 +53,16 @@ namespace VRVlog.LilToonExporter.Tests
                 var result = clone.transform.Find("Face").GetComponent<SkinnedMeshRenderer>();
                 Assert.That(result.sharedMesh.triangles.Length, Is.EqualTo(3), "The permanent Delete must still be physically frozen.");
                 Assert.That(result.GetBlendShapeWeight(1), Is.EqualTo(25), "Keep the original off endpoint even with a default-on menu.");
-                var retained = clone.GetComponentInChildren(Installed(Ma + "ModularAvatarShapeChanger"));
+                var retained = clone.GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarShapeChanger"));
                 Assert.That(retained, Is.Not.Null);
                 var shapes = (IList)retained.GetType().GetProperty("Shapes").GetValue(retained);
                 Assert.That(shapes.Count, Is.EqualTo(1));
                 Assert.That(shapes[0].GetType().GetField("ChangeType").GetValue(shapes[0]).ToString(), Is.EqualTo("Set"));
                 Assert.That(result.sharedMaterial, Is.SameAs(material), "A dynamic material rule must reach candidate diagnostics instead of disappearing.");
-                Assert.That(clone.GetComponentInChildren(Installed(Ma + "ModularAvatarMaterialSetter")), Is.Not.Null);
+                Assert.That(clone.GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarMaterialSetter")), Is.Not.Null);
                 Assert.That(clone.transform.Find("Outfit").gameObject.activeSelf, Is.True);
-                Assert.That(clone.GetComponentInChildren(Installed(Ma + "ModularAvatarObjectToggle")), Is.Not.Null);
-                Assert.That(clone.transform.Find("Gate").GetComponentInChildren(Installed(Ma + "ModularAvatarShapeChanger"), true), Is.Not.Null,
+                Assert.That(clone.GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarObjectToggle")), Is.Not.Null);
+                Assert.That(clone.transform.Find("Gate").GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarShapeChanger"), true), Is.Not.Null,
                     "An indirect menu toggle must propagate variability to its dependent Set rule.");
                 Assert.That(clone.transform.Find("Dependent face").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(1), Is.EqualTo(20));
                 Assert.That(clone.transform.Find("Gate").gameObject.activeSelf, Is.False);
@@ -103,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller); controller.layers[0].stateMachine.AddState("Selected").motion = clip;
             if (relativePaths)
             {
-                var type = Installed(Ma + "ModularAvatarMergeAnimator"); var merge = basis.AddComponent(type);
+                var type = OptionalTools.Find(Ma + "ModularAvatarMergeAnimator"); var merge = basis.AddComponent(type);
                 type.GetField("animator").SetValue(merge, controller);
                 type.GetField("pathMode").SetValue(merge, Enum.Parse(type.GetField("pathMode").FieldType, "Relative"));
             }
@@ -131,10 +129,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(int pathMode, bool nestedTree)
         {
             RequirePackages();
-            var mergeType = Installed(Ma + "ModularAvatarMergeBlendTree");
-            if (mergeType == null) Assert.Ignore("Install the real MA Merge Motion component.");
+            var mergeType = OptionalTools.Require(Ma + "ModularAvatarMergeBlendTree", "Install the real MA Merge Motion component.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var descriptor = fixture.Source.AddComponent(Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"));
+            var descriptor = fixture.Source.AddComponent(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"));
             ConfigureGeometry(fixture.Mesh);
             var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
             var back = fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
@@ -163,8 +160,8 @@ namespace VRVlog.LilToonExporter.Tests
                 controller.AddParameter("Menu", AnimatorControllerParameterType.Float);
                 var idle = controller.layers[0].stateMachine.AddState("Neutral"); idle.writeDefaultValues = false;
                 controller.layers[0].stateMachine.defaultState = idle;
-                var menu = ScriptableObject.CreateInstance(Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
-                var parameters = ScriptableObject.CreateInstance(Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset"); AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
                 ConfigureMenu(menu, parameters, AnimatorControllerParameterType.Float);
                 ConfigureDescriptor(descriptor, controller, menu, parameters);
@@ -198,7 +195,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(reference.GetType().GetMethod("Get", new[] { typeof(Component) })
                         .Invoke(reference, new object[] { fixture.Source.transform }), Is.SameAs(explicitRoot));
                 }
-                var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
+                var settingsType = OptionalTools.Find(Ma + "ModularAvatarVRChatSettings");
                 settingsType.GetProperty("MMDWorldSupport").SetValue(fixture.Source.AddComponent(settingsType), false);
                 Assert.That(gate.GetComponentsInParent<Component>(true).All(value => value.GetType().FullName != Ma + "ModularAvatarMenuItem"), Is.True);
                 var authored = fixture.Source.GetComponentsInChildren<Component>(true).Cast<Object>()
@@ -218,8 +215,8 @@ namespace VRVlog.LilToonExporter.Tests
                 MaAppearanceSnapshot.Apply(fixture.Source, fixture.Copy, owned);
                 var path = AnimationUtility.CalculateTransformPath(gate.transform, fixture.Source.transform);
                 var decoyPath = AnimationUtility.CalculateTransformPath(decoy.transform, fixture.Source.transform);
-                Assert.That(fixture.Copy.transform.Find(path).GetComponentInChildren(Installed(Ma + "ModularAvatarShapeChanger"), true), Is.Not.Null);
-                Assert.That(fixture.Copy.transform.Find(decoyPath).GetComponentInChildren(Installed(Ma + "ModularAvatarShapeChanger"), true), Is.Null);
+                Assert.That(fixture.Copy.transform.Find(path).GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarShapeChanger"), true), Is.Not.Null);
+                Assert.That(fixture.Copy.transform.Find(decoyPath).GetComponentInChildren(OptionalTools.Find(Ma + "ModularAvatarShapeChanger"), true), Is.Null);
                 Assert.That(fixture.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(1), Is.EqualTo(25));
                 using (NdmfExportPreparation.Prepare(fixture.Source, fixture.Copy))
                 {
@@ -280,20 +277,20 @@ namespace VRVlog.LilToonExporter.Tests
 
         // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
         // avatar by its descriptor, as a real avatar would be found.
-        static Type AvatarRoot() => Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+        static Type AvatarRoot() => OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         static void RequirePackages()
         {
             foreach (var name in new[] { Ma + "ModularAvatarShapeChanger", Ma + "ModularAvatarMenuItem", Ma + "ModularAvatarMergeAnimator",
                 "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor",
                 "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu", "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters" })
-                if (Installed(name) == null) Assert.Ignore("Install the real MA, NDMF and VRChat SDK packages.");
+                if (OptionalTools.Find(name) == null) Assert.Ignore("Install the real MA, NDMF and VRChat SDK packages.");
         }
 
         static Component MenuItem(GameObject root, bool selected)
         {
             var node = new GameObject("Smile control"); node.transform.SetParent(root.transform, false);
-            var type = Installed(Ma + "ModularAvatarMenuItem"); var component = node.AddComponent(type);
+            var type = OptionalTools.Find(Ma + "ModularAvatarMenuItem"); var component = node.AddComponent(type);
             AppearancePreparationTests.SetToggle(component, "Menu", 1f);
             type.GetField("automaticValue").SetValue(component, false); type.GetField("isDefault").SetValue(component, selected);
             return component;
@@ -301,8 +298,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void AddShape(Component changer, GameObject target, string name, string mode, float value)
         {
-            var type = Installed(Ma + "ChangedShape"); var item = Activator.CreateInstance(type);
-            var reference = Activator.CreateInstance(Installed(Ma + "AvatarObjectReference"));
+            var type = OptionalTools.Find(Ma + "ChangedShape"); var item = Activator.CreateInstance(type);
+            var reference = Activator.CreateInstance(OptionalTools.Find(Ma + "AvatarObjectReference"));
             reference.GetType().GetMethod("Set", new[] { typeof(GameObject) }).Invoke(reference, new object[] { target });
             type.GetField("Object").SetValue(item, reference); type.GetField("ShapeName").SetValue(item, name);
             type.GetField("ChangeType").SetValue(item, Enum.Parse(type.GetField("ChangeType").FieldType, mode));

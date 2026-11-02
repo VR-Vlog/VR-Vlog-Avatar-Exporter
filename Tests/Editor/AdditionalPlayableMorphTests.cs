@@ -25,8 +25,7 @@ namespace VRVlog.LilToonExporter.Tests
         static EditorCurveBinding Binding(string shape, string path = "Body") =>
             EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
 
-        static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components." + name)).FirstOrDefault(type => type != null);
+        static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
 
         [SetUp]
         public void SetUp()
@@ -307,8 +306,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task LocomotionMouthOverlapExportsPreparedRestAndAuthoredAbsoluteEndpoint()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             fixture.Mesh.ClearBlendShapes();
             foreach (var item in new[] { (Name: "Mouth", Delta: Vector3.up * .015f),

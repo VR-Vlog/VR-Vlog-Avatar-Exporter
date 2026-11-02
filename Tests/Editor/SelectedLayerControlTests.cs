@@ -22,12 +22,10 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimatorState command, neutral, selected;
         private const int TargetLayer = 4;
 
-        private static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         [SetUp]
         public void SetUp()
         {
-            if (Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null || Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl") == null)
+            if (OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null || OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
             var name = "__SelectedLayerControl_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
@@ -39,7 +37,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Body size", 100, Enumerable.Repeat(Vector3.right * .02f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17);
             controller = Graph("FX", new[] { "Body" }, "Body size", 1, out command, out neutral, out selected);
-            descriptor = avatar.AddComponent(Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); SetFx(descriptor, controller);
+            descriptor = avatar.AddComponent(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); SetFx(descriptor, controller);
         }
 
         [TearDown]
@@ -93,7 +91,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         private static StateMachineBehaviour Control(AnimatorState state, float goal, int target = TargetLayer, float duration = 0, string playable = "FX")
-            => Configure(state.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")), goal, target, duration, playable);
+            => Configure(state.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")), goal, target, duration, playable);
 
         private static StateMachineBehaviour Configure(StateMachineBehaviour value, float goal, int target, float duration, string playable)
         {

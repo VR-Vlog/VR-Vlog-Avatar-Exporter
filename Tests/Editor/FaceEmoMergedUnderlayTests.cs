@@ -119,8 +119,7 @@ namespace VRVlog.LilToonExporter.Tests
             private readonly AnimatorController controller;
             internal Fixture()
             {
-                var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                    assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
                 if (descriptorType == null) { Avatar.Dispose(); Assert.Ignore("Install the real VRChat SDK."); }
                 var name = "__FaceEmoMergedUnderlay_" + Guid.NewGuid().ToString("N");
                 AssetDatabase.CreateFolder("Assets", name); directory = "Assets/" + name;

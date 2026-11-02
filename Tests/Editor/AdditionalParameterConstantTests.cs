@@ -70,8 +70,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
 
-        private static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components." + name)).FirstOrDefault(type => type != null);
+        private static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
 
         private AnimationClip Clip(string name, float? value = null)
         {
@@ -696,10 +695,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void SerializedUnsavedSdkInputsAreReadBeforeTheListIsRead()
         {
             SoleDormantReset();
-            var parametersType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters")).FirstOrDefault(type => type != null);
-            var menuType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu")).FirstOrDefault(type => type != null);
+            var parametersType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+            var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
             Assert.That(parametersType, Is.Not.Null); Assert.That(menuType, Is.Not.Null);
             var parameters = ScriptableObject.CreateInstance(parametersType); var menu = ScriptableObject.CreateInstance(menuType);
             AssetDatabase.CreateAsset(parameters, folder + "/UnsavedParameters.asset"); AssetDatabase.CreateAsset(menu, folder + "/Faces.asset");

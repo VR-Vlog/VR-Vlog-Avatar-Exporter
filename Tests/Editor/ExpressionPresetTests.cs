@@ -51,8 +51,7 @@ namespace VRVlog.LilToonExporter.Tests
         static (string Name, Vector3[] Deltas) Shape(string name, Vector3 delta, params int[] vertices) =>
             (name, Enumerable.Range(0, 3).Select(index => vertices.Length == 0 || vertices.Contains(index) ? delta : Vector3.zero).ToArray());
 
-        static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(type => type != null);
+        static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         static AnimationClip FaceClip(float weight)
         {
