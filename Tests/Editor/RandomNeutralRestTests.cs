@@ -40,16 +40,7 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .01f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 35); skin.SetBlendShapeWeight(2, 27);
             var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                layer.FindPropertyRelative("isDefault").boolValue = false;
-                layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
+            VrcAvatar.SetFx(descriptor, controller);
             var rest = Clip("Authored fixed rest", ("Rest", AnimationCurve.Constant(0, 1, 63)),
                 ("Transient", AnimationCurve.Constant(0, 1, 0)));
             State(0, rest);

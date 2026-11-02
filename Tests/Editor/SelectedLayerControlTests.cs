@@ -37,7 +37,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Body size", 100, Enumerable.Repeat(Vector3.right * .02f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17);
             controller = Graph("FX", new[] { "Body" }, "Body size", 1, out command, out neutral, out selected);
-            descriptor = avatar.AddComponent(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); SetFx(descriptor, controller);
+            descriptor = avatar.AddComponent(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); VrcAvatar.SetFx(descriptor, controller);
         }
 
         [TearDown]
@@ -100,16 +100,6 @@ namespace VRVlog.LilToonExporter.Tests
             var property = data.FindProperty("playable"); property.enumValueIndex = Array.IndexOf(property.enumNames, playable);
             data.FindProperty("layer").intValue = target; data.FindProperty("goalWeight").floatValue = goal;
             data.FindProperty("blendDuration").floatValue = duration; data.ApplyModifiedPropertiesWithoutUndo(); return value;
-        }
-
-        private static void SetFx(Component target, AnimatorController fx)
-        {
-            using var data = new SerializedObject(target);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-            var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-            type.enumValueIndex = Array.IndexOf(type.enumNames, "FX"); layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = fx; data.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private Dictionary<Object, string> Before() => AssetDatabase.LoadAllAssetsAtPath(folder + "/FX.controller")

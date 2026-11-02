@@ -19,9 +19,9 @@ namespace VRVlog.LilToonExporter.Tests
             var stamp = ExportRecoverySourceStamp.Capture(f.Avatar);
             // The inspector assigns the descriptor's parameters to the menu in
             // memory. Dirtying it here keeps the check from relying on any cache.
-            Set(f.Menu, "Parameters", f.Parameters); EditorUtility.SetDirty(f.Menu);
+            VrcAvatar.Set(f.Menu, "Parameters", f.Parameters); EditorUtility.SetDirty(f.Menu);
             Assert.That(stamp.Matches(f.Avatar), Is.True, "The menu's Parameters copy never reaches the VRM.");
-            Set(f.Menu, "Parameters", f.OtherParameters); EditorUtility.SetDirty(f.Menu);
+            VrcAvatar.Set(f.Menu, "Parameters", f.OtherParameters); EditorUtility.SetDirty(f.Menu);
             Assert.That(stamp.Matches(f.Avatar), Is.True);
         }
 
@@ -29,33 +29,27 @@ namespace VRVlog.LilToonExporter.Tests
         public void MenuControlsAndDescriptorParametersStillInvalidate(string change)
         {
             using var f = new Fixture();
-            Set(f.Menu, "Parameters", f.Parameters);
+            VrcAvatar.Set(f.Menu, "Parameters", f.Parameters);
             var stamp = ExportRecoverySourceStamp.Capture(f.Avatar);
             var controls = (IList)VrChatExpressionMenu.Member(f.Menu, "controls");
             switch (change)
             {
-                case "controlName": Set(controls[0], "name", "Changed face"); break;
-                case "controlValue": Set(controls[0], "value", 2f); break;
+                case "controlName": VrcAvatar.Set(controls[0], "name", "Changed face"); break;
+                case "controlValue": VrcAvatar.Set(controls[0], "value", 2f); break;
                 case "controlAdded": AddControl(f.Menu, "Second face", "Face", 2); break;
-                case "descriptorParameters": Set(f.Descriptor, "expressionParameters", f.OtherParameters); break;
+                case "descriptorParameters": VrcAvatar.Set(f.Descriptor, "expressionParameters", f.OtherParameters); break;
             }
             EditorUtility.SetDirty(f.Menu);
             Assert.That(stamp.Matches(f.Avatar), Is.False, change);
-        }
-
-        static void Set(object target, string name, object value)
-        {
-            var field = target.GetType().GetField(name); Assert.That(field, Is.Not.Null, name);
-            field.SetValue(target, field.FieldType.IsEnum ? Enum.Parse(field.FieldType, value.ToString()) : value);
         }
 
         static void AddControl(ScriptableObject menu, string name, string parameterName, float value)
         {
             var controls = (IList)VrChatExpressionMenu.Member(menu, "controls");
             var control = Activator.CreateInstance(controls.GetType().GetGenericArguments()[0]); controls.Add(control);
-            Set(control, "name", name); Set(control, "type", "Toggle"); Set(control, "value", value);
+            VrcAvatar.Set(control, "name", name); VrcAvatar.Set(control, "type", "Toggle"); VrcAvatar.Set(control, "value", value);
             var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType);
-            Set(parameter, "name", parameterName); Set(control, "parameter", parameter);
+            VrcAvatar.Set(parameter, "name", parameterName); VrcAvatar.Set(control, "parameter", parameter);
         }
 
         sealed class Fixture : IDisposable
@@ -73,12 +67,12 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.Ignore("Install the real VRChat SDK to run the expression menu fingerprint tests.");
                 Avatar = new GameObject("Menu fingerprint source");
                 Descriptor = Avatar.AddComponent(descriptorType);
-                Set(Descriptor, "customExpressions", true);
+                VrcAvatar.Set(Descriptor, "customExpressions", true);
                 Menu = ScriptableObject.CreateInstance(menuType);
                 AddControl(Menu, "Face", "Face", 1);
-                Set(Descriptor, "expressionsMenu", Menu);
+                VrcAvatar.Set(Descriptor, "expressionsMenu", Menu);
                 Parameters = NewParameters(parameterType, 0f); OtherParameters = NewParameters(parameterType, 1f);
-                Set(Descriptor, "expressionParameters", Parameters);
+                VrcAvatar.Set(Descriptor, "expressionParameters", Parameters);
             }
 
             static ScriptableObject NewParameters(Type parameterType, float defaultValue)
@@ -86,7 +80,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var parameters = ScriptableObject.CreateInstance(parameterType);
                 var field = parameterType.GetField("parameters"); var rowType = field.FieldType.GetElementType();
                 var rows = Array.CreateInstance(rowType, 1); var row = Activator.CreateInstance(rowType);
-                Set(row, "name", "Face"); Set(row, "valueType", "Int"); Set(row, "defaultValue", defaultValue); rows.SetValue(row, 0);
+                VrcAvatar.Set(row, "name", "Face"); VrcAvatar.Set(row, "valueType", "Int"); VrcAvatar.Set(row, "defaultValue", defaultValue); rows.SetValue(row, 0);
                 field.SetValue(parameters, rows);
                 return parameters;
             }

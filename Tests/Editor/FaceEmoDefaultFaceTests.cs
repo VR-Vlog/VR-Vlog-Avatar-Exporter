@@ -61,19 +61,7 @@ namespace VRVlog.LilToonExporter.Tests
             child.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
         }
 
-        private void SetFx(RuntimeAnimatorController runtime)
-        {
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var layer = layers.GetArrayElementAtIndex(0);
-                var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                layer.FindPropertyRelative("isDefault").boolValue = false;
-                layer.FindPropertyRelative("animatorController").objectReferenceValue = runtime;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-        }
+        private void SetFx(RuntimeAnimatorController runtime) => VrcAvatar.SetFx(descriptor, runtime);
 
         private AnimationClip Clip(string name)
         {

@@ -50,19 +50,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
 
-        private void SetFx(RuntimeAnimatorController runtime)
-        {
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var layer = layers.GetArrayElementAtIndex(0);
-                var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                layer.FindPropertyRelative("isDefault").boolValue = false;
-                layer.FindPropertyRelative("animatorController").objectReferenceValue = runtime;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-        }
+        private void SetFx(RuntimeAnimatorController runtime) => VrcAvatar.SetFx(descriptor, runtime);
 
         private void SetAction(RuntimeAnimatorController runtime)
         {

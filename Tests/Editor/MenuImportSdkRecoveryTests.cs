@@ -109,7 +109,7 @@ namespace VRVlog.LilToonExporter.Tests
             });
             Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
             var last = session.LastSuccess;
-            SdkFixture.Set(((IList)VrChatExpressionMenu.Member(menus.Root, "controls"))[0], "name", "Changed original label");
+            VrcAvatar.Set(((IList)VrChatExpressionMenu.Member(menus.Root, "controls"))[0], "name", "Changed original label");
             EditorUtility.SetDirty(menus.Root);
             Assert.That(session.CheckForChanges(), Is.True);
             Assert.That(session.SelectedOptions.Actions, Is.Empty);
@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(PoseMenuResolver.Read(clone).Count, Is.EqualTo(257));
                 Assert.That(PoseMenuResolver.Read(clone, new VrChatMenuImportPolicy { SkipAll = true }), Is.Empty);
                 var descriptor = clone.GetComponents<Component>().Single(c => c.GetType() == menus.Descriptor.GetType());
-                SdkFixture.Set(descriptor, "expressionsMenu", menus.NewMenu());
+                VrcAvatar.Set(descriptor, "expressionsMenu", menus.NewMenu());
                 Assert.That(PoseMenuResolver.Read(clone), Is.Empty, "A replaced menu is read as it is now.");
             }
             finally { Object.DestroyImmediate(clone); }
@@ -146,12 +146,12 @@ namespace VRVlog.LilToonExporter.Tests
             var apl = child.AddComponent(aplType); var clip = HumanoidPoseTests.Clip(f.Source); GameObject clone = null;
             try
             {
-                var data = Activator.CreateInstance(aplType.GetField("data").FieldType); SdkFixture.Set(apl, "data", data);
+                var data = Activator.CreateInstance(aplType.GetField("data").FieldType); VrcAvatar.Set(apl, "data", data);
                 var categories = (IList)VrChatExpressionMenu.Member(data, "categories");
-                var category = Activator.CreateInstance(categories.GetType().GetGenericArguments()[0]); categories.Add(category); SdkFixture.Set(category, "name", "APL category");
+                var category = Activator.CreateInstance(categories.GetType().GetGenericArguments()[0]); categories.Add(category); VrcAvatar.Set(category, "name", "APL category");
                 var poses = (IList)VrChatExpressionMenu.Member(category, "poses");
                 var pose = Activator.CreateInstance(poses.GetType().GetGenericArguments()[0]); poses.Add(pose);
-                SdkFixture.Set(pose, "name", "APL survives"); SdkFixture.Set(pose, "animationClip", clip);
+                VrcAvatar.Set(pose, "name", "APL survives"); VrcAvatar.Set(pose, "animationClip", clip);
                 var before = EditorJsonUtility.ToJson(apl);
                 var options = new PoseExportOptions(); options.Manual.Add(new ManualPose { Name = "Manual survives", Clip = clip });
                 var policy = new VrChatMenuImportPolicy { SkipAll = true };
@@ -254,17 +254,17 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.Ignore("Install the real VRChat SDK to run descriptor/menu retry, prepared pose reread and full VRM round-trip tests.");
                 var folderName = "__MenuRecoverySdk_" + Guid.NewGuid().ToString("N");
                 AssetDatabase.CreateFolder("Assets", folderName); directory = "Assets/" + folderName;
-                Descriptor = avatar.AddComponent(descriptorType); Set(Descriptor, "customExpressions", true); Set(Descriptor, "customizeAnimationLayers", true);
+                Descriptor = avatar.AddComponent(descriptorType); VrcAvatar.Set(Descriptor, "customExpressions", true); VrcAvatar.Set(Descriptor, "customizeAnimationLayers", true);
                 Root = NewMenu(forcePersistent: persistentRootOnly); var face = NewMenu(); AddControl(face, "Menu face", "Toggle", "Face", 1);
                 AddControl(Root, "Faces", "SubMenu", subMenu: face);
                 AddControl(Root, "Clothes", "SubMenu", subMenu: EightControlTree(wardrobe));
-                Set(Descriptor, "expressionsMenu", Root);
+                VrcAvatar.Set(Descriptor, "expressionsMenu", Root);
                 var parameters = ScriptableObject.CreateInstance(parameterType); owned.Add(parameters);
                 AssetDatabase.CreateAsset(parameters, directory + "/Parameters.asset");
                 var parameterField = parameterType.GetField("parameters"); var rowType = parameterField.FieldType.GetElementType();
                 var rows = Array.CreateInstance(rowType, 1); var row = Activator.CreateInstance(rowType);
-                Set(row, "name", "Face"); Set(row, "valueType", "Int"); Set(row, "defaultValue", 0f); rows.SetValue(row, 0);
-                parameterField.SetValue(parameters, rows); Set(Descriptor, "expressionParameters", parameters);
+                VrcAvatar.Set(row, "name", "Face"); VrcAvatar.Set(row, "valueType", "Int"); VrcAvatar.Set(row, "defaultValue", 0f); rows.SetValue(row, 0);
+                parameterField.SetValue(parameters, rows); VrcAvatar.Set(Descriptor, "expressionParameters", parameters);
                 // Unity creates and owns the serialized native Animator graph.
                 // A bag of newly allocated state machines with empty names is
                 // not equivalent to an authored FX controller's state paths.
@@ -294,11 +294,6 @@ namespace VRVlog.LilToonExporter.Tests
                     if (persistentRootOnly && !persistMenus && asset == Root) continue;
                     EditorUtility.SetDirty(asset); AssetDatabase.SaveAssetIfDirty(asset);
                 }
-            }
-            internal static void Set(object target, string name, object value)
-            {
-                var field = target.GetType().GetField(name); Assert.That(field, Is.Not.Null, name);
-                field.SetValue(target, field.FieldType.IsEnum ? Enum.Parse(field.FieldType, value.ToString()) : value);
             }
             internal ScriptableObject NewMenu(bool forcePersistent = false)
             {
@@ -333,11 +328,11 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var controls = (IList)VrChatExpressionMenu.Member(menu, "controls");
                 var control = Activator.CreateInstance(controls.GetType().GetGenericArguments()[0]); controls.Add(control);
-                Set(control, "name", name); Set(control, "type", type); Set(control, "value", value); Set(control, "subMenu", subMenu);
+                VrcAvatar.Set(control, "name", name); VrcAvatar.Set(control, "type", type); VrcAvatar.Set(control, "value", value); VrcAvatar.Set(control, "subMenu", subMenu);
                 if (parameterName != null)
                 {
                     var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType);
-                    Set(parameter, "name", parameterName); Set(control, "parameter", parameter);
+                    VrcAvatar.Set(parameter, "name", parameterName); VrcAvatar.Set(control, "parameter", parameter);
                 }
                 EditorUtility.SetDirty(menu);
             }
@@ -346,9 +341,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var field = descriptor.GetType().GetField(fieldName); var rowType = field.FieldType.GetElementType(); var rows = Array.CreateInstance(rowType, types.Length);
                 for (var i = 0; i < types.Length; i++)
                 {
-                    var row = Activator.CreateInstance(rowType); Set(row, "type", types[i]); Set(row, "isDefault", false);
-                    if (types[i] == "FX") Set(row, "animatorController", fx);
-                    else { var empty = new AnimatorController(); owned.Add(empty); Set(row, "animatorController", empty); }
+                    var row = Activator.CreateInstance(rowType); VrcAvatar.Set(row, "type", types[i]); VrcAvatar.Set(row, "isDefault", false);
+                    if (types[i] == "FX") VrcAvatar.Set(row, "animatorController", fx);
+                    else { var empty = new AnimatorController(); owned.Add(empty); VrcAvatar.Set(row, "animatorController", empty); }
                     rows.SetValue(row, i);
                 }
                 field.SetValue(descriptor, rows);

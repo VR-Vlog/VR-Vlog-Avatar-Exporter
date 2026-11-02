@@ -106,14 +106,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             var descriptor = avatar.AddComponent(type);
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
-            kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, controller);
         }
 
         [TestCase(false)]

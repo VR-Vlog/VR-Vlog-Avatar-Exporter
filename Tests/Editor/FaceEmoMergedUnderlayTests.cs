@@ -125,16 +125,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.CreateFolder("Assets", name); directory = "Assets/" + name;
                 controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
                 var descriptor = Avatar.Copy.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                    var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, controller);
                 Avatar.Mesh.ClearBlendShapes();
                 foreach (var delta in new[] { ("Open", Vector3.up * .03f), ("Mouth", Vector3.right * .04f), ("Customization", Vector3.forward * .02f) })
                     Avatar.Mesh.AddBlendShapeFrame(delta.Item1, 100, Enumerable.Repeat(delta.Item2, Avatar.Mesh.vertexCount).ToArray(), null, null);

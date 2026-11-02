@@ -109,16 +109,7 @@ namespace VRVlog.LilToonExporter.Tests
                     worldFixBefore = EditorJsonUtility.ToJson(worldFix);
                 }
                 var descriptor = fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var playableLayers = data.FindProperty("baseAnimationLayers"); playableLayers.arraySize = 1;
-                    var layer = playableLayers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, controller);
                 var vrm = ScriptableObject.CreateInstance<VRM10Object>();
                 var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Body endpoint";
                 endpoint.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f), new MorphTargetBinding("Back", 0, .8f) };

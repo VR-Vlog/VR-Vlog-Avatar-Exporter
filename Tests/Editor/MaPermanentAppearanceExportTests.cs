@@ -227,16 +227,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void ConfigureDescriptor(Component descriptor, AnimatorController controller, ScriptableObject menu, ScriptableObject parameters)
         {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customExpressions").boolValue = true;
-            data.FindProperty("expressionsMenu").objectReferenceValue = menu;
-            data.FindProperty("expressionParameters").objectReferenceValue = parameters;
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1; var layer = list.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetExpressions(descriptor, menu, parameters); VrcAvatar.SetFx(descriptor, controller);
         }
 
         static Dictionary<string, Vector3[]> NativePose(GameObject source, AnimatorController controller, int selected, float blink)

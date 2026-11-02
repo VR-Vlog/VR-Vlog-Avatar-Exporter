@@ -25,8 +25,8 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var descriptorType = SdkType("VRCAvatarDescriptor");
-            if (descriptorType == null || SdkType("VRCAnimatorLayerControl") == null || SdkType("VRCPlayableLayerControl") == null)
+            var descriptorType = VrcAvatar.ComponentType("VRCAvatarDescriptor");
+            if (descriptorType == null || VrcAvatar.ComponentType("VRCAnimatorLayerControl") == null || VrcAvatar.ComponentType("VRCPlayableLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
             var name = "__AdditionalPlayableCallbacks_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
@@ -66,8 +66,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (mesh != null) Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
-
-        private static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
 
         private AnimatorController Controller(string name) => AnimatorController.CreateAnimatorControllerAtPath(folder + "/" + name + ".controller");
 
@@ -114,7 +112,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static StateMachineBehaviour AddControl(AnimatorState state, string kind = "animator", float duration = .1f, int index = 1)
         {
-            return Configure(state.AddStateMachineBehaviour(SdkType(kind == "animator" ? "VRCAnimatorLayerControl" : "VRCPlayableLayerControl")), kind, duration, index);
+            return Configure(state.AddStateMachineBehaviour(VrcAvatar.ComponentType(kind == "animator" ? "VRCAnimatorLayerControl" : "VRCPlayableLayerControl")), kind, duration, index);
         }
 
         private static StateMachineBehaviour Configure(StateMachineBehaviour control, string kind, float duration, int index)
@@ -211,7 +209,7 @@ namespace VRVlog.LilToonExporter.Tests
             var exit = last.AddExitTransition(); exit.hasExitTime = false; exit.duration = 0;
             var enter = waiting.AddTransition(first); enter.hasExitTime = false; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.If, 0, "AFK");
-            if (onMachine) Configure(nested.AddStateMachineBehaviour(SdkType("VRCAnimatorLayerControl")), "animator", .1f, 1);
+            if (onMachine) Configure(nested.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl")), "animator", .1f, 1);
             else AddControl(first);
             var restore = State(root, "Exit restore", Empty()); AddControl(restore);
             root.AddStateMachineTransition(nested, restore);
@@ -235,7 +233,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 case "default": machine.defaultState = command; break;
                 case "opposite": gate.conditions = Array.Empty<AnimatorCondition>(); gate.AddCondition(AnimatorConditionMode.IfNot, 0, "AFK"); break;
-                case "ancestor": Configure(machine.AddStateMachineBehaviour(SdkType("VRCAnimatorLayerControl")), "animator", .1f, 1); break;
+                case "ancestor": Configure(machine.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl")), "animator", .1f, 1); break;
                 case "entry": machine.AddEntryTransition(command); break;
                 case "anyState": machine.AddAnyStateTransition(command); break;
                 case "unconditional": Transition(waiting, command); break;

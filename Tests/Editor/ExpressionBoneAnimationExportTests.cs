@@ -150,16 +150,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 var idle = Controller.layers[0].stateMachine.AddState("Idle"); idle.writeDefaultValues = false;
                 var descriptor = Fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-                    var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = Controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, Controller);
                 // An object the export leaves out (inactive) and an empty one
                 // the export prunes.
                 var prop = new GameObject("Hidden prop", typeof(MeshFilter), typeof(MeshRenderer));

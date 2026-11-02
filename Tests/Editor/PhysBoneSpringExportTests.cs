@@ -52,33 +52,6 @@ namespace VRVlog.LilToonExporter.Tests
         // Real VRChat avatars select NDMF's VRChat platform. Fill the playable
         // layers as the SDK inspector does for a new avatar (all default), so
         // AAO 1.7 reads its default controllers instead of a null layer.
-        internal static Component AddVrChatAvatarDescriptor(GameObject root)
-        {
-            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
-            var layerType = type.GetNestedType("AnimLayerType");
-            Assert.That(layerType, Is.Not.Null, "The installed VRChat SDK must expose its playable layer types.");
-            var descriptor = root.AddComponent(type);
-            using var data = new SerializedObject(descriptor);
-            void Layers(string name, params string[] types)
-            {
-                var list = data.FindProperty(name); Assert.That(list, Is.Not.Null, name);
-                list.arraySize = types.Length;
-                for (var i = 0; i < types.Length; i++)
-                {
-                    var layer = list.GetArrayElementAtIndex(i);
-                    layer.FindPropertyRelative("type").intValue = Convert.ToInt32(Enum.Parse(layerType, types[i]));
-                    layer.FindPropertyRelative("isDefault").boolValue = true;
-                    layer.FindPropertyRelative("isEnabled").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = null;
-                    layer.FindPropertyRelative("mask").objectReferenceValue = null;
-                }
-            }
-            data.FindProperty("customizeAnimationLayers").boolValue = false;
-            Layers("baseAnimationLayers", "Base", "Additive", "Gesture", "Action", "FX");
-            Layers("specialAnimationLayers", "Sitting", "TPose", "IKPose");
-            data.ApplyModifiedPropertiesWithoutUndo();
-            return descriptor;
-        }
 
         // A real avatar body is skinned to its humanoid bones. Weight one
         // triangle to each mapped bone so the body, not the test, owns them.
@@ -936,7 +909,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // Real VRChat avatars select NDMF's VRChat platform. On the
                 // generic platform AAO < 1.9 skips its passes and 1.9 can
                 // remove the root Animator before UniVRM reads the humanoid.
-                if (expectedFailure == null) AddVrChatAvatarDescriptor(fixture.Source);
+                if (expectedFailure == null) VrcAvatar.AddDescriptor(fixture.Source);
                 duplicateCollider = head.gameObject.AddComponent(collider.GetType());
                 Set(duplicateCollider, "radius", .025f); Set(duplicateCollider, "position", Vector3.left);
                 fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));

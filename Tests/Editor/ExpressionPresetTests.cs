@@ -51,8 +51,6 @@ namespace VRVlog.LilToonExporter.Tests
         static (string Name, Vector3[] Deltas) Shape(string name, Vector3 delta, params int[] vertices) =>
             (name, Enumerable.Range(0, 3).Select(index => vertices.Length == 0 || vertices.Contains(index) ? delta : Vector3.zero).ToArray());
 
-        static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-
         static AnimationClip FaceClip(float weight)
         {
             var clip = new AnimationClip { name = "Sample face" };
@@ -832,7 +830,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AssignedBlinkWinsOverTheVrChatEyelidSetting()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Lid", BlinkDelta), Shape("Shut", ShutDelta));
@@ -979,7 +977,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrChatLipSyncShapesAreTheMouthCandidates()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Open", OpenDelta), Shape("Wide", RaiseDelta), Shape("vrc.v_aa", RightDelta));

@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
             AddHumanoidAnimator(source);
             // Real VRChat avatars select NDMF's VRChat platform; AAO < 1.9
             // does not run its passes on the generic platform.
-            PhysBoneSpringExportTests.AddVrChatAvatarDescriptor(source);
+            VrcAvatar.AddDescriptor(source);
             var material = Own(new Material(Shader.Find("Unlit/Color")));
             SkinnedMeshRenderer Skin(string name)
             {

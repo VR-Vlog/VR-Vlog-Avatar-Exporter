@@ -1638,16 +1638,7 @@ namespace VRVlog.LilToonExporter.Tests
                     transition.AddCondition(AnimatorConditionMode.Equals, value, "GestureLeft");
                 }
                 var descriptor = fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-                    var layer = list.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
-                    kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, controller);
                 AssetDatabase.SaveAssets();
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetField("author", flags).SetValue(window, "Tests");

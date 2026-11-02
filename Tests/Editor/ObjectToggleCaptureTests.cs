@@ -451,9 +451,9 @@ namespace VRVlog.LilToonExporter.Tests
                     for (var i = 0; i < declared.Length; i++)
                     {
                         var row = Activator.CreateInstance(rowType);
-                        Set(row, "name", declared[i].Item1);
-                        Set(row, "valueType", declared[i].Item2);
-                        Set(row, "defaultValue", declared[i].Item3);
+                        VrcAvatar.Set(row, "name", declared[i].Item1);
+                        VrcAvatar.Set(row, "valueType", declared[i].Item2);
+                        VrcAvatar.Set(row, "defaultValue", declared[i].Item3);
                         rows.SetValue(row, i);
                     }
                     parameterField.SetValue(parameters, rows);
@@ -475,10 +475,10 @@ namespace VRVlog.LilToonExporter.Tests
                     fx.layers = layers;
 
                     var descriptor = Source.AddComponent(descriptorType);
-                    Set(descriptor, "customExpressions", true);
-                    Set(descriptor, "customizeAnimationLayers", true);
-                    Set(descriptor, "expressionsMenu", root);
-                    Set(descriptor, "expressionParameters", parameters);
+                    VrcAvatar.Set(descriptor, "customExpressions", true);
+                    VrcAvatar.Set(descriptor, "customizeAnimationLayers", true);
+                    VrcAvatar.Set(descriptor, "expressionsMenu", root);
+                    VrcAvatar.Set(descriptor, "expressionParameters", parameters);
                     Layers(descriptor, "baseAnimationLayers", new[] { "Base", "Additive", "Gesture", "Action", "FX" });
                     Layers(descriptor, "specialAnimationLayers", new[] { "Sitting", "TPose", "IKPose" });
                     foreach (var asset in owned.Where(EditorUtility.IsPersistent))
@@ -494,8 +494,6 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
 
-            static void Set(object target, string name, object value) => MenuImportSdkRecoveryTests.SdkFixture.Set(target, name, value);
-
             ScriptableObject Menu()
             {
                 var menu = ScriptableObject.CreateInstance(menuType);
@@ -509,15 +507,15 @@ namespace VRVlog.LilToonExporter.Tests
                 var controls = (IList)VrChatExpressionMenu.Member(menu, "controls");
                 var control = Activator.CreateInstance(controls.GetType().GetGenericArguments()[0]);
                 controls.Add(control);
-                Set(control, "name", name);
-                Set(control, "type", type);
-                Set(control, "value", value);
-                Set(control, "subMenu", subMenu);
+                VrcAvatar.Set(control, "name", name);
+                VrcAvatar.Set(control, "type", type);
+                VrcAvatar.Set(control, "value", value);
+                VrcAvatar.Set(control, "subMenu", subMenu);
                 if (parameterName != null)
                 {
                     var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType);
-                    Set(parameter, "name", parameterName);
-                    Set(control, "parameter", parameter);
+                    VrcAvatar.Set(parameter, "name", parameterName);
+                    VrcAvatar.Set(control, "parameter", parameter);
                 }
                 EditorUtility.SetDirty(menu);
             }
@@ -580,9 +578,9 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < types.Length; i++)
                 {
                     var row = Activator.CreateInstance(rowType);
-                    Set(row, "type", types[i]);
-                    Set(row, "isDefault", false);
-                    Set(row, "animatorController", fx);
+                    VrcAvatar.Set(row, "type", types[i]);
+                    VrcAvatar.Set(row, "isDefault", false);
+                    VrcAvatar.Set(row, "animatorController", fx);
                     rows.SetValue(row, i);
                 }
                 field.SetValue(descriptor, rows);

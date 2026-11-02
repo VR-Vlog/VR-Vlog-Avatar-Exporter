@@ -227,16 +227,7 @@ namespace VRVlog.LilToonExporter.Tests
                     mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .1f, 3).ToArray(), null, null);
                 Skin.sharedMesh = mesh; Weights();
                 var descriptor = Avatar.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                    var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = Controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, Controller);
                 var baseClip = Clip("Base", ("Customization", 30));
                 SetState(0, "Base", baseClip, false);
                 Controller.AddLayer("[ USER EDIT ] DEFAULT FACE");

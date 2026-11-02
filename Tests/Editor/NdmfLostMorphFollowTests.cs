@@ -24,18 +24,6 @@ namespace VRVlog.LilToonExporter.Tests
         const string Missing = "Mouth missing";
         const string Stripped = "Mouth stripped";
 
-        static void SetFx(Component descriptor, RuntimeAnimatorController controller)
-        {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         static AnimatorController DefaultController(string asset)
         {
             var controller = AnimatorController.CreateAnimatorControllerAtPath(asset);
@@ -84,7 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
                     skin.sharedMaterial.shader = Shader.Find("lilToon");
                 }
                 var descriptor = source.AddComponent(descriptorType);
-                SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
+                VrcAvatar.SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
                 if (visemes != null)
                 {
                     var lipSync = descriptorType.GetField("lipSync");

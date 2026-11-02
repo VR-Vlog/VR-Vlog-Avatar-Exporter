@@ -25,12 +25,10 @@ namespace VRVlog.LilToonExporter.Tests
         static EditorCurveBinding Binding(string shape, string path = "Body") =>
             EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
 
-        static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
-
         [SetUp]
         public void SetUp()
         {
-            if (SdkType("VRCAvatarDescriptor") == null) Assert.Ignore("Install the real VRChat SDK.");
+            if (VrcAvatar.ComponentType("VRCAvatarDescriptor") == null) Assert.Ignore("Install the real VRChat SDK.");
             var name = "__AdditionalPlayableMorph_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
@@ -45,7 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.AddBlendShapeFrame(item.Name, 100, Enumerable.Repeat(item.Delta, 3).ToArray(), null, null);
             skin.sharedMesh = mesh;
             skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 23); skin.SetBlendShapeWeight(2, 31);
-            descriptor = avatar.AddComponent(SdkType("VRCAvatarDescriptor"));
+            descriptor = avatar.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor"));
             rest = State(fx.layers[0].stateMachine, Clip(fx, "Authored FX mouth", ("Mouth", 75), ("Companion", 60)));
             State(Layer(fx, "Independent neutral"), Clip(fx, "Independent FX", ("Independent", 100)));
             State(locomotion.layers[0].stateMachine, Clip(locomotion, "Locomotion mouth", ("Mouth", 0)));
@@ -211,7 +209,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AdditionalMorphCannotHideContradictoryEvaluatedFxLayerCommands()
         {
-            var type = SdkType("VRCAnimatorLayerControl");
+            var type = VrcAvatar.ComponentType("VRCAnimatorLayerControl");
             if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             foreach (var goal in new[] { 0f, 1f })
             {
@@ -327,7 +325,7 @@ namespace VRVlog.LilToonExporter.Tests
                         foreach (var path in new[] { "Front", "Back" })
                             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, binding.type, binding.propertyName), curve);
                     }
-            SetControllers(fixture.Source.AddComponent(SdkType("VRCAvatarDescriptor")), fx, ("Base", locomotion));
+            SetControllers(fixture.Source.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor")), fx, ("Base", locomotion));
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Authored mouth";
             endpoint.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f), new MorphTargetBinding("Back", 0, .8f) };

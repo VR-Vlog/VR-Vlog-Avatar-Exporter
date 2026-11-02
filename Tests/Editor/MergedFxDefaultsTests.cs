@@ -631,14 +631,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(pupil, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"), AnimationCurve.Constant(0, 1, 100));
             permanent.layers[0].stateMachine.defaultState = State(permanent.layers[0].stateMachine, "Always", pupil);
             var descriptor = source.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var item = layers.GetArrayElementAtIndex(0); var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                item.FindPropertyRelative("isDefault").boolValue = false; item.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
+            VrcAvatar.SetFx(descriptor, controller);
             var tool = new GameObject("Permanent pupil tool"); tool.transform.SetParent(source.transform, false);
             var merge = tool.AddComponent(mergeType); mergeType.GetField("animator").SetValue(merge, permanent);
             var pathMode = mergeType.GetField("pathMode"); pathMode.SetValue(merge, Enum.Parse(pathMode.FieldType, "Absolute"));
@@ -886,16 +879,7 @@ namespace VRVlog.LilToonExporter.Tests
             layers[1].blendingMode = additive ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override; controller.layers = layers;
             var sourceSkin = avatar.GetComponentInChildren<SkinnedMeshRenderer>(); sourceSkin.SetBlendShapeWeight(2, 20);
             var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var descriptorLayers = data.FindProperty("baseAnimationLayers"); descriptorLayers.arraySize = 1;
-                var item = descriptorLayers.GetArrayElementAtIndex(0);
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                item.FindPropertyRelative("isDefault").boolValue = false;
-                item.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
+            VrcAvatar.SetFx(descriptor, controller);
             var neutral = NativePose(avatar, controller, "Face", new Dictionary<string, int> { ["Menu"] = 0 });
             if (additive)
             {
@@ -1467,16 +1451,7 @@ namespace VRVlog.LilToonExporter.Tests
             controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Always", permanent);
             var descriptor = source.AddComponent(descriptorType);
             var emptyFx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/OriginalFX.controller");
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var item = layers.GetArrayElementAtIndex(0);
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                item.FindPropertyRelative("isDefault").boolValue = false;
-                item.FindPropertyRelative("animatorController").objectReferenceValue = emptyFx;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
+            VrcAvatar.SetFx(descriptor, emptyFx);
             var merge = source.AddComponent(mergeType);
             mergeType.GetField("animator").SetValue(merge, controller);
             var layerType = mergeType.GetField("layerType"); layerType.SetValue(merge, Enum.Parse(layerType.FieldType, "FX"));

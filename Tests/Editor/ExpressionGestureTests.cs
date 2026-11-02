@@ -169,8 +169,8 @@ namespace VRVlog.LilToonExporter.Tests
         // with a Random driver, rock'n'roll plays a clip not on the board.
         private bool BuildAvatar()
         {
-            var descriptorType = SdkType("VRCAvatarDescriptor");
-            if (descriptorType == null || SdkType("VRCAvatarParameterDriver") == null) { Assert.Ignore("Install the real VRChat SDK."); return false; }
+            var descriptorType = VrcAvatar.ComponentType("VRCAvatarDescriptor");
+            if (descriptorType == null || VrcAvatar.ComponentType("VRCAvatarParameterDriver") == null) { Assert.Ignore("Install the real VRChat SDK."); return false; }
             var name = "__ExpressionGestures_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
@@ -207,14 +207,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var value in new[] { 1, 2, 6, 7 }) Enter(right, rightIdle, "GestureRight", value);
 
             var descriptor = avatar.AddComponent(descriptorType);
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-            type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = fx;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, fx);
             AssetDatabase.SaveAssets();
             return true;
         }
@@ -247,6 +240,5 @@ namespace VRVlog.LilToonExporter.Tests
             transition.AddCondition(AnimatorConditionMode.Equals, value, parameter);
         }
 
-        private static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
     }
 }

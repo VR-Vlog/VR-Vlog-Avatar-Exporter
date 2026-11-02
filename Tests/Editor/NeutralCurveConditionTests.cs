@@ -31,14 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
             var open = Clip("Opening", "Body", typeof(SkinnedMeshRenderer), "blendShape.Opening", AnimationCurve.Constant(0, 1, 100));
             State(controller.layers[0].stateMachine, "Neutral face", open, false);
             var descriptor = avatar.AddComponent(descriptorType);
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, controller);
         }
 
         [TearDown]

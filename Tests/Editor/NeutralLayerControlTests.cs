@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            if (SdkType("VRCAvatarDescriptor") == null || SdkType("VRCAnimatorLayerControl") == null || SdkType("VRCPlayableLayerControl") == null)
+            if (VrcAvatar.ComponentType("VRCAvatarDescriptor") == null || VrcAvatar.ComponentType("VRCAnimatorLayerControl") == null || VrcAvatar.ComponentType("VRCPlayableLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
             var name = "__NeutralLayerControl_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Body size", 100, Enumerable.Repeat(Vector3.right * .02f, 3).ToArray(), null, null);
             mesh.AddBlendShapeFrame("Open", 100, Enumerable.Repeat(Vector3.up * .015f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 23);
-            descriptor = avatar.AddComponent(SdkType("VRCAvatarDescriptor"));
+            descriptor = avatar.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor"));
             BuildGraph(controller, new[] { "Body" }, out bodyState, out controlState);
             SetControllers(descriptor, controller);
         }
@@ -53,8 +53,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (mesh != null) Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
-
-        private static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
 
         private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
         {
@@ -95,7 +93,7 @@ namespace VRVlog.LilToonExporter.Tests
         private static StateMachineBehaviour Control(AnimatorState state, string target = "FX", int layer = BodyLayer,
             float weight = 0, float duration = 0, bool global = false)
         {
-            var control = state.AddStateMachineBehaviour(SdkType(global ? "VRCPlayableLayerControl" : "VRCAnimatorLayerControl"));
+            var control = state.AddStateMachineBehaviour(VrcAvatar.ComponentType(global ? "VRCPlayableLayerControl" : "VRCAnimatorLayerControl"));
             using var data = new SerializedObject(control);
             var playable = data.FindProperty(global ? "layer" : "playable");
             var index = Array.IndexOf(playable.enumNames, target); Assert.That(index, Is.GreaterThanOrEqualTo(0), target);
@@ -195,7 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             reference = reference ?? controller;
             var clone = Object.Instantiate(referenceAvatar ?? avatar); var graph = PlayableGraph.Create("Original native relay with SDK primitive bridge");
-            var sdk = SdkType("VRCAnimatorLayerControl");
+            var sdk = VrcAvatar.ComponentType("VRCAnimatorLayerControl");
             try
             {
                 foreach (var behaviour in clone.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
@@ -241,7 +239,7 @@ namespace VRVlog.LilToonExporter.Tests
                     prior = active;
                     if (expectUnitGlobalFx)
                     {
-                        var now = new HashSet<(int Layer, int Hash)>(); var globalSdk = SdkType("VRCPlayableLayerControl");
+                        var now = new HashSet<(int Layer, int Hash)>(); var globalSdk = VrcAvatar.ComponentType("VRCPlayableLayerControl");
                         for (var index = 0; index < reference.layers.Length; index++)
                         {
                             var definition = reference.layers[index];
@@ -376,7 +374,7 @@ namespace VRVlog.LilToonExporter.Tests
             FiniteTiming(machine.states[2].state.transitions.Single(), fixedDuration);
             FiniteTiming(machine.states[1].state.transitions.Single(), fixedDuration);
             var enabled = machine.states[1].state;
-            var command = enabled.behaviours.Single(behaviour => SdkType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
+            var command = enabled.behaviours.Single(behaviour => VrcAvatar.ComponentType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
             using (var data = new SerializedObject(command))
             { data.FindProperty("goalWeight").floatValue = .5f; data.ApplyModifiedPropertiesWithoutUndo(); }
             AnimationUtility.SetEditorCurve((AnimationClip)controller.layers[0].stateMachine.defaultState.motion,
@@ -402,7 +400,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var transition in child.state.transitions)
                     if (remainsInitial || child.state != machine.defaultState) FiniteTiming(transition, true);
             var goal = remainsInitial ? 1 : .5f;
-            var command = machine.states[1].state.behaviours.Single(behaviour => SdkType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
+            var command = machine.states[1].state.behaviours.Single(behaviour => VrcAvatar.ComponentType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
             using (var data = new SerializedObject(command))
             { data.FindProperty("goalWeight").floatValue = goal; data.ApplyModifiedPropertiesWithoutUndo(); }
             AnimationUtility.SetEditorCurve((AnimationClip)controller.layers[0].stateMachine.defaultState.motion,
@@ -451,7 +449,7 @@ namespace VRVlog.LilToonExporter.Tests
                 EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"),
                 AnimationCurve.Constant(0, 1, 17));
             var enabled = controller.layers[ControlLayer].stateMachine.states[1].state;
-            var command = enabled.behaviours.Single(behaviour => SdkType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
+            var command = enabled.behaviours.Single(behaviour => VrcAvatar.ComponentType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
             using (var data = new SerializedObject(command))
             { data.FindProperty("goalWeight").floatValue = goal; data.ApplyModifiedPropertiesWithoutUndo(); }
             Assert.That(controller.layers[BodyLayer].defaultWeight, Is.EqualTo(1));
@@ -898,7 +896,7 @@ namespace VRVlog.LilToonExporter.Tests
                 { renderer.sharedMaterial.shader = shader; renderer.SetBlendShapeWeight(0, 17); renderer.SetBlendShapeWeight(1, 23); }
                 var fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/RoundTrip.controller");
                 BuildGraph(fx, new[] { "Front", "Back" }, out _, out _); MmdRelay(fx, true);
-                SetControllers(fixture.Source.AddComponent(SdkType("VRCAvatarDescriptor")), fx);
+                SetControllers(fixture.Source.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor")), fx);
                 var nativeRest = NativeSdkRelay("__MA/Internal/MMDNotActive", fx, fixture.Source, "Front");
                 var vrm = ScriptableObject.CreateInstance<VRM10Object>();
                 var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Absolute body endpoint";

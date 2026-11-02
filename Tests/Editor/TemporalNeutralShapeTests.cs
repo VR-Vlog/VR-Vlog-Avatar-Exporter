@@ -23,27 +23,13 @@ namespace VRVlog.LilToonExporter.Tests
         private SkinnedMeshRenderer skin;
         private AnimatorController controller;
 
-        private static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-
         private static EditorCurveBinding Binding(string shape, string path = "Body") =>
             EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
-
-        private static void SetFx(Component descriptor, RuntimeAnimatorController runtime)
-        {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = runtime;
-            data.ApplyModifiedPropertiesWithoutUndo();
-        }
 
         [SetUp]
         public void SetUp()
         {
-            var descriptor = DescriptorType(); if (descriptor == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptor = VrcAvatar.DescriptorType; if (descriptor == null) Assert.Ignore("Install the real VRChat SDK.");
             var name = "__TemporalNeutral_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
@@ -55,7 +41,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var shape in new[] { "Temporal", "Constant", "Implicit" })
                 mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .01f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 35); skin.SetBlendShapeWeight(2, 27);
-            SetFx(avatar.AddComponent(descriptor), controller);
+            VrcAvatar.SetFx(avatar.AddComponent(descriptor), controller);
         }
 
         [TearDown]
@@ -337,7 +323,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.AddObjectToAsset(open, fx); var upper = layers[1].stateMachine;
                 var state = upper.AddState("Open"); state.motion = open; state.writeDefaultValues = false; upper.defaultState = state;
             }
-            SetFx(fixture.Source.AddComponent(DescriptorType()), fx);
+            VrcAvatar.SetFx(fixture.Source.AddComponent(VrcAvatar.DescriptorType), fx);
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Explicit temporal endpoint";
             endpoint.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f), new MorphTargetBinding("Back", 0, .8f) };
             vrm.Expression.CustomClips.Add(endpoint); AssetDatabase.CreateAsset(vrm, folder + "/Vrm.asset"); AssetDatabase.CreateAsset(endpoint, folder + "/Endpoint.asset");

@@ -16,20 +16,6 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class PreparedNeutralExportTests
     {
-        static Type DescriptorType() => OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-
-        static void SetFx(Component descriptor, RuntimeAnimatorController controller)
-        {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         static AnimatorController DefaultFx(string asset, string path, string shape, float weight)
         {
             var controller = AnimatorController.CreateAnimatorControllerAtPath(asset);
@@ -46,7 +32,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task IndependentLoopOnTheInfluencingSkinBoneKeepsPreparedGeometryAndAuthoredEndpoints()
         {
-            var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__IndependentSkinBoneNeutral_" + Guid.NewGuid().ToString("N");
@@ -77,7 +63,7 @@ namespace VRVlog.LilToonExporter.Tests
                 motionLayer.defaultWeight = .5f; motionLayer.blendingMode = AnimatorLayerBlendingMode.Additive;
                 var moving = motionLayer.stateMachine.AddState("Loop"); moving.writeDefaultValues = false; moving.motion = loop;
                 motionLayer.stateMachine.defaultState = moving; controller.layers = layers;
-                SetFx(fixture.Source.AddComponent(type), controller);
+                VrcAvatar.SetFx(fixture.Source.AddComponent(type), controller);
                 var vrm = ScriptableObject.CreateInstance<VRM10Object>();
                 var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Authored source endpoint";
                 endpoint.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f), new MorphTargetBinding("Back", 0, .8f) };
@@ -158,7 +144,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task OneClickManualBlinkPreservesCoupledPreparedAppearanceAndAbsoluteClosure()
         {
-            var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__ManualBlinkAppearance_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -211,7 +197,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task OneClickKeepsSourceTrackingEndpointsAndPreparedRestAfterMarkerRemoval()
         {
-            var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__StrippedTrackingAppearance_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -307,7 +293,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Back", typeof(SkinnedMeshRenderer), "blendShape.Cap mask"),
                 AnimationCurve.Constant(0, 1, 100));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Cap", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 1));
-            SetFx(fixture.Source.AddComponent(descriptorType), controller);
+            VrcAvatar.SetFx(fixture.Source.AddComponent(descriptorType), controller);
             return cap;
         }
 
@@ -315,7 +301,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task AutomaticBlinkUsesFxOpenNeutralWhenSerializedUnifiedClosureIsFullyClosed(bool fullLilToon)
         {
-            var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__PreparedNeutralExport_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -331,7 +317,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var clip = (AnimationClip)controller.layers[0].stateMachine.defaultState.motion;
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Back", typeof(SkinnedMeshRenderer), "blendShape.UE/EyeClosed"),
                     AnimationCurve.Constant(0, 1, 0));
-                SetFx(fixture.Source.AddComponent(type), controller);
+                VrcAvatar.SetFx(fixture.Source.AddComponent(type), controller);
                 using (var plain = BlinkExportSession.Resolve(fixture.Source))
                     Assert.That(plain.Disabled && plain.UnresolvedAutomatic, Is.True,
                         "The static face has no remaining closure range; export must evaluate its FX defaults first.");
@@ -374,7 +360,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, false, true)]
         public async Task NdmfGeneratedShapeAndReboundFxUsePreparedMeshAndRendererPathInRealVrm(bool moved, bool fullLilToon, bool replacedRenderer)
         {
-            var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__NdmfPreparedNeutral_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
@@ -389,7 +375,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
                 { skin.SetBlendShapeWeight(0, 0); skin.sharedMaterial.shader = Shader.Find("lilToon"); }
                 var originalFx = DefaultFx(folder + "/Original.controller", "Front", "Original opening", 0);
-                SetFx(fixture.Source.AddComponent(type), originalFx);
+                VrcAvatar.SetFx(fixture.Source.AddComponent(type), originalFx);
                 Object.DestroyImmediate(fixture.Copy); fixture.Copy = Object.Instantiate(fixture.Source);
                 var generatedPath = moved ? "Generated/Prepared face" : "Prepared face";
                 ResetFakeNdmf();
@@ -419,7 +405,7 @@ namespace VRVlog.LilToonExporter.Tests
                     mesh.AddBlendShapeFrame("Prepared opening", 50, Enumerable.Repeat(Vector3.up * .01f, mesh.vertexCount).ToArray(), null, null);
                     mesh.AddBlendShapeFrame("Prepared opening", 100, Enumerable.Repeat(Vector3.up * .03f, mesh.vertexCount).ToArray(), null, null);
                     skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 0);
-                    SetFx(root.GetComponent(type), DefaultFx(folder + "/Generated.controller", generatedPath, "Prepared opening", 75));
+                    VrcAvatar.SetFx(root.GetComponent(type), DefaultFx(folder + "/Generated.controller", generatedPath, "Prepared opening", 75));
                     var vrm = ScriptableObject.CreateInstance<VRM10Object>();
                     var expression = ScriptableObject.CreateInstance<VRM10Expression>(); expression.name = "UE/JawOpen";
                     expression.MorphTargetBindings = new[] { new MorphTargetBinding(generatedPath, 0, .25f) };

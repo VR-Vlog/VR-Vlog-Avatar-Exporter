@@ -534,14 +534,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
                 var descriptor = fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                    var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX"); layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = fx; data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, fx);
                 var fingerprint = ExportSourceFingerprint.Compute(fixture.Source);
                 var assets = AssetDatabase.LoadAllAssetsAtPath(folder + "/Mixed.controller").Concat(new Object[] { fixture.Mesh })
                     .Concat(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().SelectMany(renderer => renderer.sharedMaterials)).Distinct().ToArray();

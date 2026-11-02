@@ -28,8 +28,8 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var descriptorType = SdkType("VRCAvatarDescriptor");
-            if (descriptorType == null || SdkType("VRCAnimatorTrackingControl") == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = VrcAvatar.ComponentType("VRCAvatarDescriptor");
+            if (descriptorType == null || VrcAvatar.ComponentType("VRCAnimatorTrackingControl") == null) Assert.Ignore("Install the real VRChat SDK.");
             var name = "__AdditionalParameterConstants_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
@@ -70,8 +70,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
 
-        private static Type SdkType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
-
         private AnimationClip Clip(string name, float? value = null)
         {
             var clip = new AnimationClip { name = name };
@@ -91,7 +89,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static void Tracking(AnimatorState state, string mode)
         {
-            var behaviour = state.AddStateMachineBehaviour(SdkType("VRCAnimatorTrackingControl"));
+            var behaviour = state.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorTrackingControl"));
             using var data = new SerializedObject(behaviour);
             var eyes = data.FindProperty("trackingEyes"); eyes.enumValueIndex = Array.IndexOf(eyes.enumNames, mode);
             data.ApplyModifiedPropertiesWithoutUndo();
