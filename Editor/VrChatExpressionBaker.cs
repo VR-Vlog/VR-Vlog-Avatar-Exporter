@@ -12,30 +12,19 @@ namespace VRVlog.LilToonExporter
         internal const string BakedFormat = ExportNoteText.ExpressionsAdded;
         internal const string NoneBakedWarning = ExportNoteText.ExpressionsNone;
 
-        private sealed class Channel
-        {
-            internal string Path, Shape;
-            internal SkinnedMeshRenderer Renderer;
-            internal Mesh Mesh;
-            internal float[] Rest;
-            internal bool HasValue;
-            internal float Weight;
-            internal ExpressionAnimationData.Curve Curve;
-        }
-
         private sealed class Pose
         {
             internal SkinnedMeshRenderer Renderer;
             internal Mesh Mesh;
             internal float[] Rest;
-            internal readonly List<Channel> Channels = new List<Channel>();
+            internal readonly List<ExpressionChannelMerge.Channel> Channels = new List<ExpressionChannelMerge.Channel>();
         }
 
         private sealed class Plan
         {
             internal VrChatExpressionMenu.Entry Entry;
             internal readonly List<Pose> Poses = new List<Pose>();
-            internal readonly List<Channel> Animation = new List<Channel>();
+            internal readonly List<ExpressionChannelMerge.Channel> Animation = new List<ExpressionChannelMerge.Channel>();
         }
 
         internal static bool SameCurve(ExpressionAnimationData.Curve first, ExpressionAnimationData.Curve second)
@@ -68,55 +57,22 @@ namespace VRVlog.LilToonExporter
             var plans = new List<Plan>();
             foreach (var entry in menu.Entries.Where(value => value.Error == null))
             {
-                var origins = new Dictionary<(string Path, string Shape), Channel>();
-                Channel Origin(string path, string shape)
-                {
-                    var key = (path, shape);
-                    if (origins.TryGetValue(key, out var found)) return found;
-                    var binding = prepared.Get(path);
-                    var channel = new Channel { Path = path, Shape = shape, Renderer = binding.Renderer, Mesh = binding.Mesh, Rest = binding.Weights };
-                    origins.Add(key, channel); return channel;
-                }
-                InvalidOperationException Conflict(Channel channel) => new InvalidOperationException(
+                InvalidOperationException Conflict(ExpressionChannelMerge.Channel channel) => new InvalidOperationException(
                     "Modular Avatar / NDMF の処理で同じ表情の変形に異なる値・アニメーションが統合されました。統合前の表情設定を一致させてください: " +
                     entry.Name + " / " + UnityEditor.AnimationUtility.CalculateTransformPath(channel.Renderer.transform, clone.transform) + " / " + channel.Shape);
-                foreach (var value in entry.Values)
-                {
-                    var channel = Origin(value.Path, value.Shape);
-                    if (channel.HasValue && !channel.Weight.Equals(value.Weight)) throw Conflict(channel);
-                    channel.HasValue = true; channel.Weight = value.Weight;
-                }
-                foreach (var value in entry.Animation)
-                {
-                    var channel = Origin(value.Path, value.Shape);
-                    if (channel.Curve != null && !SameCurve(channel.Curve, value.Curve)) throw Conflict(channel);
-                    channel.Curve = value.Curve;
-                }
-                // The readers record an animated channel's static value as the
-                // clip's first pose, so a merged value must still match that.
-                // The value itself is not baked: the animation alone moves the
-                // channel, and the VRM expression takes its last frame.
-                foreach (var channel in origins.Values)
-                {
-                    if (channel.Curve != null)
-                    {
-                        var initial = (float)channel.Curve.Evaluate(0);
-                        if (channel.HasValue && !channel.Weight.Equals(initial)) throw Conflict(channel);
-                        channel.Weight = initial;
-                    }
-                }
+                // An animated channel's merged value is not baked: the animation
+                // alone moves the channel, and the VRM expression takes its last frame.
                 var plan = new Plan { Entry = entry };
-                foreach (var group in origins.Values.GroupBy(channel => (channel.Renderer, channel.Shape)))
+                foreach (var channel in ExpressionChannelMerge.Groups(entry, path =>
                 {
-                    var channel = group.First();
-                    foreach (var other in group.Skip(1))
-                    {
-                        if (!channel.Weight.Equals(other.Weight) ||
-                            !(SameCurve(channel.Curve, other.Curve) || ConstantAt(channel.Curve, channel.Weight) && ConstantAt(other.Curve, other.Weight)))
-                            throw Conflict(channel);
-                        if (!ReferenceEquals(channel.Mesh, other.Mesh) || !channel.Rest.SequenceEqual(other.Rest))
-                            throw new InvalidOperationException("処理後の表情の基準形を一意に確定できません: " + entry.Name + " / " + channel.Shape);
-                    }
+                    var binding = prepared.Get(path);
+                    return new ExpressionChannelMerge.Channel { Renderer = binding.Renderer, Mesh = binding.Mesh, Rest = binding.Weights };
+                }, Conflict, sameGroup: (first, other) =>
+                {
+                    if (!ReferenceEquals(first.Mesh, other.Mesh) || !first.Rest.SequenceEqual(other.Rest))
+                        throw new InvalidOperationException("処理後の表情の基準形を一意に確定できません: " + entry.Name + " / " + first.Shape);
+                }))
+                {
                     var pose = plan.Poses.SingleOrDefault(value => value.Renderer == channel.Renderer);
                     if (pose == null)
                     {
@@ -305,7 +261,7 @@ namespace VRVlog.LilToonExporter
                     if (fixedChannels.Length == 0) continue;
                     var rest = group.Rest;
                     var pose = (float[])rest.Clone();
-                    var residual = new List<Channel>();
+                    var residual = new List<ExpressionChannelMerge.Channel>();
                     var direct = 0;
                     foreach (var value in fixedChannels)
                     {

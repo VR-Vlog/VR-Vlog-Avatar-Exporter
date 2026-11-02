@@ -39,9 +39,7 @@ namespace VRVlog.LilToonExporter
         {
             this.avatar = avatar;
             CommittedMorphs = new HashSet<EditorCurveBinding>(roots);
-            targets = avatar.GetComponentsInChildren<Transform>(true).GroupBy(transform =>
-                AnimationUtility.CalculateTransformPath(transform, avatar.transform), StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+            targets = SelectedExpressionAppearance.TransformsByPath(avatar);
         }
 
         // Explicit face endpoints have a geometry-proven output domain. Their
@@ -81,11 +79,6 @@ namespace VRVlog.LilToonExporter
                 ExpressionDependencies.FixedNeutralValues(runtime, source, ExpressionDependencies.Inspect(runtime, excludedPath,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true), excludedPath, fixedContext), excludedPath);
             var definitions = ExpressionDependencies.Controller(runtime).layers;
-            // Matching raw values prove an Override contribution. Additive
-            // defaults/reference poses can change another layer's appearance;
-            // do not discard ownership based on a per-clip comparison there.
-            var unchangedClips = allowUnchangedAppearance
-                ? VrChatExpressionSampler.UnchangedAppearanceClips(runtime, Enumerable.Range(0, definitions.Length)) : null;
             // Validate before any appearance group is preserved. A recoverable
             // unsupported binding must not conceal malformed data in another
             // reachable clip. The caller also supplies the neutral probe's
@@ -97,6 +90,10 @@ namespace VRVlog.LilToonExporter
             // Reuse the native convex-Override proof: identical raw keys cannot
             // prove an invariant contribution through additive or Direct trees.
             var invariantClips = VrChatExpressionSampler.UnchangedAppearanceClips(runtime, Enumerable.Range(0, definitions.Length));
+            // Matching raw values prove an Override contribution. Additive
+            // defaults/reference poses can change another layer's appearance;
+            // do not discard ownership based on a per-clip comparison there.
+            var unchangedClips = allowUnchangedAppearance ? invariantClips : null;
             var globalWeightControl = ownershipLayers.Any(layer =>
                 layer.WeightControls.Values.Any(control => control.Playable == "FX" && !control.AnimatorLayer) ||
                 layer.FxCommands.Values.Any(command => command.FxWeight != 1));
@@ -129,10 +126,10 @@ namespace VRVlog.LilToonExporter
                 var bindings = AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip))
                     .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
                 var appearance = new List<EditorCurveBinding>();
-                foreach (var binding in bindings.Where(binding => plan.IsAppearanceBinding(binding) && !HarmlessActivation(prepared, clip, binding)))
+                foreach (var binding in bindings.Where(binding => plan.IsAppearanceBinding(binding) && !HarmlessActivation(plan.targets, clip, binding)))
                 {
                     if (unchangedClips?.Contains(clip) == true &&
-                        SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding)) continue;
+                        SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding, plan.targets)) continue;
                     // A face clip commonly resets its bones to the prepared
                     // pose. Holding that pose changes nothing, so it does not
                     // tie the clip's morphs to an appearance option. When the
@@ -396,7 +393,7 @@ namespace VRVlog.LilToonExporter
 
         internal string EvaluationBindingRejection(AnimationClip clip, EditorCurveBinding binding)
         {
-            if (HarmlessActivation(avatar, clip, binding) || IsInertDynamicsBinding(binding) || unboundAppearanceBindings.Contains(binding)) return null;
+            if (HarmlessActivation(targets, clip, binding) || IsInertDynamicsBinding(binding) || unboundAppearanceBindings.Contains(binding)) return null;
             if (!appearanceBindings.Contains(binding)) return existingProperties.Contains(binding)
                 ? ExporterLocalization.T("対象プロパティは存在しますが、通常入力での到達範囲外、またはBlendShapeへの影響が未対応です")
                 : "記録されていない見た目の曲線です（通常入力での到達範囲外、または未対応のプロパティ）";
@@ -435,16 +432,16 @@ namespace VRVlog.LilToonExporter
         // harmless when Unity cannot resolve its dummy target, or when it
         // exactly preserves the prepared object's current appearance. Never
         // infer an object identity from an ambiguous path or accept a toggle.
-        internal static bool HarmlessActivation(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
+        // targets: SelectedExpressionAppearance.TransformsByPath(avatar).
+        internal static bool HarmlessActivation(IReadOnlyDictionary<string, Transform[]> targets, AnimationClip clip, EditorCurveBinding binding)
         {
-            if (avatar == null || binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") return false;
+            if (targets == null || binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") return false;
             var curve = AnimationUtility.GetEditorCurve(clip, binding);
             if (!CurveChecks.Constant(curve, emptyIsConstant: false)) return false;
             var value = curve.keys[0].value;
             if (value != 0 && value != 1) return false;
-            var matches = avatar.GetComponentsInChildren<Transform>(true).Where(transform =>
-                AnimationUtility.CalculateTransformPath(transform, avatar.transform) == binding.path).ToArray();
-            return matches.Length == 0 || matches.Length == 1 && matches[0].gameObject.activeSelf == (value != 0);
+            if (binding.path == null || !targets.TryGetValue(binding.path, out var matches)) return true;
+            return matches.Length == 1 && matches[0].gameObject.activeSelf == (value != 0);
         }
 
         // AvatarDynamics components are collision and contact inputs. They

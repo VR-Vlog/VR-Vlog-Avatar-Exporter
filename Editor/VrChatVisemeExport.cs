@@ -94,8 +94,7 @@ namespace VRVlog.LilToonExporter
         internal static Captured Read(GameObject avatar)
         {
             if (avatar == null) return null;
-            var descriptor = avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(avatar);
             if (VrChatExpressionMenu.Member(descriptor, "lipSync")?.ToString() != "VisemeBlendShape") return null;
             var renderer = VrChatExpressionMenu.Member(descriptor, "VisemeSkinnedMesh") as SkinnedMeshRenderer;
             if (renderer == null || !renderer.transform.IsChildOf(avatar.transform)) return null;

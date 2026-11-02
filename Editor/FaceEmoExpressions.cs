@@ -69,15 +69,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private sealed class BranchChannel
-        {
-            internal SkinnedMeshRenderer Renderer;
-            internal string Shape;
-            internal float Weight;
-            internal bool HasValue;
-            internal VRVlog.Expressions.ExpressionAnimationData.Curve Curve;
-        }
-
         // Normalize the prepared common clip by final channel before overlay.
         // Explicit branch channels win across every authoring alias; defaults
         // never inherit the alternative mode state's pose. Validate all plans
@@ -112,45 +103,16 @@ namespace VRVlog.LilToonExporter
             var plans = new List<(VrChatExpressionMenu.Entry Entry, List<VrChatExpressionMenu.MorphValue> Values)>();
             foreach (var entry in entries)
             {
-                var channels = new Dictionary<(string Path, string Shape), BranchChannel>();
-                BranchChannel Channel(string path, string shape)
+                // A path the prepared bindings cannot place falls back to the
+                // common face's renderer; one neither knows is never compared.
+                var explicitChannels = new HashSet<(SkinnedMeshRenderer Renderer, string Shape)>();
+                foreach (var channel in ExpressionChannelMerge.Groups(entry, path =>
                 {
-                    var key = (path, shape);
-                    if (channels.TryGetValue(key, out var known)) return known;
                     var renderer = toPreparedRenderer?.Invoke(path);
                     if (renderer == null) origins.TryGetValue(path, out renderer);
-                    var channel = new BranchChannel { Renderer = renderer, Shape = shape };
-                    channels.Add(key, channel); return channel;
-                }
-                foreach (var value in entry.Values)
-                {
-                    var channel = Channel(value.Path, value.Shape);
-                    if (channel.HasValue && !channel.Weight.Equals(value.Weight) && channel.Renderer != null) throw Conflict(channel.Renderer, channel.Shape);
-                    channel.HasValue = true; channel.Weight = value.Weight;
-                }
-                foreach (var animated in entry.Animation)
-                {
-                    var channel = Channel(animated.Path, animated.Shape);
-                    if (channel.Curve != null && !VrChatExpressionBaker.SameCurve(channel.Curve, animated.Curve) && channel.Renderer != null)
-                        throw Conflict(channel.Renderer, channel.Shape);
-                    channel.Curve = animated.Curve;
-                }
-                foreach (var channel in channels.Values.Where(channel => channel.Renderer != null && channel.Curve != null))
-                {
-                    var initial = (float)channel.Curve.Evaluate(0);
-                    if (channel.HasValue && !channel.Weight.Equals(initial)) throw Conflict(channel.Renderer, channel.Shape);
-                    channel.Weight = initial;
-                }
-                var explicitChannels = new HashSet<(SkinnedMeshRenderer Renderer, string Shape)>();
-                foreach (var group in channels.Values.Where(channel => channel.Renderer != null).GroupBy(channel => (channel.Renderer, channel.Shape)))
-                {
-                    var first = group.First();
-                    foreach (var other in group.Skip(1))
-                        if (!first.Weight.Equals(other.Weight) || !(VrChatExpressionBaker.SameCurve(first.Curve, other.Curve) ||
-                            VrChatExpressionBaker.ConstantAt(first.Curve, first.Weight) && VrChatExpressionBaker.ConstantAt(other.Curve, other.Weight)))
-                            throw Conflict(first.Renderer, first.Shape);
-                    explicitChannels.Add(group.Key);
-                }
+                    return new ExpressionChannelMerge.Channel { Renderer = renderer };
+                }, merged => Conflict(merged.Renderer, merged.Shape), skipUnresolved: true))
+                    explicitChannels.Add((channel.Renderer, channel.Shape));
                 var values = new List<VrChatExpressionMenu.MorphValue>(entry.Values);
                 foreach (var pair in defaults.Where(pair => !explicitChannels.Contains(pair.Key)))
                     foreach (var path in pair.Value.Paths.OrderBy(path => path, StringComparer.Ordinal))
