@@ -3,8 +3,10 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -82,6 +84,49 @@ namespace VRVlog.LilToonExporter.Tests
                 f.Source.transform.SetParent(null, true);
                 Object.DestroyImmediate(parent);
                 Object.DestroyImmediate(material);
+            }
+        }
+
+        // Opening a scene destroys the editor objects no scene keeps. The reloaded VRM's
+        // avatar, settings and expressions belong to the window until it closes.
+        [Test]
+        public async Task ReloadedVrmKeepsItsObjectsWhenASceneOpens()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            ExportRecoveryComparisonWindow window = null;
+            try
+            {
+                foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
+                    UniVrmOneClickExporter.Export(f.Source, "Scene opening", "Tests", warnings,
+                        exporterVersion: "0.11.5", lilToonVersion: "2.3.4",
+                        blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                        recoveryOptions: options, recoveryReport: report));
+                Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
+                window = ScriptableObject.CreateInstance<ExportRecoveryComparisonWindow>();
+                Set(window, "session", session);
+                await window.PrepareAsync();
+                Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
+                var loaded = Get<Vrm10Instance>(window, "imported");
+                var resources = loaded.GetComponent<RuntimeGltfInstance>().RuntimeResources
+                    .Select(value => (Name: value.Item2.GetType().Name + " " + value.Item2.name, Value: value.Item2)).ToArray();
+                Assert.That(resources.Select(value => value.Value).OfType<VRM10Object>(), Is.Not.Empty);
+
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+                Assert.That(resources.Where(value => value.Value == null).Select(value => value.Name), Is.Empty);
+                Assert.That(loaded.Vrm != null && loaded.GetComponent<Animator>().avatar != null, Is.True);
+                Assert.That(window.HasVrmPreview, Is.True);
+
+                // DontSave keeps them only until the window releases the load.
+                Object.DestroyImmediate(window); window = null;
+                Assert.That(resources.Where(value => value.Value != null).Select(value => value.Name), Is.Empty);
+            }
+            finally
+            {
+                if (window != null) Object.DestroyImmediate(window);
+                if (material != null) Object.DestroyImmediate(material);
             }
         }
 

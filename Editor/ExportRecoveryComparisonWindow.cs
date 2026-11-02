@@ -78,8 +78,8 @@ namespace VRVlog.LilToonExporter
             var token = loading.Token;
             try
             {
-                // UniVRM owns the loaded meshes/materials/textures through its
-                // RuntimeGltfInstance. Destroying this root releases them too.
+                // The loaded meshes, materials, textures, avatar and VRM settings are
+                // listed in its RuntimeGltfInstance; DestroyLoaded releases them.
                 var loaded = await Vrm10.LoadBytesAsync(attempt.Bytes, canLoadVrm0X: false,
                     awaitCaller: new ImmediateCaller(), ct: token,
                     controlRigGenerationOption: ControlRigGenerationOption.None);
@@ -87,10 +87,14 @@ namespace VRVlog.LilToonExporter
                     throw new InvalidOperationException(ExporterLocalization.T("VRMの再読み込み結果を取得できませんでした。"));
                 if (token.IsCancellationRequested || this == null || revision != previewRevision || session.CheckForChanges())
                 {
-                    Object.DestroyImmediate(loaded.gameObject);
+                    DestroyLoaded(loaded);
                     return;
                 }
                 imported = loaded;
+                // Opening a scene destroys the editor objects no scene keeps, such as the
+                // loaded avatar, VRM settings and expressions. The window keeps them until
+                // DestroyLoaded.
+                foreach (var resource in LoadedResources(loaded)) resource.hideFlags |= HideFlags.DontSave;
                 // Restore the saved lilToon payload onto the reloaded VRM.
                 // Never substitute a copy of the source avatar for the output.
                 lilToonPreview = ExportVrmLilToonPreview.Apply(attempt.Bytes, imported.gameObject);
@@ -335,10 +339,24 @@ namespace VRVlog.LilToonExporter
 
         private void ReleasePreview()
         {
-            vrmRender?.Cleanup(); vrmRender = null;
             lilToonPreview?.Dispose(); lilToonPreview = null;
-            if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            // Before vrmRender.Cleanup, which destroys the added GameObject and
+            // with it the list of resources to release.
+            if (imported != null) DestroyLoaded(imported);
             imported = null;
+            vrmRender?.Cleanup(); vrmRender = null;
+        }
+
+        private static Object[] LoadedResources(Vrm10Instance loaded) =>
+            loaded.GetComponent<RuntimeGltfInstance>().RuntimeResources.Select(value => value.Item2)
+                .Where(value => value != null && !EditorUtility.IsPersistent(value)).ToArray();
+
+        // RuntimeGltfInstance destroys them in OnDestroy, which Unity does not call in Edit mode.
+        private static void DestroyLoaded(Vrm10Instance loaded)
+        {
+            var resources = LoadedResources(loaded);
+            Object.DestroyImmediate(loaded.gameObject);
+            foreach (var resource in resources) if (resource != null) Object.DestroyImmediate(resource);
         }
     }
 }
