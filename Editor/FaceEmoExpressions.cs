@@ -31,7 +31,7 @@ namespace VRVlog.LilToonExporter
             Func<string, string[]> toAuthoringPaths, Func<string, SkinnedMeshRenderer> toPreparedRenderer,
             Func<string, bool> excludedPath, bool composeValues = true)
         {
-            var entries = source.Entries.Where(entry => entry.Error == null && entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true).ToArray();
+            var entries = source.Entries.Where(entry => entry.Error == null && entry.Source == VRVlog.Expressions.ExpressionSource.FaceEmo).ToArray();
             if (entries.Length == 0) return;
             var metadata = VrChatExpressionMenu.Read(prepared, new VrChatMenuImportPolicy { SkipAll = true });
             if (metadata.Controller == null) return;
@@ -621,8 +621,8 @@ namespace VRVlog.LilToonExporter
         }
 
         // The list-only export reads a listed clip FaceEmo registers through
-        // here too, so its permanent overrides and, for an entry whose Id
-        // starts with "faceemo/", the common DEFAULT FACE apply as they do here.
+        // here too, so its permanent overrides and, for an entry whose Source
+        // is FaceEmo, the common DEFAULT FACE apply as they do here.
         internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry, VrChatExpressionMenu.Source source,
             Func<string, bool> excludedPath, BindingSnapshot bindings)
         {

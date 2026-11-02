@@ -89,7 +89,7 @@ namespace VRVlog.LilToonExporter.Tests
         private static VrChatExpressionMenu.Source Menu(float smile)
         {
             var source = new VrChatExpressionMenu.Source();
-            var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/0", Name = "Registered branch" };
+            var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/0", Name = "Registered branch", Source = ExpressionSource.FaceEmo };
             entry.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = "Smile", Weight = smile });
             source.Entries.Add(entry); return source;
         }
