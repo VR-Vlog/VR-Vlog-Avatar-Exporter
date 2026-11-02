@@ -36,38 +36,22 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void OptionalExporterEntryMatchesInstalledReleaseChannel()
         {
-            var exporter = Type.GetType("VRVlog.LilToonExporter.LilToonExporterWindow, VRVlog.LilToonExporter.Editor", true);
             // The board asks its third page whether it transfers.
-            var transferring = (MethodInfo)exporter.GetMethod("EmbeddedTransferringMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            var transferring = AppTransferBoardPage.Transferring;
             Assert.That(transferring != null, Is.EqualTo(CloudTransferAvailability.Enabled));
-            if (transferring != null)
-            {
-                Assert.That(transferring.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
-                Assert.That(transferring.Name, Is.EqualTo("EmbeddedTransferring"));
-            }
+            if (transferring != null) Assert.That(transferring.Method, Is.EqualTo(typeof(AppTransferPanel).GetMethod("EmbeddedTransferring")));
             // Its third page itself, with the board's "戻る" and which button is blue. It is also
             // what tells the board that page is usable in the normal mode.
-            var embedded = (MethodInfo)exporter.GetMethod("EmbeddedTransferMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            var embedded = AppTransferBoardPage.Create;
             Assert.That(embedded != null, Is.EqualTo(CloudTransferAvailability.Enabled));
             if (embedded != null)
             {
-                Assert.That(embedded.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
-                Assert.That(embedded.Name, Is.EqualTo("CreateEmbedded"));
-                Assert.That(embedded.GetParameters().Select(parameter => parameter.ParameterType),
-                    Is.EqualTo(new[] { typeof(UnityEngine.GameObject), typeof(Action), typeof(Func<bool>) }));
+                Assert.That(embedded.Method.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
+                Assert.That(embedded.Method.Name, Is.EqualTo("CreateEmbedded"));
             }
-        }
-
-        [Test]
-        public void AppTransferBindsEveryExportMemberOfTheLoadedExporterByName()
-        {
-            var exporter = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
-            var bound = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic)
-                .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
-            Assert.That(bound != null, Is.EqualTo(exporter != null));
-            if (bound == null) return;
-            var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
+            var changeAvatar = AppTransferBoardPage.SetChangeAvatar;
+            Assert.That(changeAvatar != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (changeAvatar != null) Assert.That(changeAvatar.Method, Is.EqualTo(typeof(AppTransferPanel).GetMethod("SetEmbeddedChangeAvatar")));
         }
 
         [Test]
@@ -225,10 +209,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     type.GetField("avatarName", Instance).SetValue(window, "SampleAvatar");
                     type.GetField("consented", Instance).SetValue(window, true);
                     // Every other input is ready, whatever exporter the test project has.
-                    var entryType = type.GetNestedType("ExportEntry", BindingFlags.NonPublic);
-                    var entry = Activator.CreateInstance(entryType, true);
-                    entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
-                    type.GetField("exporter", Instance).SetValue(window, entry);
+                    type.GetField("exporter", Instance).SetValue(window, new StubAppTransferExport { HasAuthor = () => true });
                     type.GetField("exporterResolved", Instance).SetValue(window, true);
                     var reason = type.GetMethod("Reason", Instance);
 
@@ -265,22 +246,23 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 {
                     type.GetField("avatar", Instance).SetValue(window, avatar);
                     type.GetField("avatarName", Instance).SetValue(window, "  ");
-                    var entryType = type.GetNestedType("ExportEntry", BindingFlags.NonPublic);
-                    var entry = Activator.CreateInstance(entryType, true);
-                    entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
-                    entryType.GetField("TermsKey", Instance).SetValue(entry, (Func<string>)(() => "fixture terms"));
-                    // The saved row carries the export notes, read from the entry.
-                    entryType.GetField("LastNotes", Instance).SetValue(entry, (Func<string[]>)(() => new string[0]));
                     string savedName = null, failure = null;
                     var later = false;
                     Action<string, int> pending = null;
-                    entryType.GetField("SaveCopy", Instance).SetValue(entry, (Func<GameObject, string, bool, Action<string, int>, string>)((target, name, detailed, saved) =>
+                    var entry = new StubAppTransferExport
                     {
-                        savedName = name;
-                        if (later) { pending = saved; return ""; }
-                        if (failure == null) saved("C:/fixture/out.vrm", 2);
-                        return failure;
-                    }));
+                        HasAuthor = () => true,
+                        TermsKey = () => "fixture terms",
+                        // The saved row carries the export notes, read from the entry.
+                        LastNotes = () => new string[0],
+                        SaveCopy = (target, name, detailed, saved) =>
+                        {
+                            savedName = name;
+                            if (later) { pending = saved; return ""; }
+                            if (failure == null) saved("C:/fixture/out.vrm", 2);
+                            return failure;
+                        },
+                    };
                     type.GetField("exporter", Instance).SetValue(window, entry);
                     type.GetField("exporterResolved", Instance).SetValue(window, true);
                     var canSave = type.GetProperty("CanSaveCopy", Instance);
@@ -323,12 +305,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var diagnostics = Type.GetType("VRVlog.LilToonExporter.Compatibility.DependencyDiagnostics, VRVlog.LilToonExporter.Compatibility", true);
             var installed = diagnostics.GetMethod("Installed").Invoke(null, null);
             var dependencyError = (string)diagnostics.GetMethod("Error").Invoke(null, new[] { installed });
-            var resolvable = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic)
-                .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null) != null;
             var window = new AppTransferPanel();
             var exporter = typeof(AppTransferPanel).GetProperty("Exporter", Instance).GetValue(window);
             // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
-            Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
+            Assert.That(exporter != null, Is.EqualTo(dependencyError == null));
             var problem = (string)typeof(AppTransferPanel).GetField("exporterProblem", Instance).GetValue(window);
             if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
             if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);

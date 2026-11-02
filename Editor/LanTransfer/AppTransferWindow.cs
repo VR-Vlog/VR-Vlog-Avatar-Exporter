@@ -65,8 +65,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
             if (selected == null) return;
-            var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? AppTransferPanel.ExportEntry.Resolve() : null;
-            if (entry != null) entry.EditDetails(selected);
+            if (DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null) new AppTransferExport().EditDetails(selected);
             // Without the exporter the detailed window says why, under the item the user chose.
             else OpenDetailed(selected);
         }

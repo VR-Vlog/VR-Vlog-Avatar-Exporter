@@ -74,34 +74,6 @@ namespace VRVlog.LilToonExporter
             return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.5.1";
         }
 
-        // The same step as the expression board's third page: returns the panel as a VisualElement, given
-        // the board's "戻る" and whether "VRMを保存" is the blue button. Null without the module, or while
-        // it is turned off, and the board then shows its own page without the QR.
-        internal static System.Reflection.MethodInfo EmbeddedTransferMethod() =>
-            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "CreateEmbedded",
-                typeof(GameObject), typeof(Action), typeof(Func<bool>));
-
-        // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
-        internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
-            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
-
-        // Gives that panel the board's avatar change for "別のアバターを選ぶ" after a transfer.
-        internal static System.Reflection.MethodInfo EmbeddedChangeAvatarMethod() =>
-            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "SetEmbeddedChangeAvatar",
-                typeof(UnityEngine.UIElements.VisualElement), typeof(Action));
-
-        private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, params Type[] parameters)
-        {
-            try
-            {
-                var type = Type.GetType("VRVlog.LilToonExporter.LanTransfer.CloudVrmTransferWindow, VRVlog.LanTransfer.Editor", false);
-                if (type == null || !Equals(type.GetProperty("IsAvailable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null), true)) return null;
-                return owner(type)?.GetMethod(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                    null, parameters, null);
-            }
-            catch { return null; }
-        }
-
         // Stops only without lilToon, or when lilToon's baker that the avatar
         // needs is missing or changed. Any other installed version exports:
         // warnings lists how it differs from the catalogue and what the export

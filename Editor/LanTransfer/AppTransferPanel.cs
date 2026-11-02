@@ -77,7 +77,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private bool showPrivacy;
         [NonSerialized] private bool? nameFits;
         [NonSerialized] private AppTransferFlow flow;
-        [NonSerialized] private ExportEntry exporter;
+        [NonSerialized] private IAppTransferExport exporter;
         [NonSerialized] private bool exporterResolved;
         [NonSerialized] private string exporterProblem;
         [NonSerialized] private Texture2D qrTexture;
@@ -122,8 +122,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private VisualElement transferBody, fillBeforeSave, fillAfterSave;
         [NonSerialized] private IMGUIContainer uploadBar, previewView;
 
-        // The third page of the expression board, for the board's avatar. Resolved by the board by
-        // name, as the exporter is here. It lives while it is on the board's page: leaving the page
+        // The third page of the expression board, for the board's avatar (AppTransferBoardPage).
+        // It lives while it is on the board's page: leaving the page
         // or closing the board cancels the transfer and deletes the copy, as closing the window does.
         public static VisualElement CreateEmbedded(GameObject avatar) => CreateEmbedded(avatar, null, null);
 
@@ -142,8 +142,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         // Whether the board's panel (CreateEmbedded) is uploading or showing its QR. The board asks
-        // before a menu entry takes it off its page. Resolved by name, as CreateEmbedded is.
+        // before a menu entry takes it off its page.
         public static bool EmbeddedTransferring(VisualElement element) => Live.Any(panel => panel.root == element && panel.Transferring);
+
+        // The board finds the page through the exporter, which does not name this module.
+        [InitializeOnLoadMethod]
+        private static void RegisterBoardPage() => AppTransferBoardPage.Register(() => CloudVrmTransferWindow.IsAvailable,
+            CreateEmbedded, EmbeddedTransferring, SetEmbeddedChangeAvatar);
 
         internal GameObject Avatar => avatar;
         internal bool Detailed { get => detailed; set => detailed = value; }
@@ -160,8 +165,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private static string T(string source) => ExporterLocalization.T(source);
         private AppTransferFlow Flow => flow ?? (flow = new AppTransferFlow());
 
-        // Bind the exporter by name where it is used, as the exporter does for this module.
-        private ExportEntry Exporter
+        private IAppTransferExport Exporter
         {
             get
             {
@@ -170,7 +174,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // The exporter assembly also loads with an unsupported lilToon; like the
                 // export windows, do not export until the installed versions are supported.
                 var installed = DependencyDiagnostics.Installed();
-                exporter = DependencyDiagnostics.Error(installed) == null ? ExportEntry.Resolve() : null;
+                exporter = DependencyDiagnostics.Error(installed) == null ? new AppTransferExport() : null;
                 if (exporter != null) exporter.SelectAvatar(avatar);
                 else exporterProblem = DependencyDiagnostics.StartupError(installed)
                     ?? "書き出し処理の準備が完了していません。「再読み込み」を押してください。";
@@ -712,7 +716,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 exportAttempt++;
                 flow.Upload(path, wireName);
                 // What the export worked around is listed once the transfer has succeeded or failed (Poll).
-                flow.ShowResultAtEnd(Exporter?.LastResult?.Invoke());
+                flow.ShowResultAtEnd(Exporter?.LastResult());
                 // The stamp is taken now, as the file is written; the upload hashed the snapshot already.
                 sentWritten = complete ? Written(flow.SnapshotHash, key, target) : null;
                 Refresh();
@@ -1266,84 +1270,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             qrMark.style.top = at;
             qrMark.style.width = mark;
             qrMark.style.height = mark;
-        }
-
-        internal sealed class ExportEntry
-        {
-            internal Action<GameObject> SelectAvatar;
-            internal Func<bool> HasAuthor;
-            internal Action<bool> DrawTerms;
-            internal Func<GameObject, string, string, Action, string> Export;
-            internal Func<GameObject, string> RememberedName;
-            internal Func<GameObject, bool, string> SettingsSummary;
-            internal Func<GameObject, string> DetailedProblem;
-            internal Func<GameObject, bool> DetailedNeedsFix;
-            internal Func<GameObject, bool> EditDetails;
-            internal Func<GameObject, string, string, Action, string> ExportDetailed;
-            internal Func<int> LastMissingShaderCount;
-            internal Func<int> LastOmittedStageCount;
-            internal Func<string[]> LastNotes;
-            internal Func<Func<string>> LastDiagnostics;
-            internal Func<Func<string>> LastNamedDiagnostics;
-            internal Func<Action<string, string>> LastResult;
-            internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
-            internal Func<GameObject, string> SaveFileName;
-            internal Func<string> TermsKey;
-            internal Action<GameObject, string> RememberTransferName;
-            internal Func<GameObject, bool, object> SourceStamp;
-            internal Func<object, GameObject, bool> SourceUnchanged;
-            internal Func<object, bool> ChoicesUnchanged;
-            internal Func<GameObject, Rect, bool> DrawQuickPreview;
-            internal Func<GameObject, bool> QuickPreviewChanged;
-            internal Func<bool> QuickPreviewFailed;
-            internal Action ReleaseQuickPreview;
-
-            internal static ExportEntry Resolve()
-            {
-                try
-                {
-                    var type = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
-                    if (type == null) return null;
-                    var target = Activator.CreateInstance(type, true);
-                    return new ExportEntry
-                    {
-                        SelectAvatar = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), target, "SelectAvatar"),
-                        HasAuthor = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "HasAuthor"),
-                        DrawTerms = (Action<bool>)Delegate.CreateDelegate(typeof(Action<bool>), target, "DrawTerms"),
-                        Export = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "Export"),
-                        RememberedName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "RememberedName"),
-                        SettingsSummary = (Func<GameObject, bool, string>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, string>), target, "SettingsSummary"),
-                        DetailedProblem = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "DetailedProblem"),
-                        DetailedNeedsFix = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "DetailedNeedsFix"),
-                        EditDetails = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "EditDetails"),
-                        ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
-                        LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
-                        LastOmittedStageCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastOmittedStageCount"),
-                        LastNotes = (Func<string[]>)Delegate.CreateDelegate(typeof(Func<string[]>), target, "LastNotes"),
-                        LastDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastDiagnostics"),
-                        LastNamedDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastNamedDiagnostics"),
-                        LastResult = (Func<Action<string, string>>)Delegate.CreateDelegate(typeof(Func<Action<string, string>>), target, "LastResult"),
-                        SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
-                            typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
-                        SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),
-                        TermsKey = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), target, "TermsKey"),
-                        RememberTransferName = (Action<GameObject, string>)Delegate.CreateDelegate(typeof(Action<GameObject, string>), target, "RememberTransferName"),
-                        SourceStamp = (Func<GameObject, bool, object>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, object>), target, "SourceStamp"),
-                        SourceUnchanged = (Func<object, GameObject, bool>)Delegate.CreateDelegate(typeof(Func<object, GameObject, bool>), target, "SourceUnchanged"),
-                        ChoicesUnchanged = (Func<object, bool>)Delegate.CreateDelegate(typeof(Func<object, bool>), target, "ChoicesUnchanged"),
-                        DrawQuickPreview = (Func<GameObject, Rect, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, Rect, bool>), target, "DrawQuickPreview"),
-                        QuickPreviewChanged = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "QuickPreviewChanged"),
-                        QuickPreviewFailed = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "QuickPreviewFailed"),
-                        ReleaseQuickPreview = (Action)Delegate.CreateDelegate(typeof(Action), target, "ReleaseQuickPreview"),
-                    };
-                }
-                catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException || exception is FileLoadException
-                    || exception is BadImageFormatException || exception is ArgumentException || exception is MissingMemberException
-                    || exception is System.Reflection.TargetInvocationException)
-                {
-                    return null;
-                }
-            }
         }
     }
 }

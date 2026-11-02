@@ -4,10 +4,42 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    // Export side of the "アプリに転送" window. That window ships with the optional
-    // QR module and binds these members by name where it uses them, so the
-    // exporter keeps compiling and working in packages without the module.
-    internal sealed class AppTransferExport
+    // What the "アプリに転送" window asks the exporter. The window ships with the
+    // optional QR module, which references this assembly; this one never names it.
+    // Tests give the window a stand-in through this interface.
+    public interface IAppTransferExport
+    {
+        void SelectAvatar(GameObject avatar);
+        bool HasAuthor();
+        int LastMissingShaderCount();
+        int LastOmittedStageCount();
+        string[] LastNotes();
+        Func<string> LastDiagnostics();
+        Func<string> LastNamedDiagnostics();
+        Action<string, string> LastResult();
+        string RememberedName(GameObject avatar);
+        string SettingsSummary(GameObject avatar, bool detailed);
+        string DetailedProblem(GameObject avatar);
+        bool DetailedNeedsFix(GameObject avatar);
+        bool EditDetails(GameObject avatar);
+        void DrawTerms(bool markAuthor);
+        string Export(GameObject avatar, string name, string destination, Action saved);
+        string ExportDetailed(GameObject avatar, string name, string destination, Action saved);
+        string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved);
+        string SaveFileName(GameObject avatar);
+        string TermsKey();
+        void RememberTransferName(GameObject avatar, string name);
+        object SourceStamp(GameObject avatar, bool detailed);
+        bool SourceUnchanged(object stamp, GameObject avatar);
+        bool ChoicesUnchanged(object stamp);
+        bool DrawQuickPreview(GameObject avatar, Rect rect);
+        bool QuickPreviewChanged(GameObject avatar);
+        bool QuickPreviewFailed();
+        void ReleaseQuickPreview();
+    }
+
+    // Export side of the "アプリに転送" window.
+    public sealed class AppTransferExport : IAppTransferExport
     {
         // Only the open/closed state of the section. The author is remembered
         // per avatar through ExportAuthor, like the export windows.
