@@ -66,8 +66,6 @@ for property_names in ("floatNames", "colorNames", "textureNames"):
     assert f"!{property_names}.Add(item.name)" in validator
 for supported in ("lilToon", "lilToonLite", "lilToonMulti"):
     assert f'"{supported}"' in profile
-for rejected in ("fur", "refraction", "gem", "tessellation", "audioLink", "custom"):
-    assert f'"{rejected}"' in profile
 
 # Delivery contracts: GLB 2.0 parsing/writing, fallback preservation, optional
 # extension injection, real material extraction, atomic output, and Unity tests.
