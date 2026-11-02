@@ -71,14 +71,7 @@ namespace VRVlog.LilToonExporter
                 Map(source.transform, copy.transform);
                 utility = new PreviewRenderUtility();
                 NdmfExportPreparation.ShowOwnedCopyInPreview(copy, utility);
-                // The same camera and lights as the expressions page preview.
-                utility.camera.fieldOfView = 30;
-                utility.camera.nearClipPlane = .01f; utility.camera.farClipPlane = 100;
-                utility.camera.clearFlags = CameraClearFlags.SolidColor;
-                utility.camera.backgroundColor = new Color(.18f, .18f, .2f);
-                utility.lights[0].intensity = 1;
-                utility.lights[0].transform.rotation = Quaternion.Euler(30, 150, 0);
-                utility.lights[1].intensity = .5f; utility.ambientColor = Color.gray;
+                PreviewRendering.Apply(utility);
                 framed = false;
             }
             catch { Release(); throw; }
