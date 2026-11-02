@@ -529,9 +529,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 using (var from = sent == null ? null : flow.OpenSnapshot())
                     if (from != null) copied = AppTransferFlow.CopyTo(from, destination, sent.Hash);
             }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
-                || exception is NotSupportedException || exception is ObjectDisposedException)
-            { failure = exception.Message ?? ""; }
+            catch (Exception exception) when (CopyFailed(exception, true)) { failure = exception.Message ?? ""; }
             // The transfer ended before the copy, or the copy is not what was sent: CopyTo placed nothing,
             // so a file the user chose to replace is still there.
             if (failure == null && copied == null) failure = T(SaveFailedText);
@@ -593,13 +591,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 using (var from = new FileStream(savedCopy, FileMode.Open, FileAccess.Read, FileShare.Read))
                     copied = AppTransferFlow.CopyTo(from, snapshotPath, savedWritten.Hash);
             }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
-                || exception is NotSupportedException) { }
+            catch (Exception exception) when (CopyFailed(exception, false)) { }
             if (copied != null) return true;
             AppTransferFlow.Discard(snapshotPath);
             savedWritten = null;
             return false;
         }
+
+        // How copying a VRM file fails: the file system or the path. A copy read from the transfer's
+        // own snapshot also fails when the transfer ends and disposes it (fromTransfer).
+        private static bool CopyFailed(Exception exception, bool fromTransfer) =>
+            exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
+            || exception is NotSupportedException || fromTransfer && exception is ObjectDisposedException;
 
         // A VRM file this panel wrote or sent: its SHA-256, the name and terms, and what it was made from.
         private sealed class WrittenVrm

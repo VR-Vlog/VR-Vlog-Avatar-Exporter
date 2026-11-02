@@ -159,9 +159,18 @@ namespace VRVlog.LilToonExporter
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
-        public string Export(GameObject avatar, string name, string destination, Action saved)
+        public string Export(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved, false);
+
+        // Writes what the expression board for this avatar shows, with the name,
+        // author and license of this window. Returns like Export; without that
+        // board it returns why and writes nothing.
+        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved, true);
+
+        private string Export(GameObject avatar, string name, string destination, Action saved, bool detailed)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
+            var open = detailed ? ExperimentalExpressionCaptureWindow.ForTransfer(avatar) : null;
+            if (detailed && open == null) return ExporterLocalization.T(BoardClosed);
             // The window does not start without an author; a retry or
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
@@ -171,29 +180,12 @@ namespace VRVlog.LilToonExporter
             lastResult = null;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
+            if (open != null) return ExportFrom(open, avatar, name, targetAuthor, targetSettings, destination, saved, true);
             ExperimentalExpressionCaptureWindow board;
             try { board = ExperimentalExpressionCaptureWindow.PrepareHidden(avatar); }
             catch (OperationCanceledException) { return null; }
             try { return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, false); }
             finally { UnityEngine.Object.DestroyImmediate(board); }
-        }
-
-        // Writes what the expression board for this avatar shows, with the name,
-        // author and license of this window. Returns like Export; without that
-        // board it returns why and writes nothing.
-        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved)
-        {
-            if (saved == null) throw new ArgumentNullException(nameof(saved));
-            var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
-            if (board == null) return ExporterLocalization.T(BoardClosed);
-            if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
-            lastMissingShaderCount = 0;
-            lastOmittedStageCount = 0;
-            lastNotes = Array.Empty<string>();
-            lastResult = null;
-            var targetAuthor = author;
-            var targetSettings = RememberTerms(avatar, targetAuthor);
-            return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
         }
 
         // "VRMを保存" on the transfer screen: what the transfer would send (detailed: the open board,
