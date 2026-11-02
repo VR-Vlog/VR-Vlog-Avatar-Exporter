@@ -337,15 +337,9 @@ namespace VRVlog.LilToonExporter
                 // NDMF records committed animator clips against the original
                 // asset. Read that existing provenance without creating a
                 // reference; augmented clips need not have identical curves.
-                var contract = objectRegistry.GetType().GetInterfaces().FirstOrDefault(type =>
-                    type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-                var method = contract?.GetMethod("GetReference", new[] { typeof(UnityEngine.Object), typeof(bool) });
-                if (method == null) return false;
                 try
                 {
-                    var reference = method.Invoke(objectRegistry, new object[] { clip, false });
-                    var origin = reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)
-                        ?.GetValue(reference) as UnityEngine.Object;
+                    var origin = NdmfExportPreparation.RegisteredOriginal(objectRegistry, clip);
                     return origin != null && (origin == registered || origin == isolatedCopyOf?.Invoke(registered));
                 }
                 catch (TargetInvocationException) { return false; }

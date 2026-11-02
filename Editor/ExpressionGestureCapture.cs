@@ -210,15 +210,7 @@ namespace VRVlog.LilToonExporter
         // The asset NDMF records the clip as made from, read without creating a reference.
         static Object RegisteredOrigin(object registry, AnimationClip clip)
         {
-            if (registry == null) return null;
-            var contract = registry.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-            var method = contract?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
-            if (method == null) return null;
-            try
-            {
-                var reference = method.Invoke(registry, new object[] { clip, false });
-                return reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)?.GetValue(reference) as Object;
-            }
+            try { return NdmfExportPreparation.RegisteredOriginal(registry, clip); }
             catch (TargetInvocationException) { return null; }
             catch (ArgumentException) { return null; }
         }
