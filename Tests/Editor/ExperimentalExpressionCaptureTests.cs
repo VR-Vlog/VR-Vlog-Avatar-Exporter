@@ -2583,7 +2583,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var path = Path.Combine(directory, "face.vrm"); File.WriteAllBytes(path, new byte[] { 1, 2 });
-                ExperimentalExpressionCaptureWindow.AtomicWrite(path, new byte[] { 3, 4, 5 });
+                ExportSave.AtomicWrite(path, new byte[] { 3, 4, 5 });
                 Assert.That(File.ReadAllBytes(path), Is.EqualTo(new byte[] { 3, 4, 5 }));
                 Assert.That(Directory.GetFiles(directory), Is.EqualTo(new[] { path }));
             }

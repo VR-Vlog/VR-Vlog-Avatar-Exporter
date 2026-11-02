@@ -50,7 +50,7 @@ namespace VRVlog.LilToonExporter
         {
             if (avatars.Count > maximum) avatars.RemoveRange(0, avatars.Count - maximum);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+            ExportSave.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
         }
     }
 }
