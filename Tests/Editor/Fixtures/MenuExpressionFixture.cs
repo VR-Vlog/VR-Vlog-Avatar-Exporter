@@ -8,6 +8,11 @@ namespace VRVlog.LilToonExporter.Tests
 {
     internal static class MenuExpressionFixture
     {
+        // Every name the Unified Expressions registry knows, read from the
+        // registry itself.
+        static IReadOnlyList<string> RegisteredUnifiedNames() => (IReadOnlyList<string>)typeof(UnifiedExpressionRegistry)
+            .GetField("RegisteredNames", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).GetValue(null);
+
         // Binds a direct shape to the morph of the same name on node 0.
         sealed class IndexBindings : VrmMenuExpressions.IDirectBindings
         {
@@ -209,7 +214,7 @@ namespace VRVlog.LilToonExporter.Tests
             var trackingNames = TrackingExpressionNames.PerfectSync
                 .SelectMany(name => new[] { name, char.ToLowerInvariant(name[0]) + name.Substring(1), name.ToUpperInvariant(),
                     "Fcl_ALL_" + name, "Face." + name, "Body/" + name, "mesh:" + name, " " + name + " " })
-                .Concat(UnifiedExpressionRegistry.AllNames.SelectMany(name => new[] { name, UnifiedExpressionRegistry.Prefix + name }))
+                .Concat(RegisteredUnifiedNames().SelectMany(name => new[] { name, UnifiedExpressionRegistry.Prefix + name }))
                 .Concat(new[] { "neutral", "happy", "lookRight", "blinkLeft", "ee", UnifiedExpressionRegistry.RestPrefix,
                     UnifiedExpressionRegistry.RestPrefix + "2" }).ToArray();
             var notNumbered = trackingNames.Where(name => VrmMenuExpressions.UniqueName(name, taken => false) != name + " (2)").ToArray();

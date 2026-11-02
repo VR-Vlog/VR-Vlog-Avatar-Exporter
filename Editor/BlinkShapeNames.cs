@@ -95,9 +95,6 @@ namespace VRVlog.LilToonExporter
             return -1;
         }
 
-        internal static bool CompatiblePartials(string left, string right) =>
-            PartialFamily(left, true) >= 0 && PartialFamily(left, true) == PartialFamily(right, false);
-
         // Automatic ownership includes coexisting exact semantic families.
         // Resolve still chooses one family with its established preset priority.
         internal static IEnumerable<int> AutomaticCandidates(IReadOnlyList<string> names)

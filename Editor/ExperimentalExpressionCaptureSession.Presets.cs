@@ -543,10 +543,6 @@ namespace VRVlog.LilToonExporter
             return copy;
         }
 
-        // Suggest initial values from clip and BlendShape names; the vocabulary
-        // and matching rules live in ExpressionNameInference.
-        internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
-
         Dictionary<AnimationClip, List<string>> sourceMenuPaths;
         List<string> sourceMenuOutside;
         bool sourceMenuRead;

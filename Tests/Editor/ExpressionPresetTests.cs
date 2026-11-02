@@ -292,7 +292,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Smile Off")]
         [TestCase("")]
         public void PartialAmbiguousOrUnrelatedNamesSuggestNothing(string name) =>
-            Assert.That(Session.SuggestPreset(name), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion(name)?.Preset, Is.Null);
 
         // Every listed word, alone and in a typical clip name, names its own emotion and tier.
         [Test]
@@ -309,7 +309,7 @@ namespace VRVlog.LilToonExporter.Tests
                         : new[] { word, "表情_" + word, word + "02" };
                     foreach (var name in names)
                         Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), name);
-                    if (latin) Assert.That(Session.SuggestPreset(word + "x"), Is.Not.EqualTo(entry.Preset).Or.Null, "Latin words match whole words only: " + word);
+                    if (latin) Assert.That(ExpressionNameInference.MatchEmotion(word + "x")?.Preset, Is.Not.EqualTo(entry.Preset).Or.Null, "Latin words match whole words only: " + word);
                     // Menu words (Japanese, romaji too) are read only in menu and clip names, never in raw BlendShape names.
                     Assert.That(ExpressionNameInference.MatchEmotion(word, rawShape: true),
                         menuOnly ? Is.Null : Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), word);
@@ -320,7 +320,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionNameInference.Emotions.SelectMany(entry => entry.Words).All(word => word.All(character => character < 128)), "Words read in raw shape names are ASCII.");
             Assert.That(words.Distinct().Count(), Is.EqualTo(words.Length), "A word belongs to one emotion and tier.");
             foreach (var veto in ExpressionNameInference.VetoWords.Concat(ExpressionNameInference.VetoParts))
-                Assert.That(Session.SuggestPreset("Smile " + veto), Is.Null, veto);
+                Assert.That(ExpressionNameInference.MatchEmotion("Smile " + veto)?.Preset, Is.Null, veto);
         }
 
         [Test]
@@ -732,8 +732,8 @@ namespace VRVlog.LilToonExporter.Tests
             var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
             Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.surprised }), "Raw Bikkuri and Teary are not suggested.");
             Assert.That(suggested[ExpressionPreset.surprised].Shape, Is.EqualTo("Suprised"));
-            Assert.That(Session.SuggestPreset("Bikkuri"), Is.EqualTo(ExpressionPreset.surprised), "A clip named Bikkuri is.");
-            Assert.That(Session.SuggestPreset("Teary"), Is.Null, "Tears are an effect, not a sad face.");
+            Assert.That(ExpressionNameInference.MatchEmotion("Bikkuri")?.Preset, Is.EqualTo(ExpressionPreset.surprised), "A clip named Bikkuri is.");
+            Assert.That(ExpressionNameInference.MatchEmotion("Teary")?.Preset, Is.Null, "Tears are an effect, not a sad face.");
         }
 
         [Test]

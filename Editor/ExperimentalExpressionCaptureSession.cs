@@ -270,8 +270,6 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        internal bool HasCurrentSource => !disposed && Source != null && sourceStamp.Matches(Source);
-
         // What differs between the source and the copy, null when they match.
         // A match also counts as the check of this batch.
         internal string SourceDifference()
@@ -337,11 +335,6 @@ namespace VRVlog.LilToonExporter
 
         // Stops a save before the export when the source changed after the board opened.
         internal void RequireCurrentSource() => RequireValid(always: true);
-
-        // The batch's check, for an action that changes the board before it
-        // reads the copy: a copy built again for a changed source then sees the
-        // same choices when the action runs again.
-        internal void RequireSourceForBatch() => RequireValid();
 
         // The rest of this batch reads the copy as it is, without hashing the
         // source: for the board's idle reads right after it built the copy

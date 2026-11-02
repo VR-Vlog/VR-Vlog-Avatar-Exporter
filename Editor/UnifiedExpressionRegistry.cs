@@ -28,8 +28,6 @@ namespace VRVlog.FaceTracking
         static readonly HashSet<string> WholeNames = new HashSet<string>(StringComparer.Ordinal);
         static readonly IReadOnlyList<string> RegisteredNames;
 
-        public static IReadOnlyList<string> AllNames { get { return RegisteredNames; } }
-
         static UnifiedExpressionRegistry()
         {
             foreach (var side in new[] { "Left", "Right" })

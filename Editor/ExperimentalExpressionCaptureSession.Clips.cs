@@ -160,12 +160,6 @@ namespace VRVlog.LilToonExporter
         // Button items that select each clip in the FX controller, in menu
         // order. The board reads emotions from them as the quick export reads
         // its menu faces. Nothing here may stop the board from opening.
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar) =>
-            MenuClipPaths(() => VrChatExpressionMenu.Read(avatar));
-
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(Func<VrChatExpressionMenu.Source> read) =>
-            ReadMenuLinks(read).Paths;
-
         // MenuClipPaths and MenuEntriesOutsideBoard from one menu read. A menu
         // that cannot be read gives no paths and a null Outside (unreadable,
         // not "no items"). The record route still drops the menu's faces

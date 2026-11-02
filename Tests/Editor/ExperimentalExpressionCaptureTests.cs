@@ -659,7 +659,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
                 Assert.That(inputs.Single().Clip, Is.SameAs(retained));
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
-                Assert.That(session.HasCurrentSource, Is.True);
+                Assert.That(session.SourceDifference(), Is.Null);
                 var rectangles = (System.Collections.Generic.Dictionary<AnimationClip, Rect>)type.GetField("candidateRects", flags).GetValue(window);
                 Click(window, rectangles[clip]); for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
@@ -3044,7 +3044,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.ExcludedObjects, Is.EquivalentTo(new[] { front }));
                 front.transform.SetParent(null, true);
-                Assert.That(session.HasCurrentSource, Is.False);
+                Assert.That(session.SourceDifference(), Is.Not.Null);
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
                 session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session, Is.Not.Null);
