@@ -94,8 +94,8 @@ namespace VRVlog.LilToonExporter
             rightMutedStyle = new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleRight };
         }
 
-        static Color Muted => EditorGUIUtility.isProSkin ? new Color(0.62f, 0.62f, 0.62f) : new Color(0.38f, 0.38f, 0.38f);
-        static Color Hairline => EditorGUIUtility.isProSkin ? new Color(0f, 0f, 0f, 0.35f) : new Color(0f, 0f, 0f, 0.15f);
+        static Color Muted => ExporterColors.Muted;
+        static Color Hairline => ExporterColors.Hairline;
         static Color Stripe => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.03f) : new Color(0f, 0f, 0f, 0.03f);
         static Color Selected => EditorGUIUtility.isProSkin ? new Color(0.17f, 0.36f, 0.53f) : new Color(0.68f, 0.80f, 0.93f);
         static Color Over => EditorGUIUtility.isProSkin ? new Color(0.94f, 0.42f, 0.36f) : new Color(0.70f, 0.14f, 0.10f);

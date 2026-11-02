@@ -115,8 +115,7 @@ namespace VRVlog.LilToonExporter
             if (summaryStyle == null) summaryStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = false, clipping = TextClipping.Clip };
             if (missingLabelStyle == null)
             {
-                // The red of the window's own warnings (AppTransferWindow.uss).
-                var red = EditorGUIUtility.isProSkin ? new Color32(245, 107, 102, 255) : new Color32(184, 36, 31, 255);
+                var red = ExporterColors.TransferError;
                 missingLabelStyle = new GUIStyle(EditorStyles.label);
                 missingLabelStyle.normal.textColor = missingLabelStyle.focused.textColor = missingLabelStyle.hover.textColor = red;
                 missingLineStyle = new GUIStyle(EditorStyles.miniLabel);

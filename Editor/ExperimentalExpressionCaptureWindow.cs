@@ -168,8 +168,6 @@ namespace VRVlog.LilToonExporter
         static Color DashColor => Skin(0x9a9a9a, 0x6a6a6a);
         static Color TextColor => Skin(0xd2d2d2, 0x1e1e1e);
         static Color DimColor => Skin(0x9a9a9a, 0x5a5a5a);
-        static Color AccentColor => Skin(0x7fa6c9, 0x3a72b0);
-        static Color ErrorColor => Skin(0xe0675f, 0xb3261e);
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
         GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim, dropBox,
@@ -949,7 +947,7 @@ namespace VRVlog.LilToonExporter
 
         void DrawStepMarker(Rect circle, StepIndicator.Marker marker, string number)
         {
-            var fill = marker == StepIndicator.Marker.Error ? ErrorColor : marker == StepIndicator.Marker.Ring ? DimColor : AccentButtonColor;
+            var fill = marker == StepIndicator.Marker.Error ? ExporterColors.Error : marker == StepIndicator.Marker.Ring ? DimColor : AccentButtonColor;
             GUI.DrawTexture(circle, Disc(marker == StepIndicator.Marker.Ring), ScaleMode.StretchToFill, true, 0, fill, 0, 0);
             if (marker == StepIndicator.Marker.Error) DrawStepGlyph(circle, "!", stepMarkerText);
             else if (marker == StepIndicator.Marker.Check)
@@ -1493,7 +1491,7 @@ namespace VRVlog.LilToonExporter
                 // An empty slot can also be filled from the list, without a drag.
                 if (GUI.Button(thumb, new GUIContent("", ExporterLocalization.T("一覧から選ぶ")), GUIStyle.none)) ShowPresetMenu(preset, thumb);
             }
-            if (repaint && Nullable.Equals(dropHover, target)) Outline(tile, AccentColor);
+            if (repaint && Nullable.Equals(dropHover, target)) Outline(tile, ExporterColors.Accent);
 
             var stateRect = new Rect(rect.x + 1, tile.yMax + 1, rect.width - 2, ExpressionSlotLayout.State);
             var state = reason ?? SlotState(preset, assignment);
@@ -1579,7 +1577,7 @@ namespace VRVlog.LilToonExporter
             // A short line in the middle, so the gap does not read as the edge of the footer.
             if (current.type == EventType.Repaint)
                 EditorGUI.DrawRect(new Rect(Mathf.Round(handle.center.x - 16), Mathf.Round(handle.center.y - 1), 32, 2),
-                    GUIUtility.hotControl == id ? AccentColor : CardBorderColor);
+                    GUIUtility.hotControl == id ? ExporterColors.Accent : CardBorderColor);
             switch (current.GetTypeForControl(id))
             {
                 case EventType.MouseDown when current.button == 0 && handle.Contains(current.mousePosition):
@@ -1633,7 +1631,7 @@ namespace VRVlog.LilToonExporter
             if (Event.current.type == EventType.Repaint)
             {
                 EditorGUI.DrawRect(rect, PanelColor);
-                Outline(rect, Nullable.Equals(dropHover, target) ? AccentColor : LineColor);
+                Outline(rect, Nullable.Equals(dropHover, target) ? ExporterColors.Accent : LineColor);
                 EditorGUI.DrawRect(new Rect(rect.x, rect.y + PanelHeader, rect.width, 1), LineColor);
             }
             var header = new Rect(rect.x + 8, rect.y, rect.width - 16, PanelHeader);
@@ -1666,7 +1664,7 @@ namespace VRVlog.LilToonExporter
             DrawTile(tile, thumb, board.NameOf(clip), clip, broken ? null : Thumbnail(clip, null, null, size), false,
                 null, ItemTooltip(item), closeTooltip, close);
             if (!broken || Event.current.type != EventType.Repaint) return;
-            Outline(tile, ErrorColor);
+            Outline(tile, ExporterColors.Error);
             var icon = EditorGUIUtility.IconContent("console.erroricon").image;
             if (icon != null) GUI.DrawTexture(new Rect(thumb.center.x - 16, thumb.center.y - 16, 32, 32), icon, ScaleMode.ScaleToFit);
         }
@@ -1877,7 +1875,7 @@ namespace VRVlog.LilToonExporter
             if (Event.current.type != EventType.Repaint || dragMouse == null || !(DragAndDrop.GetGenericData(DragKey) is AnimationClip clip)) return;
             var text = Fit(board != null ? board.NameOf(clip) : clip.name, cardText, 200);
             var rect = new Rect(dragMouse.Value.x + 14, dragMouse.Value.y + 6, Mathf.Min(216, cardText.CalcSize(new GUIContent(text)).x + 16), 22);
-            EditorGUI.DrawRect(rect, CardColor); Outline(rect, AccentColor);
+            EditorGUI.DrawRect(rect, CardColor); Outline(rect, ExporterColors.Accent);
             GUI.Label(new Rect(rect.x + 8, rect.y, rect.width - 12, rect.height), text, cardText);
         }
 
@@ -2118,12 +2116,12 @@ namespace VRVlog.LilToonExporter
             cardText = Label(EditorStyles.label, TextColor);
             cardTextDisabled = Label(EditorStyles.label, Hex(0x6e6e6e));
             dimText = Label(EditorStyles.label, DimColor);
-            errorText = Label(EditorStyles.label, ErrorColor);
+            errorText = Label(EditorStyles.label, ExporterColors.Error);
             boldText = Label(EditorStyles.boldLabel, TextColor);
             dimMini = Label(EditorStyles.miniLabel, DimColor);
             dimMiniRight = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleRight);
             dimMiniBold = Label(EditorStyles.miniBoldLabel, DimColor);
-            errorMini = Label(EditorStyles.miniLabel, ErrorColor);
+            errorMini = Label(EditorStyles.miniLabel, ExporterColors.Error);
             nameCenter = Label(EditorStyles.label, TextColor, TextAnchor.MiddleCenter);
             // The badge sits on the thumbnail, so it is light on both skins.
             badgeText = Label(EditorStyles.miniLabel, Hex(0xd2d2d2), TextAnchor.MiddleCenter);
@@ -2133,7 +2131,7 @@ namespace VRVlog.LilToonExporter
             // The step circles: white on the filled ones, dimmed in the ring.
             stepMarkerText = Label(EditorStyles.miniBoldLabel, Color.white, TextAnchor.MiddleCenter);
             stepMarkerDim = Label(EditorStyles.miniBoldLabel, DimColor, TextAnchor.MiddleCenter);
-            stepErrorBold = Label(EditorStyles.boldLabel, ErrorColor);
+            stepErrorBold = Label(EditorStyles.boldLabel, ExporterColors.Error);
             // Drop areas: the hint is centred in the box and readable on both skins.
             dropBox = Label(GUI.skin.box, DimColor, TextAnchor.MiddleCenter);
             dropBox.wordWrap = true;
@@ -2268,7 +2266,7 @@ namespace VRVlog.LilToonExporter
             var area = GUILayoutUtility.GetRect(100, 42, GUILayout.ExpandWidth(true));
             GUI.Box(area, label, dropBox);
             var current = Event.current;
-            if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, AccentColor);
+            if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, ExporterColors.Accent);
             if (!area.Contains(current.mousePosition) || current.type != EventType.DragUpdated && current.type != EventType.DragPerform) return;
             var clips = DragAndDrop.objectReferences.OfType<AnimationClip>().Where(clip => clip != null).Distinct().ToArray();
             var valid = GUI.enabled && clips.Length > 0 && DragAndDrop.objectReferences.All(item => item is AnimationClip);
