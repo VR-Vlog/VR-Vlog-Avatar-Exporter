@@ -663,6 +663,8 @@ BEHAVIOR_CASES = {
         'PluginPackagesComeFromExportsPluginAndSkipTheExporter': 1,
         'VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf': 1,
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
+        'ToolKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
+        'VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
         'VrcFuryIsNotAppliedWithoutAnAvatarDescriptor': 1,
         'VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting': 1,
@@ -872,6 +874,9 @@ BEHAVIOR_CASES = {
     },
 }
 INTEGRATION_CASES = {
+    'NdmfSharedObjectTests': {
+        'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
+    },
     # The integration project must install the official MeshDeleterWithTexture
     # package. Synthetic sharedMesh replacement alone is not its integration
     # evidence, and an absent optional package must fail this explicit profile.
