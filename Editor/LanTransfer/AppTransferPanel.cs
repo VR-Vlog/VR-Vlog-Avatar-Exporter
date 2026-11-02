@@ -381,7 +381,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // A panel that did not start this transfer (Begin) decides from the link itself.
             if (placeholderSide == 0) qrMarked = TransferQrCode.CanMark(link);
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link, qrMarked); }
-            catch { flow.Fail(AppTransferText.NeedsShorterName); }
+            catch (InvalidOperationException) { flow.Fail(AppTransferText.NeedsShorterName); }
+            catch (ZXing.WriterException) { flow.Fail(AppTransferText.NeedsShorterName); }
         }
 
         // "QRを表示": the QR is drawn now, not when it became ready.
