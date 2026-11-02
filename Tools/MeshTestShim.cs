@@ -19,6 +19,8 @@ namespace UnityEngine
         public float GetBlendShapeWeight(int index) => throw new NotSupportedException();
         public void SetBlendShapeWeight(int index, float value) => throw new NotSupportedException();
     }
+    public class MeshRenderer : Renderer { }
+    public class MeshFilter : Component { public Mesh sharedMesh; }
     public struct Vector3
     {
         public float x,y,z;
