@@ -421,7 +421,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(exportCopy); }
 
-            using var session = new ExperimentalExpressionCaptureSession(source, false);
+            using var session = new ExperimentalExpressionCaptureSession(source);
             Assert.That(session.ClipError(smile, 0), Is.Null);
             var front = session.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
             var shape = front.sharedMesh.GetBlendShapeIndex("Face smile");
@@ -444,7 +444,7 @@ namespace VRVlog.LilToonExporter.Tests
             var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
             Assert.That(failure.ToString(), Does.Contain("The failing optimizer test pass failed."),
                 "The failing test pass must be what stops a strict export.");
-            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source, false))
+            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source))
                 Assert.That(session.Copy, Is.Not.Null);
             Vrm10Instance imported = null;
             try
@@ -529,11 +529,11 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 ExportTestHooks.ContinueByDefault = false;
-                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false).Dispose());
+                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source).Dispose());
                 Assert.That(failure.ToString(), Does.Contain("The failing mesh tool test pass failed."));
 
                 ExportTestHooks.ContinueByDefault = true;
-                using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false))
+                using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source))
                 {
                     Assert.That(session.Copy, Is.Not.Null);
                     Assert.That(session.Warnings, Does.Contain(ExporterLocalization.T(ExperimentalExpressionCaptureSession.WithoutBuildPassesWarning)));

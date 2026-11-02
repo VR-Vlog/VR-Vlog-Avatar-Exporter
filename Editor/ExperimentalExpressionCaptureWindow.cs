@@ -817,7 +817,7 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
                 else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
-                session = ExperimentalExpressionCaptureSession.Create(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
+                session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks());
                 // And the poses, as the export window writes them.
                 var storedPoses = stored.Poses ?? new PoseExportOptions();
                 session.PoseOptions.Manual.AddRange(storedPoses.Manual.Select(pose => pose.Copy()));
@@ -2625,7 +2625,7 @@ namespace VRVlog.LilToonExporter
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
             {
                 Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), changed.Detail ?? ""));
-                using var current = ExperimentalExpressionCaptureSession.Create(target.Source, replayInstalledDefaults: false, target.ExcludedObjects, target.GimmickOptions);
+                using var current = ExperimentalExpressionCaptureSession.Create(target.Source, target.ExcludedObjects, target.GimmickOptions);
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
                 return export(current, true);
             }

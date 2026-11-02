@@ -84,7 +84,6 @@ namespace VRVlog.LilToonExporter
         internal IReadOnlyList<GameObject> ExcludedObjects => manualExcluded;
         internal ExportGimmickOptions GimmickOptions => new ExportGimmickOptions { AutoExclude = gimmickOptions.AutoExclude,
             IncludedObjects = gimmickOptions.IncludedObjects.ToArray(), IncludedComponents = gimmickOptions.IncludedComponents.ToArray() };
-        ExperimentalExpressionControllerScope controllers;
         FaceEmoExpressions.BindingSnapshot faceEmoBindings;
         ExportRecoverySourceStamp sourceStamp;
         bool disposed, ownerReleased;
@@ -114,8 +113,6 @@ namespace VRVlog.LilToonExporter
             retainedPreview = preview; return true;
         }
 
-        internal ExperimentalExpressionCaptureSession(GameObject source) : this(source, true) { }
-
         internal const string WithoutBuildPassesWarning =
             "Modular Avatar / NDMFの処理に失敗したため、表情ボードは処理前のアバターで表情を読み取りました";
         const string BuildPassFailureKey = "VRVlog.LilToonExporter.BoardBuildPassFailure";
@@ -124,14 +121,14 @@ namespace VRVlog.LilToonExporter
         // still fail. A lenient export then leaves out the build passes, so the
         // board does too, instead of stopping the transfer before any file is
         // written. The export still runs the build passes on its own copy.
-        internal static ExperimentalExpressionCaptureSession Create(GameObject source, bool replayInstalledDefaults,
+        internal static ExperimentalExpressionCaptureSession Create(GameObject source,
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
         {
-            try { return new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions); }
+            try { return new ExperimentalExpressionCaptureSession(source, excludedObjects, gimmickOptions); }
             catch (Exception error) when (error.Data.Contains(BuildPassFailureKey) && ExportStageGuard.ContinueByDefault)
             {
                 Debug.LogWarning("VR Vlog: " + error);
-                var session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions, skipBuildPasses: true);
+                var session = new ExperimentalExpressionCaptureSession(source, excludedObjects, gimmickOptions, skipBuildPasses: true);
                 session.Warnings.Add(ExporterLocalization.T(WithoutBuildPassesWarning));
                 return session;
             }
@@ -139,7 +136,7 @@ namespace VRVlog.LilToonExporter
 
         // Manual exclusions and gimmick options follow the ordinary export:
         // detection skips what is excluded by hand, and both leave Copy.
-        internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults,
+        internal ExperimentalExpressionCaptureSession(GameObject source,
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, bool skipBuildPasses = false)
         {
             Source = source;
@@ -207,7 +204,6 @@ namespace VRVlog.LilToonExporter
                     throw;
                 }
                 steps.Next("channels");
-                if (replayInstalledDefaults) controllers = new ExperimentalExpressionControllerScope(Copy, Warnings);
                 foreach (var behaviour in Copy.GetComponentsInChildren<Behaviour>(true))
                     if (behaviour != null && !NdmfExportPreparation.PreservesExportBehaviour(behaviour)) behaviour.enabled = false;
                 foreach (var skin in Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -249,22 +245,6 @@ namespace VRVlog.LilToonExporter
                     Channels.Add(new Channel { Renderer = renderer, Mesh = mesh, Path = path,
                         Shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray(),
                         MeshHash = MeshStamp(mesh) });
-                }
-                steps.Next("menu");
-                var installed = VrChatExpressionMenu.Read(Copy);
-                if (replayInstalledDefaults && installed.Controller != null)
-                {
-                    NeutralInputProof.Read(Copy, installed);
-                    try
-                    {
-                        var neutral = Snapshot("FXの基準表情");
-                        foreach (var value in ExperimentalInstalledExpressionPlayer.Sample(Copy, installed, new Dictionary<string, float>(), warnings: Warnings))
-                            if (!skippedPaths.Contains(value.Path)) Set(neutral, value.Path, value.Shape, value.Weight);
-                        ValidatePose(neutral); ApplyUnchecked(neutral);
-                    }
-                    // Any failure reading the FX leaves the face as it is.
-                    catch (Exception error) when (!ExportStageGuard.IsCancellation(error))
-                    { Warnings.Add(ExporterLocalization.T("FXの基準表情を収録できませんでした: ") + error.Message); }
                 }
                 steps.Next("snapshot");
                 Baseline = Snapshot("基準の顔");
@@ -637,7 +617,6 @@ namespace VRVlog.LilToonExporter
             retainedPreview?.Cleanup(); retainedPreview = null;
             if (Copy != null) Object.DestroyImmediate(Copy);
             Copy = null;
-            controllers?.Dispose(); controllers = null;
             preparation?.Dispose(); preparation = null;
             authoredBindings?.Dispose(); authoredBindings = null;
             gimmicks?.Dispose(); gimmicks = null;
