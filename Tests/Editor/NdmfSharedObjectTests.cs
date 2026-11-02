@@ -34,14 +34,12 @@ namespace VRVlog.LilToonExporter.Tests
                 { name = "Shared material " + flags, hideFlags = flags, mainTexture = textures[index] }).ToArray();
             var mesh = new Mesh { name = "Shared mesh", hideFlags = HideFlags.DontSave };
             var folder = "Assets/__VRVlogSharedObjectTest_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder.Substring("Assets/".Length));
-            plugin.GetField("Materials").SetValue(null, materials);
-            plugin.GetField("Mesh").SetValue(null, mesh);
-            plugin.GetField("Armed").SetValue(null, true);
-            // Unity logs an internal assertion when NDMF saves a DontSave object.
-            LogAssert.ignoreFailingMessages = true;
             try
             {
+                AssetDatabase.CreateFolder("Assets", folder.Substring("Assets/".Length));
+                plugin.GetField("Materials").SetValue(null, materials);
+                plugin.GetField("Mesh").SetValue(null, mesh);
+                plugin.GetField("Armed").SetValue(null, true);
                 using var fixture = new AttachmentConnectionTests.Fixture();
                 var source = fixture.Source;
                 var descriptor = source.AddComponent(descriptorType);
@@ -68,7 +66,12 @@ namespace VRVlog.LilToonExporter.Tests
                     var copy = Object.Instantiate(source);
                     try
                     {
-                        using (NdmfExportPreparation.Prepare(source, copy))
+                        // Unity logs an internal assertion when NDMF saves a DontSave object.
+                        // Errors from the cleanup after this still fail the test.
+                        LogAssert.ignoreFailingMessages = true;
+                        var lease = NdmfExportPreparation.Prepare(source, copy);
+                        LogAssert.ignoreFailingMessages = false;
+                        using (lease)
                         {
                             // Without this the test would not reach the deletion it guards against.
                             Assert.That(materials.All(EditorUtility.IsPersistent), Is.True, "NDMF no longer saves the shared materials");

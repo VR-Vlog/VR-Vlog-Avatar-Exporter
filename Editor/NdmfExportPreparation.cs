@@ -1046,7 +1046,11 @@ namespace VRVlog.LilToonExporter
             foreach (var value in unsavedBeforeBuild)
                 if (value != null && EditorUtility.IsPersistent(value) &&
                     AssetDatabase.GetAssetPath(value).StartsWith(folder + "/", StringComparison.Ordinal))
-                    AssetDatabase.RemoveObjectFromAsset(value);
+                {
+                    // The folder must still be deleted, and a failure here must not hide why the export failed.
+                    try { AssetDatabase.RemoveObjectFromAsset(value); }
+                    catch (Exception exception) { Debug.LogWarning("VR Vlog: 一時データから取り出せませんでした: " + value.name + "\n" + exception.Message); }
+                }
         }
 
         private static HashSet<string> ExportMorphs(GameObject root)

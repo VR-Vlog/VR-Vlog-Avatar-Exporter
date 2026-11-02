@@ -1,7 +1,7 @@
 # ビルドの前からある未保存のオブジェクトを、書き出しの片付けで消さない
 
 - 日付: 2026-11-03
-- 対象: `Editor/NdmfExportPreparation.cs`・`Tests/Editor/NdmfPreparationTests.cs`・`Tests/Editor/NdmfSharedObjectTests.cs`・`Tests/NdmfPlugin/SharedObjectTestPlugin.cs`・`Tools/run-unity-compatibility.py`
+- 対象: `Editor/NdmfExportPreparation.cs`・`Tests/Editor/NdmfPreparationTests.cs`・`Tests/Editor/NdmfSharedObjectTests.cs`・`Tests/NdmfPlugin/SharedObjectTestPlugin.cs`・`Tools/run-unity-compatibility.py`・`Tools/NdmfPreparationTestShim.cs`
 
 ## 背景
 
@@ -34,10 +34,16 @@
 
 ツールがビルドの最中に作って持ち続けるものは、ビルドが作った他のものと見分けられないので、これまでどおり片付けで消える。NDMF の通常のビルドでも一時アセットの置き場は次のビルドで消される（読んだ範囲での推測で、測っていない）ので、ツールの側で `== null` を見て作り直す前提でよいと判断した。
 
+ツールがビルドの前から持っているマテリアルを、ビルド中に作ったテクスチャ（アトラスなど）を指すように書き換えると、マテリアルは残るがテクスチャは片付けで消える。マテリアルからの参照は切れた状態になる。
+
+同時に複数の書き出しが走ると、片方の控えにもう片方の生成物が入って、片付けで消えずに残ることがある（読んだ範囲での推測で、測っていない）。残るだけで、消えてはいけないものを消すことはない。
+
+取り出しに失敗したものは警告を出して、一時フォルダーと一緒に消える。フォルダーの削除を止めず、書き出しが失敗した元の例外も隠さないためである。
+
 NDMF が `DontSave` のオブジェクトを保存するときに Unity が内部の Assert を出す。これは NDMF 側のログなので、この変更では触らない。
 
 ## 確かめたこと
 
 - `NdmfSharedObjectTests` を実物の NDMF と Modular Avatar で回した。取り出しの呼び出しを外すと、1 回目の書き出しのあとでコピーのマテリアルが消えて落ちる。入れると 2 回続けて書き出しても全部残り、一時フォルダーも残らない。
-- `NdmfPreparationTests` に、ビルドの前からあるものは残り、ビルド中に作ったものは消えることを、NDMF の経路と NDMF を通らない経路の 2 本で足した。
+- `NdmfPreparationTests` に、ビルドの前からあるものは残り、ビルド中に作ったものは消えることを、NDMF の経路と NDMF を通らない経路の 2 本で足した。CI で必ず回るよう、`NdmfSharedObjectTests` は `INTEGRATION_CASES` に、この 2 本は `BEHAVIOR_CASES` に載せ、Unity を使わない検査（`Tools/run-ndmf-preparation-tests.ps1`）のシムにも必要な API を足した。
 - 実物のアバターを修正前（1.5.2）と修正後で 2 回ずつ書き出した。glTF の bin は完全に一致し、JSON の違いは毎回ランダムに付く画像名の GUID 1 か所だけだった。控えを取る時間は、読み込み済み 6262 個で 6 ms だった。
