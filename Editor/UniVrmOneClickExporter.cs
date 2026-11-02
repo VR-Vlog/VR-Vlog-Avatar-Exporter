@@ -363,11 +363,8 @@ namespace VRVlog.LilToonExporter
         internal static List<(Material Material, Renderer Renderer)> MissingShaderMaterials(GameObject root, Func<Material, Material> original = null)
         {
             var found = new List<(Material Material, Renderer Renderer)>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(root))
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(root))
             {
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 foreach (var slot in renderer.sharedMaterials)
                 {
                     if (slot == null || slot.shader != null && slot.shader.name != MissingShaderName) continue;

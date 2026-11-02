@@ -62,13 +62,9 @@ namespace VRVlog.LilToonExporter
             var mapped = new List<string>();
             var vrchat = new List<string>();
             var dropped = new List<string>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(copy))
+            // Particle and trail materials are not exported and are not listed.
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(copy))
             {
-                // Only renderers that become glTF meshes, as in LilToonFullSnapshot.
-                // Particle and trail materials are not exported and are not listed.
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 var slots = renderer.sharedMaterials;
                 var changed = false;
                 for (var i = 0; i < slots.Length; i++)
