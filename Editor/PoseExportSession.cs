@@ -234,8 +234,6 @@ namespace VRVlog.LilToonExporter
             var poses = Selected(); var animations = SelectedAnimations();
             if (poses.Count == 0 && animations.Count == 0) return bytes;
             var document = GlbDocument.Read(bytes);
-            var extensions = (Dictionary<string, object>)document.Json["extensions"];
-            if (!document.Json.TryGetValue("extensionsUsed", out var raw)) document.Json["extensionsUsed"] = raw = new List<object>();
             if (poses.Count > 0)
             {
                 var extension = HumanoidPoseData.Write(poses);
@@ -245,7 +243,7 @@ namespace VRVlog.LilToonExporter
                     HumanoidPoseData.Read(extension);
                 }
                 HumanoidPoseData.ValidateReferences(poses, document.Json);
-                extensions.Add(HumanoidPoseData.Extension, extension); ((List<object>)raw).Add(HumanoidPoseData.Extension);
+                document.PlaceExtension(HumanoidPoseData.Extension, extension, "既存のポーズ拡張を上書きできません。");
             }
             if (animations.Count > 0)
             {
@@ -257,7 +255,7 @@ namespace VRVlog.LilToonExporter
                     HumanoidAnimationData.Read(extension);
                 }
                 HumanoidAnimationData.ValidateReferences(animations, document.Json);
-                extensions.Add(HumanoidAnimationData.Extension, extension); ((List<object>)raw).Add(HumanoidAnimationData.Extension);
+                document.PlaceExtension(HumanoidAnimationData.Extension, extension, "既存のポーズアニメーション拡張を上書きできません。");
             }
             return AvatarFormatRequirements.Write(document.Write());
         }
