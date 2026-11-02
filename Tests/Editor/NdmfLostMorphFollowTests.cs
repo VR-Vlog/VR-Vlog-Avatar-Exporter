@@ -525,14 +525,14 @@ namespace VRVlog.LilToonExporter.Tests
             using var scene = new Scene(LostMorphTestPluginTransformFail, installed.Descriptor, installed.Proxy);
             // NDMF logs the failing pass to the Console.
             UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
-            var previous = ExportStageGuard.ContinueByDefault;
+            var previous = ExportTestHooks.ContinueByDefault;
             try
             {
-                ExportStageGuard.ContinueByDefault = false;
+                ExportTestHooks.ContinueByDefault = false;
                 var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false).Dispose());
                 Assert.That(failure.ToString(), Does.Contain("The failing mesh tool test pass failed."));
 
-                ExportStageGuard.ContinueByDefault = true;
+                ExportTestHooks.ContinueByDefault = true;
                 using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false))
                 {
                     Assert.That(session.Copy, Is.Not.Null);
@@ -547,7 +547,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                ExportStageGuard.ContinueByDefault = previous;
+                ExportTestHooks.ContinueByDefault = previous;
             }
         }
 

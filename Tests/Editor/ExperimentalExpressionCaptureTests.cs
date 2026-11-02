@@ -768,7 +768,7 @@ namespace VRVlog.LilToonExporter.Tests
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-stage-" + Guid.NewGuid().ToString("N") + ".vrm");
-            var previous = ExportStageGuard.ContinueByDefault;
+            var previous = ExportTestHooks.ContinueByDefault;
             var originalDialog = ExportFallbackConfirmation.Dialog;
             var originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
             var dialog = new SavingFallbackDialog();
@@ -779,7 +779,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // the interactive transfer really asks.
                 ExportFallbackConfirmation.Dialog = dialog.Show;
                 ExportFallbackConfirmation.IsBatchMode = () => false;
-                ExportStageGuard.ContinueByDefault = continueOnFailure;
+                ExportTestHooks.ContinueByDefault = continueOnFailure;
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 type.GetField("source", flags).SetValue(window, fixture.Source);
@@ -811,7 +811,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExportFallbackConfirmation.Dialog = originalDialog;
                 ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
-                ExportStageGuard.ContinueByDefault = previous;
+                ExportTestHooks.ContinueByDefault = previous;
                 foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);
                 Object.DestroyImmediate(window); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
                 if (File.Exists(path)) File.Delete(path);

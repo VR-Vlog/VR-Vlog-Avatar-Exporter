@@ -166,10 +166,10 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
-            var previous = ExportStageGuard.ContinueByDefault;
+            var previous = ExportTestHooks.ContinueByDefault;
             try
             {
-                ExportStageGuard.ContinueByDefault = true;
+                ExportTestHooks.ContinueByDefault = true;
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var (quick, normal) = ExportBoth(fixture.Source);
@@ -180,7 +180,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                ExportStageGuard.ContinueByDefault = previous;
+                ExportTestHooks.ContinueByDefault = previous;
                 foreach (var failure in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failure);
                 Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
             }

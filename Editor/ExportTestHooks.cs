@@ -16,5 +16,9 @@ namespace VRVlog.LilToonExporter
 
         // The packages that export an NDMF plugin, in place of the installed ones.
         internal static ISet<string> PluginPackagesOverride;
+
+        // Tests pin whether an export continues past a failed stage, in place
+        // of the editor preference.
+        internal static bool? ContinueByDefault;
     }
 }

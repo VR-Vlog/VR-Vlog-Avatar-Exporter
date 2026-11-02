@@ -67,7 +67,10 @@ namespace VRVlog.LilToonExporter
     {
         // The user-facing exports (window, app transfer) continue past failing
         // stages. Tests turn this off to check the old behaviour of stopping.
-        internal static bool ContinueByDefault = true;
+        // Exports continue past a failed stage unless the editor preference
+        // turns that off (see Documentation~/decisions/2026-10-22-quick-equals-default-normal.md).
+        internal const string ContinuePreference = "VRVlog.LilToonExporter.ContinueOnStageFailure";
+        internal static bool ContinueByDefault => ExportTestHooks.ContinueByDefault ?? UnityEditor.EditorPrefs.GetBool(ContinuePreference, true);
 
         internal readonly bool ContinueOnFailure;
         // Called once per left-out stage, before the export copy is destroyed.
