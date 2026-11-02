@@ -1,19 +1,34 @@
-# Avatar setup guide
+# Exporter video and installation page
 
-`guide/index.html` explains setup with ALCOM and VCC, Unity easy transfer, and
-smartphone receipt. The homepage keeps its installation and image instructions;
-small video buttons open the matching point without navigating away.
+The homepage contains the existing tutorial card and chapter buttons, followed
+by installation for ALCOM/VCC and support. The duplicate transfer three-step
+section and the separate written setup guide have been retired.
 
-The video and five subtitle tracks reference the same published, owner-approved
-October 28 tutorial at `https://vrvlog.fun/guide/`. Preserve its reduced audio level.
-The video is loaded only when requested; closing the dialog pauses it and returns
-focus to the originating step. Never embed a live QR code or private project names.
+The hero groups its short heading, explanation and installation action together.
+Desktop uses balanced copy/video columns; mobile stacks that copy/action group
+before the tutorial card. Keep the preview and both chapters visible without
+reintroducing a separate guide, and use the existing first-frame thumbnail.
 
-The existing official logo and approved screenshots in `assets/guide/` are reused
-unchanged. See that directory's README for image sources and attribution. The
-tutorial's voice and avatar credits are retained beside the video.
+`guide/index.html` is only a compatibility redirect to the homepage video card
+(`#tutorial`); it has no guide content and is excluded from the sitemap. Internal
+navigation no longer links to it. Keep the fallback link for browsers without
+JavaScript or automatic refresh.
+
+The video, five subtitle tracks, reduced audio level and credits reference the
+same published, owner-approved October 28 tutorial at `https://vrvlog.fun/guide/`.
+The video loads only when requested; closing the dialog pauses it and restores
+focus. Its thumbnail is the unmodified frame at exactly 0.0 seconds. The centered
+SVG close icon has a 44px button. Never embed live QR codes or private names.
+
+Installation uses two cards: add the exporter in the chosen manager, then install
+it into the avatar project. The ALCOM/VCC selector is above the cards. Backup and
+Unity-close instructions appear before the action, and manual URL instructions
+remain in the fallback accordion. Switching, repository links and installation
+image enlargement are preserved. The removed transfer step controls and their
+styling are not used.
+See `assets/guide/README.md` for the approved installation screenshots.
 
 This is a Website-only publication: package code, manifests, versions, release
-tags, and archives are unchanged. Publish with the existing Build VPM Listing
+tags and archives are unchanged. Publish with the existing Build VPM Listing
 workflow after merging the reviewed Website-only change into main, then back-merge
 main into develop. The workflow generates the official-domain mirror and receipt.

@@ -10,7 +10,4 @@ document.querySelectorAll('[data-video]').forEach(button=>button.addEventListene
 }));
 dialog?.querySelector('.dialog-close').addEventListener('click',()=>dialog.close());
 dialog?.addEventListener('close',()=>{requestId++;video.pause();opener?.focus({preventScroll:true});});
-const links=[...document.querySelectorAll('.doc-sidebar nav a')];
-if(links.length){const observer=new IntersectionObserver(entries=>{const entry=entries.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];if(!entry)return;links.forEach(a=>{if(a.hash==='#'+entry.target.id)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');});},{rootMargin:'-8% 0px -65% 0px'});document.querySelectorAll('main section[id]').forEach(s=>observer.observe(s));}
 })();
-const tocToggle=document.querySelector('.toc-toggle');tocToggle?.addEventListener('click',()=>{const expanded=tocToggle.getAttribute('aria-expanded')!=='true';tocToggle.setAttribute('aria-expanded',String(expanded));tocToggle.parentElement.classList.toggle('is-open',expanded);tocToggle.querySelector('span').textContent=expanded?'−':'＋';});

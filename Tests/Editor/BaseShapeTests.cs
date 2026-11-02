@@ -85,8 +85,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Shape indices of BaseShapeFixture.VisemeMesh: 0 sil, 1 aa, 2 ou,
         // 3 E (normals and tangents only), 4 Smile (outside Lip Sync).
+        // defaultFace names the shapes the FX default state sets on the face.
         static (Mesh Baked, List<string> Warnings) PreserveFace(Mesh mesh, float[] weights, ICollection<Mesh> temporary,
-            System.Func<SkinnedMeshRenderer, (SkinnedMeshRenderer Renderer, string[] Shapes)> visemes)
+            System.Func<SkinnedMeshRenderer, (SkinnedMeshRenderer Renderer, string[] Shapes)> visemes, params string[] defaultFace)
         {
             var avatar = new GameObject("Avatar");
             try
@@ -98,7 +99,8 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
                 var warnings = new List<string>();
                 var (renderer, shapes) = visemes(skin);
-                AvatarBaseShape.Preserve(avatar, avatar, temporary, warnings, visemeRenderer: renderer, visemeShapes: shapes);
+                AvatarBaseShape.Preserve(avatar, avatar, temporary, warnings, visemeRenderer: renderer, visemeShapes: shapes,
+                    defaultFace: defaultFace.Select(shape => (skin, shape)).ToList());
                 return (skin.sharedMesh, warnings);
             }
             finally { Object.DestroyImmediate(avatar); }
@@ -120,6 +122,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void AssertAsVrChatShows(Mesh source, float[] weights, Mesh baked, string[] group, params string[] kept) =>
             Assert.IsNull(BaseShapeFixture.RebasedAsVrChatShows(source, weights, group, kept, baked));
+
+        static void AssertAsVrChatShowsWithoutMouth(Mesh source, float[] weights, Mesh baked, string[] group, string mouth) =>
+            Assert.IsNull(BaseShapeFixture.RebasedAsVrChatShows(source, weights, group, new string[0], baked, new[] { mouth }));
 
         static void AssertNear(Vector3 expected, Vector3 actual, string message) =>
             Assert.That(Vector3.Distance(expected, actual), Is.LessThan(0.0001f), $"{message} expected {expected}, got {actual}");
@@ -179,15 +184,28 @@ namespace VRVlog.LilToonExporter.Tests
         });
 
         // Each viseme leaves out every other resting viseme, and a resting
-        // viseme also leaves out its own rest.
+        // viseme also leaves out its own rest. The FX default state holds the
+        // smile, which moves the mouth, so a viseme leaves it out too.
         [Test] public void PreserveRebasesTwoRestingVisemesAtOnce() => WithVisemeMesh((mesh, temporary) =>
+        {
+            var weights = new[] { 100f, 30f, 0f, 0f, 50f };
+            var baked = PreserveFace(mesh, weights, temporary, _ => default, "Smile").Baked;
+            AssertAsVrChatShowsWithoutMouth(mesh, weights, baked, BaseShapeFixture.VisemeGroup, "Smile");
+            // aa at vertex 0: 0.7 of (0, -0.5, 0.25) minus sil's (0, 1, 0) and half the smile's (4, 0, 0).
+            AssertNear(new Vector3(-2, -1.35f, .175f), Frame(baked, "vrc.v_aa", 0)[0], "aa drops its own rest, sil's rest and the smile.");
+            AssertNear(mesh.vertices[1] + Frame(mesh, "vrc.v_ou", 0)[1], baked.vertices[1] + Frame(baked, "vrc.v_ou", 0)[1],
+                "ou ends at the original base + ou, without the default smile.");
+            AssertNear(baked.vertices[1], mesh.vertices[1] + Frame(mesh, "vrc.v_sil", 0)[1] + Frame(mesh, "vrc.v_aa", 0)[1] * .3f + Frame(mesh, "Smile", 0)[1] * .5f,
+                "The base still shows the default smile.");
+        });
+
+        // A smile set on the renderer and not by the FX default state is part
+        // of the avatar's own face, so a viseme keeps it.
+        [Test] public void PreserveKeepsARestTheFxDefaultStateDoesNotSet() => WithVisemeMesh((mesh, temporary) =>
         {
             var weights = new[] { 100f, 30f, 0f, 0f, 50f };
             var baked = PreserveFace(mesh, weights, temporary, _ => default).Baked;
             AssertAsVrChatShows(mesh, weights, baked, BaseShapeFixture.VisemeGroup);
-            // aa at vertex 0: 0.7 of (0, -0.5, 0.25) minus sil's (0, 1, 0).
-            AssertNear(new Vector3(0, -1.35f, .175f), Frame(baked, "vrc.v_aa", 0)[0], "aa drops its own rest and sil's rest.");
-            // Smile is not a viseme, so its rest at 50 stays under ou as in VRChat.
             AssertNear(mesh.vertices[1] + Frame(mesh, "Smile", 0)[1] * .5f + Frame(mesh, "vrc.v_ou", 0)[1], baked.vertices[1] + Frame(baked, "vrc.v_ou", 0)[1],
                 "ou ends at the original base + half the smile + ou.");
         });
@@ -225,6 +243,157 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(other); }
         });
+
+        // A face whose vertices 0 and 1 are the mouth and 2 and 3 the eyes.
+        // aa and ou move only the mouth. MouthSmile moves the mouth and a
+        // little of the eyes, EyeHalf only the eyes. Cheek moves the mouth,
+        // but the renderer sets it, not the FX default state. Blink moves the
+        // whole face as much in the mouth as around the eyes.
+        static Mesh MouthAndEyesMesh()
+        {
+            var mesh = new Mesh { name = "Mouth and eyes" };
+            mesh.vertices = new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(-1, 2, 0), new Vector3(1, 2, 0) };
+            mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
+            mesh.normals = Enumerable.Repeat(Vector3.back, 4).ToArray();
+            mesh.tangents = Enumerable.Repeat(new Vector4(1, 0, 0, 1), 4).ToArray();
+            void Add(string name, params Vector3[] moves) => mesh.AddBlendShapeFrame(name, 100, moves, new Vector3[4], new Vector3[4]);
+            Add("vrc.v_aa", new Vector3(0, -1, 0), new Vector3(0, -1, 0), Vector3.zero, Vector3.zero);
+            Add("vrc.v_ou", new Vector3(.5f, 0, .5f), new Vector3(-.5f, 0, .5f), Vector3.zero, Vector3.zero);
+            Add("MouthSmile", new Vector3(-.5f, .5f, 0), new Vector3(.5f, .5f, 0), new Vector3(0, .1f, 0), Vector3.zero);
+            Add("EyeHalf", Vector3.zero, Vector3.zero, new Vector3(0, -.5f, 0), new Vector3(0, -.5f, 0));
+            Add("Cheek", new Vector3(0, 0, -.25f), new Vector3(0, 0, -.25f), Vector3.zero, Vector3.zero);
+            Add("Blink", new Vector3(0, -.25f, 0), new Vector3(0, -.25f, 0), new Vector3(0, -.25f, 0), new Vector3(0, -.25f, 0));
+            return mesh;
+        }
+
+        static Vector3 Shown(Mesh mesh, int vertex, params (string Shape, float Weight)[] weights)
+        {
+            var result = mesh.vertices[vertex];
+            foreach (var (shape, weight) in weights) result += Frame(mesh, shape, 0)[vertex] * weight;
+            return result;
+        }
+
+        // Only the default shapes that mostly move the mouth are left out of a
+        // vowel, and only on the mouth: the eyelids and the eye part of the
+        // smile keep their default. The cancel follows the vowel's weight: aa
+        // at w takes off w of the default smile.
+        [Test] public void PreserveTakesOnlyTheDefaultMouthOffAVowel()
+        {
+            var mesh = MouthAndEyesMesh();
+            var temporary = new List<Mesh>();
+            try
+            {
+                var weights = new[] { 0f, 0f, 60f, 40f, 50f, 0f };
+                var baked = PreserveFace(mesh, weights, temporary, _ => default, "MouthSmile", "EyeHalf", "vrc.v_aa").Baked;
+                var rest = new[] { ("MouthSmile", .6f), ("EyeHalf", .4f), ("Cheek", .5f) };
+                for (var v = 0; v < 4; v++)
+                {
+                    // Vertices 2 and 3 are not moved by any vowel and keep the smile.
+                    var withoutMouth = new[] { ("EyeHalf", .4f), ("Cheek", .5f), ("MouthSmile", v < 2 ? 0f : .6f) };
+                    AssertNear(Shown(mesh, v, rest), baked.vertices[v], $"The base keeps the default face at vertex {v}.");
+                    AssertNear(Shown(mesh, v, withoutMouth.Append(("vrc.v_aa", 1f)).ToArray()), Shown(baked, v, ("vrc.v_aa", 1f)),
+                        $"aa at 1 is aa without the default smile at vertex {v}.");
+                    AssertNear(Shown(mesh, v, withoutMouth.Append(("vrc.v_aa", .8f)).Append(("MouthSmile", v < 2 ? .6f * .2f : 0f)).ToArray()),
+                        Shown(baked, v, ("vrc.v_aa", .8f)), $"aa at .8 takes off .8 of the default smile at vertex {v}.");
+                    // Two vowels whose weights add up to 1 take the smile off once.
+                    AssertNear(Shown(mesh, v, withoutMouth.Append(("vrc.v_aa", .5f)).Append(("vrc.v_ou", .5f)).ToArray()),
+                        Shown(baked, v, ("vrc.v_aa", .5f), ("vrc.v_ou", .5f)), $"aa and ou at .5 take the smile off once at vertex {v}.");
+                    AssertNear(Shown(mesh, v, ("EyeHalf", .4f), ("Cheek", .5f), ("MouthSmile", 1f)), Shown(baked, v, ("MouthSmile", 1f)),
+                        $"The smile at 1 still shows the smile once at vertex {v}.");
+                }
+                // Cheek would count as a mouth too if the FX default state set it.
+                CollectionAssert.AreEquivalent(new[] { 2, 4 }, AvatarBaseShape.MouthRests(mesh, weights, new HashSet<int> { 0, 1 }, new[] { 0, 2, 3, 4, 5 }));
+            }
+            finally
+            {
+                foreach (var item in temporary) Object.DestroyImmediate(item);
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        // A vertex some Lip Sync shape moves by a fifth of that shape's largest
+        // move or more is fully the mouth. Below that, the default mouth is
+        // taken off less and less, so the edge of the mouth has no step.
+        [Test] public void PreserveFadesTheMouthCancelOutAtTheEdgeOfTheMouth()
+        {
+            var mesh = new Mesh { name = "Mouth edge" };
+            var temporary = new List<Mesh>();
+            try
+            {
+                mesh.vertices = new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(2, 0, 0), new Vector3(3, 0, 0), new Vector3(4, 0, 0) };
+                mesh.triangles = new[] { 0, 1, 2, 2, 3, 4 };
+                mesh.normals = Enumerable.Repeat(Vector3.back, 5).ToArray();
+                mesh.tangents = Enumerable.Repeat(new Vector4(1, 0, 0, 1), 5).ToArray();
+                void Add(string name, params Vector3[] moves) => mesh.AddBlendShapeFrame(name, 100, moves, new Vector3[5], new Vector3[5]);
+                Add("vrc.v_aa", Vector3.down, Vector3.down * .2f, Vector3.down * .1f, Vector3.down * .01f, Vector3.zero);
+                Add("vrc.v_ou", Vector3.zero, Vector3.zero, Vector3.zero, Vector3.back * .05f, Vector3.back * .5f);
+                Add("MouthSmile", Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up);
+                var exclusive = new HashSet<int> { 0, 1 };
+                var mouth = new[] { 1f, 1f, .5f, .5f, 1f };
+                CollectionAssert.AreEqual(mouth, AvatarBaseShape.MouthVertices(mesh, exclusive).Select(value => Mathf.Round(value * 1000f) / 1000f));
+                var weights = new[] { 0f, 0f, 50f };
+                var baked = PreserveFace(mesh, weights, temporary, _ => default, "MouthSmile").Baked;
+                for (var v = 0; v < 5; v++)
+                {
+                    AssertNear(Shown(mesh, v, ("MouthSmile", .5f)), baked.vertices[v], $"The base keeps the default smile at vertex {v}.");
+                    AssertNear(Shown(mesh, v, ("MouthSmile", .5f * (1f - mouth[v])), ("vrc.v_aa", 1f)), Shown(baked, v, ("vrc.v_aa", 1f)),
+                        $"aa at 1 takes the smile off as much as vertex {v} belongs to the mouth.");
+                }
+            }
+            finally
+            {
+                foreach (var item in temporary) Object.DestroyImmediate(item);
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        // An expression that shows a Lip Sync shape cannot bind it once the
+        // shape also takes the default mouth off, so all of them are baked.
+        [Test] public void ShapesWithoutOtherRestsHoldsEveryVisemeWithADefaultMouth()
+        {
+            var mesh = MouthAndEyesMesh();
+            try
+            {
+                var weights = new[] { 0f, 0f, 60f, 40f, 0f, 0f };
+                var exclusive = new HashSet<int> { 0, 1 };
+                Assert.That(AvatarBaseShape.ShapesWithoutOtherRests(mesh, weights, exclusive), Is.Empty);
+                Assert.That(AvatarBaseShape.ShapesWithoutOtherRests(mesh, weights, exclusive, new HashSet<int>()), Is.Empty);
+                CollectionAssert.AreEquivalent(exclusive, AvatarBaseShape.ShapesWithoutOtherRests(mesh, weights, exclusive, new HashSet<int> { 2 }));
+            }
+            finally { Object.DestroyImmediate(mesh); }
+        }
+
+        // The shapes blink closes the eyes with keep their default even when
+        // they move the mouth as much as the eyes.
+        [Test] public void DefaultFaceLeavesOutTheBlinkShapes()
+        {
+            var mesh = MouthAndEyesMesh();
+            var avatar = new GameObject("Avatar");
+            try
+            {
+                var face = new GameObject("Face");
+                face.transform.SetParent(avatar.transform, false);
+                var skin = face.AddComponent<SkinnedMeshRenderer>();
+                skin.sharedMesh = mesh;
+                var weights = new[] { 0f, 0f, 60f, 0f, 0f, 30f };
+                for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
+                var fxRest = new[] { "MouthSmile", "Blink", "Missing" }.Select(shape => new VrChatExpressionMenu.MorphValue { Path = "Face", Shape = shape })
+                    .Append(new VrChatExpressionMenu.MorphValue { Path = "Nowhere", Shape = "MouthSmile" });
+                var blink = new[] { new BlinkShapeBinding { Renderer = skin, Shape = "Blink" } };
+                var defaultFace = NeutralShapeSnapshot.DefaultFace(NeutralShapeSnapshot.Capture(avatar), fxRest, blink);
+                CollectionAssert.AreEquivalent(new[] { (skin, "MouthSmile"), (skin, "Missing") }, defaultFace);
+                CollectionAssert.AreEquivalent(new[] { 5 }, AvatarBaseShape.MouthRests(mesh, weights, new HashSet<int> { 0, 1 }, new[] { 5 }),
+                    "Without the blink binding the blink shape would count as a mouth.");
+                CollectionAssert.AreEquivalent(new[] { 2 }, AvatarBaseShape.MouthRests(skin, mesh, weights, new HashSet<int> { 0, 1 }, defaultFace));
+                Assert.That(NeutralShapeSnapshot.DefaultFace(null, fxRest, blink), Is.Empty);
+                Assert.That(NeutralShapeSnapshot.DefaultFace(NeutralShapeSnapshot.Capture(avatar), null, blink), Is.Empty);
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatar);
+                Object.DestroyImmediate(mesh);
+            }
+        }
 
         // A viseme whose frames the rest cannot be evaluated from is written as
         // authored and its value is not stored in the base, so the other

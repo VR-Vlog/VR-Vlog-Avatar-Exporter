@@ -97,6 +97,14 @@ namespace VRVlog.LilToonExporter.Tests
             return layers[layers.Length - 1].stateMachine;
         }
 
+        // The AnimationCurve constructor and keys setter drop NaN-valued keys;
+        // AddKey keeps them, as generated clips do.
+        internal static AnimationCurve NaNCurve()
+        {
+            var curve = new AnimationCurve(); curve.AddKey(new Keyframe(0, float.NaN)); curve.AddKey(new Keyframe(1, float.NaN));
+            return curve;
+        }
+
         private AnimatorState Open(float weight = 100, bool writeDefaults = false)
         {
             var machine = controller.layers[0].stateMachine;
@@ -756,6 +764,56 @@ namespace VRVlog.LilToonExporter.Tests
             NeutralShapeSnapshot.Apply(avatar, values);
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(expected).Within(.01));
             Assert.That(target.localPosition, Is.EqualTo(preparedPosition));
+        }
+
+        // A mesh cutter keys a child bone's scale to NaN to hide the vertices
+        // weighted to it. The probe never reads a Transform value, so the FX
+        // rest is still captured from the morph curves next to it.
+        [TestCase("value")]
+        [TestCase("tangent")]
+        public void NaNTransformScaleOnChildBoneStillCapturesFxRest(string kind)
+        {
+            Open(75);
+            var bone = new GameObject("Face bone").transform; bone.SetParent(avatar.transform, false);
+            var hidden = new GameObject("Hidden bone").transform; hidden.SetParent(bone, false);
+            skin.bones = new[] { bone, hidden }; skin.rootBone = bone;
+            mesh.bindposes = new[] { Matrix4x4.identity, Matrix4x4.identity };
+            mesh.boneWeights = new[] { new BoneWeight { boneIndex0 = 0, weight0 = 1 }, new BoneWeight { boneIndex0 = 0, weight0 = 1 },
+                new BoneWeight { boneIndex0 = 1, weight0 = 1 } };
+            var path = AnimationUtility.CalculateTransformPath(hidden, avatar.transform);
+            var cut = new AnimationClip { name = "NaN scale" };
+            foreach (var axis in new[] { "x", "y", "z" })
+                AnimationUtility.SetEditorCurve(cut, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalScale." + axis), kind == "value"
+                    ? NaNCurve()
+                    : new AnimationCurve(new Keyframe(0, 1, 0, float.NaN), new Keyframe(1, 1, 0, 0)));
+            var stored = AnimationUtility.GetEditorCurve(cut, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalScale.x")).keys[0];
+            Assert.That(kind == "value" ? float.IsNaN(stored.value) : float.IsNaN(stored.outTangent), Is.True, "The fixture must keep its NaN.");
+            AssetDatabase.AddObjectToAsset(cut, controller);
+            var support = Layer("NaN scale support"); support.defaultState = State(support, cut, writeDefaults: true);
+            var before = EditorJsonUtility.ToJson(controller);
+            var values = NeutralShapeSampler.Sample(avatar);
+            Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(hidden.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
+            Assert.That(skin.GetBlendShapeWeight(3), Is.EqualTo(35));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
+        }
+
+        // Morph curves are what the probe reads, so a NaN one still fails.
+        [TestCase("value")]
+        [TestCase("tangent")]
+        public void NaNBlendShapeCurveStillFailsFxRest(string kind)
+        {
+            var face = (AnimationClip)Open(75).motion;
+            var binding = EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink");
+            AnimationUtility.SetEditorCurve(face, binding, kind == "value"
+                ? NaNCurve()
+                : new AnimationCurve(new Keyframe(0, 50, 0, float.NaN), new Keyframe(1, 50, 0, 0)));
+            var stored = AnimationUtility.GetEditorCurve(face, binding).keys[0];
+            Assert.That(kind == "value" ? float.IsNaN(stored.value) : float.IsNaN(stored.outTangent), Is.True, "The fixture must keep its NaN.");
+            var error = Assert.Catch<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar));
+            Assert.That(error.Message, Does.Contain("Blink"));
+            Assert.That(skin.GetBlendShapeWeight(1), Is.Zero);
         }
 
         [Test]

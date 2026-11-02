@@ -23,23 +23,19 @@ namespace VRVlog.LilToonExporter.Tests
         const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         static readonly Type Board = typeof(ExperimentalExpressionCaptureWindow);
 
-        // Answers the result list at once, as if the user pressed 保存する, and
-        // keeps its text.
+        // Keeps the text of each result list opened.
         sealed class SavingDialog : IExportFallbackDialog
         {
             internal readonly List<string> Texts = new List<string>();
-            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
-            {
+            public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) =>
                 Texts.Add(result.Text());
-                save();
-            }
         }
 
         // What one export wrote and reported.
         sealed class Exported
         {
             internal string Path;
-            // The result list: shown before saving by "通常", logged by "かんたん". Null
+            // The result list: shown after the transfer by "通常", logged by "かんたん". Null
             // when the export worked around nothing.
             internal string ResultList;
             // The detail lines logged after saving.
@@ -421,6 +417,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var saved = 0;
                 var logs = Capture(() => Assert.That(transfer.ExportDetailed(avatar, "Avatar", result.Path, () => saved++), Is.Null));
                 Assert.That(saved, Is.EqualTo(1));
+                Assert.That(dialog.Texts.Count, Is.EqualTo(asked), "The result list waits for the transfer to end.");
+                // As the transfer screen does once the transfer has ended.
+                transfer.LastResult()?.Invoke(ExportResultWindow.SavedTitle, null);
                 Assert.That(dialog.Texts.Count - asked, Is.LessThanOrEqualTo(1));
                 result.ResultList = dialog.Texts.Count > asked ? dialog.Texts.Last() : null;
                 result.Details = Details(logs);

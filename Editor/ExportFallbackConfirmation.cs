@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -149,17 +148,19 @@ namespace VRVlog.LilToonExporter
 
     internal interface IExportFallbackDialog
     {
-        // Shows the finished export before it is written. Calls save to write
-        // it or changeSettings to go back; closing without either saves nothing.
-        void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings);
+        // Shows the export result once the file is saved or the transfer has
+        // ended. heading is the source text of what happened ("VRMを保存しました");
+        // note is text already translated for beside it, such as why a transfer failed.
+        // diagnostics are those of the export listed, taken when it finished.
+        void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings);
     }
 
     internal static class ExportFallbackConfirmation
     {
         sealed class EditorDialog : IExportFallbackDialog
         {
-            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings) =>
-                ExportResultWindow.ShowPending(result, avatar, save, changeSettings, openBlinkSettings);
+            public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) =>
+                ExportResultWindow.Open(result, avatar, heading, note, diagnostics, openBlinkSettings);
         }
 
         // Tests replace these two; batch runs and CI never reach the window.
@@ -203,19 +204,22 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // True when the user has to decide before the file is written: the
-        // export worked around something, and someone is there to answer.
-        internal static bool NeedsAnswer(ExportFallbackReport report, bool interactive) =>
+        // True when the result list opens after the export: the export worked
+        // around something, and someone is there to read it.
+        internal static bool ShowsResult(ExportFallbackReport report, bool interactive) =>
             report != null && report.Count != 0 && interactive && !IsBatchMode();
 
-        // Saves at once unless NeedsAnswer; then the result list decides. Going
-        // back selects the affected objects and opens the blink settings if needed.
-        internal static void Confirm(ExportFallbackReport report, IEnumerable<string> warnings, string destination,
-            GameObject avatar, bool interactive, Action save, Action openBlinkSettings = null)
+        // Opens the result list of a finished export with the heading and note given; null
+        // when ShowsResult is false. destination is null when the file is not the
+        // user's (a transfer's own copy), so the list names no file.
+        internal static Action<string, string> ResultOpener(ExportFallbackReport report, IEnumerable<string> warnings, string destination,
+            GameObject avatar, bool interactive, Action openBlinkSettings = null)
         {
-            if (!NeedsAnswer(report, interactive)) { save(); return; }
+            if (!ShowsResult(report, interactive)) return null;
             var result = ExportResultList.Build(report, warnings, destination);
-            Dialog.Show(result, avatar, save, () => ShowTargets(report, avatar, openBlinkSettings), openBlinkSettings);
+            // A transfer opens the list later; another export may have been recorded by then.
+            var diagnostics = ExportDiagnostics.Last;
+            return (heading, note) => Dialog.Show(result, avatar, heading, note, diagnostics, openBlinkSettings);
         }
 
         internal static GameObject[] Targets(ExportFallbackReport report, GameObject avatar)
@@ -230,17 +234,6 @@ namespace VRVlog.LilToonExporter
             // Build tools can rename or move objects on the copy. Fall back to the avatar.
             if (targets.Count == 0) targets.Add(avatar);
             return targets.ToArray();
-        }
-
-        static void ShowTargets(ExportFallbackReport report, GameObject avatar, Action openBlinkSettings)
-        {
-            var targets = Targets(report, avatar);
-            if (targets.Length > 0)
-            {
-                Selection.objects = targets;
-                EditorGUIUtility.PingObject(targets[0]);
-            }
-            if (report.Items.Any(item => item.Kind == ExportFallbackKind.Blink)) openBlinkSettings?.Invoke();
         }
     }
 }

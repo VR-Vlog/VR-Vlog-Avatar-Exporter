@@ -180,10 +180,11 @@ namespace VRVlog.LilToonExporter
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings)
             => Bake(source, clone, menu, meshes, warnings, null);
 
-        // visemeRenderer and visemeShapes are what AvatarBaseShape.Preserve received.
+        // visemeRenderer, visemeShapes and defaultFace are what AvatarBaseShape.Preserve received.
         internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings,
-            PreparedExpressionBindings prepared, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null)
+            PreparedExpressionBindings prepared, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null,
+            ICollection<(SkinnedMeshRenderer Renderer, string Shape)> defaultFace = null)
         {
             var result = new List<VrmMenuExpressions.Expression>();
             // A viseme exported without the other visemes' rests is not the
@@ -194,7 +195,9 @@ namespace VRVlog.LilToonExporter
             {
                 if (!withoutOtherRests.TryGetValue(skin, out var shapes))
                 {
-                    shapes = AvatarBaseShape.ShapesWithoutOtherRests(mesh, rest, AvatarBaseShape.ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes));
+                    var exclusive = AvatarBaseShape.ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes);
+                    shapes = AvatarBaseShape.ShapesWithoutOtherRests(mesh, rest, exclusive,
+                        AvatarBaseShape.MouthRests(skin, mesh, rest, exclusive, defaultFace));
                     withoutOtherRests.Add(skin, shapes);
                 }
                 return shapes;

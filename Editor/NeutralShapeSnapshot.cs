@@ -83,6 +83,26 @@ namespace VRVlog.LilToonExporter
                 assignment.Renderer.SetBlendShapeWeight(assignment.Shape, assignment.Weight);
         }
 
+        // The shapes the FX default state sets (fxRest), on the renderers of
+        // neutral, less the shapes blink closes the eyes with: a vowel never
+        // takes the default eyelids off. AvatarBaseShape.MouthRests picks the
+        // mouth shapes from these.
+        internal static HashSet<(SkinnedMeshRenderer Renderer, string Shape)> DefaultFace(NeutralShapeSnapshot neutral,
+            IEnumerable<MorphValue> fxRest, IEnumerable<BlinkShapeBinding> blink)
+        {
+            var result = new HashSet<(SkinnedMeshRenderer Renderer, string Shape)>();
+            if (neutral == null || fxRest == null) return result;
+            foreach (var value in fxRest)
+            {
+                RendererState state;
+                try { state = neutral.Get(value.Path); }
+                catch (InvalidOperationException) { continue; }
+                if (state != null) result.Add((state.Renderer, value.Shape));
+            }
+            foreach (var binding in blink ?? Array.Empty<BlinkShapeBinding>()) result.Remove((binding.Renderer, binding.Shape));
+            return result;
+        }
+
         // Kept for the many callers that name it through this class.
         internal static bool Finite(float value) => NumericChecks.Finite(value);
     }

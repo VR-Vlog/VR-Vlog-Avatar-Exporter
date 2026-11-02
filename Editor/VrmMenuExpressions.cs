@@ -330,12 +330,19 @@ namespace VRVlog.LilToonExporter
                 if (group != null) group.Add(item);
                 else groups.Add(new List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> { item });
             }
-            foreach (var group in groups)
+            var kept = groups.Select(group => (Group: group, Face: KeptFace(group))).ToList();
+            // A prefix or suffix every written name shares is left out
+            // (ExpressionNameAffix). Every reference below takes the final
+            // name: the extension, RegisteredName and MergedInto.
+            var names = ExpressionNameAffix.Trim(kept.Select(item => item.Face.Expression.Name).ToArray(),
+                candidate => Reserved(candidate) || custom.ContainsKey(candidate));
+            for (var index = 0; index < kept.Count; index++)
             {
-                var (expression, binds, animation) = KeptFace(group);
+                var group = kept[index].Group;
+                var (expression, binds, animation) = kept[index].Face;
                 // The name carries no source prefix; the extension lists the
                 // source. Recorded and authored custom faces keep their names.
-                var name = UniqueName(expression.Name, custom.ContainsKey);
+                var name = UniqueName(names[index], custom.ContainsKey);
                 // A face with no binds moves only bones or visibility. It
                 // leaves blink, mouth and gaze to tracking, so an app that
                 // ignores transforms shows the face unchanged.

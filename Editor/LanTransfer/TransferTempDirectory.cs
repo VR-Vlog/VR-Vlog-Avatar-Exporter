@@ -14,7 +14,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // untranslated source text; the windows translate it where they show it.
     internal static class TransferTempDirectory
     {
-        internal const string NoWritableFolder = "転送用の一時ファイルを置ける場所が見つかりません。空き容量と、一時フォルダーへの書き込み権限を確認してください。";
+        internal const string NoWritableFolder = "転送用の一時ファイルを置ける場所が見つかりません\n空き容量と一時フォルダーへの書き込み権限を確認する";
 
         internal const string ShownAsIs = "VRVlog.ShowMessageAsIs";
 

@@ -22,6 +22,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/VrmUnifiedExpressions.cs'),
     (Join-Path $taskRepo 'Editor/TrackingExpressionNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmMenuExpressions.cs'),
+    (Join-Path $taskRepo 'Editor/ExpressionNameAffix.cs'),
     (Join-Path $taskRepo 'Formats/Runtime/ExpressionAnimationData.cs'),
     (Join-Path $taskRepo 'Editor/LilToonEmissionPolicy.cs'),
     (Join-Path $taskRepo 'Editor/NumericChecks.cs'),

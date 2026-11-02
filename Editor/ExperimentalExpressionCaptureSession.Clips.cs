@@ -358,7 +358,8 @@ namespace VRVlog.LilToonExporter
 
         bool MovesBonesOrVisibility(AnimationClip clip)
         {
-            if (!AnimationUtility.GetCurveBindings(clip).Any(BoneOrShown)) return false;
+            // While the export leaves them out, the face stays out as before.
+            if (!ExpressionTransformCurves.Enabled || !AnimationUtility.GetCurveBindings(clip).Any(BoneOrShown)) return false;
             var root = ClipRoot(clip);
             var target = string.IsNullOrEmpty(root) ? Copy?.transform : Copy?.transform.Find(root);
             // Without the copy's pose a bone curve may move, so the face stays.
@@ -377,6 +378,7 @@ namespace VRVlog.LilToonExporter
 
         // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
         // bones or shows objects stays unsupported there, as before (the preset would lose them).
+        // The same holds for every face while the export does not write bones and visibility.
         Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));
@@ -390,12 +392,13 @@ namespace VRVlog.LilToonExporter
             // them beside the BlendShapes and the board shows the BlendShapes alone. Materials and
             // parameters still make it unsupported.
             var gesture = gestureClips.Contains(clip);
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (presetFace || !BoneOrShown(binding)) &&
+            var blendShapesOnly = presetFace || !ExpressionTransformCurves.Enabled;
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (blendShapesOnly || !BoneOrShown(binding)) &&
                     !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
-                throw new InvalidOperationException((presetFace
+                throw new InvalidOperationException((blendShapesOnly
                     ? ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ")
                     : ExporterLocalization.T("顔の変形・ボーン・表示切替以外の変更を含みます: ")) +
                     unsupported[0].path + " / " + unsupported[0].propertyName);

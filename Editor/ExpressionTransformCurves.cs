@@ -23,6 +23,12 @@ namespace VRVlog.LilToonExporter
         // negation, the same rotation): about AngleTolerance of rotation.
         internal static readonly double QuaternionTolerance = Math.Sin(AngleTolerance * Math.PI / 180 / 2);
 
+        // Off: the export writes no transforms and leaves out a face that moves
+        // bones or visibility, as before 1.4.3, until the app plays them.
+        // Read returns nothing, so the readers keep the 1.4.2 behaviour. Not a
+        // setting; tests of the transforms turn it on.
+        internal static bool Enabled = false;
+
         internal const string HumanoidWarning = "表情が動かすHumanoidのボーンは書き出しません: ";
         internal const string UnmappedWarning = "書き出すノードに結び付かない表情のボーンと表示の変化は書き出しません: ";
         internal const string HiddenShownWarning = "書き出さないオブジェクトを表示する表情は表示の変化をまとめて書き出しません: ";
@@ -57,6 +63,7 @@ namespace VRVlog.LilToonExporter
 
         internal static Reading Read(GameObject avatar, AnimationClip clip, Func<string, bool> excludedPath = null)
         {
+            if (!Enabled) return new Reading();
             SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
             var reading = new Reading();
             var root = avatar.transform;

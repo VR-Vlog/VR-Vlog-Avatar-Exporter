@@ -26,6 +26,15 @@ BEHAVIOR_CASES = {
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
         'HeaderFailureTextAndSharedDiagnosticNameThePackageVersion': 1,
     },
+    'ExpressionNameAffixTests': {
+        'ASharedPrefixOrSuffixIsLeftOutByWholeWords': 10,
+        'NamesStayWhenNothingCanBeLeftOut': 9,
+        'NamesStayWhenAShorterNameIsAlreadyTaken': 1,
+        'TheLongerValidPartGoesWhenBothCannot': 1,
+        'AddWritesTheShorterNamesEverywhere': 1,
+        'AddKeepsTheNamesWhenAShorterNameIsAPreset': 1,
+        'AddKeepsASingleName': 1,
+    },
     'ExportDiagnosticsTests': {
         'TheTextHasNoNameOrPath': 1,
         'TheTextHasTheVersionsAndTheExportType': 1,
@@ -128,14 +137,16 @@ BEHAVIOR_CASES = {
         'ARealExportWithAMissingShaderSavesAndWarnsOnce': 1,
         'AStageIsNamedWithItsPhase': 1,
         'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
-        'AnExportWithoutFallbacksNeverAsks': 1,
+        'AnExportWithoutFallbacksOpensNoList': 1,
         'BatchModeSavesWithoutTheList': 1,
         'EveryShippedLocaleTranslatesTheResultWords': 1,
         'KeptItemsAreListedOnceWithoutAsking': 1,
         'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,
         'TargetsAreFoundAgainOnTheAvatarByPath': 1,
         'TheListShowsEveryFallbackWithItsTargets': 1,
-        'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
+        'TheListOpensAfterTheFileIsWritten': 1,
+        'ATransferOpensTheListWhenItHasEnded': 1,
+        'AFailedWriteOpensNoList': 1,
         'TheSavedTitleWarnsOnlyWhenAShaderIsMissing': 1,
         'TwoMaterialsWithTheSameNameCountAsTwo': 1,
     },
@@ -273,6 +284,8 @@ BEHAVIOR_CASES = {
         'OptionalUnboundOrUnexportedMorphCannotPoisonIndependentFaceReconstruction': 7,
         'AppearanceSupportThatDisablesTheRendererKeepsPreparedNeutralAndActivation': 2,
         'IndependentTransformSupportCapturesNativeMorphScalarsAndKeepsPreparedPose': 3,
+        'NaNTransformScaleOnChildBoneStillCapturesFxRest': 2,
+        'NaNBlendShapeCurveStillFailsFxRest': 2,
         'IndependentTransformSupportKeepsNativeScalarAcrossOverlappingMorphFrames': 3,
         'IndependentTransformOnSixthSkinInfluenceKeepsNativeScalarAndPreparedBone': 1,
         'IndependentTransformSupportStillRejectsUnknownPropertyComponents': 2,
@@ -369,6 +382,7 @@ BEHAVIOR_CASES = {
         'MaterialColorAnimationMatchesActualRenderedPixels': 4,
         'ColorCanonicalizationDoesNotRelaxOtherPropertyDomains': 4,
         'HeldRotationMatchesThePreparedPoseAcrossSignAndFullTurns': 4,
+        'NonFiniteTransformCurveIsNeitherHeldNorMoving': 2,
     },
     'VrChatMenuExpressionTests': {
         'CanonicalAnimationKnotsReuseAuthoredEndpointsAcrossCurveRanges': 2,
@@ -650,6 +664,8 @@ BEHAVIOR_CASES = {
         'VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf': 1,
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
         'NdmfOutputIsSavedEarlyOnlyForVrcFury': 1,
+        'ToolKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
+        'VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
         'VrcFuryIsNotAppliedWithoutAnAvatarDescriptor': 1,
         'VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting': 1,
@@ -724,6 +740,7 @@ BEHAVIOR_CASES = {
         'IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport': 1,
         'TwentyAnimDropRemainsUsable': 1,
         'UnsupportedDropIsRejectedAndClosingCancelsPendingWork': 1,
+        'WindowClosesWhenItsAvatarIsGone': 1,
     },
     'SelectedScalarDominanceTests': {
         'ExactUpperScalarDominanceRetainsIndependentRestAndSelectedCallbacks': 2,
@@ -795,6 +812,7 @@ BEHAVIOR_CASES = {
         'TransformsReadBackAsTheClipPose': 1,
         'AFaceThatLosesEveryTrackLeavesTheFileAlone': 1,
         'FacesWithoutBonesOrVisibilityWriteNoTransforms': 1,
+        'WhileOffNoFaceWritesBonesOrVisibility': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
@@ -858,6 +876,9 @@ BEHAVIOR_CASES = {
     },
 }
 INTEGRATION_CASES = {
+    'NdmfSharedObjectTests': {
+        'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
+    },
     # The integration project must install the official MeshDeleterWithTexture
     # package. Synthetic sharedMesh replacement alone is not its integration
     # evidence, and an absent optional package must fail this explicit profile.
@@ -920,7 +941,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 14, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
 def required_regressions(profile):

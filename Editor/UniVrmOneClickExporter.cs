@@ -264,7 +264,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // An animated expression whose loop ends neutral shows no change in
-        // apps that only read the VRM expression. Ask before saving.
+        // apps that only read the VRM expression. Listed after saving.
         internal static void RecordExpressionsEndingNeutral(IEnumerable<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
         {
             foreach (var expression in expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>())
@@ -684,6 +684,8 @@ namespace VRVlog.LilToonExporter
                         if (lenient) RecordLostMenuExpressions(menu, recoveryReport);
                         RecordSettledMenuExpressions(menu, recoveryReport);
                     });
+                    // Read before blink.Bake renames its shapes to the generated ones.
+                    var defaultFace = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.DefaultFace(neutral, fxRest, blink.Slots.SelectMany(slot => slot)));
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     VrChatVisemeExport.Captured visemes = null;
                     guard.Watch(ExportStage.Expressions, () =>
@@ -692,11 +694,11 @@ namespace VRVlog.LilToonExporter
                         // or as captured when the caller removed the descriptor.
                         visemes = capturedVisemes ?? VrChatVisemeExport.Read(clone);
                         AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings,
-                            visemeRenderer: visemes?.Renderer, visemeShapes: visemes?.Exclusive);
+                            visemeRenderer: visemes?.Renderer, visemeShapes: visemes?.Exclusive, defaultFace: defaultFace);
                         authoredEndpoints.Bake(temporaryMeshes);
                     });
                     expressions = guard.Step(ExportStage.Expressions,
-                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive), () => new List<VrmMenuExpressions.Expression>());
+                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive, defaultFace), () => new List<VrmMenuExpressions.Expression>());
                     guard.Watch(ExportStage.Expressions, () => RecordExpressionsEndingNeutral(expressions, recoveryReport));
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.

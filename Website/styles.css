@@ -23,14 +23,30 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page .vrx-header nav{display:flex;gap:23px;align-items:center}
 #exporter-page .vrx-nav-link{border:0;background:transparent;padding:8px 0;text-decoration:none;font-size:12px;white-space:nowrap}
 #exporter-page .vrx-header-cta{padding:9px 17px;min-height:42px;border:1px solid #ff1880;border-radius:6px;background:#ff1880;color:#160912!important;font-size:12px;font-weight:700;white-space:nowrap}
-#exporter-page .vrx-hero{display:grid;grid-template-columns:1.12fr .88fr;gap:42px;align-items:center;padding-block:44px 42px}
-#exporter-page h1{font-weight:700;font-size:clamp(30px,4.7vw,var(--heading));line-height:1.4;letter-spacing:-.035em}
+#exporter-page .vrx-hero{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:60px;align-items:center;padding-block:48px}
+#exporter-page .vrx-hero-copy{min-width:0}
+#exporter-page .vrx-hero-actions{margin-top:24px}
+#exporter-page .vrx-tutorial-card{min-width:0;padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+#exporter-page .vrx-tutorial-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;color:var(--muted);font-size:12px}
+#exporter-page .vrx-tutorial-meta .vrx-small-label{margin-bottom:0!important}
+#exporter-page .vrx-tutorial-card h2{font-size:clamp(18px,1.8vw,22px);line-height:1.5;margin-bottom:14px}
+#exporter-page .vrx-tutorial-preview{position:relative;display:block;width:100%;padding:0;aspect-ratio:16 / 9;overflow:hidden;border:1px solid #596374;border-radius:8px;background:#11151b;cursor:pointer}
+#exporter-page .vrx-site .vrx-tutorial-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#exporter-page .vrx-tutorial-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:60px;height:60px;padding-left:4px;border-radius:50%;background:var(--accent);color:var(--on-accent);font:700 25px/1 sans-serif;box-shadow:0 0 0 6px #171a2077}
+#exporter-page .vrx-tutorial-watch{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);max-width:95%;padding:2px 10px;border-radius:4px;background:#111d;font-size:13px;font-weight:700;color:#fff;white-space:nowrap}
+#exporter-page .vrx-tutorial-preview:hover .vrx-tutorial-play{box-shadow:0 0 0 8px #ff188033}
+#exporter-page .vrx-tutorial-chapters{display:flex;gap:8px;margin-top:12px}
+#exporter-page .vrx-tutorial-chapters button{flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:7px 8px;font-size:12px;cursor:pointer}
+#exporter-page .vrx-tutorial-chapters time{font-size:11px;color:var(--muted);white-space:nowrap}
+#exporter-page .vrx-tutorial-chapters button:hover{border-color:var(--accent)}
+#exporter-page h1{font-weight:700;font-size:clamp(32px,3.8vw,48px);line-height:1.25;letter-spacing:-.02em}
 #exporter-page h1 span{display:block;white-space:nowrap}
-#exporter-page .vrx-lead{font-size:15px;line-height:1.95;color:var(--muted);margin-top:24px;max-width:460px}
-#exporter-page .vrx-hero-action{margin-top:30px}
+#exporter-page .vrx-hero-brand{color:var(--accent)}
+#exporter-page .vrx-hero-copy .vrx-lead{font-size:16px;line-height:1.85;color:var(--muted);margin-top:20px;max-width:480px}
+#exporter-page .vrx-hero-action{margin-top:0}
 #exporter-page .vrx-primary{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:60px;max-width:100%;padding:14px 26px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:var(--on-accent)!important;font-weight:700;font-size:17px;letter-spacing:.01em}
 #exporter-page .vrx-primary svg{width:22px;height:22px}
-#exporter-page .vrx-hero-action>p{font-size:11px;line-height:1.8;color:var(--muted);margin-top:13px}
+#exporter-page .vrx-hero-action>p{font-size:13px;line-height:1.8;color:var(--muted);margin-top:12px}
 #exporter-page .vrx-text-button{display:inline-flex;align-items:center;gap:8px;font-size:12px;line-height:1.6;background:none;border:0;padding:8px 0;margin-top:18px;text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}
 #exporter-page .vrx-text-button svg{width:14px;height:14px}
 #exporter-page .vrx-photo{height:var(--photo-height);overflow:hidden;border-radius:20px 20px 5px 5px;background:#363942}
@@ -39,54 +55,48 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page h2{font-size:28px;line-height:1.5;font-weight:700;letter-spacing:-.025em}
 #exporter-page h3{font-size:17px;line-height:1.6;font-weight:700}
 #exporter-page .vrx-small-label{color:var(--muted);font-size:12px;margin-bottom:6px!important}
-#exporter-page .vrx-install{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 28px}
-#exporter-page .vrx-install-heading{display:flex;justify-content:space-between;align-items:center;gap:20px}
-#exporter-page .vrx-install h2{font-size:23px}
+#exporter-page .vrx-install{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 30px}
+#exporter-page .vrx-install h2{font-size:28px}
+#exporter-page .vrx-manager-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-top:20px}
+#exporter-page .vrx-manager-controls>p:first-child{font-size:15px;font-weight:700}
 #exporter-page .vrx-segment{display:inline-flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--line);border-radius:8px;flex:none}
-#exporter-page .vrx-segment button{background:transparent;border:0;border-radius:5px;font-size:13px;min-height:38px;padding:7px 17px;color:var(--muted)}
-#exporter-page .vrx-segment button[aria-pressed=true]{background:var(--text);color:var(--bg);font-weight:700}
-#exporter-page .vrx-install-layout{display:grid;grid-template-columns:1.15fr .85fr;gap:40px;align-items:center;margin-top:24px}
-#exporter-page .vrx-install-list{margin:0;padding-left:22px;counter-reset:install}
-#exporter-page .vrx-install-list li{padding-left:5px;margin-bottom:12px}
-#exporter-page .vrx-install-list li:last-child{margin-bottom:0}
-#exporter-page .vrx-install-list li::marker{color:var(--accent);font-family:Barlow,sans-serif;font-size:17px;font-weight:600}
-#exporter-page .vrx-install-list li>span{font-weight:700;font-size:14px}
-#exporter-page .vrx-install-list li>p{color:var(--muted);font-size:12px;line-height:1.8;margin-top:2px}
-#exporter-page .vrx-install-preview{max-width:350px;width:100%;justify-self:end}
+#exporter-page .vrx-segment button{background:transparent;border:0;border-radius:5px;font-size:15px;min-height:44px;min-width:104px;padding:8px 18px;color:var(--muted)}
+#exporter-page .vrx-segment button[aria-pressed=true]{background:#ffd0e2;color:#26101b;font-weight:700}
+#exporter-page .vrx-manager-controls .vrx-manager-download{font-size:13px;color:var(--muted);margin:0}
+#exporter-page .vrx-manager-download a{display:inline-flex;align-items:center;min-height:44px}
+#exporter-page .vrx-install-prep{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px 22px;margin-top:20px;padding:14px 18px;border:1px solid var(--line);border-radius:9px;background:#20252d}
+#exporter-page .vrx-install-prep strong{font-size:15px}
+#exporter-page .vrx-install-prep p{font-size:13px;line-height:1.8;color:var(--muted)}
+#exporter-page .vrx-install-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;list-style:none;margin:20px 0 0;padding:0}
+#exporter-page .vrx-install-card{min-width:0;padding:22px;border:1px solid var(--line);border-radius:12px;background:#20252d}
+#exporter-page .vrx-install-card h3{display:flex;align-items:flex-start;gap:12px;font-size:19px;line-height:1.6}
+#exporter-page .vrx-install-title{min-width:0}
+#exporter-page .vrx-phrase{display:inline-block}
+#exporter-page .vrx-install-number{display:grid;place-items:center;flex:none;width:36px;height:36px;border:2px solid #596374;border-radius:50%;font:600 23px/1 Barlow,sans-serif;color:var(--muted)}
+#exporter-page .vrx-install-card:first-child .vrx-install-number{border-color:var(--accent);color:var(--accent)}
+#exporter-page .vrx-install-action{margin-top:22px}
+#exporter-page .vrx-install-action .vrx-primary{width:100%;min-height:60px}
+#exporter-page .vrx-install-card .vrx-install-confirm{color:var(--muted);font-size:13px;line-height:1.85;margin-top:14px;overflow-wrap:anywhere}
+#exporter-page .vrx-install-package{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:18px;align-items:start;margin-top:20px}
+#exporter-page .vrx-install-copy{min-width:0;color:var(--muted);font-size:15px;line-height:1.85;overflow-wrap:anywhere}
+#exporter-page .vrx-install-copy p+p{margin-top:8px}
+#exporter-page .vrx-install-preview{max-width:200px;width:100%;min-width:0}
 #exporter-page .vrx-alcom-thumb{position:relative;aspect-ratio:330/160;overflow:hidden;border-radius:7px}
 #exporter-page .vrx-alcom-thumb img{position:absolute;width:315.757576%;max-width:none;left:-24.242424%;top:-87.5%}
 #exporter-page .vrx-vcc-thumb{position:relative;aspect-ratio:700/151;overflow:hidden;border-radius:7px}
 #exporter-page .vrx-vcc-thumb img{position:absolute;width:137.285714%;max-width:none;left:0;top:-20.529801%}
 #exporter-page .vrx-install-preview figcaption{color:var(--muted);font-size:11px;line-height:1.7;margin-top:8px}
-#exporter-page .vrx-image-link{display:inline-flex;align-items:center;gap:7px;padding:5px 0;min-height:32px;border:0;background:none;font-size:11px;color:var(--muted)!important;text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}
+#exporter-page .vrx-image-link{display:inline-flex;align-items:center;gap:7px;padding:5px 0;min-height:44px;border:0;background:none;font-size:13px;color:var(--muted)!important;text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}
 #exporter-page .vrx-image-link svg{width:13px;height:13px}
-#exporter-page .vrx-install-bottom{display:grid;grid-template-columns:1.5fr 1fr;gap:24px;align-items:start;border-top:1px solid var(--line);padding-top:16px;margin-top:20px;color:var(--muted);font-size:11px;line-height:1.8}
-#exporter-page .vrx-install-bottom details{text-align:right}
+#exporter-page .vrx-install-ready{border-top:1px solid var(--line);padding-top:16px;margin-top:18px;font-size:15px}
+#exporter-page .vrx-install-ready p+p{margin-top:4px;color:var(--muted);font-size:13px}
+#exporter-page .vrx-install-fallback{margin-top:16px;padding:6px 16px;border:1px solid var(--line);border-radius:8px;background:#20252d;font-size:14px}
+#exporter-page .vrx-install-fallback summary{min-height:44px;padding-block:9px;font-weight:700}
+#exporter-page .vrx-install-fallback p{margin-block:10px;color:var(--muted)}
+#exporter-page .vrx-install-fallback label{display:block;margin-top:12px}
 #exporter-page summary{min-height:36px}
-#exporter-page .vrx-install-bottom details p{text-align:left;margin:8px 0}
 #exporter-page input{width:100%;min-width:0;margin-top:8px;padding:9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);font-size:16px;min-height:44px}
-#exporter-page .vrx-transfer{display:grid;grid-template-columns:.94fr 1.06fr;gap:44px;align-items:center;padding-block:54px}
-#exporter-page .vrx-step-selector{display:grid;gap:3px;margin-top:24px}
-#exporter-page .vrx-step-selector button{display:flex;align-items:center;gap:16px;min-width:0;width:100%;padding:14px 13px 14px 0;border:0;border-bottom:1px solid var(--line);background:none;text-align:left}
-#exporter-page .vrx-step-selector button[aria-pressed=true]{background:var(--tint);padding-left:13px;border-bottom-color:transparent;border-radius:8px}
-#exporter-page .vrx-step-number{font:500 28px/1 Barlow,sans-serif;color:var(--accent);flex:none}
-#exporter-page .vrx-step-selector button>span:nth-child(2){min-width:0;flex:1}
-#exporter-page .vrx-step-selector strong{display:block;font-size:15px;font-weight:700}
-#exporter-page .vrx-step-selector small{display:block;font-size:11px;line-height:1.8;color:var(--muted);margin-top:3px}
-#exporter-page .vrx-step-selector svg{width:16px;height:16px;color:var(--muted)}
-#exporter-page .vrx-step-stage{background:var(--panel);border-radius:14px;padding:23px;min-height:425px;display:grid;align-items:center}
-#exporter-page .vrx-step-panel{min-width:0;text-align:center}
-#exporter-page .vrx-step-panel>p{font-size:12px;line-height:1.85;color:var(--muted);margin-top:16px}
-#exporter-page .vrx-menu-scene{position:relative;aspect-ratio:380/200;overflow:hidden;border-radius:5px}
-#exporter-page .vrx-menu-scene img{width:100%;height:auto}
-#exporter-page .vrx-submenu{width:min(100%,265px);margin:14px auto 0;border-radius:5px}
-#exporter-page .vrx-transfer-top{width:min(100%,280px);aspect-ratio:422/300;position:relative;overflow:hidden;border-radius:7px 7px 0 0;margin:auto}
-#exporter-page .vrx-transfer-top img{width:100%;clip-path:inset(2px round 8px)}
-#exporter-page .vrx-transfer-bottom{width:min(100%,280px);aspect-ratio:422/130;position:relative;overflow:hidden;border-radius:0 0 7px 7px;margin:9px auto 0}
-#exporter-page .vrx-transfer-bottom img{position:absolute;top:-410%;width:100%;clip-path:inset(2px round 8px)}
-#exporter-page .vrx-receive{position:relative;width:min(100%,242px);aspect-ratio:540/650;overflow:hidden;border-radius:7px;margin:auto}
-#exporter-page .vrx-receive img{position:absolute;width:300%;max-width:none;left:0;top:-84.615385%}
-#exporter-page .vrx-help{display:grid;grid-template-columns:.85fr 1.15fr;gap:46px;border-top:1px solid var(--line);padding-block:28px 34px}
+#exporter-page .vrx-help{margin-top:32px;display:grid;grid-template-columns:.85fr 1.15fr;gap:46px;border-top:1px solid var(--line);padding-block:28px 34px}
 #exporter-page .vrx-help h2{font-size:21px}
 #exporter-page .vrx-help>div>p{font-size:12px;color:var(--muted);margin-top:9px}
 #exporter-page .vrx-faq details{border-bottom:1px solid var(--line);font-size:12px}
@@ -108,42 +118,36 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page button,#exporter-page summary{cursor:pointer}
 #exporter-page .vrx-primary{text-decoration:none;transition:filter .15s}
 #exporter-page .vrx-primary:hover,#exporter-page .vrx-header-cta:hover{filter:brightness(1.12)}
-#exporter-page .vrx-install-action{display:flex;align-items:center;gap:22px;margin-top:22px}
-#exporter-page .vrx-install-action p{font-size:12px;color:var(--muted)}
-#exporter-page .vrx-manager-download{font-size:12px;color:var(--muted);margin-top:10px!important}
-#exporter-page .vrx-install-bottom label{display:block;text-align:left;margin-top:12px}
 #exporter-page .vrx-dialog-close{width:44px;height:44px;top:4px;right:6px}
 #exporter-page .vrx-dialog-close{position:sticky;top:0;float:right;margin:-32px -12px 0 0;z-index:2}
 #exporter-page .vrx-dialog-body h2{font-size:22px;margin-bottom:22px}
 #exporter-page .vrx-dialog-body figure+figure{margin-top:30px}
 #exporter-page .vrx-dialog-body img{width:auto;max-width:100%;margin:auto}
 #exporter-page .vrx-dialog-body figcaption{font-size:13px;line-height:1.85;color:var(--muted);margin-top:12px}
-#exporter-page .vrx-dialog-transfer{max-width:422px;margin:auto}
-#exporter-page .vrx-dialog-transfer img{width:100%;clip-path:inset(2px round 8px)}
-#exporter-page .vrx-dialog-receive{position:relative;aspect-ratio:540/650;width:min(100%,360px);overflow:hidden;margin:auto;border-radius:7px}
-#exporter-page .vrx-dialog-receive img{position:absolute;max-width:none;width:300%;left:0;top:-84.615385%}
 
+@media(max-width:1100px){#exporter-page .vrx-install-package{grid-template-columns:1fr}}
 @media(min-width:1200px){
   #exporter-page .vrx-header{padding-inline:max(40px,calc((100% - 1160px)/2))}
-  #exporter-page .vrx-hero{padding-block:58px 48px;grid-template-columns:1.2fr .8fr}
+  #exporter-page .vrx-hero{padding-block:56px 48px}
   #exporter-page .vrx-photo{height:480px}
-  #exporter-page h1{font-size:56px}
 }
 @media(max-width:850px){
   #exporter-page .vrx-wrap{width:calc(100% - 56px)}
   #exporter-page .vrx-header{padding-inline:28px;gap:15px}
   #exporter-page .vrx-brand>span{display:none}
   #exporter-page .vrx-header nav{gap:18px}
-  #exporter-page .vrx-hero{gap:25px;padding-block:34px}
+  #exporter-page .vrx-hero{gap:32px;padding-block:34px}
+  #exporter-page .vrx-tutorial-card{padding:15px}
+  #exporter-page .vrx-tutorial-chapters{flex-direction:column;gap:6px}
   #exporter-page .vrx-photo{height:390px}
   #exporter-page .vrx-primary{font-size:15px;padding-inline:18px}
-  #exporter-page .vrx-lead{font-size:13px}
+  #exporter-page .vrx-hero-copy .vrx-lead{font-size:15px}
   #exporter-page .vrx-wide-break{display:none}
   #exporter-page .vrx-install{padding:23px}
-  #exporter-page .vrx-install-layout{gap:24px}
-  #exporter-page .vrx-install h2{font-size:21px}
-  #exporter-page .vrx-transfer{gap:25px}
-  #exporter-page .vrx-step-stage{padding:17px}
+  #exporter-page .vrx-install-cards{gap:16px}
+  #exporter-page .vrx-install-package{grid-template-columns:1fr}
+  #exporter-page .vrx-install-prep{grid-template-columns:1fr;gap:4px}
+  #exporter-page .vrx-install h2{font-size:25px}
   #exporter-page .vrx-help{gap:28px}
   #exporter-page .vrx-footer-top{display:block}
   #exporter-page .vrx-footer nav{margin-top:9px}
@@ -156,37 +160,37 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-brand img{width:128px}
   #exporter-page .vrx-header .vrx-nav-link{display:none}
   #exporter-page .vrx-header-cta{min-height:44px;padding-inline:14px}
-  #exporter-page .vrx-hero{grid-template-columns:1fr;gap:25px;padding-block:28px 30px}
-  #exporter-page h1{font-size:clamp(27px,8.2vw,43px)}
-  #exporter-page .vrx-lead{margin-top:16px;font-size:14px}
-  #exporter-page .vrx-hero-action{margin-top:22px}
+  #exporter-page .vrx-hero{grid-template-columns:1fr;gap:20px;padding-block:24px 30px}
+  #exporter-page .vrx-tutorial-card{padding:14px}
+  #exporter-page .vrx-tutorial-card h2{font-size:18px;margin-bottom:12px}
+  #exporter-page .vrx-tutorial-chapters{flex-direction:row;margin-top:10px}
+  #exporter-page .vrx-tutorial-chapters button{font-size:12px;padding-inline:4px}
+  #exporter-page h1{font-size:clamp(30px,8.4vw,36px)}
+  #exporter-page .vrx-hero-copy .vrx-lead{margin-top:16px;font-size:15px}
+  #exporter-page .vrx-hero-action{margin-top:0}
   #exporter-page .vrx-primary{width:100%;font-size:15px;padding-inline:12px;min-height:58px}
   #exporter-page .vrx-hero-action>p{font-size:12px}
   #exporter-page .vrx-text-button{font-size:12px;margin-top:12px;min-height:44px}
   #exporter-page .vrx-photo{height:330px;border-radius:14px 14px 4px 4px}
   #exporter-page .vrx-photo img{object-position:50% 48%}
   #exporter-page .vrx-install{padding:21px 18px;border-radius:12px}
-  #exporter-page .vrx-install-heading{display:block}
   #exporter-page .vrx-install h2{font-size:21px}
-  #exporter-page .vrx-install-heading .vrx-segment{margin-top:17px}
-  #exporter-page .vrx-segment button{min-height:44px;min-width:80px}
-  #exporter-page .vrx-install-action{display:block}
-  #exporter-page .vrx-install-action p{margin-top:10px}
-  #exporter-page .vrx-install-layout{grid-template-columns:1fr;gap:20px;margin-top:20px}
-  #exporter-page .vrx-install-list li{margin-bottom:16px}
-  #exporter-page .vrx-install-list li>p{font-size:13px}
-  #exporter-page .vrx-install-preview{justify-self:center;max-width:330px}
-  #exporter-page .vrx-install-bottom{grid-template-columns:1fr;gap:12px;margin-top:18px;padding-top:16px;font-size:12px}
-  #exporter-page .vrx-install-bottom details{text-align:left}
+  #exporter-page .vrx-manager-controls{display:block;margin-top:18px}
+  #exporter-page .vrx-manager-controls .vrx-segment{display:flex;margin-top:8px}
+  #exporter-page .vrx-segment button{flex:1;min-width:0}
+  #exporter-page .vrx-manager-controls .vrx-manager-download{margin-top:4px}
+  #exporter-page .vrx-install-prep{padding:12px;font-size:14px;margin-top:14px}
+  #exporter-page .vrx-install-prep strong{font-size:14px}
+  #exporter-page .vrx-install-cards{grid-template-columns:1fr;gap:14px;margin-top:16px}
+  #exporter-page .vrx-install-card{padding:16px}
+  #exporter-page .vrx-install-card h3{gap:10px;font-size:18px}
+  #exporter-page .vrx-install-number{width:32px;height:32px;font-size:21px}
+  #exporter-page .vrx-install-package{gap:14px;margin-top:16px}
+  #exporter-page .vrx-install-copy{font-size:14px}
+  #exporter-page .vrx-install-action{margin-top:18px}
+  #exporter-page .vrx-install-preview{max-width:190px}
+  #exporter-page .vrx-install-fallback{padding-inline:12px}
   #exporter-page summary{min-height:44px}
-  #exporter-page .vrx-transfer{grid-template-columns:1fr;padding-block:35px;gap:22px}
-  #exporter-page .vrx-transfer h2{font-size:28px}
-  #exporter-page .vrx-transfer h2 br{display:none}
-  #exporter-page .vrx-step-selector{margin-top:17px}
-  #exporter-page .vrx-step-selector button{padding-block:12px;gap:13px;min-height:77px}
-  #exporter-page .vrx-step-stage{min-height:385px;padding:20px 16px}
-  #exporter-page .vrx-step-panel>p{font-size:13px}
-  #exporter-page .vrx-transfer-top,#exporter-page .vrx-transfer-bottom{max-width:260px}
   #exporter-page .vrx-help{grid-template-columns:1fr;gap:20px;padding-block:25px}
   #exporter-page .vrx-help h2{font-size:21px}
   #exporter-page .vrx-faq details,#exporter-page .vrx-help>div>p{font-size:13px}
@@ -198,5 +202,5 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-dialog{width:94%;padding-inline:16px;max-height:90dvh}
   #exporter-page .vrx-dialog-body h2{font-size:19px}
 }
-@media(max-width:360px){#exporter-page h1{font-size:25px}#exporter-page .vrx-primary{font-size:14px;gap:8px}}
+@media(max-width:360px){#exporter-page .vrx-hero-copy .vrx-lead{font-size:14px}#exporter-page .vrx-primary{font-size:14px;gap:8px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}#exporter-page .vrx-primary{transition:none}}

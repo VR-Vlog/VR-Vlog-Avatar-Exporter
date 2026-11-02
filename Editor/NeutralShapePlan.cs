@@ -144,8 +144,12 @@ namespace VRVlog.LilToonExporter
                     // An absent target is handled as unbound below.
                     bool Held(AnimationClip held) => plan.targets.TryGetValue(binding.path, out var found) && found.Length == 1 &&
                         SelectedExpressionAppearance.IsUnchangedTransform(found[0], held, binding);
+                    // A non-finite value (e.g. a NaN scale that hides vertices)
+                    // is neither held nor motion: it stays an appearance change.
                     var motion = invariantClips.Contains(clip) && (Held(clip) ||
-                        binding.type == typeof(Transform) && clipOwners[clip].All(index => ownershipLayers[index].Clips.Any(rest =>
+                        binding.type == typeof(Transform) &&
+                        VrChatExpressionSampler.IsValidNativeCurve(AnimationUtility.GetEditorCurve(clip, binding)) &&
+                        clipOwners[clip].All(index => ownershipLayers[index].Clips.Any(rest =>
                             restClips != null && restClips[index].Contains(rest) && invariantClips.Contains(rest) &&
                             AnimationUtility.GetEditorCurve(rest, binding) != null &&
                             (Held(rest) ||
@@ -312,7 +316,8 @@ namespace VRVlog.LilToonExporter
                     // Animator parameters are global even when their transform
                     // path happens to be excluded from mesh export.
                     if (binding.type != typeof(Animator) && excludedPath?.Invoke(binding.path) == true) continue;
-                    VrChatExpressionSampler.ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(clip, binding), Describe(clip, binding));
+                    VrChatExpressionSampler.ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(clip, binding),
+                        Describe(clip, binding), ChecksCurveValues(binding));
                     ValidateTarget(clip, binding, false);
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
@@ -457,6 +462,13 @@ namespace VRVlog.LilToonExporter
                 name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender ||
                 name == ExportGimmickRules.HeadChop;
         }
+
+        // The rest probe reads only GetBlendShapeWeight and Animator
+        // parameters. It applies a Transform curve but never reads its value,
+        // so such a curve needs valid key times, not finite values: a mesh
+        // cutter can key a bone scale to NaN to hide vertices. Material,
+        // activation and other values decide ownership and stay checked.
+        internal static bool ChecksCurveValues(EditorCurveBinding binding) => binding.type != typeof(Transform);
 
         private static bool IsMaterial(EditorCurveBinding binding) => typeof(Renderer).IsAssignableFrom(binding.type) &&
             (binding.propertyName.StartsWith("material.", StringComparison.Ordinal) ||

@@ -791,7 +791,10 @@ namespace VRVlog.LilToonExporter
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                        VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.propertyName);
+                        // A non-finite Transform value is not constant, so it
+                        // leaves the relay unproven instead of failing the rest.
+                        VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.propertyName,
+                            NeutralShapePlan.ChecksCurveValues(binding));
                         if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) return false;
                     }
                     return true;

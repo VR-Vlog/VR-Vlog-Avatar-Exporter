@@ -274,6 +274,104 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(external); }
         }
 
+        // An unweighted mesh renders with its renderer's full localToWorld,
+        // scale included; a skinned one only with joint matrix x bindpose.
+        // The fallback joint must keep the world size, not cancel the scale.
+        [TestCase("self")]
+        [TestCase("rootAnchor")]
+        [TestCase("rootJoint")]
+        public void ScaledRendererKeepsItsWorldSize(string kind)
+        {
+            var avatar = new GameObject("Avatar");
+            var mesh = new Mesh { name = "Scaled part fixture" };
+            var owned = new List<Mesh>();
+            try
+            {
+                avatar.transform.SetPositionAndRotation(new Vector3(0.4f, 0.1f, -0.2f), Quaternion.Euler(3, 25, -4));
+                Transform node;
+                if (kind == "rootAnchor")
+                {
+                    avatar.transform.localScale = new Vector3(76f, 76f, 76f);
+                    node = avatar.transform;
+                }
+                else
+                {
+                    var parent = new GameObject("Parent").transform;
+                    parent.SetParent(avatar.transform, false);
+                    parent.localPosition = new Vector3(0, 1.5f, 0.05f);
+                    parent.localRotation = Quaternion.Euler(0, 20, 5);
+                    parent.localScale = new Vector3(0.68f, 0.6f, 0.75f);
+                    node = new GameObject("Part").transform;
+                    node.SetParent(parent, false);
+                    node.localPosition = new Vector3(0.07f, 0.01f, -0.02f);
+                    node.localRotation = Quaternion.Euler(-90, 15, 0);
+                    node.localScale = new Vector3(kind == "self" ? -100f : 100f, 100f, 100f);
+                }
+                if (kind == "rootJoint") avatar.transform.localScale = new Vector3(1.3f, 1.3f, 1.3f);
+                var skin = node.gameObject.AddComponent<SkinnedMeshRenderer>();
+                skin.sharedMaterials = new Material[] { null };
+                mesh.vertices = new[] { new Vector3(-0.0008f, 0, 0), new Vector3(0.0008f, 0, 0), new Vector3(0, 0.0003f, 0.0001f), new Vector3(0, -0.0003f, 0.0009f) };
+                mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+                mesh.normals = new[] { Vector3.forward, Vector3.forward, Vector3.up, Vector3.up };
+                mesh.tangents = new[] { new Vector4(1, 0, 0, 1), new Vector4(1, 0, 0, 1), new Vector4(1, 0, 0, -1), new Vector4(1, 0, 0, -1) };
+                if (kind == "rootJoint")
+                {
+                    skin.bones = new[] { avatar.transform };
+                    mesh.bindposes = new[] { avatar.transform.worldToLocalMatrix * node.localToWorldMatrix };
+                    mesh.boneWeights = new[] { new BoneWeight { weight0 = 1 }, new BoneWeight { weight0 = 1 }, new BoneWeight { weight0 = 1 }, new BoneWeight { weight0 = 1 } };
+                }
+                skin.sharedMesh = mesh;
+                var expected = new Vector3[mesh.vertexCount];
+                for (var i = 0; i < expected.Length; i++) expected[i] = node.localToWorldMatrix.MultiplyPoint3x4(mesh.vertices[i]);
+                AssertWorldPositions(skin, expected);
+
+                SkinnedMeshFallbackWeights.Preserve(avatar, owned, null);
+                if (kind == "rootJoint")
+                {
+                    Assert.That(skin.bones[0], Is.Not.SameAs(avatar.transform));
+                    Assert.That(skin.sharedMesh, Is.SameAs(mesh));
+                }
+                else
+                {
+                    Assert.That(skin.sharedMesh, Is.Not.SameAs(mesh));
+                    var joint = skin.bones[skin.bones.Length - 1];
+                    Assert.That(joint, kind == "self" ? Is.SameAs(node) : Is.Not.SameAs(node));
+                    var bindpose = skin.sharedMesh.bindposes[skin.bones.Length - 1];
+                    for (var i = 0; i < 16; i++)
+                        Assert.That(bindpose[i], Is.EqualTo(Matrix4x4.identity[i]).Within(0.0001f), "Bindpose element " + i);
+                }
+                AssertWorldPositions(skin, expected);
+
+                // The part keeps following its joint. A mesh weighted to the
+                // avatar root does not follow its own node.
+                avatar.transform.rotation = Quaternion.Euler(-10, 70, 8);
+                if (kind != "rootJoint") node.localPosition += new Vector3(0.01f, 0, 0);
+                for (var i = 0; i < expected.Length; i++) expected[i] = node.localToWorldMatrix.MultiplyPoint3x4(mesh.vertices[i]);
+                AssertWorldPositions(skin, expected);
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatar);
+                Object.DestroyImmediate(mesh);
+                foreach (var m in owned) Object.DestroyImmediate(m);
+            }
+        }
+
+        private static void AssertWorldPositions(SkinnedMeshRenderer skin, Vector3[] expected)
+        {
+            var baked = new Mesh();
+            try
+            {
+                skin.BakeMesh(baked, true);
+                var vertices = baked.vertices;
+                Assert.That(vertices.Length, Is.EqualTo(expected.Length));
+                for (var i = 0; i < vertices.Length; i++)
+                    Assert.That(Vector3.Distance(skin.transform.localToWorldMatrix.MultiplyPoint3x4(vertices[i]), expected[i]), Is.LessThan(0.00002f),
+                        "World vertex " + i);
+            }
+            finally { Object.DestroyImmediate(baked); }
+        }
+
         private static void AssertMorphsUnchanged(Mesh a, Mesh b)
         {
             Assert.That(b.blendShapeCount, Is.EqualTo(a.blendShapeCount));
@@ -298,7 +396,9 @@ namespace VRVlog.LilToonExporter.Tests
             var first = new Mesh(); var second = new Mesh();
             try
             {
-                a.BakeMesh(first, false); b.BakeMesh(second, false);
+                // Without the renderer's scale, an unweighted and a skinned bake
+                // of the same rendered geometry differ by that scale.
+                a.BakeMesh(first, true); b.BakeMesh(second, true);
                 Assert.That(first.vertexCount, Is.EqualTo(a.sharedMesh.vertexCount));
                 AssertVectors(first.vertices, second.vertices);
                 AssertVectors(first.normals, second.normals);
