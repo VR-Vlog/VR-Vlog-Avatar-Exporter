@@ -4,23 +4,30 @@
 # compared with Tools/compare-exports.py.
 #
 #   pwsh -File Tools/run-export-regression.ps1 -Unity <Unity.exe> -Project <project dir>
-#        -Jobs <jobs.txt> -Out <results dir> [-Label <text>]
+#        -Jobs <jobs.txt> -Out <results dir> [-Label <text>] [-Shots first|all|none] [-ShotsOnly]
 #
 # Jobs: UTF-8, one job per line "ID|prefab path|runs" (runs defaults to 2; see the
 # header of ExportRegressionRunner.cs). Results, progress.txt and unity.log go to -Out.
+# -Shots chooses which runs also get screenshots of the exported VRM (body from the
+# front and the back, face, every expression); -ShotsOnly redoes only the screenshots
+# of run 1 for the VRM files already in -Out.
 #
 # The runner is not part of the package. This script copies it into a temporary
 # Assets folder of the project together with an asmdef whose versionDefines define
-# VRVLOG_EXPORT_REGRESSION_RUNNER while the exporter package is installed, runs Unity
-# in batch mode (with graphics: the board renders previews), waits for it and removes
-# the folder and its .meta again. The project must not be open in another Editor.
+# VRVLOG_EXPORT_REGRESSION_RUNNER while the exporter package is installed and that
+# references the UniVRM assemblies vendored in the package (the screenshots load the
+# exported VRM with them), runs Unity in batch mode (with graphics: the board renders
+# previews), waits for it and removes the folder and its .meta again. The project must
+# not be open in another Editor.
 # Exit code: Unity's exit code (0 when every job ran), 2 for bad arguments.
 param(
     [Parameter(Mandatory)][string]$Unity,
     [Parameter(Mandatory)][string]$Project,
     [Parameter(Mandatory)][string]$Jobs,
     [Parameter(Mandatory)][string]$Out,
-    [string]$Label = 'x'
+    [string]$Label = 'x',
+    [ValidateSet('first', 'all', 'none')][string]$Shots = 'first',
+    [switch]$ShotsOnly
 )
 $ErrorActionPreference = 'Stop'
 $folderName = '_VRVlogExportRegression'
@@ -41,7 +48,12 @@ $temp = Join-Path $Project "Assets/$folderName"
 $asmdef = @'
 {
   "name": "VRVlog.LilToonExporter.ExportRegression",
-  "references": [],
+  "references": [
+    "VRVlog.LilToonExporter.Vendor.VRM10",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF.Utils",
+    "VRVlog.LilToonExporter.Vendor.UniHumanoid"
+  ],
   "includePlatforms": [ "Editor" ],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
@@ -73,9 +85,11 @@ try {
 
     $start = [System.Diagnostics.ProcessStartInfo]::new($Unity)
     $start.UseShellExecute = $false
-    foreach ($argument in @('-batchmode', '-projectPath', $Project, '-executeMethod', $entry,
-            '-regressionOut', $Out, '-regressionJobs', $Jobs, '-regressionLabel', $Label,
-            '-logFile', (Join-Path $Out 'unity.log'))) {
+    $arguments = @('-batchmode', '-projectPath', $Project, '-executeMethod', $entry,
+        '-regressionOut', $Out, '-regressionJobs', $Jobs, '-regressionLabel', $Label,
+        '-regressionShots', $Shots, '-logFile', (Join-Path $Out 'unity.log'))
+    if ($ShotsOnly) { $arguments += @('-regressionShotsOnly', '1') }
+    foreach ($argument in $arguments) {
         $start.ArgumentList.Add($argument)
     }
     $started = Get-Date
