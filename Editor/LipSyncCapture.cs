@@ -24,8 +24,7 @@ namespace VRVlog.LilToonExporter
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             try
             {
-                var descriptor = clone.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                    c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                var descriptor = VrChatExpressionMenu.Descriptor(clone);
                 if (VrChatExpressionMenu.Member(descriptor, "lipSync")?.ToString() != "VisemeParameterOnly") return null;
                 var fx = VrChatExpressionMenu.Read(clone, new VrChatMenuImportPolicy { SkipPlayback = true }).Controller;
                 var data = new LipSyncData { DominantViseme = true, TransitionSeconds = fx == null ? 0f : TransitionSeconds(ExpressionDependencies.Controller(fx)) };

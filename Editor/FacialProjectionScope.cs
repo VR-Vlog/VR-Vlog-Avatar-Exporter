@@ -50,8 +50,7 @@ namespace VRVlog.LilToonExporter
         // active lip sync route and the eyelids of eye look.
         internal static Dictionary<SkinnedMeshRenderer, HashSet<int>> DescriptorFaceShapes(GameObject avatar)
         {
-            var descriptor = avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(avatar);
             var seeds = new Dictionary<SkinnedMeshRenderer, HashSet<int>>();
             void Add(SkinnedMeshRenderer renderer, int shape)
             {
