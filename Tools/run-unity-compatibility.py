@@ -739,6 +739,7 @@ BEHAVIOR_CASES = {
         'IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport': 1,
         'TwentyAnimDropRemainsUsable': 1,
         'UnsupportedDropIsRejectedAndClosingCancelsPendingWork': 1,
+        'WindowClosesWhenItsAvatarIsGone': 1,
     },
     'SelectedScalarDominanceTests': {
         'ExactUpperScalarDominanceRetainsIndependentRestAndSelectedCallbacks': 2,
