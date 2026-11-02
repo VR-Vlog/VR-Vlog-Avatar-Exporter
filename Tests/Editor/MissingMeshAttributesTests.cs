@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = fullExporter
                     ? UniVrmOneClickExporter.Export(fixture.Root, "Additional streams", "Tests",
                         exporterVersion: "mesh-attribute-regression", lilToonVersion: "2.3.4",
-                        blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None })
+                        blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, keepEmptyPresets: Fixture.KeepNeutralEmpty)
                     : fixture.ExportDirect();
                 if (fullExporter) LilToonGlbExtension.Validate(bytes);
                 await CheckOutput(fixture, bytes, false, normals ? authoredNormals : null, normals ? null : authoredUv);
@@ -392,7 +392,7 @@ namespace VRVlog.LilToonExporter.Tests
             var bytes = UniVrmOneClickExporter.Export(fixture.Root, "Missing mesh attributes", "Tests", warnings,
                 exporterVersion: fullLilToon ? "mesh-attribute-regression" : null,
                 lilToonVersion: fullLilToon ? "2.3.4" : null,
-                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, keepEmptyPresets: Fixture.KeepNeutralEmpty);
             if (fullLilToon) LilToonGlbExtension.Validate(bytes);
             await CheckOutput(fixture, bytes, skinned);
             fixture.AssertUnchanged(before);
@@ -411,6 +411,10 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(node.mesh, Is.GreaterThanOrEqualTo(0));
                     var mesh = data.GLTF.meshes[node.mesh];
                     Assert.That(mesh.primitives.Count, Is.EqualTo(2));
+                    // The normal exporter may add its blink placeholder target,
+                    // so the authored one is found by name.
+                    Assert.That(gltf_mesh_extras_targetNames.TryGet(mesh, out var targetNames), Is.True);
+                    var authored = targetNames.IndexOf(Fixture.Shape); Assert.That(authored, Is.GreaterThanOrEqualTo(0), string.Join(", ", targetNames));
                     for (var submesh = 0; submesh < 2; submesh++)
                     {
                         var primitive = mesh.primitives[submesh];
@@ -421,7 +425,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var normals = data.GetArrayFromAccessor<Vector3>(primitive.attributes.NORMAL);
                         var uv = data.GetArrayFromAccessor<Vector2>(primitive.attributes.TEXCOORD_0);
                         Assert.That(positions.Length, Is.EqualTo(3)); Assert.That(normals.Length, Is.EqualTo(3)); Assert.That(uv.Length, Is.EqualTo(3));
-                        var morph = primitive.targets[0];
+                        var morph = primitive.targets[authored];
                         Assert.That(morph.NORMAL, Is.GreaterThanOrEqualTo(0), "An authored normal delta is not optional when only the base normal was missing.");
                         var deltaVertices = data.GetArrayFromAccessor<Vector3>(morph.POSITION);
                         var deltaNormals = data.GetArrayFromAccessor<Vector3>(morph.NORMAL);
@@ -456,7 +460,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var expectedUv = overrideUv != null ? overrideUv[ImportedSources[vertex]] : fixture.MissingUv ? Vector2.zero : fixture.Uv[ImportedSources[vertex]];
                         Assert.That(Vector2.Distance(mesh.uv[vertex], expectedUv), Is.LessThan(.00001f));
                     }
-                    var shape = mesh.GetBlendShapeIndex("Authored detail"); Assert.That(shape, Is.GreaterThanOrEqualTo(0));
+                    var shape = mesh.GetBlendShapeIndex(Fixture.Shape); Assert.That(shape, Is.GreaterThanOrEqualTo(0));
                     foreach (var weight in new[] { 0f, 100f, 0f })
                     {
                         renderer.SetBlendShapeWeight(shape, weight);
@@ -498,6 +502,13 @@ namespace VRVlog.LilToonExporter.Tests
 
         sealed class Fixture : IDisposable
         {
+            // The normal exporter leaves out BlendShapes that nothing binds and
+            // the app does not drive by name. A MeshRenderer cannot be bound by
+            // a face clip, so the morph takes MediaPipe's "_neutral", a name the
+            // app drives (UnusedMorphTargets.AppDrives). Its normal exports keep
+            // the neutral preset empty so the name inference leaves it alone.
+            internal const string Shape = "_neutral";
+            internal static readonly string[] KeepNeutralEmpty = { "neutral" };
             readonly AttachmentConnectionTests.Fixture avatar = new AttachmentConnectionTests.Fixture();
             internal GameObject Root => avatar.Source;
             internal readonly Mesh Mesh;
@@ -523,8 +534,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Mesh.subMeshCount = 2; Mesh.SetTriangles(new[] { 3, 1, 0 }, 0); Mesh.SetTriangles(new[] { 2, 3, 1 }, 1);
                 PositionDeltas = Enumerable.Repeat(new Vector3(.02f, .01f, 0), 4).ToArray();
                 NormalDeltas = Enumerable.Range(0, 4).Select(index => new Vector3(.02f + .01f * index, .005f, 0)).ToArray();
-                Mesh.AddBlendShapeFrame("Authored detail", 50, PositionDeltas.Select(value => value * .5f).ToArray(), NormalDeltas.Select(value => value * .5f).ToArray(), null);
-                Mesh.AddBlendShapeFrame("Authored detail", 100, PositionDeltas, NormalDeltas, null);
+                Mesh.AddBlendShapeFrame(Shape, 50, PositionDeltas.Select(value => value * .5f).ToArray(), NormalDeltas.Select(value => value * .5f).ToArray(), null);
+                Mesh.AddBlendShapeFrame(Shape, 100, PositionDeltas, NormalDeltas, null);
                 Assert.That(Mesh.normals.Length, Is.EqualTo(missingNormals ? 0 : Positions.Length));
                 Assert.That(Mesh.uv.Length, Is.EqualTo(missingUv ? 0 : Positions.Length));
                 var renderer = target.GetComponent<SkinnedMeshRenderer>(); var material = renderer.sharedMaterial;

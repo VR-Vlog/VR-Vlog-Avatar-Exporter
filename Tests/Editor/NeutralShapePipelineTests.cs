@@ -128,7 +128,9 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     finally { Object.DestroyImmediate(measure); }
                 }
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Synthetic FX neutral regression", "VR Vlog tests", blinkOptions: blink);
+                // The export reads faces only from the board's list.
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Synthetic FX neutral regression", "VR Vlog tests", blinkOptions: blink,
+                    listFaces: new[] { ("Authored endpoint", (AnimationClip)selected.motion, 0f) });
                 Assert.That(skins.All(s => s.sharedMesh == f.Mesh && s.GetBlendShapeWeight(0) == 0), Is.True);
                 Assert.That(skins.Select(s => s.GetBlendShapeWeight(1)), Is.EqualTo(new[] { 25f, 50f }));
                 Assert.That(f.Mesh.vertices, Is.EqualTo(vertices)); Assert.That(f.Mesh.normals, Is.EqualTo(normals)); Assert.That(f.Mesh.tangents, Is.EqualTo(tangents));
@@ -162,7 +164,11 @@ namespace VRVlog.LilToonExporter.Tests
                     var open = input == 0 ? .03f : endpoint <= 50 ? endpoint * .0004f : .02f + (endpoint - 50) * .0002f;
                     foreach (var skin in imported.GetComponentsInChildren<SkinnedMeshRenderer>())
                     {
-                        Assert.That(skin.sharedMesh.blendShapeCount, Is.GreaterThan(220));
+                        // Shapes nothing binds are left out of the VRM, so the 220
+                        // authored shapes are not all kept; the endpoint still binds
+                        // a shape on each shared mesh.
+                        Assert.That(expression.MorphTargetBindings.Any(bind => imported.transform.Find(bind.RelativePath) == skin.transform &&
+                            bind.Index < skin.sharedMesh.blendShapeCount), Is.True, skin.name);
                         var baked = new Mesh();
                         try
                         {
