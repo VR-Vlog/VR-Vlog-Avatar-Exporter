@@ -1036,7 +1036,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (flow == null || flow.UploadSize <= 0) return;
             EditorGUI.ProgressBar(GUILayoutUtility.GetRect(0f, 20f, GUILayout.ExpandWidth(true)), (float)flow.Transferred / flow.UploadSize,
-                string.Format(T("{0:N0} / {1:N0} バイト（暗号化済み）"), flow.Transferred, flow.UploadSize));
+                string.Format(T("{0}（暗号化済み）"), TransferSizeText.Progress(flow.Transferred, flow.UploadSize)));
         }
 
         private static void Show(VisualElement element, bool visible) => element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
