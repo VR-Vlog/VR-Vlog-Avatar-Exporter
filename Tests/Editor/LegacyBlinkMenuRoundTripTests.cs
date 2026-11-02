@@ -129,7 +129,7 @@ namespace VRVlog.LilToonExporter.Tests
                                 key.Equals(ExpressionKey.BlinkLeft) && path == "Front" || key.Equals(ExpressionKey.BlinkRight) && path == "Back";
                             expected.SetBlendShapeWeight(0, blink || input == 0 ? 17 : 75);
                             expected.SetBlendShapeWeight(1, closesThisEye ? input * 100 : 0);
-                            AssertVertices(Vertices(expected), Vertices(imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path)), path + " / " + key + " / " + input);
+                            AssertVertices(TestObjects.WorldVertices(expected), TestObjects.WorldVertices(imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path)), path + " / " + key + " / " + input);
                         }
                     }
                 Assert.That(owned.Select(EditorJsonUtility.ToJson), Is.EqualTo(originals));
@@ -142,12 +142,6 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var mesh in owned) Object.DestroyImmediate(mesh);
                 AssetDatabase.DeleteAsset(folder);
             }
-        }
-        static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var mesh = new Mesh();
-            try { renderer.BakeMesh(mesh, false); return mesh.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(mesh); }
         }
         static void AssertVertices(Vector3[] expected, Vector3[] actual, string context)
         {

@@ -1116,7 +1116,7 @@ namespace VRVlog.LilToonExporter.Tests
             return mesh;
         }
 
-        private static NdmfExportPreparation.Bridge Resolve(string version = "1.14.8") =>
+        internal static NdmfExportPreparation.Bridge Resolve(string version = "1.14.8") =>
             NdmfExportPreparation.Bridge.Resolve(FakeType, version);
 
         private static Type FakeType(string name)

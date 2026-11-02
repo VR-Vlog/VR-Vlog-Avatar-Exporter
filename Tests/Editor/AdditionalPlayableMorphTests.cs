@@ -332,7 +332,7 @@ namespace VRVlog.LilToonExporter.Tests
                         expected.SetBlendShapeWeight(0, weight == 0 ? 17 : 80);
                         expected.SetBlendShapeWeight(1, 23); expected.SetBlendShapeWeight(2, 100);
                         var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(value => value.name == path);
-                        var expectedVertices = Vertices(expected); var actualVertices = Vertices(actual);
+                        var expectedVertices = TestObjects.WorldVertices(expected); var actualVertices = TestObjects.WorldVertices(actual);
                         Assert.That(actualVertices.Length, Is.EqualTo(expectedVertices.Length));
                         for (var index = 0; index < expectedVertices.Length; index++)
                             Assert.That(Vector3.Distance(actualVertices[index], expectedVertices[index]), Is.LessThan(.0005f), path + " / " + weight);
@@ -348,11 +348,5 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var baked = new Mesh();
-            try { renderer.BakeMesh(baked, false); return baked.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
-        }
     }
 }

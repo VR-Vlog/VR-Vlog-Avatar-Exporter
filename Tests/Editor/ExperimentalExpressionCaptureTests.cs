@@ -79,7 +79,7 @@ namespace VRVlog.LilToonExporter.Tests
             clips.Select(clip => (clip.name, clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip))).ToArray();
 
         // A face on the fixture's front mesh, for the board's list.
-        static AnimationClip FaceClip(string name, float weight)
+        internal static AnimationClip FaceClip(string name, float weight)
         {
             var clip = new AnimationClip { name = name };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));

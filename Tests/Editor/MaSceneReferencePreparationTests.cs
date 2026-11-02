@@ -703,7 +703,6 @@ namespace VRVlog.LilToonExporter.Tests
             NdmfPreparationTests.FakeProcessor.Ranges.Clear();
         }
 
-        static NdmfExportPreparation.Bridge FakeBridge() => (NdmfExportPreparation.Bridge)typeof(NdmfPreparationTests)
-            .GetMethod("Resolve", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { "1.14.8" });
+        static NdmfExportPreparation.Bridge FakeBridge() => NdmfPreparationTests.Resolve();
     }
 }

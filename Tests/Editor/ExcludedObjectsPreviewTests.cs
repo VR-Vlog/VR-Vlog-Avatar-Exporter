@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(WindowType.GetField("pending", Flags).GetValue(window), Is.Null);
         }
 
-        static int OwnedCopies(string name) => Resources.FindObjectsOfTypeAll<GameObject>()
+        internal static int OwnedCopies(string name) => Resources.FindObjectsOfTypeAll<GameObject>()
             .Count(item => item != null && item.name == name && item.transform.parent == null && EditorSceneManager.IsPreviewScene(item.scene));
 
         [Test]

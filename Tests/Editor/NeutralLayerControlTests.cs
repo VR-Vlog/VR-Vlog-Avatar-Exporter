@@ -894,7 +894,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var reference = expected.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
                         reference.SetBlendShapeWeight(0, input == 0 ? nativeRest : 80); reference.SetBlendShapeWeight(1, 100);
                         var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == path);
-                        var a = Vertices(reference); var b = Vertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
+                        var a = TestObjects.WorldVertices(reference); var b = TestObjects.WorldVertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
                         for (var i = 0; i < a.Length; i++) Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f),
                             path + " / " + input + "\n" + string.Join("\n", warnings));
                     }
@@ -910,11 +910,5 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        private static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var baked = new Mesh();
-            try { renderer.BakeMesh(baked, false); return baked.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
-        }
     }
 }

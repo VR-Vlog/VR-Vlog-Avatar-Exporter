@@ -438,17 +438,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == "Body");
                 var expected = reference.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
                 var materials = actual.sharedMaterials.Select(EditorJsonUtility.ToJson).ToArray();
-                Vector3[] Vertices(SkinnedMeshRenderer renderer)
-                {
-                    var baked = new Mesh();
-                    try { renderer.BakeMesh(baked, false); return baked.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-                    finally { Object.DestroyImmediate(baked); }
-                }
                 foreach (var input in new[] { 0f, 1f, 0f })
                 {
                     imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), input); imported.Runtime.Process();
                     expected.SetBlendShapeWeight(1, input == 0 ? 7 : 75);
-                    var a = Vertices(expected); var b = Vertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
+                    var a = TestObjects.WorldVertices(expected); var b = TestObjects.WorldVertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
                     for (var i = 0; i < a.Length; i++) Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f), "vertex " + i + " / input " + input);
                     Assert.That(actual.sharedMaterials.Select(EditorJsonUtility.ToJson), Is.EqualTo(materials));
                 }

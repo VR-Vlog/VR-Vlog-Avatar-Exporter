@@ -37,13 +37,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         Material Substitute(Material source, string shader, out IReadOnlyList<string> dropped)
         {
-            var textures = new List<Texture2D>();
-            var output = UnsupportedShaderSubstitution.Create(source, shader, out var colorSkipped, out var route, out dropped, textures);
-            owned.AddRange(textures);
-            Assert.That(output, Is.Not.Null);
+            var output = TestObjects.Substitute(owned, source, shader, out var colorSkipped, out var route, out dropped, new List<Texture2D>());
             Assert.That(route, Is.EqualTo(UnsupportedShaderSubstitution.Route.VRChat));
             Assert.That(colorSkipped, Is.False);
-            return Own(output);
+            return output;
         }
 
         Material Substitute(Material source, string shader) => Substitute(source, shader, out _);

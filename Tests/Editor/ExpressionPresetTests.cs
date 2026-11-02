@@ -51,12 +51,7 @@ namespace VRVlog.LilToonExporter.Tests
         static (string Name, Vector3[] Deltas) Shape(string name, Vector3 delta, params int[] vertices) =>
             (name, Enumerable.Range(0, 3).Select(index => vertices.Length == 0 || vertices.Contains(index) ? delta : Vector3.zero).ToArray());
 
-        static AnimationClip FaceClip(float weight)
-        {
-            var clip = new AnimationClip { name = "Sample face" };
-            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-            return clip;
-        }
+        static AnimationClip FaceClip(float weight) => ExperimentalExpressionCaptureTests.FaceClip("Sample face", weight);
 
         static Dictionary<string, object> Expressions(byte[] bytes)
         {

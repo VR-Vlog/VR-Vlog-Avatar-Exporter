@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, 1500, 7, 1024, 5)]
         public void CaptureCapsLargeImagesAndPreservesAspectColorAlphaAndSource(bool srgb, int width, int height, int outputWidth, int outputHeight)
         {
-            var source = Image(width, height, !srgb, _ => new Color32(102, 51, 204, 128));
+            var source = TestTextures.Image(width, height, !srgb, _ => new Color32(102, 51, 204, 128));
             using var fixture = new SurfaceFixture();
             try
             {
@@ -167,7 +167,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void ResizedColorUsesLinearLightAndTransparentEdgesKeepTheirColor(bool srgb)
         {
-            var source = Image(4096, 4, !srgb, i => (i & 1) == 0 ? new Color32(0, 0, 0, 255) : new Color32(255, 255, 255, 255));
+            var source = TestTextures.Image(4096, 4, !srgb, i => (i & 1) == 0 ? new Color32(0, 0, 0, 255) : new Color32(255, 255, 255, 255));
             using var fixture = new SurfaceFixture();
             try
             {
@@ -317,7 +317,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ImportedNormalCaptureIsCanonicalAndDoesNotReimportOrEditTheSource()
         {
             var path = "Assets/__VRVlogFullResizeNormal_" + Guid.NewGuid().ToString("N") + ".png";
-            var original = Image(4096, 8, true, _ => new Color32(128, 128, 255, 255));
+            var original = TestTextures.Image(4096, 8, true, _ => new Color32(128, 128, 255, 255));
             using var fixture = new SurfaceFixture();
             try
             {
@@ -371,7 +371,7 @@ namespace VRVlog.LilToonExporter.Tests
             TextureImporterCompression compression, FilterMode filter)
         {
             var path = "Assets/__VRVlogFilterableNormal_" + Guid.NewGuid().ToString("N") + ".png";
-            var original = Image(16, 16, true, index => new Color32(
+            var original = TestTextures.Image(16, 16, true, index => new Color32(
                 (byte)(48 + index % 16 * 11), (byte)(48 + index / 16 * 11), 255, 255));
             using var fixture = new SurfaceFixture();
             try
@@ -434,9 +434,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Resize integration material" };
-            var main = Image(4096, 8, false, _ => new Color32(102, 51, 204, 255));
-            var backlight = Image(4096, 16, false, _ => new Color32(27, 83, 119, 255));
-            var mask = Image(4096, 8, true, _ => new Color32(97, 33, 181, 211));
+            var main = TestTextures.Image(4096, 8, false, _ => new Color32(102, 51, 204, 255));
+            var backlight = TestTextures.Image(4096, 16, false, _ => new Color32(27, 83, 119, 255));
+            var mask = TestTextures.Image(4096, 8, true, _ => new Color32(97, 33, 181, 211));
             var decoded = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
             try
             {
@@ -542,7 +542,7 @@ namespace VRVlog.LilToonExporter.Tests
             // Delete Mesh tests the per-vertex width for exactly 0. An
             // unresampled copy keeps both the zero set and its complement.
             Color32 Width(int i) => ((i % 2048) / 3 + i / 2048) % 2 == 0 ? new Color32(0, 0, 0, 255) : new Color32(255, 0, 0, 255);
-            var mask = Image(2048, 2048, true, Width);
+            var mask = TestTextures.Image(2048, 2048, true, Width);
             using var fixture = new SurfaceFixture("Hidden/lilToonOutline");
             try
             {
@@ -593,14 +593,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static Color32 CubeColor(int face, int sourceMip) => new Color32((byte)(31 + face * 27), (byte)(17 + sourceMip * 13), 181, 203);
-
-        static Texture2D Image(int width, int height, bool linear, Func<int, Color32> color)
-        {
-            var image = new Texture2D(width, height, TextureFormat.RGBA32, false, linear);
-            image.SetPixels32(Enumerable.Range(0, width * height).Select(color).ToArray());
-            image.Apply(false, false);
-            return image;
-        }
 
         static byte[] Rgba(int width, int height, Color32 color)
         {

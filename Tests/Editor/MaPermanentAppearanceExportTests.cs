@@ -92,7 +92,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var preparedSelected = sourceSkins.ToDictionary(skin => skin.name, skin => {
                     var index = skin.sharedMesh.GetBlendShapeIndex("Smile");
                     skin.SetBlendShapeWeight(index, 100);
-                    try { return WorldVertices(skin); }
+                    try { return TestObjects.WorldVertices(skin); }
                     finally { skin.SetBlendShapeWeight(index, 0); }
                 });
                 prepared = Object.Instantiate(fixture.Source); prepared.name = fixture.Source.name;
@@ -144,7 +144,7 @@ namespace VRVlog.LilToonExporter.Tests
                     foreach (var path in new[] { "Front", "Back" })
                     {
                         var output = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path);
-                        var vertices = WorldVertices(output);
+                        var vertices = TestObjects.WorldVertices(output);
                         var endpoint = route.Menu > 0 ? preparedSelected[path] : nativeBlink[path];
                         // UniVRM's binary expression merger selects the endpoint
                         // above .5; precisely .5 remains neutral. The manual
@@ -236,15 +236,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var skin = native.Skin(path);
                 Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Pupil hide")), Is.EqualTo(100).Within(.001f));
                 skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Blink"), blink);
-                return WorldVertices(skin);
+                return TestObjects.WorldVertices(skin);
             });
-        }
-
-        static Vector3[] WorldVertices(SkinnedMeshRenderer skin)
-        {
-            var baked = new Mesh();
-            try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
         }
 
         static float TriangleArea(Vector3[] vertices, int start) =>

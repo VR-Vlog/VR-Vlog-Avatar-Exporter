@@ -284,14 +284,14 @@ namespace VRVlog.LilToonExporter.Tests
             var selected = selectedMachine.states.Single(child => child.state.name == "Selected").state;
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)selected.motion, entry);
             var sourceController = EditorJsonUtility.ToJson(controller); var sourceMesh = EditorJsonUtility.ToJson(mesh);
-            var rotation = bone.transform.localRotation; var before = WorldVertices(renderer);
+            var rotation = bone.transform.localRotation; var before = TestObjects.WorldVertices(renderer);
             VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, 1, writeDefaults, sourceState: selected);
             Assert.That(entry.Values.Select(value => value.Shape), Is.EquivalentTo(new[] { "Face size" }),
                 "A native wardrobe support layer cannot become an exported facial morph endpoint.");
             Assert.That(entry.Values.Single().Weight, Is.EqualTo(reference.Weights["Face size"]).Within(.01));
             Assert.That(bone.transform.localRotation, Is.EqualTo(rotation));
             Assert.That(renderer.GetBlendShapeWeight(0), Is.EqualTo(20)); Assert.That(renderer.GetBlendShapeWeight(2), Is.EqualTo(35));
-            AssertVertices(before, WorldVertices(renderer));
+            AssertVertices(before, TestObjects.WorldVertices(renderer));
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(sourceController));
             Assert.That(EditorJsonUtility.ToJson(mesh), Is.EqualTo(sourceMesh));
             var mixed = Clip("Explicit selected transform", ("Face size", 80));
@@ -660,7 +660,7 @@ namespace VRVlog.LilToonExporter.Tests
             var renderer = native.Skin(path);
             var weights = Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
                 .ToDictionary(renderer.sharedMesh.GetBlendShapeName, renderer.GetBlendShapeWeight);
-            return (weights, WorldVertices(renderer));
+            return (weights, TestObjects.WorldVertices(renderer));
         }
 
         // Registered FaceEmo clips are a WD-Off base below the authored
@@ -687,13 +687,6 @@ namespace VRVlog.LilToonExporter.Tests
                 reference.layers = layers;
             }
             return NativePose(source, reference, path, new Dictionary<string, int>());
-        }
-
-        static Vector3[] WorldVertices(SkinnedMeshRenderer renderer)
-        {
-            var baked = new Mesh();
-            try { renderer.BakeMesh(baked, false); return baked.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
         }
 
         static void AssertVertices(Vector3[] expected, Vector3[] actual)
@@ -772,7 +765,7 @@ namespace VRVlog.LilToonExporter.Tests
                             }
                             Vector3[] Expected(float input) => legacyClamp ? native[input]
                                 : originalVertices.Select(vertex => vertex + Vector3.up * (input / 100f)).ToArray();
-                            AssertVertices(Expected(rest), WorldVertices(renderer));
+                            AssertVertices(Expected(rest), TestObjects.WorldVertices(renderer));
                             foreach (var input in inputs)
                             {
                                 var target = renderer.sharedMesh;
@@ -780,13 +773,13 @@ namespace VRVlog.LilToonExporter.Tests
                                 AvatarBaseShape.AppendExpression(fixture.Mesh, target, "Static " + input,
                                     new[] { effectiveRest }, new[] { input }, legacyClamp);
                                 renderer.SetBlendShapeWeight(expression, 100);
-                                AssertVertices(Expected(input), WorldVertices(renderer));
+                                AssertVertices(Expected(input), TestObjects.WorldVertices(renderer));
                                 renderer.SetBlendShapeWeight(expression, 0);
                                 var animated = target.blendShapeCount;
                                 AvatarBaseShape.AppendAnimatedShape(fixture.Mesh, target, "Animated " + input,
                                     0, rest, input, legacyClamp);
                                 renderer.SetBlendShapeWeight(animated, 100);
-                                AssertVertices(Expected(input), WorldVertices(renderer));
+                                AssertVertices(Expected(input), TestObjects.WorldVertices(renderer));
                                 renderer.SetBlendShapeWeight(animated, 0);
                             }
                         }
@@ -1103,7 +1096,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
                 imported.Runtime.Process();
                 var importedFront = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == "Front");
-                var actualNeutralVertices = WorldVertices(importedFront);
+                var actualNeutralVertices = TestObjects.WorldVertices(importedFront);
                 Assert.That(actualNeutralVertices.Length, Is.EqualTo(expectedNeutral.Vertices.Length), "Neutral");
                 for (var vertex = 0; vertex < actualNeutralVertices.Length; vertex++)
                     Assert.That(Vector3.Distance(expectedNeutral.Vertices[vertex], actualNeutralVertices[vertex]), Is.LessThan(.0005f),

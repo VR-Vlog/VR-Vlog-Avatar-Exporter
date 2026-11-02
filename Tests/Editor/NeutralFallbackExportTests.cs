@@ -146,7 +146,7 @@ namespace VRVlog.LilToonExporter.Tests
                             expected.SetBlendShapeWeight(1, 100);
                             expected.SetBlendShapeWeight(2, key.Equals(ExpressionKey.Blink) ? input * 100 : 0);
                             var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path);
-                            var a = Vertices(expected); var b = Vertices(actual);
+                            var a = TestObjects.WorldVertices(expected); var b = TestObjects.WorldVertices(actual);
                             Assert.That(b.Length, Is.EqualTo(a.Length));
                             for (var i = 0; i < a.Length; i++)
                                 Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f), path + " / " + key + " / " + input +
@@ -175,13 +175,6 @@ namespace VRVlog.LilToonExporter.Tests
                 if (reference != null) Object.DestroyImmediate(reference);
                 AssetDatabase.DeleteAsset(folder);
             }
-        }
-
-        static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var mesh = new Mesh();
-            try { renderer.BakeMesh(mesh, false); return mesh.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(mesh); }
         }
 
         static float[] NativeOpenWeights(GameObject source, AnimatorController controller)

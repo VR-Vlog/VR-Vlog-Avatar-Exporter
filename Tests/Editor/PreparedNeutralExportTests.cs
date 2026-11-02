@@ -88,12 +88,6 @@ namespace VRVlog.LilToonExporter.Tests
 
                 expected = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                Vector3[] Vertices(SkinnedMeshRenderer skin)
-                {
-                    var baked = new Mesh();
-                    try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-                    finally { Object.DestroyImmediate(baked); }
-                }
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Independent influencing bone neutral", "Tests", exporterVersion: null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
@@ -105,9 +99,9 @@ namespace VRVlog.LilToonExporter.Tests
                     {
                         var referenceSkin = expected.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
                         referenceSkin.SetBlendShapeWeight(0, input == 0 ? nativeWeight : 80);
-                        var referenceVertices = Vertices(referenceSkin);
+                        var referenceVertices = TestObjects.WorldVertices(referenceSkin);
                         var output = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path);
-                        var outputVertices = Vertices(output);
+                        var outputVertices = TestObjects.WorldVertices(output);
                         Assert.That(outputVertices.Length, Is.EqualTo(referenceVertices.Length));
                         for (var vertex = 0; vertex < referenceVertices.Length; vertex++)
                             Assert.That(Vector3.Distance(outputVertices[vertex], referenceVertices[vertex]), Is.LessThan(.0005f),
@@ -439,19 +433,6 @@ namespace VRVlog.LilToonExporter.Tests
             NdmfPreparationTests.FakeProcessor.Calls = 0;
         }
 
-        static NdmfExportPreparation.Bridge FakeBridge() => NdmfExportPreparation.Bridge.Resolve(name =>
-        {
-            switch (name)
-            {
-                case "nadena.dev.ndmf.AvatarProcessor": return typeof(NdmfPreparationTests.FakeProcessor);
-                case "nadena.dev.ndmf.BuildContext": return typeof(NdmfPreparationTests.FakeContext);
-                case "nadena.dev.ndmf.BuildPhase": return typeof(NdmfPreparationTests.FakePhase);
-                case "nadena.dev.ndmf.platform.INDMFPlatformProvider": return typeof(NdmfPreparationTests.IFakeProvider);
-                case "nadena.dev.ndmf.platform.PlatformRegistry": return typeof(NdmfPreparationTests.FakeRegistry);
-                case "nadena.dev.ndmf.platform.GenericPlatform": return typeof(NdmfPreparationTests.FakeGeneric);
-                case "nadena.dev.ndmf.OverrideTemporaryDirectoryScope": return typeof(NdmfPreparationTests.FakeDirectoryScope);
-                default: return null;
-            }
-        }, "1.14.8");
+        static NdmfExportPreparation.Bridge FakeBridge() => NdmfPreparationTests.Resolve();
     }
 }

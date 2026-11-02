@@ -568,7 +568,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var expected = reference.transform.Find(path).GetComponent<SkinnedMeshRenderer>(); expected.SetBlendShapeWeight(0, input == 0 ? 17 : 75);
                         var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == path);
                         Assert.That(actual.enabled && actual.gameObject.activeInHierarchy, Is.True);
-                        var a = Vertices(expected); var b = Vertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
+                        var a = TestObjects.WorldVertices(expected); var b = TestObjects.WorldVertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
                         for (var i = 0; i < a.Length; i++) Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f), path + " / " + input);
                     }
                     Assert.That(importedMaterials.Select(item => item.color), Is.EqualTo(colorBefore));
@@ -582,13 +582,6 @@ namespace VRVlog.LilToonExporter.Tests
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
                 if (reference != null) Object.DestroyImmediate(reference);
             }
-        }
-
-        private static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var result = new Mesh();
-            try { renderer.BakeMesh(result, false); return result.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(result); }
         }
 
         // A constant rotation curve equal to the prepared pose holds it, written

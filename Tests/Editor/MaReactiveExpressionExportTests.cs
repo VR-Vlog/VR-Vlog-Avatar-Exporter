@@ -198,8 +198,8 @@ namespace VRVlog.LilToonExporter.Tests
                     .Concat(AssetDatabase.FindAssets("", new[] { folder }).SelectMany(guid => AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(guid))))
                     .Append(fixture.Mesh).Distinct().ToArray();
                 var before = authored.ToDictionary(value => value, value => EditorJsonUtility.ToJson(value));
-                var expectedOff = WorldVertices(front);
-                front.SetBlendShapeWeight(1, 100); var expectedOn = WorldVertices(front); front.SetBlendShapeWeight(1, 25);
+                var expectedOff = TestObjects.WorldVertices(front);
+                front.SetBlendShapeWeight(1, 100); var expectedOn = TestObjects.WorldVertices(front); front.SetBlendShapeWeight(1, 25);
                 // Establish the actual official MA result without our snapshot.
                 // Merge Motion's direct clip is a constant activation endpoint;
                 // the nested tree supplies the real user-controlled 0/1 choice.
@@ -254,7 +254,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var expected = selection == 1 ? expectedOn : expectedOff;
                 Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Smile")), Is.EqualTo(selection == 1 ? 100 : 25).Within(.001f),
                     "Official MA must evaluate the authored non-menu activation endpoint " + selection);
-                var vertices = WorldVertices(skin); Assert.That(vertices.Length, Is.EqualTo(expected.Length));
+                var vertices = TestObjects.WorldVertices(skin); Assert.That(vertices.Length, Is.EqualTo(expected.Length));
                 for (var i = 0; i < vertices.Length; i++) Assert.That(Vector3.Distance(vertices[i], expected[i]), Is.LessThan(.0005f));
                 result.Add(vertices);
             }
@@ -332,11 +332,5 @@ namespace VRVlog.LilToonExporter.Tests
             VrcAvatar.SetExpressions(descriptor, menu, parameters); VrcAvatar.SetFx(descriptor, controller);
         }
 
-        static Vector3[] WorldVertices(SkinnedMeshRenderer skin)
-        {
-            var baked = new Mesh();
-            try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
-        }
     }
 }
