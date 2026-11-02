@@ -927,57 +927,6 @@ namespace VRVlog.LilToonExporter
 
         internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません・ファイルを直すか書き出さない表情へ移す・{1}";
 
-        internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
-        internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
-        // The ordinary route kept the menu faces, fewer than the list; some list
-        // faces are not in the VRM. Which ones and how many is not known: menu faces
-        // and list clips share no key, and a non-FX layer can break menu faces the list has.
-        internal const string MenuShortKeptMenuFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧{1}件のうち書き出していない表情があります";
-        // The ordinary route kept menu faces the list does not show; nothing was left out.
-        internal const string MenuExceedsListFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧は{1}件です";
-
-        // What a save does when the menu gives fewer faces than the list. The
-        // saved bytes, the list count it was decided with and the lines of the result.
-        internal sealed class MenuShortResult
-        {
-            public byte[] Exported;
-            public int ListedFaces;
-            public string Recorded;
-            public string Error;
-            public string Kept;
-        }
-
-        // rebuildBoard is null once the board closed; otherwise it rebuilds the
-        // board and gives its list count.
-        // A failed recordList is undone by exportMenuAgain, whose bytes are saved.
-        internal static MenuShortResult ResolveMenuShort(byte[] exported, int menuFaces, int listedFaces,
-            Func<int> rebuildBoard, Func<byte[]> recordList, Func<byte[]> exportMenuAgain)
-        {
-            var result = new MenuShortResult { Exported = exported, ListedFaces = listedFaces };
-            // A recovery attempt after the board closed has no list to record.
-            if (rebuildBoard == null)
-            {
-                result.Kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
-                return result;
-            }
-            // The board may have changed before a recovery attempt.
-            var listed = rebuildBoard();
-            result.ListedFaces = listed;
-            try
-            {
-                result.Exported = recordList();
-                result.Recorded = string.Format(ExporterLocalization.T(MenuShortRecordedFormat), menuFaces, listed);
-            }
-            catch (Exception exception) when (!(exception is OperationCanceledException))
-            {
-                // The menu result saved before this change is saved again.
-                result.Exported = exportMenuAgain();
-                result.Error = exception.Message;
-                result.Kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listed);
-            }
-            return result;
-        }
-
         // ---- Pages ----
 
         // Circles joined by lines, each followed by the step name: a check for

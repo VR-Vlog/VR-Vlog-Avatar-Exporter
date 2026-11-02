@@ -46,8 +46,7 @@ namespace VRVlog.LilToonExporter.Tests
             ExportFallbackConfirmation.IsBatchMode = () => false;
             // The wording assertions compare the Japanese source text, whatever
             // language the machine running the tests uses.
-            originalLocale = LocaleField.GetValue(null);
-            LocaleField.SetValue(null, "ja");
+            locale = new LocaleScope("ja");
         }
 
         [TearDown] public void TearDown()
@@ -55,12 +54,10 @@ namespace VRVlog.LilToonExporter.Tests
             ExportFallbackConfirmation.Dialog = originalDialog;
             ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
             Selection.objects = originalSelection;
-            LocaleField.SetValue(null, originalLocale);
+            locale.Dispose();
         }
 
-        static readonly System.Reflection.FieldInfo LocaleField = typeof(ExporterLocalization).GetField("_locale",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        object originalLocale;
+        LocaleScope locale;
 
         static ExportFallbackReport AllFallbacks(Transform root = null, Transform collider = null, Transform renderer = null)
         {
@@ -130,17 +127,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(list.Rows.Single(row => row.Outcome == null).Content, Is.EqualTo("別の知らせ"));
 
             // Default reasons are stored as Japanese source text and must follow the Editor language.
-            var messages = typeof(ExporterLocalization).GetField("_messages",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            try
+            using (new LocaleScope("en"))
             {
-                LocaleField.SetValue(null, "en");
-                messages.SetValue(null, null);
                 var english = ExportResultList.Build(report, null).Rows.Select(row => row.Content).ToArray();
                 Assert.That(english, Has.No.Member("PhysBoneコライダーを変換できませんでした"));
                 Assert.That(english, Has.Member(ExporterLocalization.T("PhysBoneコライダーを変換できませんでした")));
             }
-            finally { messages.SetValue(null, null); }
         }
 
         [Test] public void KeptItemsAreListedOnceWithoutAsking()
