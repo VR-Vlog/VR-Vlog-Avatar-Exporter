@@ -12,46 +12,71 @@ namespace VRVlog.LilToonExporter
     // afterwards. Only the disposable export copy receives generated geometry.
     internal sealed class BlinkExportSession : IDisposable
     {
-        internal readonly List<BlinkShapeBinding>[] Slots = {
-            new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>()
-        };
-        internal string Description;
-        internal bool PreserveAuthored;
-        internal bool ConfiguredByDescriptor;
-        internal bool Disabled;
+        internal List<BlinkShapeBinding>[] Slots => state.Slots;
+        internal string Description => state.Description;
+        internal bool PreserveAuthored => state.PreserveAuthored;
+        internal bool ConfiguredByDescriptor => state.ConfiguredByDescriptor;
+        internal bool Disabled => state.Disabled;
         // Automatic setup found no closing shape at all and fell back to no blink.
-        internal bool MissingAutomatic;
+        internal bool MissingAutomatic => state.MissingAutomatic;
         internal const string MissingAutomaticDescription = "瞬きなし（閉眼用の変形が見つかりません）";
         internal const string MissingAutomaticWarning = "閉眼用の変形が見つからないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
         // Automatic setup found closing names but could not pick one (duplicate
         // names, an eye without its other side, or shapes that do not move), so
         // it fell back to no blink. UnresolvedReason keeps the old error text.
-        internal bool UnresolvedAutomatic;
-        internal string UnresolvedReason;
+        internal bool UnresolvedAutomatic => state.UnresolvedAutomatic;
+        internal string UnresolvedReason => state.UnresolvedReason;
         internal const string UnresolvedAutomaticDescription = "瞬きなし（閉眼用の変形を自動で決められません）";
         internal const string UnresolvedAutomaticWarning = "閉眼用の変形を自動で決められないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
         internal const string DuplicateClosingNames = "閉眼用の名前が重複しています。「確認・調整」で設定してください。";
         internal const string UnmatchedClosingSide = "閉眼用の左右がそろっていません: ";
         internal const string UnusableClosingShapes = "閉眼用の変形を特定できません。「確認・調整」で選択するか「瞬きなし」を指定してください。";
         // What a name fallback chose, for the export details.
-        internal readonly List<string> Inferences = new List<string>();
+        internal List<string> Inferences => state.Inferences;
         internal const string InferredSidesLog = "瞬きの左右を両目の変形の名前から決めました: ";
         internal const string InferredNamesLog = "瞬きの変形を名前から決めました: ";
-        bool allowMissingAutomaticBlink;
-        bool deferredAutomatic;
         sealed class Candidate
         {
             internal BlinkShapeBinding Binding;
             internal bool Moving;
             internal float ReferenceWeight;
         }
-        readonly List<Candidate> candidates = new List<Candidate>();
-        readonly Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float> inferredEndpoints =
-            new Dictionary<(SkinnedMeshRenderer, string), float>();
-        internal bool HasBilateralPreset => authored[0] || Slots[0].Count > 0;
-        internal bool RequiresUnifiedEvidence => allowMissingAutomaticBlink && !PreserveAuthored && Slots[0].Count == 0 && Slots[1].Count == 0;
+        // Everything resolving decided. A later resolution replaces it whole,
+        // and an export copy gets the same decision on its own renderers.
+        sealed class Resolution
+        {
+            internal readonly List<BlinkShapeBinding>[] Slots = {
+                new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>()
+            };
+            internal string Description;
+            internal bool PreserveAuthored, ConfiguredByDescriptor, Disabled, MissingAutomatic, UnresolvedAutomatic;
+            internal string UnresolvedReason;
+            internal readonly List<string> Inferences = new List<string>();
+            internal bool AllowMissingAutomaticBlink, DeferredAutomatic;
+            internal readonly List<Candidate> Candidates = new List<Candidate>();
+            internal readonly Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float> InferredEndpoints =
+                new Dictionary<(SkinnedMeshRenderer, string), float>();
+            internal readonly bool[] Authored = new bool[3];
+
+            internal Resolution Map(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> target)
+            {
+                var copy = new Resolution { Description = Description, PreserveAuthored = PreserveAuthored, ConfiguredByDescriptor = ConfiguredByDescriptor,
+                    Disabled = Disabled, MissingAutomatic = MissingAutomatic, UnresolvedAutomatic = UnresolvedAutomatic, UnresolvedReason = UnresolvedReason,
+                    AllowMissingAutomaticBlink = AllowMissingAutomaticBlink, DeferredAutomatic = DeferredAutomatic };
+                Array.Copy(Authored, copy.Authored, Authored.Length);
+                copy.Inferences.AddRange(Inferences);
+                BlinkShapeBinding Moved(BlinkShapeBinding binding) { var row = binding.Copy(); row.Renderer = target(row.Renderer); return row; }
+                for (var slot = 0; slot < Slots.Length; slot++) copy.Slots[slot].AddRange(Slots[slot].Select(Moved));
+                copy.Candidates.AddRange(Candidates.Select(candidate =>
+                    new Candidate { Binding = Moved(candidate.Binding), Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight }));
+                foreach (var pair in InferredEndpoints) copy.InferredEndpoints.Add((target(pair.Key.Renderer), pair.Key.Shape), pair.Value);
+                return copy;
+            }
+        }
+        Resolution state = new Resolution();
+        internal bool HasBilateralPreset => state.Authored[0] || Slots[0].Count > 0;
+        internal bool RequiresUnifiedEvidence => state.AllowMissingAutomaticBlink && !PreserveAuthored && Slots[0].Count == 0 && Slots[1].Count == 0;
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
-        readonly bool[] authored = new bool[3];
         readonly List<Object> expressionCopies = new List<Object>();
 
         internal static BlinkExportSession Resolve(GameObject source, BlinkExportOptions options = null,
@@ -70,12 +95,13 @@ namespace VRVlog.LilToonExporter
             if (source == null) throw new InvalidOperationException("アバターを指定してください。");
             options = options ?? new BlinkExportOptions();
             var result = new BlinkExportSession();
+            var resolution = result.state;
             // Any exact, unified or one-sided closing name, even an inert one.
             var namedClosure = false;
             if (options.Mode == BlinkExportMode.None)
             {
-                result.Disabled = true;
-                result.Description = "瞬きなし";
+                resolution.Disabled = true;
+                resolution.Description = "瞬きなし";
                 return result;
             }
             if (options.Mode == BlinkExportMode.Manual)
@@ -83,7 +109,7 @@ namespace VRVlog.LilToonExporter
                 var selected = new[] { options.Both, options.Left, options.Right };
                 for (var slot = 0; slot < selected.Length; slot++)
                     result.Slots[slot].AddRange(selected[slot].Select(b => b.Copy()));
-                result.Description = "手動設定";
+                resolution.Description = "手動設定";
             }
             else
             {
@@ -91,12 +117,12 @@ namespace VRVlog.LilToonExporter
                 var clips = new[] { expressions?.Blink, expressions?.BlinkLeft, expressions?.BlinkRight };
                 if (clips.Any(c => c != null))
                 {
-                    result.PreserveAuthored = true;
-                    result.Description = "元のVRM設定";
+                    resolution.PreserveAuthored = true;
+                    resolution.Description = "元のVRM設定";
                     for (var slot = 0; slot < clips.Length; slot++)
                     {
                         var clip = clips[slot];
-                        result.authored[slot] = clip != null;
+                        resolution.Authored[slot] = clip != null;
                         if (clip == null) continue;
                         foreach (var binding in clip.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>())
                         {
@@ -110,21 +136,21 @@ namespace VRVlog.LilToonExporter
                 }
                 else if (TryDescriptor(source, excluded, out var descriptorBinding))
                 {
-                    result.ConfiguredByDescriptor = true;
+                    resolution.ConfiguredByDescriptor = true;
                     result.Slots[0].Add(descriptorBinding);
-                    result.Description = "VRChatの閉眼設定";
+                    resolution.Description = "VRChatの閉眼設定";
                     result.InferSides();
                 }
                 else
                 {
-                    result.deferredAutomatic = deferAutomaticUsability;
+                    resolution.DeferredAutomatic = deferAutomaticUsability;
                     var rendererNames = ExportRendererSelection.Enumerate(source).OfType<SkinnedMeshRenderer>()
                         .Where(renderer => excluded?.Invoke(renderer.transform) != true && renderer.sharedMesh != null)
                         .ToDictionary(renderer => renderer, renderer => Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
                             .Select(renderer.sharedMesh.GetBlendShapeName).ToArray());
                     namedClosure = rendererNames.Values.Any(names =>
                         BlinkShapeNames.AutomaticCandidates(names).Any() || BlinkShapeNames.PartialCandidates(names).Any());
-                    result.allowMissingAutomaticBlink = deferAutomaticUsability || source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile == null &&
+                    resolution.AllowMissingAutomaticBlink = deferAutomaticUsability || source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile == null &&
                         UnifiedExpressionPreparation.HasUsableEvidence(source, excluded, suppressSharedTextureEmission, suppressHdrTextureEmission);
                     var completePairs = true;
                     var partialFamilies = new Dictionary<int, List<BlinkShapeBinding>[]>();
@@ -141,11 +167,11 @@ namespace VRVlog.LilToonExporter
                             usable);
                         if (resolved[0] == -2)
                         {
-                            result.UnresolvedReason = result.UnresolvedReason ?? DuplicateClosingNames;
+                            resolution.UnresolvedReason = resolution.UnresolvedReason ?? DuplicateClosingNames;
                             continue;
                         }
                         var completePair = resolved[1] >= 0 && resolved[2] >= 0;
-                        if (!result.allowMissingAutomaticBlink && resolved[0] < 0 && !completePair &&
+                        if (!resolution.AllowMissingAutomaticBlink && resolved[0] < 0 && !completePair &&
                             (resolved[1] >= 0 || resolved[2] >= 0)) requiredPartialRenderers.Add(renderer);
                         if (resolved[0] >= 0 && !completePair) completePairs = false;
                         for (var slot = 0; slot < resolved.Length; slot++)
@@ -184,7 +210,7 @@ namespace VRVlog.LilToonExporter
                     }
                     var unmatched = requiredPartialRenderers.FirstOrDefault(renderer => !claimedPartialRenderers.Contains(renderer));
                     if (unmatched != null)
-                        result.UnresolvedReason = result.UnresolvedReason ?? UnmatchedClosingSide + unmatched.name;
+                        resolution.UnresolvedReason = resolution.UnresolvedReason ?? UnmatchedClosingSide + unmatched.name;
                     // Resolve bilateral closure across the avatar: UE models
                     // may put their left and right eyes on different renderers.
                     if (result.Slots[1].Count > 0 && result.Slots[2].Count > 0)
@@ -195,25 +221,25 @@ namespace VRVlog.LilToonExporter
                     }
                     else { result.Slots[1].Clear(); result.Slots[2].Clear(); }
                     if (!completePairs) { result.Slots[1].Clear(); result.Slots[2].Clear(); }
-                    result.Description = "自動設定";
+                    resolution.Description = "自動設定";
                     if (result.UnresolvedReason == null)
                     {
                         if (!namedClosure && result.Slots.All(slot => slot.Count == 0)) result.FindByName(rendererNames);
                         result.InferSides();
                     }
                     // Closing names that never move cannot close the eyes either.
-                    if (result.UnresolvedReason == null && namedClosure && !result.allowMissingAutomaticBlink &&
+                    if (result.UnresolvedReason == null && namedClosure && !resolution.AllowMissingAutomaticBlink &&
                         result.Slots[0].Count == 0 && result.Slots[1].Count == 0)
-                        result.UnresolvedReason = UnusableClosingShapes;
+                        resolution.UnresolvedReason = UnusableClosingShapes;
                 }
             }
             // No closing name anywhere: export without blink instead of stopping.
             if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.ConfiguredByDescriptor &&
-                !result.allowMissingAutomaticBlink && !namedClosure && result.UnresolvedReason == null && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
+                !resolution.AllowMissingAutomaticBlink && !namedClosure && result.UnresolvedReason == null && result.Slots.All(slot => slot.Count == 0) && resolution.Candidates.Count == 0)
             {
-                result.Disabled = true;
-                result.MissingAutomatic = true;
-                result.Description = MissingAutomaticDescription;
+                resolution.Disabled = true;
+                resolution.MissingAutomatic = true;
+                resolution.Description = MissingAutomaticDescription;
             }
             // Ambiguous, one-sided or inert closing names: the automatic setup
             // does not guess. It exports without blink and says why; a manual
@@ -221,9 +247,9 @@ namespace VRVlog.LilToonExporter
             if (result.UnresolvedReason != null)
             {
                 foreach (var slot in result.Slots) slot.Clear();
-                result.Disabled = true;
-                result.UnresolvedAutomatic = true;
-                result.Description = UnresolvedAutomaticDescription;
+                resolution.Disabled = true;
+                resolution.UnresolvedAutomatic = true;
+                resolution.Description = UnresolvedAutomaticDescription;
             }
             result.Validate(source, excluded);
             foreach (var binding in result.Slots.SelectMany(slot => slot)) result.CaptureCandidate(binding);
@@ -321,16 +347,16 @@ namespace VRVlog.LilToonExporter
 
         void CaptureCandidate(BlinkShapeBinding binding)
         {
-            if (candidates.Any(candidate => candidate.Binding.Renderer == binding.Renderer && candidate.Binding.Shape == binding.Shape)) return;
+            if (state.Candidates.Any(candidate => candidate.Binding.Renderer == binding.Renderer && candidate.Binding.Shape == binding.Shape)) return;
             var index = binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape);
             var reference = binding.Renderer.GetBlendShapeWeight(index);
             var endpoint = Endpoint(binding);
             var moving = AvatarBaseShape.HasUsableMorphEndpoint(binding.Renderer.sharedMesh, index, reference, endpoint);
             if (!moving) { reference = 0; moving = AvatarBaseShape.HasUsableMorphEndpoint(binding.Renderer.sharedMesh, index, reference, endpoint); }
-            candidates.Add(new Candidate { Binding = binding.Copy(), Moving = moving, ReferenceWeight = reference });
+            state.Candidates.Add(new Candidate { Binding = binding.Copy(), Moving = moving, ReferenceWeight = reference });
         }
 
-        float Endpoint(BlinkShapeBinding binding) => inferredEndpoints.TryGetValue((binding.Renderer, binding.Shape), out var weight)
+        float Endpoint(BlinkShapeBinding binding) => state.InferredEndpoints.TryGetValue((binding.Renderer, binding.Shape), out var weight)
             ? weight : binding.Weight;
 
         // The closing amount this session bakes for one of its bindings, for a
@@ -349,12 +375,12 @@ namespace VRVlog.LilToonExporter
             if (float.IsNaN(endpoint) || float.IsInfinity(endpoint) || endpoint <= 0) return;
             // The raw UE target exports its final source frame. Keep that
             // endpoint internally; public/manual closure amounts remain0..100.
-            inferredEndpoints[(binding.Renderer, binding.Shape)] = endpoint;
+            state.InferredEndpoints[(binding.Renderer, binding.Shape)] = endpoint;
         }
 
         internal void VerifyPreparedIdentity(GameObject prepared, Func<Transform, bool> excluded = null)
         {
-            foreach (var candidate in candidates)
+            foreach (var candidate in state.Candidates)
             {
                 var binding = candidate.Binding;
                 var renderer = binding.Renderer;
@@ -381,7 +407,7 @@ namespace VRVlog.LilToonExporter
             InvalidOperationException Conflict(SkinnedMeshRenderer renderer, string shape) => new InvalidOperationException(
                 "Modular Avatar / NDMF の処理で同じ瞬きの変形に異なる閉眼量が統合されました。統合前の瞬き設定を一致させてください。: " + renderer.name + " / " + shape);
             var nextEndpoints = new Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float>();
-            foreach (var pair in inferredEndpoints)
+            foreach (var pair in state.InferredEndpoints)
             {
                 var current = Map(pair.Key.Renderer);
                 var key = (current, pair.Key.Shape);
@@ -414,18 +440,18 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("Modular Avatar / NDMF の処理で左右別の瞬きが同じ変形に統合されました。左右を別々に操作できる変形を残してください。");
             // Keep each captured deformation obligation, including different
             // source reference weights, even when output bindings coalesce.
-            var nextCandidates = candidates.Select(candidate => {
+            var nextCandidates = state.Candidates.Select(candidate => {
                 var row = candidate.Binding.Copy(); row.Renderer = Map(row.Renderer);
                 return new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight };
             }).ToArray();
             // Publish only after every mapping and collision has been checked.
-            inferredEndpoints.Clear();
-            foreach (var pair in nextEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
+            state.InferredEndpoints.Clear();
+            foreach (var pair in nextEndpoints) state.InferredEndpoints.Add(pair.Key, pair.Value);
             for (var slot = 0; slot < Slots.Length; slot++)
             {
                 Slots[slot].Clear(); Slots[slot].AddRange(nextSlots[slot]);
             }
-            candidates.Clear(); candidates.AddRange(nextCandidates);
+            state.Candidates.Clear(); state.Candidates.AddRange(nextCandidates);
         }
 
         internal const string LostBlinkDescription = "瞬きなし（ビルド処理で閉眼用の変形が失われました）";
@@ -449,14 +475,14 @@ namespace VRVlog.LilToonExporter
                 if (shape != null) set.Add(shape);
             }
             foreach (var binding in Slots.SelectMany(slot => slot)) Need(binding.Renderer, binding.Shape);
-            foreach (var candidate in candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
-            foreach (var pair in inferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
+            foreach (var candidate in state.Candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
+            foreach (var pair in state.InferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
             // Sides read from the bilateral name are a guess: if the build
             // passes lose them, follow the bilateral closure alone as before.
             var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal));
             var bilateral = Slots[0].ToArray();
-            var keptCandidates = candidates.ToArray();
-            var keptEndpoints = inferredEndpoints.ToArray();
+            var keptCandidates = state.Candidates.ToArray();
+            var keptEndpoints = state.InferredEndpoints.ToArray();
             try
             {
                 var map = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
@@ -481,11 +507,11 @@ namespace VRVlog.LilToonExporter
                 {
                     foreach (var slot in Slots) slot.Clear();
                     Slots[0].AddRange(bilateral);
-                    candidates.Clear();
-                    candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
+                    state.Candidates.Clear();
+                    state.Candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
                         binding.Renderer == candidate.Binding.Renderer && binding.Shape == candidate.Binding.Shape)));
-                    inferredEndpoints.Clear();
-                    foreach (var pair in keptEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
+                    state.InferredEndpoints.Clear();
+                    foreach (var pair in keptEndpoints) state.InferredEndpoints.Add(pair.Key, pair.Value);
                     Inferences.RemoveAt(inferredSides);
                     return FollowPrepared(prepared, follow, out moved, out reason);
                 }
@@ -496,44 +522,15 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        void DisableLost()
-        {
-            foreach (var slot in Slots) slot.Clear();
-            candidates.Clear();
-            inferredEndpoints.Clear();
-            Inferences.Clear();
-            Array.Clear(authored, 0, authored.Length);
-            PreserveAuthored = false;
-            ConfiguredByDescriptor = false;
-            MissingAutomatic = false;
-            allowMissingAutomaticBlink = false;
-            deferredAutomatic = false;
-            Disabled = true;
-            Description = LostBlinkDescription;
-        }
+        void DisableLost() => state = new Resolution { Disabled = true, Description = LostBlinkDescription };
 
         internal void ResolvePreparedNeutral(GameObject prepared, Func<Transform, bool> excluded = null,
             bool suppressSharedTextureEmission = false, bool suppressHdrTextureEmission = false)
         {
-            if (!deferredAutomatic) { Validate(prepared, excluded); return; }
+            if (!state.DeferredAutomatic) { Validate(prepared, excluded); return; }
             using var resolved = Resolve(prepared, new BlinkExportOptions(), excluded,
                 suppressSharedTextureEmission, suppressHdrTextureEmission);
-            for (var slot = 0; slot < Slots.Length; slot++)
-            {
-                Slots[slot].Clear(); Slots[slot].AddRange(resolved.Slots[slot].Select(binding => binding.Copy()));
-            }
-            Description = resolved.Description;
-            Disabled = resolved.Disabled;
-            MissingAutomatic = resolved.MissingAutomatic;
-            UnresolvedAutomatic = resolved.UnresolvedAutomatic;
-            UnresolvedReason = resolved.UnresolvedReason;
-            PreserveAuthored = resolved.PreserveAuthored;
-            Array.Copy(resolved.authored, authored, authored.Length);
-            allowMissingAutomaticBlink = resolved.allowMissingAutomaticBlink;
-            Inferences.Clear(); Inferences.AddRange(resolved.Inferences);
-            inferredEndpoints.Clear();
-            foreach (var pair in resolved.inferredEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
-            deferredAutomatic = false;
+            state = resolved.state;
         }
 
         internal static bool TryDescriptor(GameObject source, Func<Transform, bool> excluded, out BlinkShapeBinding binding)
@@ -583,7 +580,7 @@ namespace VRVlog.LilToonExporter
             if (PreserveAuthored) return; // An intentionally empty clip is authoritative.
             if (Slots[1].Count == 0 != (Slots[2].Count == 0))
                 throw new InvalidOperationException("左右別の瞬きは左目・右目を両方指定してください。");
-            if (Slots[0].Count == 0 && Slots[1].Count == 0 && !allowMissingAutomaticBlink)
+            if (Slots[0].Count == 0 && Slots[1].Count == 0 && !state.AllowMissingAutomaticBlink)
                 throw new InvalidOperationException("閉眼用の変形を特定できません。「確認・調整」で選択するか「瞬きなし」を指定してください。");
             if (Slots[1].Any(left => Slots[2].Any(right => left.Renderer == right.Renderer &&
                 string.Equals(left.Shape, right.Shape, StringComparison.Ordinal))))
@@ -593,11 +590,6 @@ namespace VRVlog.LilToonExporter
         internal BlinkExportSession ForClone(GameObject source, GameObject clone)
         {
             if (source == clone) throw new ArgumentException("An independent export copy is required.");
-            var copy = new BlinkExportSession { Description = Description, PreserveAuthored = PreserveAuthored, Disabled = Disabled, MissingAutomatic = MissingAutomatic,
-                UnresolvedAutomatic = UnresolvedAutomatic, UnresolvedReason = UnresolvedReason,
-                allowMissingAutomaticBlink = allowMissingAutomaticBlink, deferredAutomatic = deferredAutomatic };
-            Array.Copy(authored, copy.authored, authored.Length);
-            copy.Inferences.AddRange(Inferences);
             SkinnedMeshRenderer Target(SkinnedMeshRenderer renderer)
             {
                 var route = new Stack<int>();
@@ -607,24 +599,12 @@ namespace VRVlog.LilToonExporter
                 var index = Array.IndexOf(renderer.GetComponents<SkinnedMeshRenderer>(), renderer);
                 return target.GetComponents<SkinnedMeshRenderer>()[index];
             }
-            for (var slot = 0; slot < Slots.Length; slot++)
-                foreach (var binding in Slots[slot])
-                {
-                    var row = binding.Copy(); row.Renderer = Target(binding.Renderer);
-                    copy.Slots[slot].Add(row);
-                }
-            foreach (var candidate in candidates)
-            {
-                var row = candidate.Binding.Copy(); row.Renderer = Target(row.Renderer);
-                copy.candidates.Add(new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight });
-            }
-            foreach (var pair in inferredEndpoints) copy.inferredEndpoints.Add((Target(pair.Key.Renderer), pair.Key.Shape), pair.Value);
-            return copy;
+            return new BlinkExportSession { state = state.Map(Target) };
         }
 
         internal void Bake(GameObject clone, ICollection<Mesh> owned)
         {
-            if (deferredAutomatic) throw new InvalidOperationException("瞬きの自動設定にはFXのneutral評価が必要です。");
+            if (state.DeferredAutomatic) throw new InvalidOperationException("瞬きの自動設定にはFXのneutral評価が必要です。");
             Validate(clone);
             var used = DeterministicNames.BlendShapeNames(clone);
             string PathOf(SkinnedMeshRenderer skin) => UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform);
@@ -716,8 +696,8 @@ namespace VRVlog.LilToonExporter
             var presets = ObjectMap(expressions, "preset");
             if (PreserveAuthored)
             {
-                for (var slot = 0; slot < authored.Length; slot++)
-                    if (authored[slot] && !presets.ContainsKey(ExpressionPresetGroups.Blinks[slot].ToString()))
+                for (var slot = 0; slot < state.Authored.Length; slot++)
+                    if (state.Authored[slot] && !presets.ContainsKey(ExpressionPresetGroups.Blinks[slot].ToString()))
                         throw new InvalidOperationException("元のVRMの瞬き設定が出力時に失われました。");
             }
             else foreach (var preset in ExpressionPresetGroups.Blinks) presets.Remove(preset.ToString());
@@ -725,7 +705,7 @@ namespace VRVlog.LilToonExporter
             var meshes = (List<object>)glb.Json["meshes"];
             for (var slot = 0; slot < Slots.Length; slot++)
             {
-                if (PreserveAuthored && (!authored[slot] || Slots[slot].Count == 0)) continue;
+                if (PreserveAuthored && (!state.Authored[slot] || Slots[slot].Count == 0)) continue;
                 if (Slots[slot].Count == 0 && !Disabled) continue;
                 var binds = new List<object>();
                 foreach (var binding in Slots[slot])
