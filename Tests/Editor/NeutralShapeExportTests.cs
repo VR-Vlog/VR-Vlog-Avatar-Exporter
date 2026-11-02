@@ -176,7 +176,7 @@ namespace VRVlog.LilToonExporter.Tests
                         AnimationCurve.Constant(0, 1, 100));
                 SetFx(fixture.Source, descriptorType, folder, clip);
                 var fired = 0;
-                ExportStageGuard.FaultInjection = stage =>
+                ExportTestHooks.FaultInjection = stage =>
                 {
                     if (stage != ExportStage.FxRest) return;
                     fired++;
@@ -198,7 +198,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                ExportStageGuard.FaultInjection = null;
+                ExportTestHooks.FaultInjection = null;
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
                 AssetDatabase.DeleteAsset(folder);
             }

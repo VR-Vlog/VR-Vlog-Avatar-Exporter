@@ -8,6 +8,8 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/SerializedReferences.cs'),
     (Join-Path $taskRepo 'Editor/ExportTypeNames.cs'),
     (Join-Path $taskRepo 'Editor/ExceptionChain.cs'),
+    (Join-Path $taskRepo 'Editor/ExportStageGuard.cs'),
+    (Join-Path $taskRepo 'Editor/ExportTestHooks.cs'),
     (Join-Path $taskRepo 'Tests/Editor/NdmfPreparationTests.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/NdmfSharedAssetFixture.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/NdmfSharedAssetHolder.cs'),

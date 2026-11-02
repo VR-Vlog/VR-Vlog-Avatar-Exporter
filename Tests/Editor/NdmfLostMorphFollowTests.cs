@@ -480,7 +480,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var attempts = 0;
-                UniVrmOneClickExporter.ConversionFaultInjection = copy =>
+                ExportTestHooks.ConversionFaultInjection = copy =>
                 {
                     if (++attempts == 1) throw new InvalidOperationException("The optimized copy cannot be converted.");
                 };
@@ -497,7 +497,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Is.EqualTo("Hips/Spine/Chest/Neck/Head"), "The MA Bone Proxy must still be applied.");
 
                 attempts = 0;
-                UniVrmOneClickExporter.ConversionFaultInjection = copy =>
+                ExportTestHooks.ConversionFaultInjection = copy =>
                 {
                     attempts++;
                     throw new InvalidOperationException("The copy cannot be converted.");
@@ -509,7 +509,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                UniVrmOneClickExporter.ConversionFaultInjection = null;
+                ExportTestHooks.ConversionFaultInjection = null;
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
             }
         }
@@ -525,15 +525,14 @@ namespace VRVlog.LilToonExporter.Tests
             using var scene = new Scene(LostMorphTestPluginTransformFail, installed.Descriptor, installed.Proxy);
             // NDMF logs the failing pass to the Console.
             UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
-            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
-            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var previous = ExportStageGuard.ContinueByDefault;
             try
             {
-                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, false);
+                ExportStageGuard.ContinueByDefault = false;
                 var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false).Dispose());
                 Assert.That(failure.ToString(), Does.Contain("The failing mesh tool test pass failed."));
 
-                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, true);
+                ExportStageGuard.ContinueByDefault = true;
                 using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false))
                 {
                     Assert.That(session.Copy, Is.Not.Null);
@@ -548,8 +547,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
-                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+                ExportStageGuard.ContinueByDefault = previous;
             }
         }
 

@@ -13,7 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ExportStageGuardTests
     {
         [TearDown]
-        public void ResetFaultInjection() => ExportStageGuard.FaultInjection = null;
+        public void ResetFaultInjection() => ExportTestHooks.FaultInjection = null;
 
         // Stage names, since the internal enum cannot be a public test parameter.
         static IEnumerable<string> Stages => Enum.GetNames(typeof(ExportStage));
@@ -30,7 +30,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var roots = SceneManager.GetActiveScene().rootCount;
                 var children = fixture.Source.GetComponentsInChildren<Transform>(true).Length;
                 var fired = 0;
-                ExportStageGuard.FaultInjection = current =>
+                ExportTestHooks.FaultInjection = current =>
                 {
                     if (current != stage) return;
                     fired++;
@@ -78,7 +78,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
-                ExportStageGuard.FaultInjection = current =>
+                ExportTestHooks.FaultInjection = current =>
                 {
                     if (current == stage) throw new InvalidOperationException("injected " + current);
                 };
@@ -108,7 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var fired = 0;
-                ExportStageGuard.FaultInjection = current =>
+                ExportTestHooks.FaultInjection = current =>
                 {
                     if (current != stage || fired > 0) return;
                     if (!Environment.StackTrace.Contains(nameof(NdmfExportPreparation) + ".")) return;
@@ -143,7 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 fixture.Source.AddComponent(optimizer);
                 var fired = 0;
-                ExportStageGuard.FaultInjection = current =>
+                ExportTestHooks.FaultInjection = current =>
                 {
                     if (current != ExportStage.BuildProcess || fired > 0) return;
                     fired++;
@@ -176,7 +176,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var fired = 0;
                 // The routes exist once the build callback captured them; the
                 // check after the build then finds the expression gone.
-                ExportStageGuard.FaultInjection = current =>
+                ExportTestHooks.FaultInjection = current =>
                 {
                     if (current != ExportStage.Optimizing || fired > 0) return;
                     var route = Resources.FindObjectsOfTypeAll<ExportOptimizationMarker>()
@@ -230,7 +230,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
-                ExportStageGuard.FaultInjection = current =>
+                ExportTestHooks.FaultInjection = current =>
                 {
                     if (current == ExportStage.PhysBone) throw new OperationCanceledException();
                 };

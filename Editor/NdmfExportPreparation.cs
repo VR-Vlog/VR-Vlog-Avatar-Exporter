@@ -183,13 +183,12 @@ namespace VRVlog.LilToonExporter
         // SDK installed, such tools mark their settings IEditorOnly so the
         // upload strips them; requiring it keeps a package's runtime
         // components from starting the build.
-        internal static ISet<string> PluginPackagesOverride;
         private static HashSet<string> pluginPackages;
         private static readonly Dictionary<Assembly, string> packageOfAssembly = new Dictionary<Assembly, string>();
 
         internal static bool HasPluginToolComponent(GameObject avatar)
         {
-            var packages = PluginPackagesOverride ?? PluginPackages();
+            var packages = ExportTestHooks.PluginPackagesOverride ?? PluginPackages();
             if (packages.Count == 0) return false;
             var editorOnly = FindType("VRC.SDKBase.IEditorOnly");
             return avatar.GetComponentsInChildren<Component>(true).Any(component => component != null &&

@@ -65,13 +65,9 @@ namespace VRVlog.LilToonExporter
     // recorded in the fallback report, and the export continues.
     internal sealed class ExportStageGuard
     {
-        // Tests throw here to prove that each stage can fail without stopping.
-        internal static Action<ExportStage> FaultInjection;
-
         // The user-facing exports (window, app transfer) continue past failing
-        // stages unless this is turned off. Off restores the old behaviour.
-        internal const string ContinuePreference = "VRVlog.LilToonExporter.ContinueOnStageFailure";
-        internal static bool ContinueByDefault => UnityEditor.EditorPrefs.GetBool(ContinuePreference, true);
+        // stages. Tests turn this off to check the old behaviour of stopping.
+        internal static bool ContinueByDefault = true;
 
         internal readonly bool ContinueOnFailure;
         // Called once per left-out stage, before the export copy is destroyed.
@@ -91,7 +87,7 @@ namespace VRVlog.LilToonExporter
             if (omitted.Contains(stage)) return fallback();
             try
             {
-                FaultInjection?.Invoke(stage);
+                ExportTestHooks.FaultInjection?.Invoke(stage);
                 return body();
             }
             catch (Exception error) when (CanOmit(error) && ExportStageFailure.Find(error) == null)
@@ -111,7 +107,7 @@ namespace VRVlog.LilToonExporter
             if (omitted.Contains(stage)) return fallback();
             try
             {
-                FaultInjection?.Invoke(stage);
+                ExportTestHooks.FaultInjection?.Invoke(stage);
                 return body();
             }
             catch (Exception error) when (CanOmit(error) && ExportStageFailure.Find(error) == null)

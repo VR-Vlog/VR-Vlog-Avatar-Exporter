@@ -129,10 +129,6 @@ namespace VRVlog.LilToonExporter
             if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
-        // Tests throw here to prove that a failure after the build passes,
-        // outside every stage, does not stop a lenient export.
-        internal static Action<GameObject> ConversionFaultInjection;
-
         public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
@@ -842,7 +838,7 @@ namespace VRVlog.LilToonExporter
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
-                ConversionFaultInjection?.Invoke(clone);
+                ExportTestHooks.ConversionFaultInjection?.Invoke(clone);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
