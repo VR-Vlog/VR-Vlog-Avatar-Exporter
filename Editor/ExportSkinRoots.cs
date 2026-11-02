@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using VRVlog.AvatarFormats;
 
 namespace VRVlog.LilToonExporter
 {
@@ -13,10 +14,9 @@ namespace VRVlog.LilToonExporter
         internal static byte[] Repair(byte[] exported, ICollection<string> warnings = null)
         {
             var document = GlbDocument.Read(exported);
-            if (!document.Json.TryGetValue("skins", out var rawSkins) || !(rawSkins is List<object> skins) || skins.Count == 0)
+            if (!(JsonAccess.List(document.Json, "skins") is List<object> skins) || skins.Count == 0)
                 return exported;
-            if (!document.Json.TryGetValue("nodes", out var rawNodes) || !(rawNodes is List<object> nodes))
-                throw new InvalidDataException("スキンの参照先ノードがありません。");
+            var nodes = JsonAccess.List(document.Json, "nodes") ?? throw new InvalidDataException("スキンの参照先ノードがありません。");
             var parents = new int[nodes.Count];
             for (var i = 0; i < parents.Length; i++) parents[i] = -1;
             for (var i = 0; i < nodes.Count; i++)
@@ -80,8 +80,8 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        private static Dictionary<string, object> Object(object value) => value as Dictionary<string, object>
-            ?? throw new InvalidDataException("VRM のノードまたはスキンが不正です。");
+        private static Dictionary<string, object> Object(object value) =>
+            JsonAccess.Object(value, () => new InvalidDataException("VRM のノードまたはスキンが不正です。"));
         private static int Index(object value, int count)
         {
             // JsonDom parses integer tokens as Int64. Accept Int32 as well so

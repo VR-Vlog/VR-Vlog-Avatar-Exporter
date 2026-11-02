@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VRVlog.AvatarFormats;
 using VRVlog.Expressions;
 using VRVlog.FaceTracking;
 
@@ -407,11 +408,9 @@ namespace VRVlog.LilToonExporter
 
         static bool IsNumber(object value) => value is long || value is int || value is double d && !double.IsNaN(d) && !double.IsInfinity(d);
 
-        static Dictionary<string, object> Object(Dictionary<string, object> owner, string key) =>
-            owner != null && owner.TryGetValue(key, out var value) ? value as Dictionary<string, object> : null;
+        static Dictionary<string, object> Object(Dictionary<string, object> owner, string key) => JsonAccess.Object(owner, key);
 
-        static List<object> List(Dictionary<string, object> owner, string key) =>
-            owner != null && owner.TryGetValue(key, out var value) ? value as List<object> : null;
+        static List<object> List(Dictionary<string, object> owner, string key) => JsonAccess.List(owner, key);
 
         static IEnumerable<Dictionary<string, object>> Objects(List<object> list) =>
             list?.OfType<Dictionary<string, object>>() ?? Enumerable.Empty<Dictionary<string, object>>();

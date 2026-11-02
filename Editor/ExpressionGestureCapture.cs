@@ -194,28 +194,14 @@ namespace VRVlog.LilToonExporter
         internal byte[] Inject(byte[] bytes, IEnumerable<VrmMenuExpressions.Expression> expressions)
         {
             var document = GlbDocument.Read(bytes);
-            var written = new HashSet<string>(Member(document.Json, "extensions", "VRMC_vrm", "expressions", "custom")?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
+            var written = new HashSet<string>(document.Find("extensions", "VRMC_vrm", "expressions", "custom")?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
             var listed = (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).Where(expression => expression?.Clip != null).ToList();
             var data = Resolve(face => listed.Where(expression => ReferenceEquals(expression.Clip, faceClips[face]))
                 .Select(expression => expression.RegisteredName ?? expression.MergedInto).Where(name => name != null && written.Contains(name)));
             if (data == null) return bytes;
             var extension = ExpressionGestureData.Write(data);
-            if (!document.Json.TryGetValue("extensions", out var rawExtensions)) document.Json["extensions"] = rawExtensions = new Dictionary<string, object>();
-            ((Dictionary<string, object>)rawExtensions)[ExpressionGestureData.Extension] = extension;
-            if (!document.Json.TryGetValue("extensionsUsed", out var rawUsed)) document.Json["extensionsUsed"] = rawUsed = new List<object>();
-            var used = (List<object>)rawUsed;
-            if (!used.Contains(ExpressionGestureData.Extension)) used.Add(ExpressionGestureData.Extension);
+            document.PlaceExtension(ExpressionGestureData.Extension, extension);
             return document.Write();
-        }
-
-        static Dictionary<string, object> Member(Dictionary<string, object> current, params string[] keys)
-        {
-            foreach (var key in keys)
-            {
-                if (current == null || !current.TryGetValue(key, out var value)) return null;
-                current = value as Dictionary<string, object>;
-            }
-            return current;
         }
 
         static bool IsShape(EditorCurveBinding binding) =>
