@@ -692,7 +692,7 @@ namespace VRVlog.LilToonExporter
                         authoredEndpoints.Bake(temporaryMeshes);
                     });
                     expressions = guard.Step(ExportStage.Expressions,
-                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive, defaultFace), () => new List<VrmMenuExpressions.Expression>());
+                        () => VrChatExpressionBaker.Bake(clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive, defaultFace), () => new List<VrmMenuExpressions.Expression>());
                     guard.Watch(ExportStage.Expressions, () => RecordExpressionsEndingNeutral(expressions, recoveryReport));
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.

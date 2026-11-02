@@ -430,6 +430,10 @@ namespace VRVlog.LilToonExporter
                     if (protectedHierarchy.Add(current)) hierarchyOwners.Add(current, path);
         }
 
+        // Neutral capture writes morph weights only. A constant activation is
+        // harmless when Unity cannot resolve its dummy target, or when it
+        // exactly preserves the prepared object's current appearance. Never
+        // infer an object identity from an ambiguous path or accept a toggle.
         internal static bool HarmlessActivation(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
         {
             if (avatar == null || binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") return false;

@@ -971,7 +971,7 @@ namespace VRVlog.LilToonExporter
                 SelectedExpressionAppearance.ValidateClipData(clip, excludedPath, probe: true);
                 return true;
             }
-            if (unchangedAppearanceClips == null) return IsHarmlessNeutralActivation(avatar, clip, binding);
+            if (unchangedAppearanceClips == null) return NeutralShapePlan.HarmlessActivation(avatar, clip, binding);
             if (!unchangedAppearanceClips.Contains(clip) || !SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding)) return false;
             SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
             return true;
@@ -1447,13 +1447,6 @@ namespace VRVlog.LilToonExporter
             return keys.All(k => k.value == keys[0].value &&
                 (k.inTangent == 0 || float.IsInfinity(k.inTangent)) && (k.outTangent == 0 || float.IsInfinity(k.outTangent)));
         }
-
-        // Neutral capture writes morph weights only. A constant activation is
-        // harmless when Unity cannot resolve its dummy target, or when it
-        // exactly preserves the prepared object's current appearance. Never
-        // infer an object identity from an ambiguous path or accept a toggle.
-        private static bool IsHarmlessNeutralActivation(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
-            => NeutralShapePlan.HarmlessActivation(avatar, clip, binding);
 
         // Unsupported appearance support is not invalid VRM data. Only neutral
         // preparation can retain its authored rest; selected expression endpoints

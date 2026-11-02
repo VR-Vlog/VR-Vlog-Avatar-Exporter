@@ -187,7 +187,7 @@ namespace VRVlog.LilToonExporter.Tests
             internal void ApplyCommon(VrChatExpressionMenu.Source menu)
                 => FaceEmoExpressions.ApplyPreparedDefaultFace(Avatar.Copy, menu, Bindings);
             internal List<VrmMenuExpressions.Expression> Bake(VrChatExpressionMenu.Source menu)
-                => VrChatExpressionBaker.Bake(null, Avatar.Copy, menu, Owned, null, Bindings);
+                => VrChatExpressionBaker.Bake(Avatar.Copy, menu, Owned, null, Bindings);
             private AnimationClip Clip(string name)
             { var clip = new AnimationClip { name = name }; AssetDatabase.AddObjectToAsset(clip, controller); return clip; }
             private static void SetCurve(AnimationClip clip, string path, string shape, float weight)

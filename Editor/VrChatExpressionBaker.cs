@@ -62,7 +62,7 @@ namespace VRVlog.LilToonExporter
         // Authoring paths retain provenance through NDMF. Baking addresses the
         // final renderer/channel: one pose and one temporal program per channel,
         // with every collision proved compatible before any mesh is changed.
-        private static List<Plan> Prepare(GameObject source, GameObject clone, VrChatExpressionMenu.Source menu,
+        private static List<Plan> Prepare(GameObject clone, VrChatExpressionMenu.Source menu,
             PreparedExpressionBindings prepared)
         {
             var plans = new List<Plan>();
@@ -73,12 +73,8 @@ namespace VRVlog.LilToonExporter
                 {
                     var key = (path, shape);
                     if (origins.TryGetValue(key, out var found)) return found;
-                    var binding = prepared?.Get(path);
-                    var original = binding == null ? VrChatExpressionSampler.FindRenderer(source, path) : null;
-                    var mesh = binding?.Mesh ?? original.sharedMesh;
-                    var renderer = binding?.Renderer ?? VrChatExpressionSampler.FindRenderer(clone, path);
-                    var rest = binding?.Weights ?? Enumerable.Range(0, mesh.blendShapeCount).Select(original.GetBlendShapeWeight).ToArray();
-                    var channel = new Channel { Path = path, Shape = shape, Renderer = renderer, Mesh = mesh, Rest = rest };
+                    var binding = prepared.Get(path);
+                    var channel = new Channel { Path = path, Shape = shape, Renderer = binding.Renderer, Mesh = binding.Mesh, Rest = binding.Weights };
                     origins.Add(key, channel); return channel;
                 }
                 InvalidOperationException Conflict(Channel channel) => new InvalidOperationException(
@@ -176,12 +172,8 @@ namespace VRVlog.LilToonExporter
             return from >= -10000 && to <= 10000 && from <= minimum && maximum <= to && to > from;
         }
 
-        internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
-            VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings)
-            => Bake(source, clone, menu, meshes, warnings, null);
-
         // visemeRenderer, visemeShapes and defaultFace are what AvatarBaseShape.Preserve received.
-        internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
+        internal static List<VrmMenuExpressions.Expression> Bake(GameObject clone,
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings,
             PreparedExpressionBindings prepared, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null,
             ICollection<(SkinnedMeshRenderer Renderer, string Shape)> defaultFace = null)
@@ -202,8 +194,8 @@ namespace VRVlog.LilToonExporter
                 }
                 return shapes;
             }
-            if (prepared == null) new PreparedExpressionBindings(clone, menu, source).Capture(menu);
-            var plans = Prepare(source, clone, menu, prepared);
+            if (prepared == null) throw new ArgumentNullException(nameof(prepared));
+            var plans = Prepare(clone, menu, prepared);
             foreach (var message in menu.Messages) warnings?.Add(message);
             // A controller-wide limitation or a stale shared curve should not
             // print the same explanation once for every menu item.

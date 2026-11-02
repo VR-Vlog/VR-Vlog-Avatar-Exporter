@@ -48,8 +48,11 @@ namespace VRVlog.LilToonExporter.Tests
             internal List<VrmMenuExpressions.Expression> Bake(params VrChatExpressionMenu.Entry[] entries)
             {
                 var menu = new VrChatExpressionMenu.Source(); menu.Entries.AddRange(entries);
+                // Bindings are captured before the rest pose is preserved, as the export does.
+                using var bindings = new PreparedExpressionBindings(Avatar.Copy, menu, Avatar.Source);
+                bindings.Capture(menu);
                 AvatarBaseShape.Preserve(Avatar.Source, Avatar.Copy, Owned, null);
-                return VrChatExpressionBaker.Bake(Avatar.Source, Avatar.Copy, menu, Owned, null);
+                return VrChatExpressionBaker.Bake(Avatar.Copy, menu, Owned, null, bindings);
             }
 
             internal byte[] Export(IList<VrmMenuExpressions.Expression> expressions, ICollection<string> warnings = null) =>

@@ -85,8 +85,17 @@ namespace VRVlog.LilToonExporter.Tests
         private static void Curve(AnimationClip clip, string path, string shape, AnimationCurve curve)
             => AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape), curve);
 
-        private static string OriginalPath(string preparedPath) => preparedPath == "Merged/Face" ? "Body" :
-            preparedPath == "Merged/Accessory" ? "Accessory" : null;
+        // Record the renderers as they stood before NDMF merged them: Face was
+        // the source's Body, Accessory sat at the root. Without an original,
+        // Face is a renderer the preparation added.
+        private PreparedExpressionBindings Bindings(bool faceHasOriginal = true)
+        {
+            var merged = avatar.transform.Find("Merged"); var face = merged.Find("Face"); var accessory = merged.Find("Accessory");
+            face.SetParent(faceHasOriginal ? avatar.transform : null, false); face.name = "Body"; accessory.SetParent(avatar.transform, false);
+            var bindings = new PreparedExpressionBindings(avatar, null);
+            face.SetParent(merged, false); face.name = "Face"; accessory.SetParent(merged, false);
+            return bindings;
+        }
 
         private static VrChatExpressionMenu.Source Menu(float smile)
         {
@@ -100,10 +109,10 @@ namespace VRVlog.LilToonExporter.Tests
         public void UnresolvedOriginalRendererAndAnimatedCommonFaceAreActionableErrors()
         {
             var menu = Menu(100);
-            FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, path => null);
+            FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, Bindings(faceHasOriginal: false));
             Assert.That(menu.Entries[0].Error, Does.Contain("元Renderer"));
             menu = Menu(100); Curve(common, "Merged/Face", "Open", AnimationCurve.Linear(0, 0, 10, 100));
-            FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, OriginalPath);
+            FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, Bindings());
             Assert.That(menu.Entries[0].Error, Does.Contain("時間で変化"));
         }
 
@@ -118,7 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 runtime.ApplyOverrides(new[] { new KeyValuePair<AnimationClip, AnimationClip>(common, replacement) }); SetFx(runtime);
                 var menu = Menu(100);
-                FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, OriginalPath, path => path == "Merged/Accessory");
+                FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, Bindings(), path => path == "Merged/Accessory");
                 Assert.That(menu.Entries[0].Error, Is.Null);
                 Assert.That(menu.Entries[0].Values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(60));
                 Assert.That(menu.Entries[0].Values.Any(value => value.Shape == "Cheek"), Is.False);
