@@ -572,8 +572,8 @@ namespace VRVlog.LilToonExporter.Tests
         static byte[] Mouth(byte[] bytes, int faceNode, string[] visemes, List<string> warnings = null)
         {
             var descriptor = new VrmExpressionBindings.DescriptorVisemes { Node = faceNode };
-            foreach (var (slot, preset) in VrmExpressionBindings.DescriptorVisemes.Slots)
-                if (!string.IsNullOrEmpty(visemes[slot])) descriptor.Shapes[preset] = visemes[slot];
+            foreach (var (slot, preset) in ExpressionPresetGroups.VisemeSlots)
+                if (!string.IsNullOrEmpty(visemes[slot])) descriptor.Shapes[preset.ToString()] = visemes[slot];
             return VrmExpressionBindings.AddMissing(bytes, warnings, descriptor: descriptor);
         }
 

@@ -128,7 +128,7 @@ namespace VRVlog.LilToonExporter.Tests
             session.Expressions.Add(pose);
         }
 
-        static Session.PresetAssignment[] NoneForEveryEmotion() => Session.EmotionPresets.Select(Session.PresetAssignment.None).ToArray();
+        static Session.PresetAssignment[] NoneForEveryEmotion() => ExpressionPresetGroups.Emotions.Select(Session.PresetAssignment.None).ToArray();
 
         [Test]
         public void WithoutAssignmentsTheExportedExpressionsAreUnchanged()
@@ -138,7 +138,7 @@ namespace VRVlog.LilToonExporter.Tests
             var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
             var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
             var explicitNone = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: NoneForEveryEmotion());
-            Assert.That(Session.EmotionPresets.Any(preset => Presets(before).ContainsKey(preset.ToString())), Is.False);
+            Assert.That(ExpressionPresetGroups.Emotions.Any(preset => Presets(before).ContainsKey(preset.ToString())), Is.False);
             Assert.That(Canonical(Expressions(explicitNone)), Is.EqualTo(Canonical(Expressions(before))),
                 "Choosing nothing must keep the expression data of the existing export.");
         }
@@ -156,7 +156,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
                 session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
                 var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
-                Assert.That(Presets(bytes).Keys.Where(key => Session.EmotionPresets.Any(preset => preset.ToString() == key)), Is.EquivalentTo(new[] { "happy", "sad" }));
+                Assert.That(Presets(bytes).Keys.Where(key => ExpressionPresetGroups.Emotions.Any(preset => preset.ToString() == key)), Is.EquivalentTo(new[] { "happy", "sad" }));
                 imported = await Load(bytes);
                 Assert.That(imported.Vrm.Expression.Happy, Is.Not.Null);
                 // UniVRM creates empty clips for absent presets on import.
@@ -630,7 +630,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(paths[clip], Is.EqualTo(new[] { "Face / Smile", "Favorite / Sad" }), "Every item that selects the clip is kept, in menu order.");
                 using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { clip }, menuPaths: paths);
-                Assert.That(suggested.Keys.Intersect(Session.EmotionPresets), Is.Empty, "Two items naming different emotions say neither.");
+                Assert.That(suggested.Keys.Intersect(ExpressionPresetGroups.Emotions), Is.Empty, "Two items naming different emotions say neither.");
                 var agreeing = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Favorite / Happy", 1) }, controller, FaceOff);
                 Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: agreeing)[ExpressionPreset.happy].Clip, Is.SameAs(clip),
                     "Items naming the same emotion agree.");
@@ -650,7 +650,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
                 Assert.That(paths, Is.Empty, "Each layer's clip is only part of the smile, so the item is linked to neither.");
                 using var session = new Session(fixture.Source);
-                Assert.That(session.SuggestPresets(new[] { eyes, mouth }, menuPaths: paths).Keys.Intersect(Session.EmotionPresets), Is.Empty);
+                Assert.That(session.SuggestPresets(new[] { eyes, mouth }, menuPaths: paths).Keys.Intersect(ExpressionPresetGroups.Emotions), Is.Empty);
             }
             finally { Object.DestroyImmediate(eyes); Object.DestroyImmediate(mouth); DestroyController(controller); }
         }
@@ -668,7 +668,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
                 Assert.That(paths.Keys, Is.EquivalentTo(new[] { clip }));
                 using var session = new Session(fixture.Source);
-                Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: paths).Keys.Intersect(Session.EmotionPresets), Is.Empty,
+                Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: paths).Keys.Intersect(ExpressionPresetGroups.Emotions), Is.Empty,
                     "A clip named after a part of the face is not a whole emotion, whatever the item says.");
             }
             finally { Object.DestroyImmediate(clip); DestroyController(controller); }
@@ -745,7 +745,7 @@ namespace VRVlog.LilToonExporter.Tests
                 ExpressionPreset.aa, ExpressionPreset.ih, ExpressionPreset.ou, ExpressionPreset.ee, ExpressionPreset.oh,
                 ExpressionPreset.lookUp, ExpressionPreset.lookDown, ExpressionPreset.lookLeft, ExpressionPreset.lookRight, ExpressionPreset.neutral }));
             Assert.That(Session.PresetGroups.SelectMany(group => group.Presets), Is.EqualTo(Session.AssignablePresets));
-            Assert.That(Session.EmotionPresets, Is.EqualTo(Session.PresetGroups[0].Presets));
+            Assert.That(ExpressionPresetGroups.Emotions, Is.EqualTo(Session.PresetGroups[0].Presets));
             Assert.That(Session.AssignablePresets.Select(Session.PresetFullLabel).Distinct().Count(), Is.EqualTo(18), "Labels with their group never collide.");
             Assert.That(Session.PresetFullLabel(ExpressionPreset.blinkLeft), Is.EqualTo(ExporterLocalization.T("まばたき") + " " + ExporterLocalization.T("左目")));
             Assert.That(Session.PresetFullLabel(ExpressionPreset.happy), Is.EqualTo(ExporterLocalization.T(Session.PresetLabel(ExpressionPreset.happy))));
@@ -875,8 +875,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
-                Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
-                Assert.That(Session.BlinkPresets.Select(preset => suggested[preset].Shape), Is.EqualTo(new[] { "Blink", "Blink_L", "Blink_R" }));
+                Assert.That(suggested.Keys, Is.EquivalentTo(ExpressionPresetGroups.Blinks));
+                Assert.That(ExpressionPresetGroups.Blinks.Select(preset => suggested[preset].Shape), Is.EqualTo(new[] { "Blink", "Blink_L", "Blink_R" }));
                 Assert.That(suggested.Values.All(value => value.Automatic && value.Path == "Front"), Is.True);
                 Assert.That(session.BlinkFallbackDescription(null), Is.EqualTo(ExporterLocalization.T("自動設定")));
 
@@ -901,7 +901,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
-                Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
+                Assert.That(suggested.Keys, Is.EquivalentTo(ExpressionPresetGroups.Blinks));
                 var before = session.Export("Test", "Tests", NoFaces);
                 var unconfirmed = session.Export("Test", "Tests", NoFaces, presets: suggested.Values);
                 Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))),
@@ -1057,10 +1057,10 @@ namespace VRVlog.LilToonExporter.Tests
                 using var session = new Session(fixture.Source);
                 var automatic = session.Export("Test", "Tests", NoFaces);
                 Assert.That(BindCount(automatic, "blink"), Is.EqualTo(1), "Without a choice the automatic blink binds 'Blink'.");
-                var none = session.Export("Test", "Tests", NoFaces, presets: Session.BlinkPresets.Select(Session.PresetAssignment.None).ToArray());
+                var none = session.Export("Test", "Tests", NoFaces, presets: ExpressionPresetGroups.Blinks.Select(Session.PresetAssignment.None).ToArray());
                 var noBlink = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 // No blink still writes a no-op binding so viewers do not fall back to raw names.
-                Assert.That(Session.BlinkPresets.SelectMany(preset => BoundShapes(none, preset.ToString())), Has.All.Contains("/__VRVlog_BlinkNone_"));
+                Assert.That(ExpressionPresetGroups.Blinks.SelectMany(preset => BoundShapes(none, preset.ToString())), Has.All.Contains("/__VRVlog_BlinkNone_"));
                 Assert.That(Canonical(Expressions(none)), Is.EqualTo(Canonical(Expressions(noBlink))), "\"None\" on every blink preset is no blink.");
             }
             finally { Object.DestroyImmediate(mesh); }
@@ -1078,7 +1078,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 using var session = new Session(fixture.Source);
-                Assert.That(session.SuggestPresets(Array.Empty<AnimationClip>()).Keys.Intersect(Session.BlinkPresets), Is.Empty);
+                Assert.That(session.SuggestPresets(Array.Empty<AnimationClip>()).Keys.Intersect(ExpressionPresetGroups.Blinks), Is.Empty);
                 // The blink export bakes each binding into a generated endpoint
                 // shape named from its mesh, source shape and slot.
                 static string[] Meshes(IEnumerable<string> bound) => bound.Select(value => value.Substring(0, value.IndexOf('/'))).ToArray();
@@ -1186,7 +1186,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.ih), Is.False);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
                 Assert.That(suggested.ContainsKey(ExpressionPreset.aa), Is.False, "No candidate replaces the empty aa.");
-                Assert.That(suggested.Keys.Intersect(Session.BlinkPresets), Is.Empty);
+                Assert.That(suggested.Keys.Intersect(ExpressionPresetGroups.Blinks), Is.Empty);
             }
             finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(aa); Object.DestroyImmediate(blink); Object.DestroyImmediate(settings); }
         }

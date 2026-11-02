@@ -1,7 +1,7 @@
 # 表情のセッションから、本番で通らない経路と同じ表の写しを消す
 
 - 日付: 2026-11-02
-- 対象: `Editor/ExperimentalExpressionCaptureSession*.cs`・`Editor/ExpressionPresetStore.cs`・`Editor/VrmTrackingExpressions.cs`・`Editor/VrmExpressionBindings.cs`・`Editor/PoseExportSession.cs`・`Editor/PoseLimitPlan.cs`・`Editor/BlinkShapeNames.cs`・`Editor/UnifiedExpressionRegistry.cs`・`Editor/Locales`・`Tests/Editor`・`Tools/BehaviorTests.cs`
+- 対象: `Editor/ExperimentalExpressionCaptureSession*.cs`・`Editor/ExpressionPresetStore.cs`・`Editor/VrmTrackingExpressions.cs`・`Editor/VrmExpressionBindings.cs`・`Editor/PoseExportSession.cs`・`Editor/PoseLimitPlan.cs`・`Editor/BlinkShapeNames.cs`・`Editor/UnifiedExpressionRegistry.cs`・`Editor/ExpressionPresetGroups.cs`・`Editor/Locales`・`Tests/Editor`・`Tools/BehaviorTests.cs`・`Tools/run-behavior-tests.ps1`
 
 ## 背景
 
@@ -17,6 +17,7 @@
 - 書き出した GLB の名前から瞬きの表情を推定する `VrmExpressionBindings.AddMissing` の `inferBlink` と、その推定・「瞬きのVRM設定を自動生成できませんでした。」の警告を消した。書き出しは `inferBlink: false` でしか呼ばず、瞬きは Unity 側の `BlinkExportSession` が `BlinkShapeNames.Resolve` で決める。推定を通っていたのは Unity を使わない `Tools/BehaviorTests.cs` だけだったので、名前の優先順位（`vrc.Blink` が `eye_close` より先・同名が複数なら -2・左右の片側だけなら `PartialPair`）はそこで `Resolve` を直に呼んで確かめる。推定だけが出していた訳文 3 件を 4 言語から消した。
 - ポーズの書き出し（`PoseExportSession.Inject`）で、静止ポーズの拡張が 2MiB・動くポーズの拡張が 16MiB を超えたら止める検査と、その訳文 2 件を消した。`HumanoidPoseData.Write` と `HumanoidAnimationData.Write` は、最後に呼ぶ `Read` の `Measure` で上限を超える拡張を先に例外にする。`Measure` は値 1 つに 32 バイト、文字列 1 文字に 6 バイトを数え、`JsonDom.Serialize` が書くバイト数より小さくならないので、この検査は通らない。体の大きさを掛けたあとも `Read` で数え直している。`Measure` を 1 つにまとめる案は採らない。`Humanoid*` の 2 ファイルはアプリと同じソースで、`Tools/run-pose-contract-tests.ps1` はこの 2 ファイルだけをコンパイルする。上限を超える静止ポーズを `Write` が拒むことと、受け入れた拡張が `Measure` 以下のバイト数で書かれることは `PoseLimitPlanTests.WriteRefusesStillPosesOverTheBound` で確かめる。
 - どこからも呼ばれない `RequireSourceForBatch`・`PoseLimitPlan.SelectableCount`・`MenuClipPaths` の 2 つの多重定義（`GameObject` と読み取り関数を受けるもの）を消した。テストだけが呼んでいた `HasCurrentSource`・`SuggestPreset`・`BlinkShapeNames.CompatiblePartials`・`UnifiedExpressionRegistry.AllNames` も消し、テストは中身を直に見る。元のアバターが変わったかは画面と同じ `SourceDifference()`、感情の名前は `ExpressionNameInference.MatchEmotion`、左右の閉眼の組は `BlinkShapeNames.PartialFamily`、登録名の一覧は `UnifiedExpressionRegistry` の `RegisteredNames` をテストの中で読む。`UnifiedExpressionRegistry.cs` はアプリと同じソースだったが、アプリ側は `AllNames` を残したままになる。
+- VRM の preset の分類（感情・まばたき・口の形・視線）と、VRChat の Lip Sync のスロットと口の形の対応を `ExpressionPresetGroups` 1 つにまとめた。これまでは表情ボードの `ExpressionPreset` の配列と、`BlinkShapeNames.Presets`・`ExpressionShapeNames` の感情名・`DescriptorVisemes.Slots` の文字列の配列に同じ並びを 2 回ずつ書いていた。preset の名前は glTF のキーと同じなので、文字列が要る所は `ToString()` で作る。新しいファイルは Unity を使わないテストでもコンパイルするので、`Tools/run-behavior-tests.ps1` の一覧に足した。
 
 ## 確かめたこと
 

@@ -470,14 +470,14 @@ namespace VRVlog.LilToonExporter
                 {
                     var pose = item.Assignment.IsNone ? null : BuildPresetPose(item.Preset, item.Assignment);
                     var morphs = pose == null ? new List<(string Path, string Shape, float Weight)>()
-                        : BlinkPresets.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
+                        : ExpressionPresetGroups.Blinks.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
                     return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
                 }).ToArray();
             // Gaze and neutral the board leaves open are filled from names as in
             // the quick export; only the user's own "none" keeps one empty.
             var keepEmpty = selectedPresets
                 .Where(item => item.Assignment.IsNone && !item.Assignment.Automatic &&
-                    (LookAtPresets.Contains(item.Preset) || item.Preset == ExpressionPreset.neutral))
+                    (ExpressionPresetGroups.LookAts.Contains(item.Preset) || item.Preset == ExpressionPreset.neutral))
                 .Select(item => item.Preset.ToString()).ToArray();
             var leftEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkLeft).Assignment;
             var rightEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkRight).Assignment;
@@ -487,9 +487,9 @@ namespace VRVlog.LilToonExporter
             // candidates repeat its own choice, so they leave blinkOptions as
             // is. The user's choices, "none" included, replace their slots of
             // that setting as a manual one, even when it is no blink.
-            var blinkFaces = presetFaces.Where(face => BlinkPresets.Contains(face.Preset) && !face.Automatic).ToArray();
+            var blinkFaces = presetFaces.Where(face => ExpressionPresetGroups.Blinks.Contains(face.Preset) && !face.Automatic).ToArray();
             if (blinkFaces.Length > 0) blinkOptions = AssignedBlink(blinkOptions, blinkFaces.Select(face => (face.Preset, face.Morphs)));
-            presetFaces = presetFaces.Where(face => !BlinkPresets.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
+            presetFaces = presetFaces.Where(face => !ExpressionPresetGroups.Blinks.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
             // Standard presets enter the ordinary route's copy as authored VRM
             // clips, so authored presets remain. listFaces plays no menu face:
             // the exporter reads the listed clips as its faces, moving ones

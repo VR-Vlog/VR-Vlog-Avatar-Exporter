@@ -16,10 +16,6 @@ namespace VRVlog.LilToonExporter
         // the alias guess. Node is the output node of VisemeSkinnedMesh.
         internal sealed class DescriptorVisemes
         {
-            // VisemeBlendShapes order: sil PP FF TH DD kk CH SS nn RR aa E I O U.
-            internal static readonly (int Slot, string Preset)[] Slots = {
-                (10, "aa"), (11, "ee"), (12, "ih"), (13, "oh"), (14, "ou"),
-            };
             internal int Node = -1;
             // Only slots that named a shape. A null name could not reach the output.
             internal readonly Dictionary<string, string> Shapes = new Dictionary<string, string>();

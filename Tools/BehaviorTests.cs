@@ -97,11 +97,11 @@ public static class ExporterBehaviorTests
         return $"Exporter behavior checks passed ({_assertions} assertions).";
     }
 
-    // Shapes in DescriptorVisemes.Slots order: aa, ee, ih, oh, ou.
+    // Shapes in ExpressionPresetGroups.VisemeSlots order: aa, ee, ih, oh, ou.
     private static VrmExpressionBindings.DescriptorVisemes Visemes(int node, params string[] shapes)
     {
         var result = new VrmExpressionBindings.DescriptorVisemes { Node = node };
-        for (var i = 0; i < shapes.Length; i++) result.Shapes[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset] = shapes[i];
+        for (var i = 0; i < shapes.Length; i++) result.Shapes[ExpressionPresetGroups.VisemeSlots[i].Preset.ToString()] = shapes[i];
         return result;
     }
     private static Dictionary<string, object> FirstBind(Dictionary<string, object> presets, string preset) =>
@@ -117,7 +117,7 @@ public static class ExporterBehaviorTests
                 descriptor: Visemes(1, names))).Json);
             for (var i = 0; i < names.Length; i++)
             {
-                var bind = FirstBind(presets, VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset);
+                var bind = FirstBind(presets, ExpressionPresetGroups.VisemeSlots[i].Preset.ToString());
                 Check((long)bind["node"] == 1L && (long)bind["index"] == i + 1L,
                     "Descriptor visemes bind their own shapes even when the names are not known aliases.");
             }
@@ -225,7 +225,7 @@ public static class ExporterBehaviorTests
         Check(before.Binary.SequenceEqual(after.Binary), "Fixture geometry/textures changed.");
         var presets = Presets(after.Json);
         var previous = Presets(before.Json);
-        foreach (var name in BlinkShapeNames.Presets)
+        foreach (var name in ExpressionPresetGroups.Blinks.Select(preset => preset.ToString()))
         {
             if (!presets.ContainsKey(name)) continue;
             if (previous.ContainsKey(name))
@@ -240,7 +240,7 @@ public static class ExporterBehaviorTests
                 var mesh = (Dictionary<string, object>)((List<object>)after.Json["meshes"])[(int)(long)node["mesh"]];
                 var names = (List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"];
                 var candidates = BlinkShapeNames.Resolve(names.Cast<string>().ToArray());
-                var slot = Array.IndexOf(BlinkShapeNames.Presets, name);
+                var slot = Array.FindIndex(ExpressionPresetGroups.Blinks, preset => preset.ToString() == name);
                 var index = (int)(long)binding["index"];
                 Check(index == candidates[slot] || slot == 0 && candidates[0] < 0 &&
                     (index == candidates[1] || index == candidates[2]), "Fixture binding resolves to the wrong shape.");

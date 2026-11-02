@@ -9,7 +9,6 @@ namespace VRVlog.LilToonExporter
     internal static class BlinkShapeNames
     {
         internal const int PartialPair = -3;
-        internal static readonly string[] Presets = { "blink", "blinkLeft", "blinkRight" };
         static readonly string[] Both = { "vrc.Blink", "Blink", "Fcl_EYE_Close", "まばたき", "eye_blink_1", "eye_blink_2" };
         static readonly (string Left, string Right)[] Pairs = {
             ("Blink_L", "Blink_R"), ("BlinkLeft", "BlinkRight"),
