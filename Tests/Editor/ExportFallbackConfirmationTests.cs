@@ -12,7 +12,7 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ExportFallbackConfirmationTests
     {
         // Records each result list opened.
-        sealed class RecordingDialog : IExportFallbackDialog
+        sealed class RecordingDialog
         {
             internal readonly List<ExportResultList> Calls = new List<ExportResultList>();
             internal readonly List<string> Headings = new List<string>();
@@ -31,7 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        IExportFallbackDialog originalDialog;
+        Action<ExportResultList, GameObject, string, string, ExportDiagnostics, Action> originalDialog;
         Func<bool> originalBatchMode;
         Object[] originalSelection;
         RecordingDialog dialog;
@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter.Tests
             originalDialog = ExportFallbackConfirmation.Dialog;
             originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
             originalSelection = Selection.objects;
-            ExportFallbackConfirmation.Dialog = dialog = new RecordingDialog();
+            ExportFallbackConfirmation.Dialog = (dialog = new RecordingDialog()).Show;
             // The test runner itself is a batch run; pretend an Editor session.
             ExportFallbackConfirmation.IsBatchMode = () => false;
             // The wording assertions compare the Japanese source text, whatever

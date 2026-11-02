@@ -744,7 +744,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Counts the result lists opened.
-        sealed class SavingFallbackDialog : IExportFallbackDialog
+        sealed class SavingFallbackDialog
         {
             internal int Calls;
             public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) => Calls++;
@@ -777,7 +777,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 // The test runner may be a batch run; pretend an Editor session so
                 // the interactive transfer really asks.
-                ExportFallbackConfirmation.Dialog = dialog;
+                ExportFallbackConfirmation.Dialog = dialog.Show;
                 ExportFallbackConfirmation.IsBatchMode = () => false;
                 ExportStageGuard.ContinueByDefault = continueOnFailure;
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);

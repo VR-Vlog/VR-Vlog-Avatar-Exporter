@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly Type Board = typeof(ExperimentalExpressionCaptureWindow);
 
         // Keeps the text of each result list opened.
-        sealed class SavingDialog : IExportFallbackDialog
+        sealed class SavingDialog
         {
             internal readonly List<string> Texts = new List<string>();
             public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) =>
@@ -43,7 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         string settingsPath, previousSettingsPath, presetPath, previousPresetPath;
-        IExportFallbackDialog originalDialog;
+        Action<ExportResultList, GameObject, string, string, ExportDiagnostics, Action> originalDialog;
         Func<bool> originalBatchMode;
         SavingDialog dialog;
         readonly List<string> files = new List<string>();
@@ -59,7 +59,7 @@ namespace VRVlog.LilToonExporter.Tests
             ExpressionPresetStore.PathOverride = presetPath;
             originalDialog = ExportFallbackConfirmation.Dialog;
             originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
-            ExportFallbackConfirmation.Dialog = dialog = new SavingDialog();
+            ExportFallbackConfirmation.Dialog = (dialog = new SavingDialog()).Show;
             // The test runner may be a batch run; pretend an Editor session so
             // "通常" asks about the result list as it does for a user.
             ExportFallbackConfirmation.IsBatchMode = () => false;
