@@ -81,11 +81,6 @@ namespace VRVlog.LilToonExporter
                 ExpressionDependencies.FixedNeutralValues(runtime, source, ExpressionDependencies.Inspect(runtime, excludedPath,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true), excludedPath, fixedContext), excludedPath);
             var definitions = ExpressionDependencies.Controller(runtime).layers;
-            // Matching raw values prove an Override contribution. Additive
-            // defaults/reference poses can change another layer's appearance;
-            // do not discard ownership based on a per-clip comparison there.
-            var unchangedClips = allowUnchangedAppearance
-                ? VrChatExpressionSampler.UnchangedAppearanceClips(runtime, Enumerable.Range(0, definitions.Length)) : null;
             // Validate before any appearance group is preserved. A recoverable
             // unsupported binding must not conceal malformed data in another
             // reachable clip. The caller also supplies the neutral probe's
@@ -97,6 +92,10 @@ namespace VRVlog.LilToonExporter
             // Reuse the native convex-Override proof: identical raw keys cannot
             // prove an invariant contribution through additive or Direct trees.
             var invariantClips = VrChatExpressionSampler.UnchangedAppearanceClips(runtime, Enumerable.Range(0, definitions.Length));
+            // Matching raw values prove an Override contribution. Additive
+            // defaults/reference poses can change another layer's appearance;
+            // do not discard ownership based on a per-clip comparison there.
+            var unchangedClips = allowUnchangedAppearance ? invariantClips : null;
             var globalWeightControl = ownershipLayers.Any(layer =>
                 layer.WeightControls.Values.Any(control => control.Playable == "FX" && !control.AnimatorLayer) ||
                 layer.FxCommands.Values.Any(command => command.FxWeight != 1));
