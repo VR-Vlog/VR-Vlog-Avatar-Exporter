@@ -529,30 +529,19 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        List<PresetAssignment> SavePresets() => AssignablePresets.Where(Presets.ContainsKey).Select(preset => Presets[preset])
-            .Where(assignment => !assignment.Automatic).Select(assignment => assignment.ForSaving() ??
-                throw new InvalidOperationException(ExporterLocalization.T("標準の表情の元クリップをUnityのProjectへ保存してから設定を保存してください。"))).ToList();
-
-        static List<PresetAssignment> LoadPresets(IEnumerable<PresetAssignment> stored)
+        // One stored assignment from ExpressionPresetStore; the store skips
+        // duplicates itself.
+        internal static PresetAssignment LoadPreset(PresetAssignment value)
         {
-            var result = new List<PresetAssignment>();
-            var seen = new HashSet<ExpressionPreset>();
-            foreach (var value in stored ?? Array.Empty<PresetAssignment>())
-            {
-                if (value == null) throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
-                var preset = ParsePreset(value.Preset);
-                if (!seen.Add(preset)) throw new InvalidOperationException(ExporterLocalization.T("同じ標準の表情が2回指定されています: ") + PresetFullLabel(preset));
-                var copy = value.Copy(); copy.Clip = null; copy.Automatic = false;
-                if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.IsShape || string.IsNullOrEmpty(copy.ClipGuid) && copy.ClipLocalId != 0)
-                    throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
-                if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.ResolveClip() == null)
-                    throw new InvalidOperationException(ExporterLocalization.T("標準の表情の元クリップが見つかりません: ") + PresetFullLabel(preset));
-                result.Add(copy);
-            }
-            return result;
+            if (value == null) throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
+            var preset = ParsePreset(value.Preset);
+            var copy = value.Copy(); copy.Clip = null; copy.Automatic = false;
+            if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.IsShape || string.IsNullOrEmpty(copy.ClipGuid) && copy.ClipLocalId != 0)
+                throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
+            if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.ResolveClip() == null)
+                throw new InvalidOperationException(ExporterLocalization.T("標準の表情の元クリップが見つかりません: ") + PresetFullLabel(preset));
+            return copy;
         }
-
-        internal static PresetAssignment LoadPresetsForStore(PresetAssignment stored) => LoadPresets(new[] { stored }).Single();
 
         // Suggest initial values from clip and BlendShape names; the vocabulary
         // and matching rules live in ExpressionNameInference.

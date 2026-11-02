@@ -28,20 +28,6 @@ namespace VRVlog.LilToonExporter
             public List<Row> Rows = new List<Row>();
         }
 
-        [Serializable]
-        internal sealed class Settings
-        {
-            public int Version = 1;
-            public string[] MeshHashes;
-            public Pose Baseline;
-            public List<Pose> Expressions = new List<Pose>();
-            public List<PoseReference> ManualPoses = new List<PoseReference>();
-            public string[] ExcludedPoses;
-            public List<PoseNameReference> PoseNames;
-            // Absent in records saved before emotion presets: no assignment.
-            public List<PresetAssignment> Presets;
-        }
-
         // The source or a recorded mesh no longer matches the copy. The board
         // keeps every choice apart from the copy, so it builds the copy again
         // from the avatar as it is and carries on; Detail says what differed.
@@ -460,57 +446,6 @@ namespace VRVlog.LilToonExporter
                 moves |= delta.Vertices[vertex].x != 0f || delta.Vertices[vertex].y != 0f || delta.Vertices[vertex].z != 0f;
             }
             return moves;
-        }
-
-        internal string SaveSettings()
-        {
-            // Recorded arrays remain useful recovery data after source edits.
-            // Applying or exporting them still requires all identity checks.
-            if (disposed) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
-            return JsonUtility.ToJson(new Settings { MeshHashes = Channels.Select(channel => channel.MeshHash).ToArray(),
-                Baseline = ClonePose(Baseline), Expressions = Expressions.Select(ClonePose).ToList(),
-                ManualPoses = PoseOptions.Manual.Select(SavePoseReference).ToList(), ExcludedPoses = PoseOptions.Excluded.ToArray(),
-                PoseNames = PoseOptions.Names.Select(pair => new PoseNameReference { Id = pair.Key, Name = pair.Value }).ToList(),
-                Presets = SavePresets() }, true);
-        }
-
-        internal void LoadSettings(string json)
-        {
-            RequireValid();
-            if (json == null || json.Length > 8 * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("記録設定のサイズが不正です。"));
-            Settings settings;
-            try { settings = JsonUtility.FromJson<Settings>(json); }
-            catch (Exception error) { throw new InvalidOperationException(ExporterLocalization.T("記録設定を読み込めません。"), error); }
-            if (settings == null || settings.Version != 1 || settings.MeshHashes == null ||
-                !settings.MeshHashes.SequenceEqual(Channels.Select(channel => channel.MeshHash)) || settings.Expressions == null)
-                throw new InvalidOperationException(ExporterLocalization.T("記録設定の形式またはメッシュが一致しません。"));
-            ValidatePose(settings.Baseline);
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var pose in settings.Expressions)
-            {
-                ValidatePose(pose);
-                if (ValidateName(pose.Name) != pose.Name || !names.Add(pose.Name))
-                    throw new InvalidOperationException(ExporterLocalization.T("記録設定の表情名が重複または不正です。"));
-            }
-            var manualPoses = (settings.ManualPoses ?? new List<PoseReference>()).Select(LoadPoseReference).ToList();
-            if (manualPoses.Count > 128) throw new InvalidOperationException(ExporterLocalization.T("同梱ポーズは128件までです。"));
-            var poseNames = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var reference in settings.PoseNames ?? new List<PoseNameReference>())
-                if (reference == null || string.IsNullOrEmpty(reference.Id) || poseNames.ContainsKey(reference.Id))
-                    throw new InvalidOperationException(ExporterLocalization.T("ポーズの表示名設定が不正です。"));
-                else poseNames.Add(reference.Id, ValidateName(reference.Name));
-            var presets = LoadPresets(settings.Presets);
-            // Publish only after validating every row and expression.
-            Baseline = ClonePose(settings.Baseline);
-            presetPoses.Clear();
-            Expressions.Clear(); Expressions.AddRange(settings.Expressions.Select(ClonePose));
-            PoseOptions.Manual.Clear(); PoseOptions.Manual.AddRange(manualPoses);
-            PoseOptions.Excluded.Clear(); PoseOptions.Names.Clear();
-            PoseOptions.Excluded.UnionWith(settings.ExcludedPoses ?? Array.Empty<string>());
-            foreach (var pair in poseNames) PoseOptions.Names.Add(pair.Key, pair.Value);
-            Presets.Clear();
-            foreach (var assignment in presets) Presets.Add(ParsePreset(assignment.Preset), assignment);
-            ApplyUnchecked(Baseline);
         }
 
         // listFaces are the board's listed clips (a moving one keeps its

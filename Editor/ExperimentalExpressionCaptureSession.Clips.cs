@@ -25,17 +25,6 @@ namespace VRVlog.LilToonExporter
             internal string Source;
         }
 
-        [Serializable]
-        internal sealed class PoseReference
-        {
-            public string Guid, Name, Category;
-            public long LocalId;
-            public float Time;
-        }
-
-        [Serializable]
-        internal sealed class PoseNameReference { public string Id, Name; }
-
         readonly Dictionary<AnimationClip, HashSet<string>> clipRoots = new Dictionary<AnimationClip, HashSet<string>>();
         // Clips a gesture enters in any of the avatar's controllers. The gesture route exports them even
         // when they change nothing, so the board keeps them.
@@ -470,24 +459,6 @@ namespace VRVlog.LilToonExporter
             }
             Expressions.Clear(); Expressions.AddRange(retained); Expressions.AddRange(staged);
             return staged;
-        }
-
-        static PoseReference SavePoseReference(ManualPose pose)
-        {
-            if (pose.Clip == null || !AssetDatabase.TryGetGUIDAndLocalFileIdentifier(pose.Clip, out string guid, out long id) || string.IsNullOrEmpty(guid))
-                throw new InvalidOperationException(ExporterLocalization.T("ポーズの元クリップをUnityのProjectへ保存してから設定を保存してください。"));
-            return new PoseReference { Guid = guid, LocalId = id, Name = pose.Name, Category = pose.Category, Time = pose.Time };
-        }
-
-        static ManualPose LoadPoseReference(PoseReference reference)
-        {
-            if (reference == null || !Finite(reference.Time) || string.IsNullOrEmpty(reference.Guid))
-                throw new InvalidOperationException(ExporterLocalization.T("ポーズの記録設定が不正です。"));
-            var clip = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(reference.Guid)).OfType<AnimationClip>().FirstOrDefault(candidate =>
-                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(candidate, out string guid, out long id) && id == reference.LocalId);
-            if (clip == null || reference.Time < 0 || reference.Time > clip.length)
-                throw new InvalidOperationException(ExporterLocalization.T("ポーズの元クリップが見つからないか、時刻が範囲外です: ") + reference.Name);
-            return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
         }
     }
 }

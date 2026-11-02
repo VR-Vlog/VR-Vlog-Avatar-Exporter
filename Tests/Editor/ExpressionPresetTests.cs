@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
@@ -243,57 +242,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Assert.Throws<InvalidOperationException>(() => session.BuildPresetPose(ExpressionPreset.angry, missing)).Message, Is.EqualTo(first));
         }
 
-        [Test]
-        public void SettingsWithoutPresetsStillLoadAndNewChoicesRoundTrip()
-        {
-            using var fixture = Fixture();
-            string json;
-            using (var session = new Session(fixture.Source))
-            {
-                Record(session, "Sample", 75);
-                session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
-                session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
-                var automatic = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"); automatic.Automatic = true;
-                session.SetPreset(ExpressionPreset.happy, automatic);
-                json = session.SaveSettings();
-            }
-            // A record written before this feature has no Presets member.
-            var legacy = Regex.Replace(json, ",\\s*\"Presets\"\\s*:\\s*\\[[\\s\\S]*\\]\\s*}\\s*$", "}");
-            Assert.That(legacy, Does.Not.Contain("Presets"));
-            using (var session = new Session(fixture.Source))
-            {
-                session.LoadSettings(legacy);
-                Assert.That(session.Expressions.Single().Name, Is.EqualTo("Sample"));
-                Assert.That(session.Presets, Is.Empty);
-            }
-            using (var session = new Session(fixture.Source))
-            {
-                session.LoadSettings(json);
-                Assert.That(session.Presets.Keys, Is.EquivalentTo(new[] { ExpressionPreset.sad, ExpressionPreset.angry }), "Automatic suggestions are not saved.");
-                Assert.That(session.Presets[ExpressionPreset.sad].Shape, Is.EqualTo("Smile"));
-                Assert.That(session.Presets[ExpressionPreset.angry].IsNone, Is.True);
-            }
-        }
-
-        [TestCase("duplicate")]
+        // The store reads each assignment on its own and skips the ones that
+        // are rejected here.
+        [TestCase("null")]
         [TestCase("custom")]
         [TestCase("both")]
-        public void InvalidPresetSettingsLeaveTheRecordUnchanged(string kind)
+        [TestCase("id-without-guid")]
+        [TestCase("missing-clip")]
+        public void InvalidStoredPresetIsRejected(string kind)
         {
-            using var fixture = Fixture();
-            using var session = new Session(fixture.Source);
-            Record(session, "Sample", 75);
-            var settings = JsonUtility.FromJson<Session.Settings>(session.SaveSettings());
             var entry = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
             switch (kind)
             {
-                case "duplicate": settings.Presets = new List<Session.PresetAssignment> { entry, entry.Copy() }; break;
-                case "custom": entry.Preset = "custom"; settings.Presets = new List<Session.PresetAssignment> { entry }; break;
-                case "both": entry.ClipGuid = "0123456789abcdef0123456789abcdef"; settings.Presets = new List<Session.PresetAssignment> { entry }; break;
+                case "null": entry = null; break;
+                case "custom": entry.Preset = "custom"; break;
+                case "both": entry.ClipGuid = "0123456789abcdef0123456789abcdef"; break;
+                case "id-without-guid": entry = Session.PresetAssignment.None(ExpressionPreset.happy); entry.ClipLocalId = 7; break;
+                case "missing-clip": entry = Session.PresetAssignment.None(ExpressionPreset.happy); entry.ClipGuid = "0123456789abcdef0123456789abcdef"; entry.ClipLocalId = 7; break;
             }
-            Assert.Throws<InvalidOperationException>(() => session.LoadSettings(JsonUtility.ToJson(settings)));
-            Assert.That(session.Presets, Is.Empty);
-            Assert.That(session.Expressions.Single().Name, Is.EqualTo("Sample"));
+            Assert.Throws<InvalidOperationException>(() => Session.LoadPreset(entry));
+            Assert.That(Session.LoadPreset(Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile")).Shape, Is.EqualTo("Smile"));
         }
 
         [TestCase("Smile", ExpressionPreset.happy, 0)]
@@ -1226,26 +1194,6 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void MouthBlinkAndNeutralChoicesAreSavedLikeEmotions()
         {
-            using var fixture = Fixture();
-            string json;
-            using (var session = new Session(fixture.Source))
-            {
-                Record(session, "Sample", 75);
-                session.SetPreset(ExpressionPreset.aa, Session.PresetAssignment.ForShape(ExpressionPreset.aa, "Front", "Smile"));
-                session.SetPreset(ExpressionPreset.blinkLeft, Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Back", "Smile"));
-                session.SetPreset(ExpressionPreset.neutral, Session.PresetAssignment.None(ExpressionPreset.neutral));
-                session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
-                json = session.SaveSettings();
-            }
-            using (var session = new Session(fixture.Source))
-            {
-                session.LoadSettings(json);
-                Assert.That(session.Presets.Keys, Is.EquivalentTo(new[] { ExpressionPreset.aa, ExpressionPreset.blinkLeft, ExpressionPreset.neutral, ExpressionPreset.sad }));
-                Assert.That(session.Presets[ExpressionPreset.aa].Path, Is.EqualTo("Front"));
-                Assert.That(session.Presets[ExpressionPreset.blinkLeft].Shape, Is.EqualTo("Smile"));
-                Assert.That(session.Presets[ExpressionPreset.neutral].IsNone, Is.True);
-            }
-
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
             var previous = ExpressionPresetStore.PathOverride;
             ExpressionPresetStore.PathOverride = path;

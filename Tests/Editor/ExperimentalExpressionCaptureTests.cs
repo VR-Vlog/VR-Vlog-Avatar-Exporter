@@ -2241,71 +2241,14 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void RecordingAndSettingsRoundTripKeepIndependentMeshesAndSourceUntouched()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            var before = fixture.Mesh.vertices;
-            string json;
-            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source))
-            {
-                Assert.That(session.Channels.Count, Is.EqualTo(2));
-                Record(session, "笑顔", 80, 0);
-                json = session.SaveSettings();
-            }
-            // A fresh session has different Unity object identities. Settings resolve exact mesh content instead.
-            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source))
-            {
-                session.LoadSettings(json);
-                Assert.That(session.Expressions.Single().Name, Is.EqualTo("笑顔"));
-                Assert.That(session.Expressions.Single().Rows.Select(row => row.Weights[0]), Is.EqualTo(new[] { 80f, 0f }));
-            }
-            Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.GetBlendShapeWeight(0)), Is.EqualTo(new[] { 35f, 35f }));
-            Assert.That(fixture.Mesh.vertices, Is.EqualTo(before));
-            Assert.That(fixture.Mesh.blendShapeCount, Is.EqualTo(1));
-        }
-
-        [TestCase("duplicate")]
-        [TestCase("missing-row")]
-        [TestCase("wrong-shape")]
-        [TestCase("wrong-mesh")]
-        [TestCase("nonfinite")]
-        [TestCase("wrong-version")]
-        public void InvalidSettingsLeaveBaselinePreviewAndRecordedFacesUnchanged(string kind)
+        public void SourceMeshEditInvalidatesTheSessionAndKeepsTheRecord()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
-            Record(session, "元の記録", 75);
-            var settings = JsonUtility.FromJson<ExperimentalExpressionCaptureSession.Settings>(session.SaveSettings());
-            switch (kind)
-            {
-                case "duplicate": settings.Expressions.Add(settings.Expressions[0]); break;
-                case "missing-row": settings.Expressions[0].Rows.RemoveAt(0); break;
-                case "wrong-shape": settings.Expressions[0].Rows[0].Shapes[0] = "different"; break;
-                case "wrong-mesh": settings.MeshHashes[0] = "different"; break;
-                case "nonfinite": settings.Expressions[0].Rows[0].Weights[0] = float.NaN; break;
-                case "wrong-version": settings.Version = 999; break;
-            }
-            Assert.Throws<InvalidOperationException>(() => session.LoadSettings(JsonUtility.ToJson(settings)));
-            Assert.That(session.Expressions.Single().Name, Is.EqualTo("元の記録"));
-            Assert.That(session.Baseline.Rows[0].Weights[0], Is.EqualTo(35));
-            Assert.That(session.Channels[0].Renderer.GetBlendShapeWeight(0), Is.EqualTo(35));
-        }
-
-        [Test]
-        public void SourceMeshEditInvalidatesTheSessionAndOldSettingsWithoutMutatingPreview()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            string json;
-            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source))
-            {
-                Record(session, "face", 70); json = session.SaveSettings();
-                var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
-                Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.Export("Test", "Tests", Listed()));
-                Assert.That(session.Expressions.Count, Is.EqualTo(1));
-                Assert.That(session.SaveSettings(), Is.EqualTo(json), "Source edits must not prevent saving recovery settings.");
-            }
-            using (var replacement = new ExperimentalExpressionCaptureSession(fixture.Source))
-                Assert.Throws<InvalidOperationException>(() => replacement.LoadSettings(json));
+            Record(session, "face", 70);
+            var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
+            Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.Export("Test", "Tests", Listed()));
+            Assert.That(session.Expressions.Count, Is.EqualTo(1));
         }
 
         // A face listed by its clip exports from an avatar with a menu and a
@@ -2409,7 +2352,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.Channels.First(channel => channel.Path == "Back").Renderer.GetBlendShapeWeight(0), Is.EqualTo(35), "Unspecified curves always start from the baseline.");
                 var inputs = new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Explicit", Time = .5f } };
                 Assert.That(session.ReplaceClipRecords(inputs, null).Select(pose => pose.Name), Is.EqualTo(new[] { "Explicit" }));
-                session.LoadSettings(session.SaveSettings()); Assert.That(session.Expressions.Single().Name, Is.EqualTo("Explicit"));
+                Assert.That(session.Expressions.Single().Name, Is.EqualTo("Explicit"));
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
                 Assert.That(state.behaviours.Length, Is.EqualTo(1));
             }
