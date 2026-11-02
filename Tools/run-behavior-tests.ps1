@@ -34,6 +34,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/ExportRendererSelection.cs'),
     (Join-Path $taskRepo 'Editor/AvatarBaseShape.cs'),
     (Join-Path $taskRepo 'Editor/MobileMaterialMath.cs'),
+    (Join-Path $taskRepo 'Editor/MobileMaterialMath.Properties.cs'),
     (Join-Path $taskRepo 'Editor/LilToonGlbExtension.cs'),
     (Join-Path $taskRepo 'Editor/LilToonExtensionValidator.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/MaterialBindingFixture.cs'),

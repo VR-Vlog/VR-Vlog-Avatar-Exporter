@@ -3,16 +3,8 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    internal static class MobileMaterialMath
+    internal static partial class MobileMaterialMath
     {
-        internal static float Float(Material material, string property, float fallback = 0f) =>
-            material.HasProperty(property) ? material.GetFloat(property) : fallback;
-
-        // lilToon's toggles are on above 0.5. NonZero is a different check: a
-        // value between 0 and 1 passes it, so each caller keeps the one it had.
-        internal static bool Enabled(Material material, string property) => Float(material, property) > 0.5f;
-        internal static bool NonZero(Material material, string property) => Float(material, property) != 0f;
-
         internal static float ShadowShift(float border, float blur)
         {
             var lower = Mathf.Clamp01(border - Mathf.Clamp01(blur) * 0.5f);

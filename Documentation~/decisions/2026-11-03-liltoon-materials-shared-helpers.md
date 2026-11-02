@@ -12,7 +12,7 @@
 - lilToon のカタログ（`LilToon234Catalogue.cs`）で、パス名の配列と LightMode の配列を別々に書くのをやめ、生成器が `(パス名, LightMode)` の並び 1 つ（`PassDeclarations`）を書く。`PassNames()`（序数で並べる）と `LightModes()` はそこから作る。生成し直さずに片方だけ直すとずれていたため。値と並びは変えない。読み戻す側（`Tools/liltoon_catalogue.py`）も同じ形で読む。
 - 対応していないシェーダーの置き換えで、標本化（`Sampled`）・読み戻し（`ReadRow`）・画像の作成（`NewImage`）を `UnsupportedShaderSubstitution.cs` に 1 つずつ置き、Toon・VRChat・Decal の 3 つの部分クラスから使う。マスクの画像はリニア、VRChat と Decal の画像は sRGB で作っていたので、リニアかどうかは `NewImage` の引数で受ける。深度の比較の表 `DepthComparisons` はステンシルの表に "Off" を足したものと同じだったので、そう作る。
 - UniVRM が書き出すメッシュのレンダラーの選び方（`SkinnedMeshRenderer` か `MeshFilter` 付きの `MeshRenderer` で、ジオメトリのあるもの）を `ExportRendererSelection.ExportedMeshRenderers` に置き、4 か所の写しとまばたきの空振り用の選び方（同じ結果だった）をそこへ寄せる。
-- マテリアルのプロパティを読んで判定する式（無ければ既定値・0.5 より大きいか・0 でないか）を `MobileMaterialMath` の `Float`・`Enabled`・`NonZero` に寄せる。`> 0.5` と `!= 0` は 0 から 1 の間の値で結果が違うので別の関数のまま、呼び出し元ごとに元の判定と既定値（`_Cull` は 2、`EnableLighting` は 1、`_MatCapBlendMode` は Add、輪郭線の幅は `> 0.5`）を使う。
+- マテリアルのプロパティを読んで判定する式（無ければ既定値・0.5 より大きいか・0 でないか）を `MobileMaterialMath` の `Float`・`Enabled`・`NonZero` に寄せる。`> 0.5` と `!= 0` は 0 から 1 の間の値で結果が違うので別の関数のまま、呼び出し元ごとに元の判定と既定値（`_Cull` は 2、`EnableLighting` は 1、`_MatCapBlendMode` は Add、輪郭線の幅は `> 0.5`）を使う。 この 3 つは `MobileMaterialMath.Properties.cs`（partial クラス）に置く。`Tools/run-bake-tests.ps1` の Unity の代役には `Mathf` と `Color` の演算が無く、色の計算と同じファイルにすると焼き込みのハーネスがコンパイルできないため。bake と behavior のハーネスの一覧にこのファイルを足した。
 - 範囲外: lilToon 1.x の読み取り（612 行）は利用者がいるかを mk が判断するまで触らない。
 
 ## 確かめたこと
