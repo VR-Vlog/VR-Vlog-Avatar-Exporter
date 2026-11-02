@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
+using VRVlog.AvatarFormats;
 using VRVlog.LilToon;
 
 namespace VRVlog.LilToonExporter
@@ -201,7 +202,7 @@ namespace VRVlog.LilToonExporter
                 var used = new List<int>();
                 foreach (var primitive in primitives)
                 {
-                    if (primitive.TryGetValue("attributes", out var rawAttributes) && rawAttributes is Dictionary<string, object> attributes &&
+                    if (JsonAccess.Object(primitive, "attributes") is Dictionary<string, object> attributes &&
                         attributes.ContainsKey("POSITION") && positions.Add(Integer(attributes, "POSITION")))
                         line.Vertices += Integer(At(accessors, Integer(attributes, "POSITION")), "count");
                     line.BlendShapes = Math.Max(line.BlendShapes, Array(primitive, "targets").Count);
@@ -419,11 +420,10 @@ namespace VRVlog.LilToonExporter
             lines.Add("書き出さない部品 " + string.Join(" / ", PartKinds.Select((name, i) => (name, i)).Where(item => item.i != ConstraintKind)
                 .Select(item => item.name + " " + parts[item.i].Count)));
 
-            var springs = json.TryGetValue("extensions", out var rawExtensions) && rawExtensions is Dictionary<string, object> extensions &&
-                extensions.TryGetValue("VRMC_springBone", out var rawSprings) ? rawSprings as Dictionary<string, object> : null;
+            var springs = JsonAccess.Object(JsonAccess.Object(json, "extensions"), "VRMC_springBone");
             lines.Add("揺れもの 元のPhysBone " + physBones + " / VRMの揺れもの " + Array(springs, "springs").Count);
             var constrained = Array(json, "nodes").OfType<Dictionary<string, object>>().Count(node =>
-                node.TryGetValue("extensions", out var raw) && raw is Dictionary<string, object> nodeExtensions && nodeExtensions.ContainsKey("VRMC_node_constraint"));
+                JsonAccess.Object(node, "extensions") is Dictionary<string, object> nodeExtensions && nodeExtensions.ContainsKey("VRMC_node_constraint"));
             lines.Add("コンストレイント 元 " + parts[ConstraintKind].Count + " / VRM " + constrained);
             return lines;
         }
@@ -558,8 +558,7 @@ namespace VRVlog.LilToonExporter
 
         static int BaseColorImage(Dictionary<string, object> material, List<object> textures)
         {
-            if (!(material.TryGetValue("pbrMetallicRoughness", out var raw) && raw is Dictionary<string, object> pbr &&
-                pbr.TryGetValue("baseColorTexture", out var rawInfo) && rawInfo is Dictionary<string, object> info && info.ContainsKey("index"))) return -1;
+            if (!(JsonAccess.Object(JsonAccess.Object(material, "pbrMetallicRoughness"), "baseColorTexture") is Dictionary<string, object> info && info.ContainsKey("index"))) return -1;
             return ImageOf(textures, Integer(info, "index"));
         }
 
@@ -589,13 +588,11 @@ namespace VRVlog.LilToonExporter
 
         static string Number(long value) => value.ToString("#,0", CultureInfo.InvariantCulture);
 
-        static List<object> Array(Dictionary<string, object> map, string key) =>
-            map != null && map.TryGetValue(key, out var raw) && raw is List<object> list ? list : new List<object>();
+        static List<object> Array(Dictionary<string, object> map, string key) => JsonAccess.List(map, key) ?? new List<object>();
 
         static object At(List<object> list, int index) => index >= 0 && index < list.Count ? list[index] : null;
 
-        static int Integer(object map, string key) =>
-            map is Dictionary<string, object> dictionary && dictionary.TryGetValue(key, out var raw) ? (int)Numeric(raw) : 0;
+        static int Integer(object map, string key) => (int)Numeric(JsonAccess.Get(map as Dictionary<string, object>, key));
 
         static double Numeric(object raw)
         {
