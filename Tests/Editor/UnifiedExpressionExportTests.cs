@@ -171,7 +171,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var json = GlbDocument.Read(bytes).Json;
                 var extension = (Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])["VRMC_vrm"];
                 var presets = (Dictionary<string, object>)((Dictionary<string, object>)extension["expressions"])["preset"];
-                foreach (var name in BlinkShapeNames.Presets)
+                foreach (var name in ExpressionPresetGroups.Blinks.Select(preset => preset.ToString()))
                     Assert.That(presets.ContainsKey(name), Is.EqualTo(bilateral), "A partial UE face does not serialize an invented standard blink route: " + name);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 foreach (var pair in new[] { ("UE/JawOpen", .6f), ("UE/EyeClosedLeft", .4f) })
@@ -496,7 +496,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var glb = GlbDocument.Read(bytes);
                 var metadata = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
                 var presets = (Dictionary<string, object>)((Dictionary<string, object>)metadata["expressions"])["preset"];
-                foreach (var name in BlinkShapeNames.Presets) Assert.That(presets.ContainsKey(name), Is.EqualTo(compatible));
+                foreach (var name in ExpressionPresetGroups.Blinks.Select(preset => preset.ToString())) Assert.That(presets.ContainsKey(name), Is.EqualTo(compatible));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "UE/MouthClosed"), Is.True);
                 Assert.That(imported.Vrm.Expression.Blink.MorphTargetBindings.Length, Is.EqualTo(compatible ? 2 : 0));

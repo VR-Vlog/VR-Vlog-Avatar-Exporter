@@ -653,7 +653,7 @@ namespace VRVlog.LilToonExporter
                     // A shape bound to both blink and one side gets one channel
                     // per slot, so the slot is part of the name.
                     var name = DeterministicNames.Unique("__VRVlog_Blink_" + DeterministicNames.Hash("Blink",
-                        PathOf(renderer), binding.Shape, BlinkShapeNames.Presets[slot]), used);
+                        PathOf(renderer), binding.Shape, ExpressionPresetGroups.Blinks[slot].ToString()), used);
                     AvatarBaseShape.AppendAnimatedShape(original, generated, name, index,
                         renderer.GetBlendShapeWeight(index), Endpoint(binding));
                     binding.Shape = name;
@@ -718,10 +718,10 @@ namespace VRVlog.LilToonExporter
             if (PreserveAuthored)
             {
                 for (var slot = 0; slot < authored.Length; slot++)
-                    if (authored[slot] && !presets.ContainsKey(BlinkShapeNames.Presets[slot]))
+                    if (authored[slot] && !presets.ContainsKey(ExpressionPresetGroups.Blinks[slot].ToString()))
                         throw new InvalidOperationException("元のVRMの瞬き設定が出力時に失われました。");
             }
-            else foreach (var preset in BlinkShapeNames.Presets) presets.Remove(preset);
+            else foreach (var preset in ExpressionPresetGroups.Blinks) presets.Remove(preset.ToString());
             var outputNodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
             for (var slot = 0; slot < Slots.Length; slot++)
@@ -744,8 +744,8 @@ namespace VRVlog.LilToonExporter
                         { "weight", PreserveAuthored ? (double)binding.Weight / 100.0 : 1.0 } });
                 }
                 if (PreserveAuthored)
-                    ((Dictionary<string, object>)presets[BlinkShapeNames.Presets[slot]])["morphTargetBinds"] = binds;
-                else presets[BlinkShapeNames.Presets[slot]] = new Dictionary<string, object> { { "morphTargetBinds", binds }, { "isBinary", false } };
+                    ((Dictionary<string, object>)presets[ExpressionPresetGroups.Blinks[slot].ToString()])["morphTargetBinds"] = binds;
+                else presets[ExpressionPresetGroups.Blinks[slot].ToString()] = new Dictionary<string, object> { { "morphTargetBinds", binds }, { "isBinary", false } };
             }
             // Perfect Sync custom keys must agree with an explicit override too.
             if (!PreserveAuthored && expressions.TryGetValue("custom", out var rawCustom) && rawCustom is Dictionary<string, object> custom)
@@ -754,7 +754,7 @@ namespace VRVlog.LilToonExporter
                         string.Equals(key, "EyeBlinkRight", StringComparison.OrdinalIgnoreCase))
                     {
                         var slot = key.EndsWith("Left", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
-                        if (presets.TryGetValue(BlinkShapeNames.Presets[slot], out var value) || presets.TryGetValue("blink", out value))
+                        if (presets.TryGetValue(ExpressionPresetGroups.Blinks[slot].ToString(), out var value) || presets.TryGetValue("blink", out value))
                             custom[key] = value;
                     }
             return glb.Write();

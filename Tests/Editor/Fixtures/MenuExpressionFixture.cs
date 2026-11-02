@@ -8,6 +8,11 @@ namespace VRVlog.LilToonExporter.Tests
 {
     internal static class MenuExpressionFixture
     {
+        // Every name the Unified Expressions registry knows, read from the
+        // registry itself.
+        static IReadOnlyList<string> RegisteredUnifiedNames() => (IReadOnlyList<string>)typeof(UnifiedExpressionRegistry)
+            .GetField("RegisteredNames", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).GetValue(null);
+
         // Binds a direct shape to the morph of the same name on node 0.
         sealed class IndexBindings : VrmMenuExpressions.IDirectBindings
         {
@@ -169,7 +174,7 @@ namespace VRVlog.LilToonExporter.Tests
             check(candidates.Count == 3 && candidates["1"] == "Other / 1" && candidates["1 (2)"] == "Smile / 1" && candidates["Wink"] == "Wink",
                 "Each registered name keeps the text inference reads; without one it reads the name.");
             var filled = new List<(string Preset, string Source, string Format)>();
-            VrmExpressionBindings.AddMissing(pathOutput, inferBlink: false, inferEmotions: true, filledPresets: filled, emotionCandidates: candidates);
+            VrmExpressionBindings.AddMissing(pathOutput, inferEmotions: true, filledPresets: filled, emotionCandidates: candidates);
             check(filled.SequenceEqual(new[] { ("happy", "1 (2)", VrmExpressionBindings.FilledFormat) }), "Item \"1\" of a \"Smile\" submenu still fills happy.");
             check(VrmMenuExpressions.EmotionShapes(paths).Count == 0, "Faces without source shapes give the shape guess nothing.");
             check(VrmMenuExpressions.UniqueName("Smile", name => false) == "Smile" &&
@@ -198,7 +203,7 @@ namespace VRVlog.LilToonExporter.Tests
                 same.Select(e => e.MergedInto).SequenceEqual(new[] { "Smile", null, null, null }),
                 "The merged face names the face it was written as.");
             var sameFilled = new List<(string Preset, string Source, string Format)>();
-            VrmExpressionBindings.AddMissing(sameOutput, inferBlink: false, inferEmotions: true, filledPresets: sameFilled,
+            VrmExpressionBindings.AddMissing(sameOutput, inferEmotions: true, filledPresets: sameFilled,
                 emotionCandidates: VrmMenuExpressions.EmotionCandidates(same));
             check(sameFilled.SequenceEqual(new[] { ("happy", "Smile", VrmExpressionBindings.FilledFormat) }),
                 "The kept name is the one emotion inference reads, so happy still fills from it.");
@@ -209,7 +214,7 @@ namespace VRVlog.LilToonExporter.Tests
             var trackingNames = TrackingExpressionNames.PerfectSync
                 .SelectMany(name => new[] { name, char.ToLowerInvariant(name[0]) + name.Substring(1), name.ToUpperInvariant(),
                     "Fcl_ALL_" + name, "Face." + name, "Body/" + name, "mesh:" + name, " " + name + " " })
-                .Concat(UnifiedExpressionRegistry.AllNames.SelectMany(name => new[] { name, UnifiedExpressionRegistry.Prefix + name }))
+                .Concat(RegisteredUnifiedNames().SelectMany(name => new[] { name, UnifiedExpressionRegistry.Prefix + name }))
                 .Concat(new[] { "neutral", "happy", "lookRight", "blinkLeft", "ee", UnifiedExpressionRegistry.RestPrefix,
                     UnifiedExpressionRegistry.RestPrefix + "2" }).ToArray();
             var notNumbered = trackingNames.Where(name => VrmMenuExpressions.UniqueName(name, taken => false) != name + " (2)").ToArray();

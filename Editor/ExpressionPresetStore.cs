@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter
             {
                 try
                 {
-                    var loaded = ExperimentalExpressionCaptureSession.LoadPresetsForStore(value);
+                    var loaded = ExperimentalExpressionCaptureSession.LoadPreset(value);
                     if (!seen.Add(loaded.Preset)) throw new InvalidOperationException();
                     result.Add(loaded);
                 }

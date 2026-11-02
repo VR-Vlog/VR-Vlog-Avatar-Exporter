@@ -28,20 +28,6 @@ namespace VRVlog.LilToonExporter
             public List<Row> Rows = new List<Row>();
         }
 
-        [Serializable]
-        internal sealed class Settings
-        {
-            public int Version = 1;
-            public string[] MeshHashes;
-            public Pose Baseline;
-            public List<Pose> Expressions = new List<Pose>();
-            public List<PoseReference> ManualPoses = new List<PoseReference>();
-            public string[] ExcludedPoses;
-            public List<PoseNameReference> PoseNames;
-            // Absent in records saved before emotion presets: no assignment.
-            public List<PresetAssignment> Presets;
-        }
-
         // The source or a recorded mesh no longer matches the copy. The board
         // keeps every choice apart from the copy, so it builds the copy again
         // from the avatar as it is and carries on; Detail says what differed.
@@ -284,8 +270,6 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        internal bool HasCurrentSource => !disposed && Source != null && sourceStamp.Matches(Source);
-
         // What differs between the source and the copy, null when they match.
         // A match also counts as the check of this batch.
         internal string SourceDifference()
@@ -351,11 +335,6 @@ namespace VRVlog.LilToonExporter
 
         // Stops a save before the export when the source changed after the board opened.
         internal void RequireCurrentSource() => RequireValid(always: true);
-
-        // The batch's check, for an action that changes the board before it
-        // reads the copy: a copy built again for a changed source then sees the
-        // same choices when the action runs again.
-        internal void RequireSourceForBatch() => RequireValid();
 
         // The rest of this batch reads the copy as it is, without hashing the
         // source: for the board's idle reads right after it built the copy
@@ -462,57 +441,6 @@ namespace VRVlog.LilToonExporter
             return moves;
         }
 
-        internal string SaveSettings()
-        {
-            // Recorded arrays remain useful recovery data after source edits.
-            // Applying or exporting them still requires all identity checks.
-            if (disposed) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
-            return JsonUtility.ToJson(new Settings { MeshHashes = Channels.Select(channel => channel.MeshHash).ToArray(),
-                Baseline = ClonePose(Baseline), Expressions = Expressions.Select(ClonePose).ToList(),
-                ManualPoses = PoseOptions.Manual.Select(SavePoseReference).ToList(), ExcludedPoses = PoseOptions.Excluded.ToArray(),
-                PoseNames = PoseOptions.Names.Select(pair => new PoseNameReference { Id = pair.Key, Name = pair.Value }).ToList(),
-                Presets = SavePresets() }, true);
-        }
-
-        internal void LoadSettings(string json)
-        {
-            RequireValid();
-            if (json == null || json.Length > 8 * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("記録設定のサイズが不正です。"));
-            Settings settings;
-            try { settings = JsonUtility.FromJson<Settings>(json); }
-            catch (Exception error) { throw new InvalidOperationException(ExporterLocalization.T("記録設定を読み込めません。"), error); }
-            if (settings == null || settings.Version != 1 || settings.MeshHashes == null ||
-                !settings.MeshHashes.SequenceEqual(Channels.Select(channel => channel.MeshHash)) || settings.Expressions == null)
-                throw new InvalidOperationException(ExporterLocalization.T("記録設定の形式またはメッシュが一致しません。"));
-            ValidatePose(settings.Baseline);
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var pose in settings.Expressions)
-            {
-                ValidatePose(pose);
-                if (ValidateName(pose.Name) != pose.Name || !names.Add(pose.Name))
-                    throw new InvalidOperationException(ExporterLocalization.T("記録設定の表情名が重複または不正です。"));
-            }
-            var manualPoses = (settings.ManualPoses ?? new List<PoseReference>()).Select(LoadPoseReference).ToList();
-            if (manualPoses.Count > 128) throw new InvalidOperationException(ExporterLocalization.T("同梱ポーズは128件までです。"));
-            var poseNames = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var reference in settings.PoseNames ?? new List<PoseNameReference>())
-                if (reference == null || string.IsNullOrEmpty(reference.Id) || poseNames.ContainsKey(reference.Id))
-                    throw new InvalidOperationException(ExporterLocalization.T("ポーズの表示名設定が不正です。"));
-                else poseNames.Add(reference.Id, ValidateName(reference.Name));
-            var presets = LoadPresets(settings.Presets);
-            // Publish only after validating every row and expression.
-            Baseline = ClonePose(settings.Baseline);
-            presetPoses.Clear();
-            Expressions.Clear(); Expressions.AddRange(settings.Expressions.Select(ClonePose));
-            PoseOptions.Manual.Clear(); PoseOptions.Manual.AddRange(manualPoses);
-            PoseOptions.Excluded.Clear(); PoseOptions.Names.Clear();
-            PoseOptions.Excluded.UnionWith(settings.ExcludedPoses ?? Array.Empty<string>());
-            foreach (var pair in poseNames) PoseOptions.Names.Add(pair.Key, pair.Value);
-            Presets.Clear();
-            foreach (var assignment in presets) Presets.Add(ParsePreset(assignment.Preset), assignment);
-            ApplyUnchecked(Baseline);
-        }
-
         // listFaces are the board's listed clips (a moving one keeps its
         // animation): the VRM's custom expressions. The board passes its list
         // even when it is empty, so there is no other route.
@@ -542,14 +470,14 @@ namespace VRVlog.LilToonExporter
                 {
                     var pose = item.Assignment.IsNone ? null : BuildPresetPose(item.Preset, item.Assignment);
                     var morphs = pose == null ? new List<(string Path, string Shape, float Weight)>()
-                        : BlinkPresets.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
+                        : ExpressionPresetGroups.Blinks.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
                     return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
                 }).ToArray();
             // Gaze and neutral the board leaves open are filled from names as in
             // the quick export; only the user's own "none" keeps one empty.
             var keepEmpty = selectedPresets
                 .Where(item => item.Assignment.IsNone && !item.Assignment.Automatic &&
-                    (LookAtPresets.Contains(item.Preset) || item.Preset == ExpressionPreset.neutral))
+                    (ExpressionPresetGroups.LookAts.Contains(item.Preset) || item.Preset == ExpressionPreset.neutral))
                 .Select(item => item.Preset.ToString()).ToArray();
             var leftEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkLeft).Assignment;
             var rightEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkRight).Assignment;
@@ -559,9 +487,9 @@ namespace VRVlog.LilToonExporter
             // candidates repeat its own choice, so they leave blinkOptions as
             // is. The user's choices, "none" included, replace their slots of
             // that setting as a manual one, even when it is no blink.
-            var blinkFaces = presetFaces.Where(face => BlinkPresets.Contains(face.Preset) && !face.Automatic).ToArray();
+            var blinkFaces = presetFaces.Where(face => ExpressionPresetGroups.Blinks.Contains(face.Preset) && !face.Automatic).ToArray();
             if (blinkFaces.Length > 0) blinkOptions = AssignedBlink(blinkOptions, blinkFaces.Select(face => (face.Preset, face.Morphs)));
-            presetFaces = presetFaces.Where(face => !BlinkPresets.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
+            presetFaces = presetFaces.Where(face => !ExpressionPresetGroups.Blinks.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
             // Standard presets enter the ordinary route's copy as authored VRM
             // clips, so authored presets remain. listFaces plays no menu face:
             // the exporter reads the listed clips as its faces, moving ones

@@ -1438,7 +1438,7 @@ namespace VRVlog.LilToonExporter
         {
             var title = ExporterLocalization.T(label) + "　" + Count(presets);
             GUI.Label(rect, new GUIContent(Fit(title, cardText, rect.width), title), cardText);
-            if (presets != ExperimentalExpressionCaptureSession.BlinkPresets) return;
+            if (presets != ExpressionPresetGroups.Blinks) return;
             var note = ExporterLocalization.T("左右はアバターから見て");
             var used = cardText.CalcSize(new GUIContent(title)).x + 10;
             if (used + dimMini.CalcSize(new GUIContent(note)).x <= rect.width)
@@ -1535,7 +1535,7 @@ namespace VRVlog.LilToonExporter
             if (session.HasAuthoredPreset(preset)) return ExporterLocalization.T("元のVRM設定");
             // A blink slot nobody chose follows the blink setting; "none" chosen
             // on it leaves it empty.
-            if ((assignment == null || assignment.Automatic) && ExperimentalExpressionCaptureSession.BlinkPresets.Contains(preset)) return blinkFallback ?? "";
+            if ((assignment == null || assignment.Automatic) && ExpressionPresetGroups.Blinks.Contains(preset)) return blinkFallback ?? "";
             // An open gaze or neutral slot is filled from names at export.
             if (assignment == null && ExperimentalExpressionCaptureSession.FilledFromNames(preset)) return ExporterLocalization.T("名前から埋める");
             return ExporterLocalization.T("空のまま保存");
@@ -2528,7 +2528,7 @@ namespace VRVlog.LilToonExporter
             var listed = board.ExportedCustom();
             var unusableNote = board.UnusableCustomNote();
             var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
-            var slotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
+            var slotFaces = ExpressionPresetGroups.Emotions.Select(board.SlotValue)
                 .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
                 .Where(clip => clip != null && !listed.Contains(clip) &&
                     (session.IsGestureClip(clip) || VrChatGestureExpressions.HasChangingMorph(clip, null) && !session.HeldAtOneFrame(clip)) &&

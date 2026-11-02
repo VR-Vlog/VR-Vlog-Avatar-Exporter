@@ -885,7 +885,7 @@ namespace VRVlog.LilToonExporter
                     RecordMergedExpressions(expressions, recoveryReport);
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
-                    var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
+                    var output = VrmExpressionBindings.AddMissing(menuOutput, warnings,
                         inferEmotions: inferEmotionPresets, filledPresets: filled,
                         emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
                         emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,

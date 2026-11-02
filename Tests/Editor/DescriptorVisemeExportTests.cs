@@ -151,7 +151,7 @@ namespace VRVlog.LilToonExporter.Tests
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             for (var i = 0; i < names.Length; i++)
-                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset]),
+                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[ExpressionPresetGroups.VisemeSlots[i].Preset.ToString()]),
                     Is.EqualTo(names[i]));
             Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnboundVisemeWarning));
         }
@@ -197,7 +197,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             for (var i = 0; i < present; i++)
-                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset]),
+                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[ExpressionPresetGroups.VisemeSlots[i].Preset.ToString()]),
                     Is.EqualTo(LipNames[i]));
             if (present == LipNames.Length)
                 Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnboundVisemeWarning));

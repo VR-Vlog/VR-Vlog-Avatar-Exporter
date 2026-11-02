@@ -28,8 +28,6 @@ namespace VRVlog.FaceTracking
         static readonly HashSet<string> WholeNames = new HashSet<string>(StringComparer.Ordinal);
         static readonly IReadOnlyList<string> RegisteredNames;
 
-        public static IReadOnlyList<string> AllNames { get { return RegisteredNames; } }
-
         static UnifiedExpressionRegistry()
         {
             foreach (var side in new[] { "Left", "Right" })
@@ -113,23 +111,10 @@ namespace VRVlog.FaceTracking
             Whole("MouthSad", 35, read => Mean(Sad(read, "Left"), Sad(read, "Right")), "MouthFrownLeft", "MouthStretchLeft", "MouthFrownRight", "MouthStretchRight");
             Whole("MouthOpen", 35, read => (Value(read, "MouthUpperUpLeft") + Value(read, "MouthUpperUpRight") + Value(read, "MouthLowerDownLeft") + Value(read, "MouthLowerDownRight")) * 0.25f, "MouthUpperUpLeft", "MouthUpperUpRight", "MouthLowerDownLeft", "MouthLowerDownRight");
 
-            // Only these names overlap the ARKit 52-channel vocabulary. They
+            // Only the ARKit 52-channel names overlap this vocabulary. They
             // remain usable but cannot by themselves establish a UE profile.
-            foreach (var input in new[]
-            {
-                "BrowDownLeft", "BrowDownRight", "BrowInnerUp", "BrowOuterUpLeft", "BrowOuterUpRight",
-                "CheekPuff", "CheekSquintLeft", "CheekSquintRight",
-                "EyeBlinkLeft", "EyeBlinkRight", "EyeLookDownLeft", "EyeLookDownRight", "EyeLookInLeft", "EyeLookInRight",
-                "EyeLookOutLeft", "EyeLookOutRight", "EyeLookUpLeft", "EyeLookUpRight", "EyeSquintLeft", "EyeSquintRight", "EyeWideLeft", "EyeWideRight",
-                "JawForward", "JawLeft", "JawOpen", "JawRight", "MouthClose", "MouthDimpleLeft", "MouthDimpleRight",
-                "MouthFrownLeft", "MouthFrownRight", "MouthFunnel", "MouthLeft", "MouthLowerDownLeft", "MouthLowerDownRight",
-                "MouthPressLeft", "MouthPressRight", "MouthPucker", "MouthRight", "MouthRollLower", "MouthRollUpper",
-                "MouthShrugLower", "MouthShrugUpper", "MouthSmileLeft", "MouthSmileRight", "MouthStretchLeft", "MouthStretchRight",
-                "MouthUpperUpLeft", "MouthUpperUpRight", "NoseSneerLeft", "NoseSneerRight", "TongueOut"
-            })
-            {
+            foreach (var input in VRVlog.LilToonExporter.TrackingExpressionNames.PerfectSync)
                 SharedNames.Add(Normalize(input));
-            }
             var names = new List<string>(Definitions.Keys);
             names.Sort(StringComparer.Ordinal);
             RegisteredNames = names.AsReadOnly();
