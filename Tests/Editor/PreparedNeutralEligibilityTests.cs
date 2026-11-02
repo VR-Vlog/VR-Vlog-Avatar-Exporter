@@ -165,10 +165,10 @@ namespace VRVlog.LilToonExporter.Tests
             var preparedUnderlay = prepared.transform.Find("Underlay only");
             var parent = new GameObject("Generated"); parent.transform.SetParent(prepared.transform, false);
             preparedUnderlay.SetParent(parent.transform, false); preparedUnderlay.name = "Moved underlay";
-            Assert.That(bindings.AuthoringPath("Generated/Moved underlay"), Is.EqualTo("Underlay only"));
-            Assert.That(bindings.AuthoringPath("Underlay only"), Is.Null);
+            Assert.That(bindings.AuthoringPaths("Generated/Moved underlay"), Is.EqualTo(new[] { "Underlay only" }));
+            Assert.That(bindings.AuthoringPaths("Underlay only"), Is.Empty);
             entry.Values.Add(new VrChatExpressionMenu.MorphValue {
-                Path = bindings.AuthoringPath("Generated/Moved underlay"), Shape = "Default opening", Weight = 100
+                Path = bindings.AuthoringPaths("Generated/Moved underlay").Single(), Shape = "Default opening", Weight = 100
             });
             bindings.Capture(menu);
             Assert.That(entry.Error, Is.Null);
@@ -182,9 +182,9 @@ namespace VRVlog.LilToonExporter.Tests
             Skin("Open"); Skin("Open"); prepared = Object.Instantiate(source);
             var bindings = new PreparedExpressionBindings(prepared, new VrChatExpressionMenu.Source());
             prepared.transform.GetChild(0).name = "Unique current path";
-            Assert.That(bindings.AuthoringPath("Unique current path"), Is.Null, "The authoring path was ambiguous before NDMF.");
+            Assert.That(bindings.AuthoringPaths("Unique current path"), Is.Empty, "The authoring path was ambiguous before NDMF.");
             prepared.transform.GetChild(0).name = "Face";
-            Assert.That(bindings.AuthoringPath("Face"), Is.Null, "The prepared path cannot identify one renderer.");
+            Assert.That(bindings.AuthoringPaths("Face"), Is.Empty, "The prepared path cannot identify one renderer.");
         }
     }
 }

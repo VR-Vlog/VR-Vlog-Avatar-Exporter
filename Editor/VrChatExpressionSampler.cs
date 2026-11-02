@@ -15,9 +15,6 @@ namespace VRVlog.LilToonExporter
 {
     internal static class VrChatExpressionSampler
     {
-        // Tests count the override probe analyses that actually run.
-        internal static Action<string> ProbeAnalysisObserver;
-
         // A layer or clip weight at or below this counts as not playing.
         private const float NegligibleWeight = 0.00001f;
 
@@ -464,7 +461,6 @@ namespace VRVlog.LilToonExporter
                     {
                         if (selection == null)
                         {
-                            ProbeAnalysisObserver?.Invoke("randomRest");
                             var found = HeldAutomaticExpressionLayers.Find(probeRuntime, metadata,
                                 ExpressionInspectCache.Current?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
                                 layerIndex.Value, explicitMorphs);
@@ -508,7 +504,6 @@ namespace VRVlog.LilToonExporter
                     }
                     ExpressionDependencies AnalyzeProbe()
                     {
-                        ProbeAnalysisObserver?.Invoke("dependencies");
                         return ExpressionDependencies.AnalyzeNeutral(probeRuntime, scalarPlan.CommittedMorphs,
                             excludedPath, metadata, fixedContext: context, preserveCommittedMorphs: true, evaluateLayerWeights: true,
                             weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0);

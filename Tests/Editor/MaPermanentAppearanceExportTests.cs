@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
                     exporterVersion: fullLilToon ? "ma-permanent-appearance-regression" : null,
                     lilToonVersion: fullLilToon ? "2.3.4" : null, blinkOptions: options,
                     listFaces: new[] { ("Smile", (AnimationClip)selected.motion, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null); Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
                 const string name = "Smile";

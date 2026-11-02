@@ -25,7 +25,6 @@ namespace VRVlog.LilToonExporter.Tests
             var menu = f.RegisteredBranch(openingZero); var entry = menu.Entries.Single();
             var sourceValues = entry.Values.ToArray(); var sourceAnimation = entry.Animation.ToArray();
             f.Prepare(menu);
-            Assert.That(f.Bindings.AuthoringPath("Prepared/Merged"), Is.Null);
             Assert.That(f.Bindings.AuthoringPaths("Prepared/Merged"), Is.EqualTo(new[] { "Back", "Front" }));
             var sampled = NeutralShapeSampler.Sample(f.Avatar.Copy);
             Assert.That(sampled.Single(value => value.Shape == "Open").Weight, Is.EqualTo(50).Within(.001f));

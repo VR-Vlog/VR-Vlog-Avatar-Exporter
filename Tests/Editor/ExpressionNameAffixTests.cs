@@ -67,7 +67,7 @@ namespace VRVlog.LilToonExporter.Tests
             var bytes = VrmMenuExpressions.Add(Output("A", "B"), expressions);
             var json = GlbDocument.Read(bytes).Json;
             Assert.That(Custom(json).Keys, Is.EquivalentTo(new[] { "smile", "wave" }));
-            Assert.That(VrmMenuExpressions.RegisteredNames(bytes), Is.EquivalentTo(new[] { "smile", "wave" }));
+            Assert.That(MenuExpressionFixture.RegisteredNames(bytes), Is.EquivalentTo(new[] { "smile", "wave" }));
             var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)json["extensions"])[ExpressionAnimationData.Extension]);
             Assert.That(document.Animations.Select(animation => animation.Expression), Is.EqualTo(new[] { "smile" }));
             Assert.That(expressions.Select(e => e.RegisteredName), Is.EqualTo(new[] { "smile", "wave", null }));

@@ -44,7 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
             // selectable face is never read as that channel.
             var menuRoute = (Dictionary<string, object>)menuCustom["JawOpen (2)"];
             var trackedJaw = (Dictionary<string, object>)menuCustom["UE/JawOpen"];
-            check((bool)menuRoute["isBinary"] && (string)menuRoute["overrideMouth"] == "block" && VrmMenuExpressions.CountRegistered(menuOutput) == 1,
+            check((bool)menuRoute["isBinary"] && (string)menuRoute["overrideMouth"] == "block" && MenuExpressionFixture.CountRegistered(menuOutput) == 1,
                 "A generated JawOpen menu remains a binary blocking selectable expression.");
             check(!(bool)trackedJaw["isBinary"] && (string)trackedJaw["overrideMouth"] == "none" &&
                 (long)((Dictionary<string, object>)((List<object>)trackedJaw["morphTargetBinds"])[0])["index"] == 1,

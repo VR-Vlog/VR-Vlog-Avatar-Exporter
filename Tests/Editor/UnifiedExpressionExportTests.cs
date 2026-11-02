@@ -1844,7 +1844,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Jaw menu namespace", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     listFaces: new[] { (face.name, face, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 // A menu face named after a tracking channel is numbered apart from it.
                 var menu = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "JawOpen (2)");

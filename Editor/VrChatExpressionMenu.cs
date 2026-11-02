@@ -102,12 +102,6 @@ namespace VRVlog.LilToonExporter
             internal readonly List<string> Messages = new List<string>();
         }
 
-        internal static object Root(GameObject avatar)
-        {
-            var descriptor = Descriptor(avatar);
-            return descriptor != null && Member(descriptor, "customExpressions") is bool enabled && enabled
-                ? Member(descriptor, "expressionsMenu") : null;
-        }
         static Component Descriptor(GameObject avatar) => avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
             c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 

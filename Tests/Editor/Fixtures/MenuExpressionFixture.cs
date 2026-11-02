@@ -26,6 +26,40 @@ namespace VRVlog.LilToonExporter.Tests
             return result;
         }
         private static List<object> Arr(params object[] values) => values.ToList();
+
+        // Counts the expressions this exporter registered: those listed in the
+        // expression animation extension that bind a morph. Authored custom
+        // expressions and unbound names are not counted.
+        internal static int CountRegistered(byte[] bytes)
+        {
+            var json = GlbDocument.Read(bytes).Json;
+            var custom = Path(json, "extensions", "VRMC_vrm", "expressions", "custom");
+            if (custom == null) return 0;
+            return RegisteredNames(json).Count(name => custom.TryGetValue(name, out var value) &&
+                value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
+                binds is List<object> list && list.Count > 0);
+        }
+
+        // Names the expression animation extension lists as registered by this
+        // exporter, with their final duplicate-name suffix. Empty without it.
+        internal static IReadOnlyCollection<string> RegisteredNames(byte[] bytes) => RegisteredNames(GlbDocument.Read(bytes).Json);
+
+        private static IReadOnlyCollection<string> RegisteredNames(Dictionary<string, object> json)
+        {
+            var extensions = Path(json, "extensions");
+            if (extensions == null || !extensions.TryGetValue(ExpressionAnimationData.Extension, out var value)) return Array.Empty<string>();
+            return ExpressionAnimationData.ReadDocument(value).Expressions.Select(e => e.Expression).ToArray();
+        }
+
+        private static Dictionary<string, object> Path(Dictionary<string, object> current, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (!current.TryGetValue(key, out var value) || !(value is Dictionary<string, object> next)) return null;
+                current = next;
+            }
+            return current;
+        }
         private static Dictionary<string, object> Mesh(params string[] names) => Obj("extras", Obj("targetNames", names.Cast<object>().ToList()),
             "primitives", Arr(Obj("targets", names.Select(n => (object)Obj()).ToList())));
         private static Dictionary<string, object> Custom(Dictionary<string, object> root) =>
@@ -42,8 +76,8 @@ namespace VRVlog.LilToonExporter.Tests
             expressions[0].Targets.AddRange(new[] { "composite-face", "composite-brow" });
             var bytes = GlbDocument.Create(root, binary).Write();
             var result = GlbDocument.Read(VrmMenuExpressions.Add(bytes, expressions));
-            check(VrmMenuExpressions.CountRegistered(bytes) == 0, "A blink preset and an unbound custom name are not exported selectable faces.");
-            check(VrmMenuExpressions.CountRegistered(result.Write()) == 1, "The export completion count comes from the actual bound VRM expressions.");
+            check(MenuExpressionFixture.CountRegistered(bytes) == 0, "A blink preset and an unbound custom name are not exported selectable faces.");
+            check(MenuExpressionFixture.CountRegistered(result.Write()) == 1, "The export completion count comes from the actual bound VRM expressions.");
             var custom = Custom(result.Json);
             check(custom.Count == 2 && custom.ContainsKey("笑顔 (2)"), "One composed menu entry is added; same-named authored expressions are retained.");
             check(!(bool)((Dictionary<string, object>)custom["笑顔"])["isBinary"], "Existing expression settings remain unchanged.");
@@ -87,7 +121,7 @@ namespace VRVlog.LilToonExporter.Tests
             rejected = false;
             try { ExpressionAnimationData.Read(written); } catch (InvalidOperationException) { rejected = true; }
             check(rejected, "Apps that read only schema 1 reject the file and keep the standard expression.");
-            check(Custom(animated.Json).Count == 2 && VrmMenuExpressions.CountRegistered(animated.Write()) == 1,
+            check(Custom(animated.Json).Count == 2 && MenuExpressionFixture.CountRegistered(animated.Write()) == 1,
                 "Animation basis morphs do not inflate the exported expression count or selector list.");
             check(((List<object>)animated.Json["extensionsUsed"]).Contains(ExpressionAnimationData.Extension) && !animated.Json.ContainsKey("extensionsRequired"),
                 "Animation is an optional extension; other VRM viewers retain the standard first pose.");
@@ -118,10 +152,10 @@ namespace VRVlog.LilToonExporter.Tests
             check(plainDocument.Expressions.Select(e => e.Expression).SequenceEqual(plainNames) &&
                 plainDocument.Expressions.Select(e => e.Source).SequenceEqual(plain.Select(e => e.Source)),
                 "The extension lists the final numbered names with their sources.");
-            check(VrmMenuExpressions.CountRegistered(plainResult.Write()) == 6 &&
-                VrmMenuExpressions.RegisteredNames(plainResult.Write()).SequenceEqual(plainNames),
+            check(MenuExpressionFixture.CountRegistered(plainResult.Write()) == 6 &&
+                MenuExpressionFixture.RegisteredNames(plainResult.Write()).SequenceEqual(plainNames),
                 "The completion count reads the extension's list; the authored bound expression is not counted.");
-            check(VrmMenuExpressions.CountRegistered(GlbDocument.Create(plainRoot, binary).Write()) == 0,
+            check(MenuExpressionFixture.CountRegistered(GlbDocument.Create(plainRoot, binary).Write()) == 0,
                 "Without the extension no expression counts as registered, even a bound authored one.");
 
             // Emotion inference reads the menu path, not the shortened VRM name.
@@ -158,7 +192,7 @@ namespace VRVlog.LilToonExporter.Tests
             var sameOutput = VrmMenuExpressions.Add(GlbDocument.Create(plainRoot, binary).Write(), same, new IndexBindings());
             var sameDocument = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)GlbDocument.Read(sameOutput).Json["extensions"])[ExpressionAnimationData.Extension]);
             check(sameDocument.Expressions.Select(e => e.Expression).SequenceEqual(new[] { "Smile", "Wink", "Near" }) &&
-                VrmMenuExpressions.CountRegistered(sameOutput) == 3,
+                MenuExpressionFixture.CountRegistered(sameOutput) == 3,
                 "Two faces with the same values are one expression; a face with one value different is another.");
             check(same.Select(e => e.RegisteredName).SequenceEqual(new[] { null, "Smile", "Wink", "Near" }) &&
                 same.Select(e => e.MergedInto).SequenceEqual(new[] { "Smile", null, null, null }),

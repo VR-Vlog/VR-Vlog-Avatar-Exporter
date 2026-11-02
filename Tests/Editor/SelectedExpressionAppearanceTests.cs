@@ -559,7 +559,7 @@ namespace VRVlog.LilToonExporter.Tests
                     exporterVersion: fullLilToon ? "mixed-appearance-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Mixed selected", (AnimationClip)selected.motion, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 if (fullLilToon)
                 {
                     var glb = GlbDocument.Read(bytes); F.Validate(glb.Json, bytes.Length, glb.Binary.Length);

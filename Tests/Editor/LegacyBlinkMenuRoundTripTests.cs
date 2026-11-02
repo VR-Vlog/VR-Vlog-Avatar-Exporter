@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Legacy split blink", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "split-blink-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     listFaces: new[] { ("Happy", (AnimationClip)selected.motion, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var names = new[] { "Happy" };
                 var clips = names.Select(name => imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name)).ToArray();

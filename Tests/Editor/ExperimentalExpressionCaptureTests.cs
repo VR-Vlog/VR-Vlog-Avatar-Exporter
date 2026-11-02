@@ -1362,7 +1362,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // Two listed faces are written as "A" and "B": the shared "Face " is left out (ExpressionNameAffix).
                 Assert.That(custom.Keys.Where(key => names.Any(name => name == key || name.EndsWith(" " + key))),
                     Is.EquivalentTo(ExpressionNameAffix.Trim(names.Take(listed).ToArray())));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
                 Assert.That(saved.Expressions, Is.EqualTo(listed), "The saved count is the listed faces.");
@@ -1456,7 +1456,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
                 Assert.That(custom.Keys, Is.SupersetOf(names.Append(listOnly.name).Append(moving.name)));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length + 2), "Every listed face is registered as the ordinary export registers its faces.");
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(names.Length + 2), "Every listed face is registered as the ordinary export registers its faces.");
                 var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
                 var animation = document.Animations.Single();
                 Assert.That(animation.Expression, Is.EqualTo(moving.name));
@@ -1506,7 +1506,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
                 // Both names end with " face", which the export leaves out (ExpressionNameAffix).
                 Assert.That(custom.Keys, Is.SupersetOf(new[] { "Still", "Moving" }));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(2));
                 var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
                 var animation = document.Animations.Single();
                 Assert.That(animation.Expression, Is.EqualTo("Moving"));

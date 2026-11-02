@@ -107,12 +107,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal string AuthoringPath(string preparedPath)
-        {
-            var paths = AuthoringPaths(preparedPath);
-            return paths.Length == 1 ? paths[0] : null;
-        }
-
         internal string[] AuthoringPaths(string preparedPath)
         {
             SkinnedMeshRenderer resolved;

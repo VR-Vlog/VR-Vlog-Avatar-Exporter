@@ -181,7 +181,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 using var lease = IsolateWithProductionCode(f.Source, clone);
-                var root = VrChatExpressionMenu.Root(clone) as Object;
+                var root = MenuRoot(clone) as Object;
                 var ownedChild = (Object)VrChatExpressionMenu.Member(((IList)VrChatExpressionMenu.Member(root, "controls"))[1], "subMenu");
                 Assert.That(root, Is.Not.SameAs(menus.Root)); Assert.That(ownedChild, Is.Not.SameAs(originalChild));
                 Assert.That(lease.IsolatedCopyOf(menus.Root), Is.SameAs(root));
@@ -190,7 +190,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var entries = VrChatExpressionMenu.Read(clone).Entries;
                 Assert.That(entries.Count, Is.EqualTo(257));
                 Assert.That(entries.Count(e => e.Name.Contains("Menu face")), Is.EqualTo(1));
-                Assert.That(VrChatExpressionMenu.Root(f.Source), Is.SameAs(menus.Root));
+                Assert.That(MenuRoot(f.Source), Is.SameAs(menus.Root));
                 Assert.That(menus.MenuJson(), Is.EqualTo(before));
             }
             finally { Object.DestroyImmediate(clone); }
@@ -205,6 +205,15 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(root == null, Is.True);
             Assert.That(VrChatExpressionMenu.ReadMenu(root).Entries, Is.Empty);
             Assert.That(VrChatExpressionMenu.ReadMenu(root, new VrChatMenuImportPolicy { SkipAll = true }).Entries, Is.Empty);
+        }
+
+        // The expressions menu the avatar's descriptor uses, or null.
+        static object MenuRoot(GameObject avatar)
+        {
+            var descriptor = avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
+                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            return descriptor != null && VrChatExpressionMenu.Member(descriptor, "customExpressions") is bool enabled && enabled
+                ? VrChatExpressionMenu.Member(descriptor, "expressionsMenu") : null;
         }
 
         static NdmfExportPreparation IsolateWithProductionCode(GameObject source, GameObject clone)

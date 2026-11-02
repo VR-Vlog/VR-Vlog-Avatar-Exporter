@@ -383,7 +383,7 @@ namespace VRVlog.LilToonExporter.Tests
             };
             var bytes = VrmMenuExpressions.Add(GlbDocument.Create(root, Array.Empty<byte>()).Write(), expressions);
             // Both entries are the rest face, so they are written once.
-            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
+            Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1));
             Assert.That(expressions[1].MergedInto, Is.EqualTo(expressions[0].RegisteredName));
         }
 
