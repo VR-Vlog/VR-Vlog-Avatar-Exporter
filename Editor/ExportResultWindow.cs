@@ -25,11 +25,6 @@ namespace VRVlog.LilToonExporter
         internal const string SelectButton = "選択";
         internal const string MissingTarget = "アバターに見つかりません";
         internal const string BlinkButton = "瞬きを設定";
-        internal const string CopyDiagnosticsButton = "診断情報をコピー";
-        internal const string DiagnosticsCopied = "コピーしました";
-        internal const string DiagnosticsHint = "名前やパスは含みません";
-        internal const string NamedDiagnosticsItem = "名前・パスを含めてコピー（DM など非公開の場だけ）";
-
         const float HeaderHeight = 32f, ToolbarHeight = 22f, ColumnHeight = 18f, FooterHeight = 40f;
         const float GroupHeight = 22f, RowHeight = 20f, LineHeight = 18f;
         const float Indent = 24f, OutcomeWidth = 58f, TargetWidth = 150f, ArrowWidth = 18f, LabelWidth = 72f, TabWidth = 78f;
@@ -96,8 +91,8 @@ namespace VRVlog.LilToonExporter
             wrappedStyle = new GUIStyle(EditorStyles.label) { wordWrap = true };
         }
 
-        static Color Muted => EditorGUIUtility.isProSkin ? new Color(0.62f, 0.62f, 0.62f) : new Color(0.38f, 0.38f, 0.38f);
-        static Color Hairline => EditorGUIUtility.isProSkin ? new Color(0f, 0f, 0f, 0.35f) : new Color(0f, 0f, 0f, 0.15f);
+        static Color Muted => ExporterColors.Muted;
+        static Color Hairline => ExporterColors.Hairline;
         static Color GroupBackground => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.04f) : new Color(0f, 0f, 0f, 0.05f);
         static Color OpenBackground => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.07f) : new Color(0f, 0f, 0f, 0.07f);
 
@@ -151,7 +146,7 @@ namespace VRVlog.LilToonExporter
             var beside = file.Length == 0 && !string.IsNullOrEmpty(note) ? new GUIContent(note, note) : new GUIContent(file, destination);
             GUI.Label(new Rect(titleRect.xMax + 8f, line.y, Mathf.Max(0f, line.width - titleRect.width - 8f - right), line.height),
                 beside, mutedStyle);
-            if (right > 0f && GUI.Button(new Rect(line.xMax - 100f, line.y, 100f, line.height), ExporterLocalization.T("保存先を開く")))
+            if (right > 0f && GUI.Button(new Rect(line.xMax - 100f, line.y, 100f, line.height), ExporterLocalization.T(ExportResultText.OpenSaveLocation)))
                 EditorUtility.RevealInFinder(destination);
         }
 
@@ -353,12 +348,12 @@ namespace VRVlog.LilToonExporter
                 // The named text is behind the arrow, with where it may be sent in the item itself.
                 var arrow = new Rect(rect.xMax, y, 20f, 24f);
                 x = arrow.xMax + 6f;
-                var label = ExporterLocalization.T(diagnosticsCopied ? DiagnosticsCopied : CopyDiagnosticsButton);
-                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(DiagnosticsHint)))) CopyDiagnostics(false);
-                if (GUI.Button(arrow, new GUIContent("▾", ExporterLocalization.T(NamedDiagnosticsItem))))
+                var label = ExporterLocalization.T(diagnosticsCopied ? ExportResultText.DiagnosticsCopied : ExportResultText.CopyDiagnostics);
+                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(ExportResultText.DiagnosticsHint)))) CopyDiagnostics(false);
+                if (GUI.Button(arrow, new GUIContent("▾", ExporterLocalization.T(ExportResultText.NamedDiagnosticsItem))))
                 {
                     var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent(ExporterLocalization.T(NamedDiagnosticsItem)), false, () => CopyDiagnostics(true));
+                    menu.AddItem(new GUIContent(ExporterLocalization.T(ExportResultText.NamedDiagnosticsItem)), false, () => CopyDiagnostics(true));
                     menu.DropDown(arrow);
                 }
             }
@@ -376,7 +371,7 @@ namespace VRVlog.LilToonExporter
 
         void Copy()
         {
-            ExportDetailsText.Copy(result?.Text(LilToonExporterWindow.PackageVersion()));
+            ExportDetailsText.Copy(result?.Text(ExportEntry.PackageVersion()));
             feedback = ExporterLocalization.T("全文をコピーしました");
             feedbackFailed = false;
         }
@@ -390,7 +385,7 @@ namespace VRVlog.LilToonExporter
 
         void SaveText()
         {
-            var text = result?.Text(LilToonExporterWindow.PackageVersion());
+            var text = result?.Text(ExportEntry.PackageVersion());
             var done = ExportDetailsText.Save(text, () => EditorUtility.SaveFilePanel(
                 ExporterLocalization.T("書き出し詳細を保存"), "", "VRVlog-export-details", "txt"), out var error);
             if (done || error != null)

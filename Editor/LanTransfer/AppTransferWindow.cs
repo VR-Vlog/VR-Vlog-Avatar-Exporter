@@ -57,7 +57,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private static bool CanOpenFromMenu() => CloudTransferAvailability.Enabled && ExporterMenu.OneAvatarRootSelected();
 
         // The detailed transfer starts on the expression board. When the exporter cannot
-        // run, the quick window opens instead and says why.
+        // run, this window opens in its detailed form and says why.
         [MenuItem(DetailedMenuPath, false, DetailedMenuPriority)]
         [MenuItem(DetailedMenuBarPath, false, DetailedMenuBarPriority)]
         [MenuItem(DetailedAssetsPath, false, DetailedAssetsPriority)]
@@ -65,8 +65,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
             if (selected == null) return;
-            var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? AppTransferPanel.ExportEntry.Resolve() : null;
-            if (entry != null) entry.EditDetails(selected);
+            if (DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null) new AppTransferExport().EditDetails(selected);
             // Without the exporter the detailed window says why, under the item the user chose.
             else OpenDetailed(selected);
         }

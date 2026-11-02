@@ -584,19 +584,7 @@ namespace VRVlog.LilToonExporter
             // Validate authored declarations with the existing implementation,
             // but suppress raw-name inference: optimization can move two same-
             // named raw routes into one mesh or rename them beyond recognition.
-            var input = GlbDocument.Read(bytes);
-            var meshList = JsonArray(input.Json, "meshes");
-            var originalNames = new Dictionary<int, List<object>>();
-            for (var index = 0; index < meshList.Count; index++)
-            {
-                var extras = Obj(meshList[index] as Dictionary<string, object>, "extras", false);
-                if (!(JsonAccess.List(extras, "targetNames") is List<object> names)) continue;
-                originalNames.Add(index, names);
-                extras["targetNames"] = names.Select((name, shape) => (object)("__VRVlog_Optimized_" + shape)).ToList();
-            }
-            var glb = GlbDocument.Read(VrmUnifiedExpressions.Add(input.Write(), warnings));
-            var outputMeshes = JsonArray(glb.Json, "meshes");
-            foreach (var pair in originalNames) Obj(outputMeshes[pair.Key] as Dictionary<string, object>, "extras", true)["targetNames"] = pair.Value;
+            var glb = GlbDocument.Read(VrmUnifiedExpressions.Add(bytes, warnings, inferRawNames: false));
             var custom = Custom(glb.Json);
             var added = 0;
             foreach (var group in unified.GroupBy(item => item.Canonical, StringComparer.Ordinal))

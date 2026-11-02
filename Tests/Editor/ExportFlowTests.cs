@@ -30,7 +30,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var transforms = fixture.Source.GetComponentsInChildren<Transform>(true);
                 var matrices = transforms.Select(t => t.localToWorldMatrix).ToArray();
                 var calls = 0; var completed = 0; byte[] exported = null;
-                var recovery = LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                var recovery = ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     calls++;
                     Assert.That(options.Actions, Is.Empty);
@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 File.WriteAllBytes(destination, existing);
-                ExportRecoverySession Run() => LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                ExportRecoverySession Run() => ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     calls++;
                     if (outcome == "cancel") throw new OperationCanceledException();
@@ -109,7 +109,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory); Directory.CreateDirectory(destination);
-                Assert.Throws<IOException>(() => LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination,
+                Assert.Throws<IOException>(() => ExportEntry.ExportAndSaveNormally(fixture.Source, destination,
                     (options, report, warnings) => { calls++; return bytes; }, (output, warnings) => completed++));
                 Assert.That(calls, Is.EqualTo(1)); Assert.That(completed, Is.Zero);
                 Assert.That(Directory.Exists(destination), Is.True); Assert.That(Directory.GetFiles(directory), Is.Empty);

@@ -647,6 +647,52 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void SuppressedRawNamesMatchTheRenamedRoutesTheOptimizerUsedBefore()
+        {
+            // Optimization merged two raw JawOpen routes into one mesh; an authored
+            // UE route and a broken one establish UE and warn.
+            Dictionary<string, object> Expression(long node, long index) => new Dictionary<string, object> {
+                ["morphTargetBinds"] = new List<object> { new Dictionary<string, object> { ["node"] = node, ["index"] = index, ["weight"] = .4 } },
+                ["isBinary"] = false
+            };
+            var names = new[] { "JawOpen", "JawOpen", "LipFunnelUpperLeft" };
+            var bytes = GlbDocument.Create(new Dictionary<string, object> {
+                ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
+                ["nodes"] = new List<object> { new Dictionary<string, object> { ["mesh"] = 0L } },
+                ["meshes"] = new List<object> { new Dictionary<string, object> {
+                    ["extras"] = new Dictionary<string, object> { ["targetNames"] = names.Cast<object>().ToList() },
+                    ["primitives"] = new List<object> { new Dictionary<string, object> { ["targets"] = names.Select(_ => (object)new Dictionary<string, object>()).ToList() } }
+                } },
+                ["extensions"] = new Dictionary<string, object> { ["VRMC_vrm"] = new Dictionary<string, object> {
+                    ["expressions"] = new Dictionary<string, object> { ["custom"] = new Dictionary<string, object> {
+                        ["UE/LipFunnelUpperLeft"] = Expression(0, 2), ["UE/MouthClosed"] = Expression(10, 0)
+                    } }
+                } }
+            }, Array.Empty<byte>()).Write();
+
+            // The optimizer used to hide every mesh name, run Add, then put the names back.
+            var input = GlbDocument.Read(bytes);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)((List<object>)input.Json["meshes"])[0])["extras"];
+            extras["targetNames"] = names.Select((_, shape) => (object)("__VRVlog_Optimized_" + shape)).ToList();
+            var oldWarnings = new List<string>();
+            var old = GlbDocument.Read(VrmUnifiedExpressions.Add(input.Write(), oldWarnings));
+            ((Dictionary<string, object>)((Dictionary<string, object>)((List<object>)old.Json["meshes"])[0])["extras"])["targetNames"] = names.Cast<object>().ToList();
+
+            var newWarnings = new List<string>();
+            var current = GlbDocument.Read(VrmUnifiedExpressions.Add(bytes, newWarnings, inferRawNames: false));
+            Dictionary<string, object> Custom(GlbDocument glb) => (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)
+                ((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"])["expressions"])["custom"];
+            Assert.That(Custom(current).Keys, Is.EquivalentTo(Custom(old).Keys));
+            Assert.That(newWarnings, Is.EqualTo(oldWarnings));
+            Assert.That(newWarnings, Is.Not.Empty);
+            Assert.That(current.Write(), Is.EqualTo(old.Write()));
+
+            var inferredWarnings = new List<string>();
+            VrmUnifiedExpressions.Add(bytes, inferredWarnings);
+            Assert.That(inferredWarnings.Any(message => message.Contains("JawOpen")), Is.True, "Without the flag the collapsed raw names are still read.");
+        }
+
         static byte[] Output(params string[] names) => GlbDocument.Create(new Dictionary<string, object> {
             ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
             ["nodes"] = new List<object> { new Dictionary<string, object> { ["mesh"] = 0L } },

@@ -91,7 +91,7 @@ namespace VRVlog.LilToonExporter
             if (Error != null)
             {
                 var style = new GUIStyle(EditorStyles.miniLabel) { clipping = TextClipping.Clip, wordWrap = false };
-                style.normal.textColor = EditorGUIUtility.isProSkin ? new Color32(0xe0, 0x67, 0x5f, 255) : new Color32(0xb3, 0x26, 0x1e, 255);
+                style.normal.textColor = ExporterColors.Error;
                 var line = new Rect(rect.x + 8, rect.y + 8, Mathf.Max(0, rect.width - 16), 18);
                 GUI.Label(line, new GUIContent(ExporterLocalization.T("プレビューを表示できませんでした"), Error), style);
             }

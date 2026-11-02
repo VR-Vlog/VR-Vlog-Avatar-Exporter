@@ -167,7 +167,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory);
-                var recovery = LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                var recovery = ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     calls++;
                     // What the exporter records while it works around each case.
@@ -205,7 +205,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory);
-                LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     report.Fallbacks.Add(ExportFallbackKind.Blink);
                     return bytes;
@@ -238,7 +238,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 // A folder in the way: the write fails, and the error goes to the caller as before.
                 Directory.CreateDirectory(destination);
-                Assert.Catch<IOException>(() => LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                Assert.Catch<IOException>(() => ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     report.Fallbacks.Add(ExportFallbackKind.Blink);
                     return bytes;
@@ -258,7 +258,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory);
-                LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     report.Fallbacks.Add(ExportFallbackKind.Blink);
                     return bytes;
