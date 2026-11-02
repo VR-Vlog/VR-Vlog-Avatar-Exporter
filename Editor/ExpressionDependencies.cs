@@ -796,7 +796,7 @@ namespace VRVlog.LilToonExporter
                         // leaves the relay unproven instead of failing the rest.
                         VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.propertyName,
                             NeutralShapePlan.ChecksCurveValues(binding));
-                        if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) return false;
+                        if (!CurveChecks.Constant(curve, emptyIsConstant: false)) return false;
                     }
                     return true;
                 }
@@ -894,7 +894,7 @@ namespace VRVlog.LilToonExporter
                 var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
                     .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
                 if (bindings.Length == 0 || bindings.Any(binding => !PoseSampling.IsBlendShape(binding) ||
-                    !(cache?.Constant(clip, binding) ?? VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
+                    !(cache?.Constant(clip, binding) ?? CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
                 result.Add(index, clip);
             }
             return result;
@@ -1108,19 +1108,7 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        private static bool IsFalse(AnimatorCondition condition, float value)
-        {
-            switch (condition.mode)
-            {
-                case AnimatorConditionMode.If: return value == 0;
-                case AnimatorConditionMode.IfNot: return value != 0;
-                case AnimatorConditionMode.Equals: return value != condition.threshold;
-                case AnimatorConditionMode.NotEqual: return value == condition.threshold;
-                case AnimatorConditionMode.Greater: return value <= condition.threshold;
-                case AnimatorConditionMode.Less: return value >= condition.threshold;
-                default: return false;
-            }
-        }
+        private static bool IsFalse(AnimatorCondition condition, float value) => AnimatorConditions.Evaluate(condition, value) == false;
 
         // Every condition is known and holds. An edge without conditions
         // holds as well.
@@ -1129,17 +1117,9 @@ namespace VRVlog.LilToonExporter
             if (fixedValues == null) return false;
             foreach (var condition in transition.conditions)
             {
-                if (!fixedValues.TryGetValue(condition.parameter, out var value)) return false;
-                switch (condition.mode)
-                {
-                    case AnimatorConditionMode.If: if (value == 0) return false; break;
-                    case AnimatorConditionMode.IfNot: if (value != 0) return false; break;
-                    case AnimatorConditionMode.Equals: if (value != condition.threshold) return false; break;
-                    case AnimatorConditionMode.NotEqual: if (value == condition.threshold) return false; break;
-                    case AnimatorConditionMode.Greater: if (value <= condition.threshold) return false; break;
-                    case AnimatorConditionMode.Less: if (value >= condition.threshold) return false; break;
-                    default: return false;
-                }
+                // An ordered comparison with NaN is not a known false here.
+                if (!fixedValues.TryGetValue(condition.parameter, out var value) || !AnimatorConditions.Known(condition.mode) ||
+                    AnimatorConditions.Evaluate(condition, value) == false) return false;
             }
             return true;
         }
@@ -1154,23 +1134,8 @@ namespace VRVlog.LilToonExporter
                 domain.All(item => TypedCondition(condition, item, types) == false) ? false : (bool?)null;
         }
 
-        private static bool? TypedCondition(AnimatorCondition condition, float value, IDictionary<string, AnimatorControllerParameterType> types)
-        {
-            if (!Finite(value) || !types.TryGetValue(condition.parameter, out var type)) return null;
-            if (type == AnimatorControllerParameterType.Bool)
-                return condition.mode == AnimatorConditionMode.If ? value != 0 :
-                    condition.mode == AnimatorConditionMode.IfNot ? value == 0 : (bool?)null;
-            if (type != AnimatorControllerParameterType.Float && type != AnimatorControllerParameterType.Int || !Finite(condition.threshold) ||
-                type == AnimatorControllerParameterType.Int && (value != Math.Truncate(value) || condition.threshold != Math.Truncate(condition.threshold))) return null;
-            switch (condition.mode)
-            {
-                case AnimatorConditionMode.Equals: return type == AnimatorControllerParameterType.Int ? value == condition.threshold : (bool?)null;
-                case AnimatorConditionMode.NotEqual: return type == AnimatorControllerParameterType.Int ? value != condition.threshold : (bool?)null;
-                case AnimatorConditionMode.Greater: return value > condition.threshold;
-                case AnimatorConditionMode.Less: return value < condition.threshold;
-                default: return null;
-            }
-        }
+        private static bool? TypedCondition(AnimatorCondition condition, float value, IDictionary<string, AnimatorControllerParameterType> types) =>
+            types.TryGetValue(condition.parameter, out var type) ? AnimatorConditions.Evaluate(condition, value, type) : null;
 
         private static bool IsTypedFalse(AnimatorTransitionBase transition, IDictionary<string, float> fixedValues,
             IDictionary<string, AnimatorControllerParameterType> types, IDictionary<string, ISet<float>> domains = null) =>
@@ -1195,41 +1160,14 @@ namespace VRVlog.LilToonExporter
             IDictionary<string, AnimatorControllerParameterType> conditionTypes = null, IDictionary<string, ISet<float>> domains = null)
         {
             if (fixedValues == null) return null;
-            var parents = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
-            var owners = new Dictionary<AnimatorState, AnimatorStateMachine>();
-            bool Index(AnimatorStateMachine machine, AnimatorStateMachine parent)
-            {
-                if (machine == null || parents.ContainsKey(machine)) return false;
-                parents.Add(machine, parent);
-                foreach (var child in machine.states)
-                {
-                    if (child.state == null || owners.ContainsKey(child.state)) return false;
-                    owners.Add(child.state, machine);
-                }
-                return machine.stateMachines.All(child => Index(child.stateMachine, machine));
-            }
-            if (!Index(root, null)) return null;
-            IEnumerable<AnimatorTransitionBase> Enabled(IEnumerable<AnimatorTransitionBase> values)
-            {
-                var all = values.ToArray(); var solo = all.Any(value => value.solo);
-                return all.Where(value => !value.mute && (!solo || value.solo) &&
-                    !(conditionTypes == null ? IsFalse(value, fixedValues, domains) : IsTypedFalse(value, fixedValues, conditionTypes, domains)));
-            }
-            bool Always(AnimatorTransitionBase transition) => transition.conditions.All(condition =>
-            {
-                if (conditionTypes != null) return TypedCondition(condition, fixedValues, conditionTypes) == true;
-                if (!fixedValues.TryGetValue(condition.parameter, out var value)) return false;
-                switch (condition.mode)
-                {
-                    case AnimatorConditionMode.If: return value != 0;
-                    case AnimatorConditionMode.IfNot: return value == 0;
-                    case AnimatorConditionMode.Equals: return value == condition.threshold;
-                    case AnimatorConditionMode.NotEqual: return value != condition.threshold;
-                    case AnimatorConditionMode.Greater: return value > condition.threshold;
-                    case AnimatorConditionMode.Less: return value < condition.threshold;
-                    default: return false;
-                }
-            });
+            var graph = AnimatorGraph.Build(root);
+            if (graph == null) return null;
+            var parents = graph.Parents; var owners = graph.Owners;
+            IEnumerable<AnimatorTransitionBase> Enabled(IEnumerable<AnimatorTransitionBase> values) => AnimatorConditions.Enabled(values).Where(value =>
+                !(conditionTypes == null ? IsFalse(value, fixedValues, domains) : IsTypedFalse(value, fixedValues, conditionTypes, domains)));
+            bool Always(AnimatorTransitionBase transition) => transition.conditions.All(condition => conditionTypes != null
+                ? TypedCondition(condition, fixedValues, conditionTypes) == true
+                : fixedValues.TryGetValue(condition.parameter, out var value) && AnimatorConditions.Evaluate(condition, value) == true);
             var reached = new NeutralReachability();
             var pending = new Queue<AnimatorState>();
             var entered = new HashSet<AnimatorStateMachine>();
@@ -1307,21 +1245,11 @@ namespace VRVlog.LilToonExporter
             bool IsFalse(AnimatorCondition condition)
             {
                 if (!fixedValues.TryGetValue(condition.parameter, out var value) || !types.TryGetValue(condition.parameter, out var type)) return false;
-                if (type == AnimatorControllerParameterType.Bool)
-                {
-                    if (condition.mode == AnimatorConditionMode.If) return value == 0;
-                    if (condition.mode == AnimatorConditionMode.IfNot) return value != 0;
-                    return false;
-                }
-                if (float.IsNaN(condition.threshold) || float.IsInfinity(condition.threshold)) return false;
-                switch (condition.mode)
-                {
-                    case AnimatorConditionMode.Equals: return value != condition.threshold;
-                    case AnimatorConditionMode.NotEqual: return value == condition.threshold;
-                    case AnimatorConditionMode.Greater: return value <= condition.threshold;
-                    case AnimatorConditionMode.Less: return value >= condition.threshold;
-                    default: return false;
-                }
+                // Bool reads only If/IfNot. Any other type compares with a
+                // finite threshold; a whole Int value is not required here.
+                var boolean = condition.mode == AnimatorConditionMode.If || condition.mode == AnimatorConditionMode.IfNot;
+                return (type == AnimatorControllerParameterType.Bool ? boolean : !boolean && Finite(condition.threshold)) &&
+                    AnimatorConditions.Evaluate(condition, value) == false;
             }
             var visited = new HashSet<AnimatorState>();
             var pending = new Stack<AnimatorState>(); pending.Push(machine.defaultState);
@@ -1329,8 +1257,7 @@ namespace VRVlog.LilToonExporter
             {
                 var state = pending.Pop(); if (!visited.Add(state)) continue;
                 commands.UnionWith(state.behaviours);
-                var solo = state.transitions.Any(t => t.solo);
-                foreach (var transition in state.transitions.Where(t => !t.mute && (!solo || t.solo)))
+                foreach (var transition in AnimatorConditions.Enabled(state.transitions))
                 {
                     if (transition.conditions.Any(IsFalse)) continue;
                     foreach (var condition in transition.conditions) if (!string.IsNullOrEmpty(condition.parameter)) reads.Add(condition.parameter);
@@ -1388,9 +1315,7 @@ namespace VRVlog.LilToonExporter
                 void ReadControl(string name) { ReadParameter(name); if (!string.IsNullOrEmpty(name)) info.ControlReads.Add(name); }
                 void Conditions(IEnumerable<AnimatorTransitionBase> transitions)
                 {
-                    var siblings = transitions.ToArray();
-                    var solo = siblings.Any(t => t.solo);
-                    foreach (var transition in siblings.Where(t => !t.mute && (!solo || t.solo) &&
+                    foreach (var transition in AnimatorConditions.Enabled(transitions).Where(t =>
                         !(conditionTypes == null ? IsFalse(t, neutralFixed, domains) : IsTypedFalse(t, neutralFixed, conditionTypes, domains))))
                     {
                         if (transition is AnimatorStateTransition timed && timed.hasExitTime) info.Timed = true;

@@ -235,9 +235,7 @@ namespace VRVlog.LilToonExporter
                 internal float[] Shapes;
             }
 
-            readonly Scene scene;
-            readonly GameObject copy;
-            readonly Animator animator;
+            readonly AnimatorProbe probe;
             readonly Transform[] transforms;
             readonly bool[] rest;
             readonly RuntimeAnimatorController fx;
@@ -283,22 +281,10 @@ namespace VRVlog.LilToonExporter
                     }
                     Walk(machine, layers[layer].name);
                 }
-                scene = EditorSceneManager.NewPreviewScene();
                 try
                 {
-                    copy = Object.Instantiate(avatar);
-                    copy.name = avatar.name;
-                    copy.hideFlags = HideFlags.HideAndDontSave;
-                    SceneManager.MoveGameObjectToScene(copy, scene);
-                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                    animator = copy.GetComponent<Animator>();
-                    if (animator == null) animator = copy.AddComponent<Animator>();
-                    animator.runtimeAnimatorController = null;
-                    animator.enabled = true;
-                    animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                    animator.applyRootMotion = false;
-                    animator.fireEvents = false;
-                    copy.SetActive(true);
+                    probe = new AnimatorProbe(avatar);
+                    var copy = probe.Copy;
                     transforms = copy.GetComponentsInChildren<Transform>(true);
                     rest = transforms.Select(transform => transform.gameObject.activeSelf).ToArray();
                     foreach (var key in shapeBindings.Values.SelectMany(bindings => bindings).Distinct())
@@ -335,12 +321,9 @@ namespace VRVlog.LilToonExporter
             {
                 for (var i = 0; i < transforms.Length; i++) transforms[i].gameObject.SetActive(rest[i]);
                 foreach (var shape in shapes) shape.Renderer.SetBlendShapeWeight(shape.Index, shape.Weight);
-                var graph = PlayableGraph.Create("VR Vlog hand gesture sampling");
+                var graph = probe.Play("VR Vlog hand gesture sampling", fx, "Hand gestures", out var playable);
                 try
                 {
-                    graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                    var playable = AnimatorControllerPlayable.Create(graph, fx);
-                    AnimationPlayableOutput.Create(graph, "Hand gestures", animator).SetSourcePlayable(playable);
                     foreach (var pair in defaults) Write(playable, pair.Key, pair.Value);
                     // VRChat sends the hands every frame.
                     void Gestures()
@@ -436,13 +419,7 @@ namespace VRVlog.LilToonExporter
 
             void Write(AnimatorControllerPlayable playable, string name, float value)
             {
-                if (!Types.TryGetValue(name, out var type)) return;
-                switch (type)
-                {
-                    case AnimatorControllerParameterType.Bool: playable.SetBool(name, value != 0f); break;
-                    case AnimatorControllerParameterType.Int: playable.SetInteger(name, Mathf.RoundToInt(value)); break;
-                    case AnimatorControllerParameterType.Float: playable.SetFloat(name, value); break;
-                }
+                if (Types.TryGetValue(name, out var type)) AnimatorProbe.Write(playable, type, name, value);
             }
 
             // The face clips playing on each layer with weight, in layer order.
@@ -484,11 +461,7 @@ namespace VRVlog.LilToonExporter
             internal bool Moves(AnimationClip clip, Run first, Run second) =>
                 shapeBindings[clip].Any(key => shapeIndex.TryGetValue(key, out var index) && Math.Abs(first.Shapes[index] - second.Shapes[index]) > ShapeTolerance);
 
-            public void Dispose()
-            {
-                if (copy != null) Object.DestroyImmediate(copy);
-                if (scene.IsValid()) EditorSceneManager.ClosePreviewScene(scene);
-            }
+            public void Dispose() => probe?.Dispose();
         }
     }
 }

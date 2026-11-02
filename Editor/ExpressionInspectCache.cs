@@ -156,9 +156,9 @@ namespace VRVlog.LilToonExporter
 
         internal bool Constant(AnimationClip clip, EditorCurveBinding binding)
         {
-            if (!Persistent(clip)) return VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding));
+            if (!Persistent(clip)) return CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding));
             var key = (clip.GetInstanceID(), binding);
-            if (!constant.TryGetValue(key, out var result)) constant.Add(key, result = VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+            if (!constant.TryGetValue(key, out var result)) constant.Add(key, result = CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)));
             return result;
         }
 

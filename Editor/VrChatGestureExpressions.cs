@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter
     {
         internal static bool HasChangingMorph(AnimationClip clip, Func<string, bool> excludedPath) =>
             AnimationUtility.GetCurveBindings(clip).Where(binding => PoseSampling.IsBlendShape(binding) && excludedPath?.Invoke(binding.path) != true)
-                .Any(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+                .Any(binding => !CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)));
 
         private sealed class Target
         {
@@ -85,7 +85,7 @@ namespace VRVlog.LilToonExporter
                     if (!entering.Add(machine)) return;
                     try
                     {
-                        foreach (var entry in EnabledTransitions(machine.entryTransitions))
+                        foreach (var entry in AnimatorConditions.Enabled(machine.entryTransitions))
                         {
                             Destination(entry, machine);
                             // An unconditional entry takes precedence over later
@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter
                     if (!parents.TryGetValue(machine, out var parent) || parent == null || !exiting.Add(machine)) return;
                     try
                     {
-                        foreach (var transition in EnabledTransitions(parent.GetStateMachineTransitions(machine)))
+                        foreach (var transition in AnimatorConditions.Enabled(parent.GetStateMachineTransitions(machine)))
                         {
                             Destination(transition, parent);
                             if (transition.conditions.Length == 0) break;
@@ -121,12 +121,12 @@ namespace VRVlog.LilToonExporter
                 }
                 foreach (var machine in machines)
                 {
-                    foreach (var transition in EnabledTransitions(machine.anyStateTransitions)) Inspect(transition, machine);
-                    foreach (var transition in EnabledTransitions(machine.entryTransitions)) Inspect(transition, machine);
+                    foreach (var transition in AnimatorConditions.Enabled(machine.anyStateTransitions)) Inspect(transition, machine);
+                    foreach (var transition in AnimatorConditions.Enabled(machine.entryTransitions)) Inspect(transition, machine);
                     foreach (var child in machine.states)
-                        foreach (var transition in EnabledTransitions(child.state.transitions)) Inspect(transition, machine);
+                        foreach (var transition in AnimatorConditions.Enabled(child.state.transitions)) Inspect(transition, machine);
                     foreach (var child in machine.stateMachines)
-                        foreach (var transition in EnabledTransitions(machine.GetStateMachineTransitions(child.stateMachine))) Inspect(transition, machine);
+                        foreach (var transition in AnimatorConditions.Enabled(machine.GetStateMachineTransitions(child.stateMachine))) Inspect(transition, machine);
                 }
                 // A hand-weight tree can be entered through a custom selector
                 // or a driver relay. Its own controls still define authored
@@ -146,13 +146,6 @@ namespace VRVlog.LilToonExporter
                 foreach (var state in targets.Where(paths.ContainsKey).OrderBy(s => paths[s], StringComparer.Ordinal))
                     yield return new Target { State = state, Layer = layerIndex, Path = layerIndex + "/" + paths[state] };
             }
-        }
-
-        private static IEnumerable<T> EnabledTransitions<T>(IEnumerable<T> transitions) where T : AnimatorTransitionBase
-        {
-            var siblings = transitions.ToArray();
-            var solo = siblings.Any(t => t.solo);
-            return siblings.Where(t => !t.mute && (!solo || t.solo));
         }
 
         private static Motion EffectiveMotion(AnimatorController controller, AnimatorState state, int layer)
