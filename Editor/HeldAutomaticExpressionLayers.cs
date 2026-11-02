@@ -216,29 +216,15 @@ namespace VRVlog.LilToonExporter
         {
             var machine = ExpressionDependencies.Controller(runtime).layers[layerIndex].stateMachine;
             var overrides = ExpressionDependencies.Overrides(runtime);
-            var parents = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
-            var owners = new Dictionary<AnimatorState, AnimatorStateMachine>();
-            bool Index(AnimatorStateMachine current, AnimatorStateMachine parent)
-            {
-                if (current == null || parents.ContainsKey(current)) return false;
-                parents.Add(current, parent);
-                foreach (var child in current.states)
-                {
-                    if (child.state == null || owners.ContainsKey(child.state) || owners.Count >= 4096) return false;
-                    owners.Add(child.state, current);
-                }
-                if (current.defaultState == null || !owners.TryGetValue(current.defaultState, out var owner) || owner != current) return false;
-                return current.stateMachines.All(child => Index(child.stateMachine, current));
-            }
-            if (!Index(machine, null)) return false;
-            bool Valid(AnimatorTransitionBase transition) => transition != null && (transition.isExit ?
-                transition.destinationState == null && transition.destinationStateMachine == null :
-                transition.destinationState != null ? transition.destinationStateMachine == null && owners.ContainsKey(transition.destinationState) :
-                transition.destinationStateMachine != null && parents.ContainsKey(transition.destinationStateMachine));
-            if (parents.Keys.Any(current => current.entryTransitions.Any(transition => !Valid(transition)) ||
-                current.anyStateTransitions.Any(transition => !Valid(transition)) || current.stateMachines.Any(child =>
-                    current.GetStateMachineTransitions(child.stateMachine).Any(transition => !Valid(transition)))) ||
-                owners.Keys.Any(state => state.transitions.Any(transition => !Valid(transition)))) return false;
+            var graph = AnimatorGraph.Build(machine);
+            if (graph == null || graph.Owners.Count > 4096) return false;
+            var parents = graph.Parents; var owners = graph.Owners;
+            if (parents.Keys.Any(current => current.defaultState == null ||
+                !owners.TryGetValue(current.defaultState, out var owner) || owner != current)) return false;
+            if (parents.Keys.Any(current => current.entryTransitions.Any(transition => !graph.Valid(transition)) ||
+                current.anyStateTransitions.Any(transition => !graph.Valid(transition)) || current.stateMachines.Any(child =>
+                    current.GetStateMachineTransitions(child.stateMachine).Any(transition => !graph.Valid(transition)))) ||
+                owners.Keys.Any(state => state.transitions.Any(transition => !graph.Valid(transition)))) return false;
             AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip ?
                 (overrides.TryGetValue(clip, out var replacement) ? replacement : clip) : null;
             var outputs = new HashSet<EditorCurveBinding>(owners.Keys.Select(Clip).Where(clip => clip != null)
@@ -259,11 +245,6 @@ namespace VRVlog.LilToonExporter
                 // face forever. Only a complete explicit reset establishes
                 // prepared rest without assuming a native fallback value.
                 return true;
-            }
-            IEnumerable<AnimatorStateTransition> Enabled(IEnumerable<AnimatorStateTransition> transitions)
-            {
-                var values = transitions.ToArray(); var solo = values.Any(value => value != null && value.solo);
-                return values.Where(value => value == null || !value.mute && (!solo || value.solo));
             }
             bool FiniteClockExit(AnimatorState state, AnimatorStateTransition transition)
             {
@@ -314,17 +295,7 @@ namespace VRVlog.LilToonExporter
                 bool Match(AnimatorCondition condition)
                 {
                     if (++conditionChecks > 65536) return false;
-                    var value = assigned[condition.parameter];
-                    switch (condition.mode)
-                    {
-                        case AnimatorConditionMode.If: return value != 0;
-                        case AnimatorConditionMode.IfNot: return value == 0;
-                        case AnimatorConditionMode.Equals: return value == condition.threshold;
-                        case AnimatorConditionMode.NotEqual: return value != condition.threshold;
-                        case AnimatorConditionMode.Greater: return value > condition.threshold;
-                        case AnimatorConditionMode.Less: return value < condition.threshold;
-                        default: return false;
-                    }
+                    return AnimatorConditions.Evaluate(condition, assigned[condition.parameter]) == true;
                 }
                 bool EveryCell(int index)
                 {
@@ -347,8 +318,7 @@ namespace VRVlog.LilToonExporter
                 if (transition.isExit)
                 {
                     var parent = parents[owner]; if (parent == null || !visited.Add(owner)) return false;
-                    var values = parent.GetStateMachineTransitions(owner); var solo = values.Any(value => value != null && value.solo);
-                    var exits = values.Where(value => value == null || !value.mute && (!solo || value.solo)).ToArray();
+                    var exits = AnimatorConditions.Enabled(parent.GetStateMachineTransitions(owner)).ToArray();
                     // Prove the complete typed partition. It may return zero or
                     // re-enter a Random machine; a missing gate combination
                     // cannot be replaced with a fabricated prepared rest.
@@ -370,8 +340,7 @@ namespace VRVlog.LilToonExporter
                 if (!visited.Add(child)) return false;
                 if (child.defaultState == null || !owners.TryGetValue(child.defaultState, out var actualOwner) || actualOwner != child) return false;
                 destinations.Add(child.defaultState);
-                var entries = child.entryTransitions; var entrySolo = entries.Any(value => value != null && value.solo);
-                foreach (var value in entries.Where(value => value == null || !value.mute && (!entrySolo || value.solo)))
+                foreach (var value in AnimatorConditions.Enabled(child.entryTransitions))
                     if (!Destinations(value, child, destinations, new HashSet<AnimatorStateMachine>(visited), allowRestart, ref restart)) return false;
                 return true;
             }
@@ -383,10 +352,10 @@ namespace VRVlog.LilToonExporter
                 changed = false;
                 foreach (var state in owners.Keys.Where(state => !proven.Contains(state)).ToArray())
                 {
-                    var own = Enabled(state.transitions).ToArray();
+                    var own = AnimatorConditions.Enabled(state.transitions).ToArray();
                     var any = new List<AnimatorStateTransition>();
                     for (var owner = owners[state]; owner != null; owner = parents[owner])
-                        any.AddRange(Enabled(owner.anyStateTransitions).Where(transition => transition == null ||
+                        any.AddRange(AnimatorConditions.Enabled(owner.anyStateTransitions).Where(transition => transition == null ||
                             transition.destinationState != state || transition.canTransitionToSelf));
                     // Conditional cycles remain native. Every destination,
                     // including nested Entry/Exit routes, must already
@@ -438,7 +407,7 @@ namespace VRVlog.LilToonExporter
             // Own Copy reads could transform a gate into another routing input;
             // they are not covered by a transition-only partition proof.
             if (ownPrograms.SelectMany(program => program.Operations).Any(operation => gates.Contains(operation.Source))) return false;
-            var allTransitions = owners.Keys.SelectMany(state => Enabled(state.transitions)).Concat(parents.Keys.SelectMany(current => Enabled(current.anyStateTransitions))).ToArray();
+            var allTransitions = owners.Keys.SelectMany(state => AnimatorConditions.Enabled(state.transitions)).Concat(parents.Keys.SelectMany(current => AnimatorConditions.Enabled(current.anyStateTransitions))).ToArray();
             if (allTransitions.Any(transition => transition == null || transition.duration != 0 || transition.offset != 0)) return false;
             var conditionTransitions = allTransitions.Cast<AnimatorTransitionBase>().Concat(parents.Keys.SelectMany(current =>
                 current.entryTransitions.Cast<AnimatorTransitionBase>().Concat(current.stateMachines.SelectMany(child =>
@@ -481,19 +450,12 @@ namespace VRVlog.LilToonExporter
                 if (++checks > 65536 || transition == null) return false;
                 foreach (var condition in transition.conditions)
                 {
-                    var value = assignment[condition.parameter];
-                    var match = condition.mode == AnimatorConditionMode.If ? value != 0 : condition.mode == AnimatorConditionMode.IfNot ? value == 0 :
-                        condition.mode == AnimatorConditionMode.Equals ? value == condition.threshold : condition.mode == AnimatorConditionMode.NotEqual ? value != condition.threshold :
-                        condition.mode == AnimatorConditionMode.Greater ? value > condition.threshold : condition.mode == AnimatorConditionMode.Less && value < condition.threshold;
-                    if (!match) return false;
+                    if (AnimatorConditions.Evaluate(condition, assignment[condition.parameter]) != true) return false;
                 }
                 return true;
             }
-            IEnumerable<AnimatorTransition> Active(IEnumerable<AnimatorTransition> transitions)
-            {
-                var values = transitions.ToArray(); var solo = values.Any(transition => transition != null && transition.solo);
-                return values.Where(transition => transition != null && !transition.mute && (!solo || transition.solo));
-            }
+            IEnumerable<AnimatorTransition> Active(IEnumerable<AnimatorTransition> transitions) =>
+                AnimatorConditions.Enabled(transitions).Where(transition => transition != null);
             bool ToRest(AnimatorTransitionBase transition, AnimatorStateMachine owner, HashSet<AnimatorStateMachine> visited)
             {
                 if (transition.isExit)
@@ -516,12 +478,12 @@ namespace VRVlog.LilToonExporter
                 {
                     var reset = restStates.Contains(state);
                     for (var owner = owners[state]; owner != null; owner = parents[owner])
-                        foreach (var transition in Enabled(owner.anyStateTransitions).Where(Matches))
+                        foreach (var transition in AnimatorConditions.Enabled(owner.anyStateTransitions).Where(Matches))
                         {
                             if (!ToRest(transition, owner, new HashSet<AnimatorStateMachine>())) return false;
                             reset |= !transition.hasExitTime;
                         }
-                    foreach (var transition in Enabled(state.transitions).Where(Matches))
+                    foreach (var transition in AnimatorConditions.Enabled(state.transitions).Where(Matches))
                     {
                         if (!ToRest(transition, owners[state], new HashSet<AnimatorStateMachine>())) return false;
                         if (!transition.hasExitTime) { reset = true; break; }
