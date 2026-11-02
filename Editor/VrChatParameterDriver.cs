@@ -6,6 +6,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Animations;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -90,7 +91,7 @@ namespace VRVlog.LilToonExporter
                 return enter != null && enter.propertyType == SerializedPropertyType.Boolean &&
                     fixedDelay != null && fixedDelay.propertyType == SerializedPropertyType.Boolean &&
                     delay != null && delay.propertyType == SerializedPropertyType.Float &&
-                    !float.IsNaN(delay.floatValue) && !float.IsInfinity(delay.floatValue) && delay.floatValue >= 0;
+                    Finite(delay.floatValue) && delay.floatValue >= 0;
             }
         }
 

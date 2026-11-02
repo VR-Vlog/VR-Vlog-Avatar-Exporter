@@ -44,22 +44,22 @@ namespace VRVlog.LilToonExporter
                 if (component == null || component.GetType().FullName != AplType || excluded?.Invoke(component.transform) == true) continue;
                 if (!ExportRendererSelection.ActiveUnder(component.gameObject, source.transform)) continue;
                 if (component.GetComponentInParent<Animator>(true) != source.GetComponent<Animator>()) continue;
-                var data = PoseMenuResolver.Member(component, "data");
-                foreach (var category in PoseMenuResolver.Items(PoseMenuResolver.Member(data, "categories")))
-                    foreach (var pose in PoseMenuResolver.Items(PoseMenuResolver.Member(category, "poses")))
+                var data = VrChatExpressionMenu.Member(component, "data");
+                foreach (var category in PoseMenuResolver.Items(VrChatExpressionMenu.Member(data, "categories")))
+                    foreach (var pose in PoseMenuResolver.Items(VrChatExpressionMenu.Member(category, "poses")))
                     {
-                        var clip = PoseMenuResolver.Member(pose, "animationClip") as AnimationClip;
-                        var name = PoseMenuResolver.Member(pose, "name") as string;
+                        var clip = VrChatExpressionMenu.Member(pose, "animationClip") as AnimationClip;
+                        var name = VrChatExpressionMenu.Member(pose, "name") as string;
                         var row = new PoseCandidate { Name = string.IsNullOrWhiteSpace(name) ? clip?.name ?? "未設定" : name,
-                            Category = PoseMenuResolver.Member(category, "name") as string ?? "", Source = "APL" };
-                        var tracking = PoseMenuResolver.Member(pose, "tracking");
+                            Category = VrChatExpressionMenu.Member(category, "name") as string ?? "", Source = "APL" };
+                        var tracking = VrChatExpressionMenu.Member(pose, "tracking");
                         var mask = AplMask(tracking, source); if (mask != null) owned.Add(mask);
                         row.Layers.Add(new PoseLayer { Clip = clip, Mask = mask });
-                        if (PoseMenuResolver.Member(pose, "beforeAnimationClip") is AnimationClip || PoseMenuResolver.Member(pose, "afterAnimationClip") is AnimationClip)
+                        if (VrChatExpressionMenu.Member(pose, "beforeAnimationClip") is AnimationClip || VrChatExpressionMenu.Member(pose, "afterAnimationClip") is AnimationClip)
                             row.Error = "APLの開始／終了アニメーションを伴う登録は未対応です。";
                         else if (clip == null) row.Error = "APLの元クリップがありません。";
                         else if (PoseSampling.Moving(source, row.Layers[0])) row.Error = "APLの体の動くクリップです。手動追加で動くポーズとして保存できます。";
-                        else if (PoseMenuResolver.Member(data, "enableLocomotionAnimator") is bool active && !active)
+                        else if (VrChatExpressionMenu.Member(data, "enableLocomotionAnimator") is bool active && !active)
                             row.Error = "APLのHumanoidポーズ出力が無効です。";
                         row.Id = PoseSampling.Identity(row); Entries.Add(row);
                     }
@@ -79,7 +79,7 @@ namespace VRVlog.LilToonExporter
 
         static AvatarMask AplMask(object tracking, GameObject source)
         {
-            bool On(string name) => !(PoseMenuResolver.Member(tracking, name) is bool b) || b;
+            bool On(string name) => !(VrChatExpressionMenu.Member(tracking, name) is bool b) || b;
             if (On("arm") && On("foot") && On("finger") && On("locomotion")) return null;
             var mask = new AvatarMask();
             for (var i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++) mask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i, false);

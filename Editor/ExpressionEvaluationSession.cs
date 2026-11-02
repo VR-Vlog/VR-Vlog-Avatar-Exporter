@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using static VRVlog.LilToonExporter.NumericChecks;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter
@@ -324,7 +325,7 @@ namespace VRVlog.LilToonExporter
                     var value = type == AnimatorControllerParameterType.Float ? playable.GetFloat(condition.parameter) :
                         type == AnimatorControllerParameterType.Int ? playable.GetInteger(condition.parameter) :
                         type == AnimatorControllerParameterType.Bool ? (playable.GetBool(condition.parameter) ? 1 : 0) : float.NaN;
-                    if (!NeutralShapeSnapshot.Finite(value)) return false;
+                    if (!Finite(value)) return false;
                     switch (condition.mode)
                     {
                         case AnimatorConditionMode.If: return value == 0;

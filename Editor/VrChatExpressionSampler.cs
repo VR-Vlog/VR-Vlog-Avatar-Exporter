@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
+using static VRVlog.LilToonExporter.NumericChecks;
 using MorphValue = VRVlog.LilToonExporter.VrChatExpressionMenu.MorphValue;
 
 namespace VRVlog.LilToonExporter
@@ -778,7 +779,6 @@ namespace VRVlog.LilToonExporter
         private static AnimationClip NativeTerminalClip(AnimatorControllerPlayable playable,
             AnimatorController controller, int layer)
         {
-            bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
             var definition = controller.layers[layer];
             if (definition.syncedLayerIndex >= 0 || playable.IsInTransition(layer)) return null;
             var info = playable.GetCurrentAnimatorStateInfo(layer);
@@ -932,7 +932,7 @@ namespace VRVlog.LilToonExporter
                         // Only a convex Simple1D blend is proven here.
                         var children = tree.children;
                         var convex = tree.blendType == BlendTreeType.Simple1D && children.Length > 0 &&
-                            children.Select((child, index) => NeutralShapeSnapshot.Finite(child.threshold) &&
+                            children.Select((child, index) => Finite(child.threshold) &&
                                 (index == 0 || child.threshold > children[index - 1].threshold)).All(value => value);
                         foreach (var child in children) Motion(child.motion, normalized && convex);
                     }
@@ -1410,7 +1410,6 @@ namespace VRVlog.LilToonExporter
         {
             index = 0;
             if (curve == null || curve.length == 0) return null;
-            bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
             var keys = curve.keys;
             for (index = 0; index < keys.Length; index++)
             {

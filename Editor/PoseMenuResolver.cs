@@ -15,7 +15,6 @@ namespace VRVlog.LilToonExporter
     {
         static readonly string[] BodyTrackingParts = { "trackingLeftHand", "trackingRightHand", "trackingHip", "trackingLeftFoot", "trackingRightFoot", "trackingLeftFingers", "trackingRightFingers" };
         internal const string NotBodyPoseMessage = "体の姿勢を変えないメニューです。";
-        internal static object Member(object value, string name) => VrChatExpressionMenu.Member(value, name);
         internal static IEnumerable<object> Items(object value) => value is IEnumerable e ? e.Cast<object>() : Enumerable.Empty<object>();
         internal static List<PoseCandidate> Read(GameObject avatar, VrChatMenuImportPolicy menuPolicy = null)
         {
@@ -24,11 +23,11 @@ namespace VRVlog.LilToonExporter
             var menu = VrChatExpressionMenu.Read(avatar, menuPolicy);
             if (descriptor == null) return result;
             var bodyPaths = PoseSampling.BodyPaths(avatar);
-            var expressionDefinitions = Items(Member(Member(descriptor, "expressionParameters"), "parameters"))
-                .ToLookup(p => Member(p, "name") as string ?? "", StringComparer.Ordinal);
+            var expressionDefinitions = Items(VrChatExpressionMenu.Member(VrChatExpressionMenu.Member(descriptor, "expressionParameters"), "parameters"))
+                .ToLookup(p => VrChatExpressionMenu.Member(p, "name") as string ?? "", StringComparer.Ordinal);
             menu.ExternalParameters.UnionWith(VrChatParameterDriver.BuiltIn);
-            var avatarLayers = Items(Member(descriptor, "baseAnimationLayers")).Concat(Items(Member(descriptor, "specialAnimationLayers"))).ToArray();
-            var layers = avatarLayers.Where(l => !(Member(l, "isDefault") is bool d && d) && Member(l, "animatorController") is RuntimeAnimatorController).ToArray();
+            var avatarLayers = Items(VrChatExpressionMenu.Member(descriptor, "baseAnimationLayers")).Concat(Items(VrChatExpressionMenu.Member(descriptor, "specialAnimationLayers"))).ToArray();
+            var layers = avatarLayers.Where(l => !(VrChatExpressionMenu.Member(l, "isDefault") is bool d && d) && VrChatExpressionMenu.Member(l, "animatorController") is RuntimeAnimatorController).ToArray();
             foreach (var entry in menu.Entries)
             {
                 var split = entry.Name.LastIndexOf(" / ", StringComparison.Ordinal);
@@ -49,14 +48,14 @@ namespace VRVlog.LilToonExporter
                         var definitions = expressionDefinitions[pair.Key].ToArray();
                         if (!menu.ExpressionParameters.Contains(pair.Key) || definitions.Length != 1 || menu.ExternalParameters.Contains(pair.Key))
                             throw new InvalidOperationException("Expression Parametersが未定義・重複または外部入力に依存します: " + pair.Key);
-                        var type = Member(definitions[0], "valueType")?.ToString();
+                        var type = VrChatExpressionMenu.Member(definitions[0], "valueType")?.ToString();
                         var value = pair.Value;
                         if (!Finite(value) || !(type == "Bool" && value == 1 ||
                             type == "Int" && value >= 0 && value <= 255 && value == Math.Floor(value) ||
                             type == "Float" && value >= -1 && value <= 1))
                             throw new InvalidOperationException("Expression Parametersの型・操作値を確定できません: " + pair.Key);
                     }
-                    if (Member(descriptor, "customizeAnimationLayers") is bool custom && !custom)
+                    if (VrChatExpressionMenu.Member(descriptor, "customizeAnimationLayers") is bool custom && !custom)
                         throw new InvalidOperationException("カスタムPlayable Layerが無効です。");
                     var weights = new Dictionary<string, float> { ["Base"] = 1, ["Additive"] = 1, ["Gesture"] = 1, ["Action"] = 0, ["FX"] = 1,
                         ["Sitting"] = 0, ["TPose"] = 0, ["IKPose"] = 0 };
@@ -69,13 +68,13 @@ namespace VRVlog.LilToonExporter
                     var selectedAffectsBody = false;
                     foreach (var source in layers)
                     {
-                        var type = Member(source, "type")?.ToString() ?? "";
-                        var runtime = (RuntimeAnimatorController)Member(source, "animatorController");
+                        var type = VrChatExpressionMenu.Member(source, "type")?.ToString() ?? "";
+                        var runtime = (RuntimeAnimatorController)VrChatExpressionMenu.Member(source, "animatorController");
                         var controller = ExpressionDependencies.Controller(runtime); var replacements = ExpressionDependencies.Overrides(runtime);
                         foreach (var parameter in controller.parameters.Where(p => entry.Parameters.ContainsKey(p.name)))
-                            if (parameter.type.ToString() != Member(expressionDefinitions[parameter.name].Single(), "valueType")?.ToString())
+                            if (parameter.type.ToString() != VrChatExpressionMenu.Member(expressionDefinitions[parameter.name].Single(), "valueType")?.ToString())
                                 throw new InvalidOperationException("Expression ParametersとAnimatorパラメーターの型が一致しません: " + parameter.name);
-                        var outer = Member(source, "mask") as AvatarMask;
+                        var outer = VrChatExpressionMenu.Member(source, "mask") as AvatarMask;
                         var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
                         AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;
                         AnimationClip Replace(AnimationClip clip) => replacements.TryGetValue(clip, out var replacement) ? replacement : clip;
@@ -94,7 +93,7 @@ namespace VRVlog.LilToonExporter
                             foreach (var b in behaviours.Where(VrChatParameterDriver.IsTracking))
                                 foreach (var part in BodyTrackingParts)
                                 {
-                                    var mode = Member(b, part)?.ToString();
+                                    var mode = VrChatExpressionMenu.Member(b, part)?.ToString();
                                     if (mode != "Animation")
                                         throw new InvalidOperationException("体・手足・指のTracking Controlが外部入力・履歴に依存します（Animation指定が必要）: " + part);
                                 }
@@ -132,9 +131,9 @@ namespace VRVlog.LilToonExporter
                             }
                             foreach (var b in state.behaviours.Where(b => !Tracking(b)))
                             {
-                                var target = Member(b, "layer")?.ToString();
-                                var weight = Convert.ToSingle(Member(b, "goalWeight"));
-                                var duration = Convert.ToSingle(Member(b, "blendDuration"));
+                                var target = VrChatExpressionMenu.Member(b, "layer")?.ToString();
+                                var weight = Convert.ToSingle(VrChatExpressionMenu.Member(b, "goalWeight"));
+                                var duration = Convert.ToSingle(VrChatExpressionMenu.Member(b, "blendDuration"));
                                 if (duration != 0 || !Finite(weight) || weight < 0 || weight > 1 || target == null || !weights.ContainsKey(target))
                                     throw new InvalidOperationException("時間依存のPlayable Layer重みは未対応です。");
                                 if (controlledWeights.TryGetValue(target, out var previous) && previous != weight)
@@ -157,9 +156,9 @@ namespace VRVlog.LilToonExporter
                     // Standard body controllers depend on built-in inputs. Do
                     // not silently replace their contribution with rest bones.
                     // A selected immediate control may explicitly disable them.
-                    foreach (var source in avatarLayers.Where(l => Member(l, "isDefault") is bool d && d))
+                    foreach (var source in avatarLayers.Where(l => VrChatExpressionMenu.Member(l, "isDefault") is bool d && d))
                     {
-                        var type = Member(source, "type")?.ToString() ?? "";
+                        var type = VrChatExpressionMenu.Member(source, "type")?.ToString() ?? "";
                         if (type != "FX" && (!weights.TryGetValue(type, out var weight) || weight > 0))
                             throw new InvalidOperationException("VRChat標準の" + type + "レイヤーが有効で、外部入力からの姿勢寄与を確定できません。");
                     }
@@ -219,8 +218,8 @@ namespace VRVlog.LilToonExporter
                 var graphs = new List<(bool affectsBody, string[] inputs, StateMachineBehaviour[] behaviours)>();
                 foreach (var source in layers)
                 {
-                    var type = Member(source, "type")?.ToString() ?? "";
-                    var runtime = (RuntimeAnimatorController)Member(source, "animatorController");
+                    var type = VrChatExpressionMenu.Member(source, "type")?.ToString() ?? "";
+                    var runtime = (RuntimeAnimatorController)VrChatExpressionMenu.Member(source, "animatorController");
                     var controller = ExpressionDependencies.Controller(runtime); var replacements = ExpressionDependencies.Overrides(runtime);
                     var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
                     AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;

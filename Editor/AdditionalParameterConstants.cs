@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -52,7 +53,7 @@ namespace VRVlog.LilToonExporter
                 if (type != AnimatorControllerParameterType.Bool && type != AnimatorControllerParameterType.Int &&
                     type != AnimatorControllerParameterType.Float || values.Any(value => value.type != type) ||
                     values.Any(value => !Default(value).Equals(Default(values[0]))) ||
-                    !NeutralShapeSnapshot.Finite(Default(values[0]))) continue;
+                    !Finite(Default(values[0]))) continue;
                 // Saved values may have been restored before startup. Missing
                 // SDK metadata also cannot certify that an input is transient.
                 // Automatic external-input defaults carry no restored-value
@@ -140,7 +141,7 @@ namespace VRVlog.LilToonExporter
         private static bool NormalizeInput(float value, AnimatorControllerParameterType type, out float normalized)
         {
             normalized = value;
-            if (!NeutralShapeSnapshot.Finite(value)) return false;
+            if (!Finite(value)) return false;
             if (type == AnimatorControllerParameterType.Bool) normalized = value == 0 ? 0 : 1;
             if (type == AnimatorControllerParameterType.Int)
             {
@@ -153,7 +154,7 @@ namespace VRVlog.LilToonExporter
         private static bool SetValue(float value, AnimatorControllerParameterType type, bool expressionParameter, out float normalized)
         {
             normalized = value;
-            if (!NeutralShapeSnapshot.Finite(value)) return false;
+            if (!Finite(value)) return false;
             if (type == AnimatorControllerParameterType.Bool) normalized = value == 0 ? 0 : 1;
             if (type == AnimatorControllerParameterType.Int) normalized = (float)Math.Truncate(value);
             if (expressionParameter)

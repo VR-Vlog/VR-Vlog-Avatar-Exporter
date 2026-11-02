@@ -1018,8 +1018,8 @@ namespace VRVlog.LilToonExporter.Tests
                     var child = new GameObject("Registered library"); child.transform.SetParent(fixture.Source.transform, false);
                     var component = child.AddComponent(type);
                     var data = Activator.CreateInstance(type.GetField("data").FieldType); SetPoseMember(component, "data", data);
-                    var category = AddPoseListItem((IList)PoseMenuResolver.Member(data, "categories")); SetPoseMember(category, "name", "Body");
-                    var entry = AddPoseListItem((IList)PoseMenuResolver.Member(category, "poses")); SetPoseMember(entry, "name", "Registered body"); SetPoseMember(entry, "animationClip", registeredClip);
+                    var category = AddPoseListItem((IList)VrChatExpressionMenu.Member(data, "categories")); SetPoseMember(category, "name", "Body");
+                    var entry = AddPoseListItem((IList)VrChatExpressionMenu.Member(category, "poses")); SetPoseMember(entry, "name", "Registered body"); SetPoseMember(entry, "animationClip", registeredClip);
                 }
                 else ConfigureRegisteredMenuPose(fixture.Source, registeredClip, assets);
                 var sourceBefore = ExportSourceFingerprint.Compute(fixture.Source);
@@ -1074,12 +1074,12 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < layers.Length; i++)
                 {
                     var layer = layers.GetValue(i); var empty = new AnimatorController(); assets.Add(empty);
-                    SetPoseMember(layer, "isDefault", false); SetPoseMember(layer, "animatorController", PoseMenuResolver.Member(layer, "type").ToString() == "Gesture" ? controller : empty); layers.SetValue(layer, i);
+                    SetPoseMember(layer, "isDefault", false); SetPoseMember(layer, "animatorController", VrChatExpressionMenu.Member(layer, "type").ToString() == "Gesture" ? controller : empty); layers.SetValue(layer, i);
                 }
                 field.SetValue(descriptor, layers);
             }
             var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu")); assets.Add(menu);
-            var control = AddPoseListItem((IList)PoseMenuResolver.Member(menu, "controls")); SetPoseMember(control, "name", "Registered body"); SetPoseMember(control, "type", "Toggle"); SetPoseMember(control, "value", 1f);
+            var control = AddPoseListItem((IList)VrChatExpressionMenu.Member(menu, "controls")); SetPoseMember(control, "name", "Registered body"); SetPoseMember(control, "type", "Toggle"); SetPoseMember(control, "value", 1f);
             var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType); SetPoseMember(parameter, "name", "Pose"); SetPoseMember(control, "parameter", parameter); SetPoseMember(descriptor, "expressionsMenu", menu);
             var parameters = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters")); assets.Add(parameters);
             var parametersField = parameters.GetType().GetField("parameters"); var element = parametersField.FieldType.GetElementType(); var definition = Activator.CreateInstance(element); SetPoseMember(definition, "name", "Pose"); SetPoseMember(definition, "valueType", "Int");

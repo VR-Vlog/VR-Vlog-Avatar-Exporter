@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -107,7 +108,7 @@ namespace VRVlog.LilToonExporter
                 var type = values[0].type;
                 if (type != AnimatorControllerParameterType.Bool && type != AnimatorControllerParameterType.Int &&
                     type != AnimatorControllerParameterType.Float || values.Any(parameter => parameter.type != type ||
-                    !NeutralShapeSnapshot.Finite(Default(parameter)) || !Default(parameter).Equals(Default(values[0])))) return false;
+                    !Finite(Default(parameter)) || !Default(parameter).Equals(Default(values[0])))) return false;
                 if (VrChatParameterDriver.BuiltIn.Contains(name))
                 {
                     if (context?.Values.ContainsKey(name) != true) return false;
@@ -160,7 +161,7 @@ namespace VRVlog.LilToonExporter
             if (source.Defaults.TryGetValue(name, out var supplied)) value = supplied;
             if (context?.Values.TryGetValue(name, out supplied) == true) value = supplied;
             initial = value;
-            if (!NeutralShapeSnapshot.Finite(value) || type == AnimatorControllerParameterType.Bool && value != 0 && value != 1 ||
+            if (!Finite(value) || type == AnimatorControllerParameterType.Bool && value != 0 && value != 1 ||
                 type == AnimatorControllerParameterType.Int && (value != Math.Truncate(value) || value < int.MinValue || (double)value > int.MaxValue)) return false;
             return true;
         }
@@ -267,13 +268,13 @@ namespace VRVlog.LilToonExporter
             bool FiniteClockExit(AnimatorState state, AnimatorStateTransition transition)
             {
                 if (transition == null || transition.conditions.Length != 0 ||
-                    !NeutralShapeSnapshot.Finite(transition.duration) || transition.duration < 0) return false;
+                    !Finite(transition.duration) || transition.duration < 0) return false;
                 if (!transition.hasExitTime) return true;
                 var clip = Clip(state);
-                return clip != null && NeutralShapeSnapshot.Finite(clip.length) && clip.length > 0 &&
-                    NeutralShapeSnapshot.Finite(transition.exitTime) && transition.exitTime >= 0 &&
-                    NeutralShapeSnapshot.Finite(state.speed) && state.speed > 0 &&
-                    NeutralShapeSnapshot.Finite(state.cycleOffset) && !state.speedParameterActive &&
+                return clip != null && Finite(clip.length) && clip.length > 0 &&
+                    Finite(transition.exitTime) && transition.exitTime >= 0 &&
+                    Finite(state.speed) && state.speed > 0 &&
+                    Finite(state.cycleOffset) && !state.speedParameterActive &&
                     !state.timeParameterActive && !state.cycleOffsetParameterActive;
             }
             var coverage = new Dictionary<AnimatorStateMachine, bool>(); var conditionChecks = 0;
@@ -284,7 +285,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var group in groups)
                 {
                     if (string.IsNullOrEmpty(group.Key) || !types.TryGetValue(group.Key, out var type) ||
-                        group.Any(condition => !NeutralShapeSnapshot.Finite(condition.threshold))) return false;
+                        group.Any(condition => !Finite(condition.threshold))) return false;
                     var values = new HashSet<float>();
                     if (type == AnimatorControllerParameterType.Bool)
                     {
@@ -448,7 +449,7 @@ namespace VRVlog.LilToonExporter
             {
                 if (!types.TryGetValue(name, out var type)) return false;
                 conditions.TryGetValue(name, out var values); values = values ?? Array.Empty<AnimatorCondition>();
-                if (values.Any(condition => !NeutralShapeSnapshot.Finite(condition.threshold))) return false;
+                if (values.Any(condition => !Finite(condition.threshold))) return false;
                 var samples = new HashSet<float>();
                 if (type == AnimatorControllerParameterType.Bool)
                 {

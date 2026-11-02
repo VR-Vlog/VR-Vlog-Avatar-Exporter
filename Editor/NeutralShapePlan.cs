@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -325,7 +326,7 @@ namespace VRVlog.LilToonExporter
                     if (excludedPath?.Invoke(binding.path) == true) continue;
                     var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
                     for (var index = 0; index < keys.Length; index++)
-                        if (!NeutralShapeSnapshot.Finite(keys[index].time) || index > 0 && keys[index].time <= keys[index - 1].time)
+                        if (!Finite(keys[index].time) || index > 0 && keys[index].time <= keys[index - 1].time)
                             throw new InvalidOperationException(ExporterLocalization.T("FXのオブジェクト参照曲線の時刻が不正です: ") + Describe(clip, binding));
                     ValidateTarget(clip, binding, true);
                 }

@@ -148,9 +148,9 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var data = Activator.CreateInstance(aplType.GetField("data").FieldType); SdkFixture.Set(apl, "data", data);
-                var categories = (IList)PoseMenuResolver.Member(data, "categories");
+                var categories = (IList)VrChatExpressionMenu.Member(data, "categories");
                 var category = Activator.CreateInstance(categories.GetType().GetGenericArguments()[0]); categories.Add(category); SdkFixture.Set(category, "name", "APL category");
-                var poses = (IList)PoseMenuResolver.Member(category, "poses");
+                var poses = (IList)VrChatExpressionMenu.Member(category, "poses");
                 var pose = Activator.CreateInstance(poses.GetType().GetGenericArguments()[0]); poses.Add(pose);
                 SdkFixture.Set(pose, "name", "APL survives"); SdkFixture.Set(pose, "animationClip", clip);
                 var before = EditorJsonUtility.ToJson(apl);
