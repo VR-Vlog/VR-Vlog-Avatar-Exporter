@@ -555,7 +555,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var before = assets.Select(EditorJsonUtility.ToJson).ToArray(); reference = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Mixed appearance face", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Mixed appearance face", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "mixed-appearance-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Mixed selected", (AnimationClip)selected.motion, 0f) });

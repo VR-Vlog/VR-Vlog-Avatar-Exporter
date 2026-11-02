@@ -61,7 +61,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", warnings);
+                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", exporterVersion: null, warnings: warnings);
                 var log = string.Join("\n", warnings);
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty, log);
                 Assert.That(Get("Layers"), Is.EqualTo(-1), "Optimizing passes must see a VRChat avatar's root without a lent controller.");
@@ -93,7 +93,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", warnings);
+                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", exporterVersion: null, warnings: warnings);
                 var log = string.Join("\n", warnings);
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty, log);
                 Assert.That(Get("Layers"), Is.EqualTo(1), "The controller lent to AAO has one layer; one without layers crashes AnimationMode sampling.");

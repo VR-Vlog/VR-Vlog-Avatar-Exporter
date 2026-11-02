@@ -451,7 +451,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var sourcePixels = new[] { main, backlight, mask }.ToDictionary(t => t, t => t.GetPixels32());
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Texture memory fixture", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Texture memory fixture", "Tests", warnings: warnings,
                     exporterVersion: "0.10.0-preview.1", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var glb = GlbDocument.Read(bytes);
                 Assert.DoesNotThrow(() => F.Validate(glb.Json, bytes.LongLength, glb.Binary.Length));

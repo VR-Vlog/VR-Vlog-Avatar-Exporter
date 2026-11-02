@@ -845,7 +845,7 @@ namespace VRVlog.LilToonExporter
 
         // Values of the source material. A missing shader no longer declares
         // its properties, so they are read from the saved material data.
-        sealed class SourceValues
+        internal sealed class SourceValues
         {
             readonly Dictionary<string, (Texture Texture, Vector2 Scale, Vector2 Offset)> textures = new Dictionary<string, (Texture, Vector2, Vector2)>(StringComparer.Ordinal);
             readonly Dictionary<string, float> floats = new Dictionary<string, float>(StringComparer.Ordinal);

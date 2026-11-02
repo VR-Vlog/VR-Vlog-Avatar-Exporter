@@ -37,7 +37,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var sourceVertices = f.Mesh.vertices;
                 var materialState = EditorJsonUtility.ToJson(material);
                 var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
-                    UniVrmOneClickExporter.Export(f.Source, "Framing regression", "Tests", warnings,
+                    UniVrmOneClickExporter.Export(f.Source, "Framing regression", "Tests", warnings: warnings,
                         exporterVersion: "0.11.5", lilToonVersion: "2.3.4",
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                         recoveryOptions: options, recoveryReport: report));

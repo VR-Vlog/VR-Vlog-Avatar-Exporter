@@ -93,7 +93,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 var warnings = new List<string>();
                 var before = fixture.Mesh.vertices;
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Expression regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Expression regression", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "expression-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Face / Smile", smileClip, 0f), ("Animated gesture", animatedClip, 0f) });

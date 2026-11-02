@@ -18,7 +18,7 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ObjectToggleCaptureTests
     {
         [TearDown]
-        public void ResetFaultInjection() => ExportStageGuard.FaultInjection = null;
+        public void ResetFaultInjection() => ExportTestHooks.FaultInjection = null;
 
         static ObjectToggleData.State State(int value, params bool[] active)
         {
@@ -357,7 +357,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
                 var calls = 0;
-                ExportStageGuard.FaultInjection = stage =>
+                ExportTestHooks.FaultInjection = stage =>
                 {
                     // The second call is the mapping after the export.
                     if (stage == ExportStage.ObjectToggles && ++calls == 2) throw new InvalidOperationException("injected toggles");
@@ -377,7 +377,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static byte[] Export(GameObject source, ICollection<string> warnings, ExportRecoveryReport report) =>
-            UniVrmOneClickExporter.Export(source, "Object toggles", "Tests", warnings,
+            UniVrmOneClickExporter.Export(source, "Object toggles", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                 gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);

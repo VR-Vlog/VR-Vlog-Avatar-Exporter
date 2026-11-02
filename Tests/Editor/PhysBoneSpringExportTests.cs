@@ -839,7 +839,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored spring", "Tests",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored spring", "Tests", exporterVersion: null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var restored = imported.SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
@@ -990,7 +990,7 @@ namespace VRVlog.LilToonExporter.Tests
                     .Where(path => path.StartsWith("Assets/VRVlogExportTemp-", StringComparison.Ordinal)).ToArray();
                 var temporaryFolders = ExportFolders();
                 byte[] failed = null;
-                var error = Assert.Throws<InvalidOperationException>(() => failed = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
+                var error = Assert.Throws<InvalidOperationException>(() => failed = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings: warnings,
                     exporterVersion: full ? "test" : null, lilToonVersion: full ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
                 Assert.That(failed, Is.Null, "An optimization that loses the humanoid must never produce an apparently usable VRM.");
@@ -1003,7 +1003,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             try
             {
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings: warnings,
                     exporterVersion: full ? "test" : null, lilToonVersion: full ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var motionSolver = new Vrm10FastSpringboneRuntimeStandalone();

@@ -16,11 +16,11 @@ namespace VRVlog.LilToonExporter
             (material.HasProperty("_MainTexHSVG") && material.GetVector("_MainTexHSVG") != new Vector4(0, 1, 1, 1)) ||
             Value(material, "_MainGradationStrength") != 0;
 
-        internal static bool NeedsLayerAlphaBake(Material material, MaterialBakeOptions options = null) => !IsOpaque(material) &&
-            (Enabled(material, "_UseMain2ndTex") && options?.Omits(material, "2nd") != true && Value(material, "_Main2ndTexAlphaMode") != 0 ||
-             Enabled(material, "_UseMain3rdTex") && options?.Omits(material, "3rd") != true && Value(material, "_Main3rdTexAlphaMode") != 0);
+        internal static bool NeedsLayerAlphaBake(Material material) => !IsOpaque(material) &&
+            (Enabled(material, "_UseMain2ndTex") && Value(material, "_Main2ndTexAlphaMode") != 0 ||
+             Enabled(material, "_UseMain3rdTex") && Value(material, "_Main3rdTexAlphaMode") != 0);
 
-        internal static void ValidateAvatar(GameObject avatar, Func<Transform, bool> excluded = null, MaterialBakeOptions options = null)
+        internal static void ValidateAvatar(GameObject avatar, Func<Transform, bool> excluded = null)
         {
             var issues = new List<MaterialBakeIssue>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
@@ -35,8 +35,8 @@ namespace VRVlog.LilToonExporter
                     if (!LilToonMaterialReader.IsLilToon(material) || !NeedsBake(material)) continue;
                     foreach (var layer in new[] { "2nd", "3rd" })
                     {
-                        if (!Enabled(material, "_UseMain" + layer + "Tex") || options?.Omits(material, layer) == true) continue;
-                        var layerAlpha = NeedsLayerAlphaBake(material, options);
+                        if (!Enabled(material, "_UseMain" + layer + "Tex")) continue;
+                        var layerAlpha = NeedsLayerAlphaBake(material);
                         issues.AddRange(LayerIssues(material, layer, path, layerAlpha));
                         var property = "_Main" + layer + "Tex";
                         if (layerAlpha && !HasSingleUvTile(renderer, slot, material))
@@ -74,37 +74,8 @@ namespace VRVlog.LilToonExporter
             catch (UnityException) { return false; }
         }
 
-        internal static void ApplyOmissions(GameObject avatar, List<Material> materials, ICollection<string> warnings, MaterialBakeOptions options)
-        {
-            if (options == null) return;
-            var copies = new Dictionary<Material, Material>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
-            {
-                var slots = renderer.sharedMaterials;
-                for (var i = 0; i < slots.Length; i++)
-                {
-                    var original = slots[i];
-                    if (!LilToonMaterialReader.IsLilToon(original) || !(options.Omits(original, "2nd") || options.Omits(original, "3rd"))) continue;
-                    if (!copies.TryGetValue(original, out var copy))
-                    {
-                        copy = new Material(original) { name = original.name };
-                        copies.Add(original, copy);
-                        materials.Add(copy);
-                        foreach (var layer in new[] { "2nd", "3rd" })
-                            if (options.Omits(original, layer))
-                            {
-                                copy.SetFloat("_UseMain" + layer + "Tex", 0);
-                                warnings?.Add(original.name + ": 確認した内容に従い、メインカラー" + layer + "を省略しました。");
-                            }
-                    }
-                    slots[i] = copy;
-                }
-                renderer.sharedMaterials = slots;
-            }
-        }
-
         internal static void Prepare(GameObject avatar, List<Material> materials, List<Texture2D> textures,
-            ICollection<string> warnings, bool suppressSharedEmission, bool suppressHdrTextureEmission, MaterialBakeOptions options = null, bool approximationOnly = false)
+            ICollection<string> warnings, bool suppressSharedEmission, bool suppressHdrTextureEmission, bool approximationOnly = false)
         {
             var copies = new Dictionary<Material, Material>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
@@ -121,12 +92,6 @@ namespace VRVlog.LilToonExporter
                         var origin = AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform) + "#" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
                         materials.Add(copy);
                         copies.Add(original, copy);
-                        foreach (var layer in new[] { "2nd", "3rd" })
-                            if (options?.Omits(original, layer) == true && Enabled(copy, "_UseMain" + layer + "Tex"))
-                            {
-                                copy.SetFloat("_UseMain" + layer + "Tex", 0);
-                                warnings?.Add(original.name + ": 確認した内容に従い、メインカラー" + layer + "の模様・文字を出力用コピーから省略しました。");
-                            }
                         // Test before baking changes the main texture's identity.
                         if (LilToonEmissionPolicy.IsSuppressed(original, suppressSharedEmission) ||
                             suppressHdrTextureEmission && LilToonEmissionPolicy.HasHdrTextureEmission(original))

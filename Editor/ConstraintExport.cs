@@ -37,12 +37,6 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
-        internal static readonly string[] Reasons =
-        {
-            KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
-            OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedOff, OmittedReparent, OmittedBound
-        };
 
         // A VRM rotation constraint applies the source's local change in the
         // target's own frame. It equals the original when both rest rotations

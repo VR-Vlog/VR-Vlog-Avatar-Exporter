@@ -129,7 +129,7 @@ namespace VRVlog.LilToonExporter.Tests
                     finally { Object.DestroyImmediate(measure); }
                 }
                 // The export reads faces only from the board's list.
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Synthetic FX neutral regression", "VR Vlog tests", blinkOptions: blink,
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Synthetic FX neutral regression", "VR Vlog tests", exporterVersion: null, blinkOptions: blink,
                     listFaces: new[] { ("Authored endpoint", (AnimationClip)selected.motion, 0f) });
                 Assert.That(skins.All(s => s.sharedMesh == f.Mesh && s.GetBlendShapeWeight(0) == 0), Is.True);
                 Assert.That(skins.Select(s => s.GetBlendShapeWeight(1)), Is.EqualTo(new[] { 25f, 50f }));

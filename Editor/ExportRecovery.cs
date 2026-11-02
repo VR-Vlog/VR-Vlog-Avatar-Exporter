@@ -267,17 +267,16 @@ namespace VRVlog.LilToonExporter
         readonly List<Material> owned;
         readonly ExportRecoveryOptions options;
         readonly ExportRecoveryReport report;
-        readonly MaterialBakeOptions bakeOptions;
         readonly Dictionary<Material, Material> originals = new Dictionary<Material, Material>();
         readonly Dictionary<Renderer, Renderer> renderers = new Dictionary<Renderer, Renderer>();
 
         internal ExportRecoveryCopySession(GameObject source, GameObject copy, List<Material> owned,
-            ExportRecoveryOptions options, ExportRecoveryReport report = null, MaterialBakeOptions bakeOptions = null)
+            ExportRecoveryOptions options, ExportRecoveryReport report = null)
         {
             if (source == null || copy == null || source == copy || EditorUtility.IsPersistent(copy) ||
                 copy.transform.IsChildOf(source.transform) || source.transform.IsChildOf(copy.transform))
                 throw new ArgumentException("An independent export copy is required.");
-            this.source = source; this.copy = copy; this.owned = owned; this.options = options; this.report = report; this.bakeOptions = bakeOptions;
+            this.source = source; this.copy = copy; this.owned = owned; this.options = options; this.report = report;
             foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
             {
                 var mapped = Resolve(renderer.transform, source.transform, copy.transform);
@@ -316,9 +315,6 @@ namespace VRVlog.LilToonExporter
                         slots[i] = material;
                     }
                     var original = originals[slots[i]];
-                    foreach (var layer in new[] { "2nd", "3rd" })
-                        if (bakeOptions?.Omits(original, layer) == true && slots[i].HasProperty("_UseMain" + layer + "Tex"))
-                            slots[i].SetFloat("_UseMain" + layer + "Tex", 0);
                     foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
                     {
                         if (action.Material != original && action.Material != current) continue;
@@ -345,15 +341,7 @@ namespace VRVlog.LilToonExporter
             // this prevents a material setter from restoring the source asset.
             if (replacements.Count != 0)
                 foreach (var component in copy.GetComponentsInChildren<Component>(true))
-                {
-                    if (component == null) continue;
-                    using var serialized = new SerializedObject(component);
-                    var property = serialized.GetIterator(); var changed = false;
-                    while (property.Next(true))
-                        if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue is Material material && replacements.TryGetValue(material, out var replacement))
-                        { property.objectReferenceValue = replacement; changed = true; }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    if (component != null) SerializedReferences.Replace(component, replacements);
             foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
             {
                 if (action.Kind == ExportRecoveryActionKind.ExcludeHiddenRenderer && renderers.TryGetValue(action.Renderer, out var renderer) && renderer != null)
@@ -402,7 +390,7 @@ namespace VRVlog.LilToonExporter
         readonly List<Mesh> meshes = new List<Mesh>();
 
         internal static ExportRecoveryPreview Create(GameObject source, ExportRecoveryOptions options = null,
-            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, MaterialBakeOptions bakeOptions = null)
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             var preview = new ExportRecoveryPreview();
@@ -414,7 +402,7 @@ namespace VRVlog.LilToonExporter
                 preview.inactiveHost.SetActive(false);
                 preview.Copy = Object.Instantiate(source, preview.inactiveHost.transform, false);
                 preview.Copy.name = source.name;
-                var session = new ExportRecoveryCopySession(source, preview.Copy, preview.materials, options, bakeOptions: bakeOptions);
+                var session = new ExportRecoveryCopySession(source, preview.Copy, preview.materials, options);
                 using var gimmicks = new ExportGimmickSession(source, preview.Copy, gimmickOptions ?? new ExportGimmickOptions { AutoExclude = false });
                 using var manual = new ExportObjectExclusions(source, excludedObjects);
                 var findings = gimmickOptions?.AutoExclude == true ? ExportGimmickDetection.Analyze(source, manual.Contains) : new List<ExportGimmickFinding>();

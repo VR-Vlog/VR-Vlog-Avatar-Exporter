@@ -115,7 +115,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // the morph on the edited mesh so it stays in the round trip.
                 AnimationUtility.SetEditorCurve(face, EditorCurveBinding.FloatCurve(front.name, typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 100));
 
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MeshDeleter regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MeshDeleter regression", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "meshdeleter-regression" : null,
                     lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: new[] { (face.name, face, 0f) });

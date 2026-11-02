@@ -110,7 +110,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var sourceBefore = ExportSourceFingerprint.Compute(fixture.Source);
                 using var preview = new PreviewSettingsScope(previewMode);
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored MA deletion", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored MA deletion", "Tests", warnings: warnings,
                     exporterVersion: "ma-deletion-regression", lilToonVersion: "2.3.4", blinkOptions: blink);
                 // Check preservation before topology assertions, including a
                 // failing reproduction where the copy discarded deletion.

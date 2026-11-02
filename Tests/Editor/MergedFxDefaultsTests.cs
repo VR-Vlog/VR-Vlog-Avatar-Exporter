@@ -1156,7 +1156,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Weighted permanent FX", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Weighted permanent FX", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: faces);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));

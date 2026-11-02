@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
             var finding = ExportGimmickChoices.Groups(ExportGimmickChoices.Analyze(avatar, null)).Single().Findings.Single();
             var settings = new ExportSettings();
             settings.IncludedGimmicks.Add(container);
-            Assert.That(ExportGimmickChoices.Inherited(finding, settings), Is.True);
+            Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.Not.Null);
             Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.EqualTo(container));
             // The row names the nearest kept parent.
             var inner = Child("inner", container.transform);

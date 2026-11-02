@@ -45,7 +45,7 @@ namespace VRVlog.LilToonExporter
         // NDMF tracks asset replacements made by authoring/optimization passes.
         // Keep the optional public registry available to the preparation callback.
         internal object ObjectRegistry { get; private set; }
-        private const string MaNamespace = "nadena.dev.modular_avatar.core.";
+        private const string MaNamespace = ExportTypeNames.MaNamespace;
         // Weak keys keep reference-context markers scoped to owned copies.
         // Authored NDMF markers retain their existing processing semantics.
         private static readonly ConditionalWeakTable<GameObject, CopyAvatarRoot> copyAvatarRoots =
@@ -152,10 +152,8 @@ namespace VRVlog.LilToonExporter
                     var type = behaviour.GetType();
                     var authoring = IsAuthoringTag(type) || type.GetInterfaces().Any(contract => contract.FullName == "VRC.SDKBase.IEditorOnly");
                     if (authoring || PreservesExportBehaviour(behaviour)) continue;
-                    var editorCallbacks = false;
-                    for (var current = type; current != null; current = current.BaseType)
-                        editorCallbacks |= current.GetCustomAttributesData().Any(attribute => attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" ||
-                            attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode");
+                    var editorCallbacks = ExportTypeNames.SelfAndBaseTypes(type).Any(current => current.GetCustomAttributesData().Any(attribute =>
+                        attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" || attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode"));
                     // Disabled editor scripts can still receive Awake on activation.
                     // Remove editor scripts outside export/authoring contracts
                     // before activation. Preserve inert runtime/metadata enabled
@@ -185,13 +183,12 @@ namespace VRVlog.LilToonExporter
         // SDK installed, such tools mark their settings IEditorOnly so the
         // upload strips them; requiring it keeps a package's runtime
         // components from starting the build.
-        internal static ISet<string> PluginPackagesOverride;
         private static HashSet<string> pluginPackages;
         private static readonly Dictionary<Assembly, string> packageOfAssembly = new Dictionary<Assembly, string>();
 
         internal static bool HasPluginToolComponent(GameObject avatar)
         {
-            var packages = PluginPackagesOverride ?? PluginPackages();
+            var packages = ExportTestHooks.PluginPackagesOverride ?? PluginPackages();
             if (packages.Count == 0) return false;
             var editorOnly = FindType("VRC.SDKBase.IEditorOnly");
             return avatar.GetComponentsInChildren<Component>(true).Any(component => component != null &&
@@ -252,9 +249,7 @@ namespace VRVlog.LilToonExporter
             // VRCFury itself skips avatars whose only component is its debug info,
             // and its test copy is an avatar it has already built.
             if (type.FullName == "VF.Model.VRCFuryDebugInfo" || type.FullName == "VF.Model.VRCFuryTest") return false;
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == "VF.Component.VRCFuryComponent") return true;
-            return false;
+            return ExportTypeNames.InheritsFrom(type, "VF.Component.VRCFuryComponent");
         }
 
         private void ApplyVrcFury(GameObject clone, ICollection<string> warnings)
@@ -392,7 +387,7 @@ namespace VRVlog.LilToonExporter
         private void CaptureRendererReplacements(GameObject clone, object context)
         {
             var registry = context?.GetType().GetProperty("ObjectRegistry", BindingFlags.Public | BindingFlags.Instance)?.GetValue(context);
-            var contract = registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
+            var contract = registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == ExportTypeNames.NdmfObjectRegistry);
             var getReference = contract?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
             if (getReference == null) return;
             foreach (var current in clone.GetComponentsInChildren<Renderer>(true))
@@ -415,9 +410,7 @@ namespace VRVlog.LilToonExporter
 
         private static bool IsAuthoringTag(Type type)
         {
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == MaNamespace + "AvatarTagComponent" ||
-                    current.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
+            if (ExportTypeNames.InheritsFrom(type, ExportTypeNames.MaAvatarTag) || ExportTypeNames.InheritsFrom(type, ExportTypeNames.AaoAvatarTag)) return true;
             return type.GetInterfaces().Any(i => i.FullName == "nadena.dev.ndmf.INDMFEditorOnly" ||
                 i.FullName == "nadena.dev.ndmf.runtime.INDMFEditorOnly");
         }
@@ -440,7 +433,7 @@ namespace VRVlog.LilToonExporter
 
         private static string FollowingProperty(Component component)
         {
-            for (var type = component.GetType(); type != null; type = type.BaseType)
+            foreach (var type in ExportTypeNames.SelfAndBaseTypes(component.GetType()))
             {
                 if (type.FullName == MaNamespace + "ModularAvatarMergeArmature") return "mergeTargetObject";
                 if (type.FullName == MaNamespace + "ModularAvatarBoneProxy") return "target";
@@ -734,13 +727,8 @@ namespace VRVlog.LilToonExporter
             !clone.GetComponents<Component>().Any(c => c != null && AvatarOptimizerPlatformTypes.Contains(c.GetType().FullName)) &&
             clone.GetComponentsInChildren<Component>(true).Any(IsAvatarOptimizerComponent);
 
-        private static bool IsAvatarOptimizerComponent(Component component)
-        {
-            if (component == null) return false;
-            for (var type = component.GetType(); type != null; type = type.BaseType)
-                if (type.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
-            return false;
-        }
+        private static bool IsAvatarOptimizerComponent(Component component) =>
+            component != null && ExportTypeNames.InheritsFrom(component.GetType(), ExportTypeNames.AaoAvatarTag);
 
         // The lent controller keeps one empty layer: Animator::Sample, which
         // AnimationMode.SampleAnimationClip calls (as plugins that photograph menu
@@ -765,16 +753,7 @@ namespace VRVlog.LilToonExporter
             return failure;
         }
 
-        internal static bool FailedInOptimizing(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error.Data.Contains(OptimizingFailureKey)) return true;
-                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(FailedInOptimizing)) return true;
-                error = error.InnerException;
-            }
-            return false;
-        }
+        internal static bool FailedInOptimizing(Exception error) => ExceptionChain.Any(error, value => value.Data.Contains(OptimizingFailureKey));
 
         private static bool IsSuccessful(Bridge bridge, object context) =>
             Invoke(() => bridge.Successful.GetValue(context)) is bool success && success;
@@ -816,18 +795,19 @@ namespace VRVlog.LilToonExporter
             !(value is GameObject) && !(value is Component) && !(value is Shader) &&
             !(value is ComputeShader) && !(value is MonoScript);
 
-        private static IEnumerable<Object> References(Object value)
+        private static List<Object> References(Object value)
         {
+            var result = new List<Object>();
             // Mesh/texture payloads can contain millions of scalar elements,
             // but do not contain asset references that need remapping here.
-            if (value is Mesh || value is Texture) yield break;
-            using (var serialized = new SerializedObject(value))
+            if (value is Mesh || value is Texture) return result;
+            SerializedReferences.Visit(value, property =>
             {
-                var property = serialized.GetIterator();
-                while (property.Next(true))
-                    if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue != null)
-                        yield return property.objectReferenceValue;
-            }
+                if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue != null)
+                    result.Add(property.objectReferenceValue);
+                return false;
+            });
+            return result;
         }
 
         private static void RequireCopySceneReferences(GameObject clone, HashSet<Object> cloneAssets)
@@ -840,22 +820,19 @@ namespace VRVlog.LilToonExporter
             foreach (var holder in holders)
             {
                 if (holder is Mesh || holder is Texture) continue;
-                using (var serialized = new SerializedObject(holder))
+                SerializedReferences.Visit(holder, property =>
                 {
-                    var property = serialized.GetIterator();
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                        var reference = property.objectReferenceValue;
-                        var target = reference is GameObject gameObject ? gameObject.transform :
-                            (reference as Component)?.transform;
-                        if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
-                            throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
-                                ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
-                                "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
-                                "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
-                    }
-                }
+                    if (property.propertyType != SerializedPropertyType.ObjectReference) return false;
+                    var reference = property.objectReferenceValue;
+                    var target = reference is GameObject gameObject ? gameObject.transform :
+                        (reference as Component)?.transform;
+                    if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
+                        throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
+                            ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
+                            "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
+                            "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
+                    return false;
+                });
             }
         }
 
@@ -905,40 +882,29 @@ namespace VRVlog.LilToonExporter
                         Invoke(() => { set.Invoke(reference, new object[] { target }); return null; });
                     }
                 }
-                using (var serialized = new SerializedObject(component))
+                SerializedReferences.Visit(component, property =>
                 {
-                    var property = serialized.GetIterator();
-                    var changed = false;
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.Generic || property.type != type.Name) continue;
-                        var direct = property.FindPropertyRelative("targetObject");
-                        var path = property.FindPropertyRelative("referencePath");
-                        if (direct?.propertyType != SerializedPropertyType.ObjectReference ||
-                            path?.propertyType != SerializedPropertyType.String || string.IsNullOrEmpty(path.stringValue)) continue;
-                        var stale = direct.objectReferenceValue as GameObject;
-                        if (stale == null || EditorUtility.IsPersistent(stale) || IsWithinCopy(stale.transform, clone)) continue;
-                        var resolved = Invoke(() => resolve.Invoke(null, new object[] { property })) as GameObject;
-                        // Merge Armature's runtime getter includes MA's own
-                        // special handling for duplicated Armature transforms.
-                        // Preserve that effective target instead of choosing one.
-                        if (property.propertyPath == "mergeTarget" && FollowingProperty(component) == "mergeTargetObject")
-                            resolved = ReadFollowingTarget(component, "mergeTargetObject")?.gameObject;
-                        if (resolved == null || !IsWithinCopy(resolved.transform, clone)) continue;
-                        direct.objectReferenceValue = resolved;
-                        changed = true;
-                    }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    if (property.propertyType != SerializedPropertyType.Generic || property.type != type.Name) return false;
+                    var direct = property.FindPropertyRelative("targetObject");
+                    var path = property.FindPropertyRelative("referencePath");
+                    if (direct?.propertyType != SerializedPropertyType.ObjectReference ||
+                        path?.propertyType != SerializedPropertyType.String || string.IsNullOrEmpty(path.stringValue)) return false;
+                    var stale = direct.objectReferenceValue as GameObject;
+                    if (stale == null || EditorUtility.IsPersistent(stale) || IsWithinCopy(stale.transform, clone)) return false;
+                    var resolved = Invoke(() => resolve.Invoke(null, new object[] { property })) as GameObject;
+                    // Merge Armature's runtime getter includes MA's own
+                    // special handling for duplicated Armature transforms.
+                    // Preserve that effective target instead of choosing one.
+                    if (property.propertyPath == "mergeTarget" && FollowingProperty(component) == "mergeTargetObject")
+                        resolved = ReadFollowingTarget(component, "mergeTargetObject")?.gameObject;
+                    if (resolved == null || !IsWithinCopy(resolved.transform, clone)) return false;
+                    direct.objectReferenceValue = resolved;
+                    return true;
+                });
             }
         }
 
-        private static bool IsMaTag(Type type)
-        {
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == MaNamespace + "AvatarTagComponent") return true;
-            return false;
-        }
+        private static bool IsMaTag(Type type) => ExportTypeNames.InheritsFrom(type, ExportTypeNames.MaAvatarTag);
 
         private void IsolateSharedAssets(GameObject clone, HashSet<Object> sourceAssets, HashSet<Object> cloneAssets,
             Action<Material, Material> materialCopyObserver)
@@ -1004,20 +970,7 @@ namespace VRVlog.LilToonExporter
             foreach (var target in targets)
             {
                 if (target is Mesh || target is Texture) continue;
-                using (var serialized = new SerializedObject(target))
-                {
-                    var property = serialized.GetIterator();
-                    var changed = false;
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                        var original = property.objectReferenceValue;
-                        if (original == null || !replacements.TryGetValue(original, out var replacement)) continue;
-                        property.objectReferenceValue = replacement;
-                        changed = true;
-                    }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                SerializedReferences.Replace(target, replacements);
             }
         }
 

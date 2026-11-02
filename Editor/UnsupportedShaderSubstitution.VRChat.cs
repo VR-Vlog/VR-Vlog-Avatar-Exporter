@@ -15,10 +15,10 @@ namespace VRVlog.LilToonExporter
     {
         // Lambert: albedo × (light × N·L + ambient). Flat: albedo × (light +
         // ambient), the same on every side. Unlit: the albedo as it is.
-        enum VrcLight { Lambert, Flat, Unlit }
-        enum VrcBlend { Opaque, Alpha, Additive, Multiply }
+        internal enum VrcLight { Lambert, Flat, Unlit }
+        internal enum VrcBlend { Opaque, Alpha, Additive, Multiply }
 
-        sealed class VRChatRow
+        internal sealed class VRChatRow
         {
             internal readonly VrcLight Light;
             internal readonly VrcBlend Blend;
@@ -35,9 +35,7 @@ namespace VRVlog.LilToonExporter
 
         // Keyed by the exact shader name (VRChat SDK 3.10). Both shader files
         // named "Bumped Mapped Specular" read _SpecColor if declared, else white.
-        internal static IEnumerable<string> VRChatShaderNames => VRChatShaders.Keys;
-
-        static readonly Dictionary<string, VRChatRow> VRChatShaders = new Dictionary<string, VRChatRow>(StringComparer.Ordinal)
+        internal static readonly Dictionary<string, VRChatRow> VRChatShaders = new Dictionary<string, VRChatRow>(StringComparer.Ordinal)
         {
             ["VRChat/Mobile/Toon Standard"] = new VRChatRow(VrcLight.Lambert, VrcBlend.Opaque, features: VrcToonStandard),
             ["VRChat/Mobile/Toon Standard (Outline)"] = new VRChatRow(VrcLight.Lambert, VrcBlend.Opaque, outline: true, features: VrcToonStandard),

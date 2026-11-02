@@ -124,6 +124,7 @@ namespace UnityEditor
     using Object = UnityEngine.Object;
     public class MonoScript : Object { public System.Type GetClass() => null; }
     public static class MonoImporter { public static MonoScript[] GetAllRuntimeMonoScripts() => new MonoScript[0]; }
+    public static class EditorPrefs { public static bool GetBool(string key, bool defaultValue) => defaultValue; }
     public static class EditorUtility
     {
         public static void CopySerialized(Object source, Object destination)

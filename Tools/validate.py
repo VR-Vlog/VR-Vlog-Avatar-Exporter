@@ -66,8 +66,6 @@ for property_names in ("floatNames", "colorNames", "textureNames"):
     assert f"!{property_names}.Add(item.name)" in validator
 for supported in ("lilToon", "lilToonLite", "lilToonMulti"):
     assert f'"{supported}"' in profile
-for rejected in ("fur", "refraction", "gem", "tessellation", "audioLink", "custom"):
-    assert f'"{rejected}"' in profile
 
 # Delivery contracts: GLB 2.0 parsing/writing, fallback preservation, optional
 # extension injection, real material extraction, atomic output, and Unity tests.
@@ -337,8 +335,7 @@ assert '!HasVrmPreview || !session.CanSave' in recovery_comparison
 assert 'BuildSupportText(LilToonExporterWindow.PackageVersion())' in failure_window
 assert (root / "Tests/Editor/ExportRecoveryTests.cs").is_file()
 assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
-assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
-assert 'LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);' in one_click
+assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone)') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
 assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
 assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click

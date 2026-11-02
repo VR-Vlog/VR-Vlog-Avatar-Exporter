@@ -744,7 +744,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Counts the result lists opened.
-        sealed class SavingFallbackDialog : IExportFallbackDialog
+        sealed class SavingFallbackDialog
         {
             internal int Calls;
             public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) => Calls++;
@@ -768,8 +768,7 @@ namespace VRVlog.LilToonExporter.Tests
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-stage-" + Guid.NewGuid().ToString("N") + ".vrm");
-            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
-            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var previous = ExportTestHooks.ContinueByDefault;
             var originalDialog = ExportFallbackConfirmation.Dialog;
             var originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
             var dialog = new SavingFallbackDialog();
@@ -778,9 +777,9 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 // The test runner may be a batch run; pretend an Editor session so
                 // the interactive transfer really asks.
-                ExportFallbackConfirmation.Dialog = dialog;
+                ExportFallbackConfirmation.Dialog = dialog.Show;
                 ExportFallbackConfirmation.IsBatchMode = () => false;
-                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, continueOnFailure);
+                ExportTestHooks.ContinueByDefault = continueOnFailure;
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 type.GetField("source", flags).SetValue(window, fixture.Source);
@@ -812,8 +811,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExportFallbackConfirmation.Dialog = originalDialog;
                 ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
-                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
-                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+                ExportTestHooks.ContinueByDefault = previous;
                 foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);
                 Object.DestroyImmediate(window); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
                 if (File.Exists(path)) File.Delete(path);

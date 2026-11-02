@@ -98,7 +98,7 @@ namespace VRVlog.LilToonExporter.Tests
                 reference = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Legacy split blink", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Legacy split blink", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "split-blink-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     listFaces: new[] { ("Happy", (AnimationClip)selected.motion, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));

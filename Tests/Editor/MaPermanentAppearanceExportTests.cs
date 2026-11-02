@@ -127,7 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var options = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
                 foreach (var skin in sourceSkins) options.Both.Add(new BlinkShapeBinding { Renderer = skin, Shape = "Blink", Weight = 100 });
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Merged permanent appearance", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Merged permanent appearance", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "ma-permanent-appearance-regression" : null,
                     lilToonVersion: fullLilToon ? "2.3.4" : null, blinkOptions: options,
                     listFaces: new[] { ("Smile", (AnimationClip)selected.motion, 0f) });

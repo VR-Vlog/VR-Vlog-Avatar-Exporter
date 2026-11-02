@@ -129,13 +129,9 @@ namespace VRVlog.LilToonExporter
             if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
-        // Tests throw here to prove that a failure after the build passes,
-        // outside every stage, does not stop a lenient export.
-        internal static Action<GameObject> ConversionFaultInjection;
-
-        public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
-            string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
-            IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
+        public static byte[] Export(GameObject source, string avatarName, string author, string exporterVersion, ICollection<string> warnings = null,
+            bool suppressSharedTextureEmission = false, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
@@ -168,7 +164,7 @@ namespace VRVlog.LilToonExporter
             {
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
-                    suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
+                    suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
                     authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps);
             }, failure => report.Fallbacks.Clear());
             try
@@ -424,7 +420,7 @@ namespace VRVlog.LilToonExporter
 
         static byte[] ExportCore(GameObject source, string avatarName, string author, ICollection<string> warnings, bool suppressSharedTextureEmission,
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
-            MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
+            ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
@@ -503,7 +499,7 @@ namespace VRVlog.LilToonExporter
                 // Source getters can use an enclosing root or no root at all.
                 guard.Step(ExportStage.CopyValidation, () => NdmfExportPreparation.ValidateCopy(source, clone,
                     target => exclusions.ContainsCopyTransform(clone, target)));
-                var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport, bakeOptions);
+                var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
                 // Lip Sync captured before the caller removed the descriptor
                 // follows this copy and the optimizer the same way as blink.
@@ -516,10 +512,8 @@ namespace VRVlog.LilToonExporter
                 recovery?.Apply(warnings);
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(null, menu, warnings));
-                if (exporterVersion == null) LilToonMainTextureBaker.ValidateAvatar(clone, options: bakeOptions);
-                // Omission consent follows source identity before plugins clone
-                // materials. All actual baking waits for the final appearance.
-                if (exporterVersion == null) LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);
+                // All actual baking waits for the final appearance.
+                if (exporterVersion == null) LilToonMainTextureBaker.ValidateAvatar(clone);
                 var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone) || NdmfExportPreparation.HasVrcFuryComponent(clone);
                 if (requiresPreparation)
                     SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
@@ -844,7 +838,7 @@ namespace VRVlog.LilToonExporter
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
-                ConversionFaultInjection?.Invoke(clone);
+                ExportTestHooks.ConversionFaultInjection?.Invoke(clone);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -1097,14 +1091,7 @@ namespace VRVlog.LilToonExporter
                 mesh.subMeshCount = kept.Length;
                 for (var sub = 0; sub < kept.Length; sub++)
                     mesh.SetIndices(original.GetIndices(kept[sub]), original.GetTopology(kept[sub]), sub, false);
-                if (skin == null) filter.sharedMesh = mesh;
-                else
-                {
-                    var weights = new float[original.blendShapeCount];
-                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
-                    skin.sharedMesh = mesh;
-                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
-                }
+                ReplaceMesh(skin, filter, mesh);
                 renderer.sharedMaterials = materials;
                 warnings?.Add(ExporterLocalization.T(EmptySubmeshesOmitted) +
                     (renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform)));
@@ -1125,15 +1112,18 @@ namespace VRVlog.LilToonExporter
                 var copy = UnityEngine.Object.Instantiate(mesh);
                 copy.name = mesh.name;
                 owned.Add(copy);
-                if (skin == null) filter.sharedMesh = copy;
-                else
-                {
-                    var weights = new float[mesh.blendShapeCount];
-                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
-                    skin.sharedMesh = copy;
-                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
-                }
+                ReplaceMesh(skin, filter, copy);
             }
+        }
+
+        // Puts mesh on the skin, keeping its BlendShape weights, or else on the filter.
+        static void ReplaceMesh(SkinnedMeshRenderer skin, MeshFilter filter, Mesh mesh)
+        {
+            if (skin == null) { filter.sharedMesh = mesh; return; }
+            var weights = new float[skin.sharedMesh.blendShapeCount];
+            for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
+            skin.sharedMesh = mesh;
+            for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
         }
 
         // UniVRM 0.131 ModelExporter skips a renderer without vertices or

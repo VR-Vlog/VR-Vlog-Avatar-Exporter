@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var warnings = new List<string>();
-            Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(fixture.Source, "Missing blink fallback", "Tests", warnings));
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(fixture.Source, "Missing blink fallback", "Tests", exporterVersion: null, warnings: warnings));
             Assert.That(warnings, Has.Member(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning)));
         }
 

@@ -44,7 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void TearDown()
         {
             FakeProcessor.GeneratingAction = null;
-            NdmfExportPreparation.PluginPackagesOverride = null;
+            ExportTestHooks.PluginPackagesOverride = null;
             NdmfExportPreparation.VrcFuryOverride = null;
             Object.DestroyImmediate(source);
             Object.DestroyImmediate(clone);
@@ -532,9 +532,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
                 if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
                 source.AddComponent<GimmickSettingsProbe>();
-                NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+                ExportTestHooks.PluginPackagesOverride = new HashSet<string>();
                 Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
-                NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
+                ExportTestHooks.PluginPackagesOverride = new HashSet<string> { package };
                 Assert.IsTrue(NdmfExportPreparation.NeedsProcessing(source));
                 return;
             }
@@ -550,9 +550,9 @@ namespace VRVlog.LilToonExporter.Tests
             var holder = new GameObject("tool");
             holder.transform.SetParent(source.transform, false);
             Assert.IsNotNull(holder.AddComponent(tool), tool.FullName);
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+            ExportTestHooks.PluginPackagesOverride = new HashSet<string>();
             Assert.IsFalse(NdmfExportPreparation.HasPluginToolComponent(source));
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { toolPackage };
+            ExportTestHooks.PluginPackagesOverride = new HashSet<string> { toolPackage };
             Assert.IsTrue(NdmfExportPreparation.HasPluginToolComponent(source));
         }
 
@@ -563,7 +563,7 @@ namespace VRVlog.LilToonExporter.Tests
             var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
             if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
             source.AddComponent<GimmickSettingsProbe>();
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
+            ExportTestHooks.PluginPackagesOverride = new HashSet<string> { package };
             Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
         }
 

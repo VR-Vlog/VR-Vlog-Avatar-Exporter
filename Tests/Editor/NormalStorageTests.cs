@@ -138,7 +138,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(skins.Length, Is.EqualTo(2));
                 skins[0].sharedMaterial = front;
                 skins[1].sharedMaterial = back;
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Normal storage", "Tests", new List<string>(),
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Normal storage", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.10.0-preview.1", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var glb = GlbDocument.Read(bytes);
                 Assert.DoesNotThrow(() => F.Validate(glb.Json, bytes.LongLength, glb.Binary.Length));

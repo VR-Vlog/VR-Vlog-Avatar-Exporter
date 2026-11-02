@@ -145,7 +145,7 @@ namespace VRVlog.LilToonExporter.Tests
                 reference = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback neutral regression", "Tests", warnings, blinkOptions: blink);
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback neutral regression", "Tests", exporterVersion: null, warnings: warnings, blinkOptions: blink);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var reason = worldFixMode == 2 ? "FreezeToWorld" : worldFixMode == 3 ? "m_Size.x" : parameter;
                 Assert.That(warnings.Any(value => value.Contains("Body size") && value.Contains(reason) &&

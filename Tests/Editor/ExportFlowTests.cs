@@ -34,7 +34,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     calls++;
                     Assert.That(options.Actions, Is.Empty);
-                    var output = UniVrmOneClickExporter.Export(fixture.Source, "Flow regression", "Tests", warnings,
+                    var output = UniVrmOneClickExporter.Export(fixture.Source, "Flow regression", "Tests", warnings: warnings,
                         exporterVersion: "0.11.9", lilToonVersion: "2.3.4",
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryOptions: options, recoveryReport: report);
                     return output;

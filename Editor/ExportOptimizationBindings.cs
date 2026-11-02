@@ -84,7 +84,7 @@ namespace VRVlog.LilToonExporter
                 // AAO registers cloned expression assets with the build's
                 // public NDMF registry. Retain that provenance after Finish;
                 // clip names and CustomClips list positions are mutable.
-                var registryInterface = objectRegistry.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
+                var registryInterface = objectRegistry.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == ExportTypeNames.NdmfObjectRegistry);
                 assetReference = registryInterface?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
                 if (assetReference == null) throw new InvalidOperationException("最適化後の表情の移動情報を取得できませんでした。");
             }
@@ -152,13 +152,8 @@ namespace VRVlog.LilToonExporter
             catch { Dispose(); throw; }
         }
 
-        static bool IsAvatarOptimizerAuthoring(Component component)
-        {
-            if (component == null) return false;
-            for (var type = component.GetType(); type != null; type = type.BaseType)
-                if (type.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
-            return false;
-        }
+        static bool IsAvatarOptimizerAuthoring(Component component) =>
+            component != null && ExportTypeNames.InheritsFrom(component.GetType(), ExportTypeNames.AaoAvatarTag);
 
         static bool Generated(string name) => name != null && (name.StartsWith("__VRVlog_Menu_", StringComparison.Ordinal) ||
             name.StartsWith("__VRVlog_Endpoint_", StringComparison.Ordinal) ||

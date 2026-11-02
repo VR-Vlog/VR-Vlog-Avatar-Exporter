@@ -912,7 +912,7 @@ namespace VRVlog.LilToonExporter.Tests
                 expected = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "SDK layer control regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "SDK layer control regression", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(warnings.Any(value => value.Contains("Body size") && value.Contains("VRCAnimatorLayerControl")), Is.False, string.Join("\n", warnings));

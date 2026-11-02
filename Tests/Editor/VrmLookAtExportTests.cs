@@ -184,7 +184,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static byte[] Export(AttachmentConnectionTests.Fixture fixture, ICollection<string> warnings) =>
-            UniVrmOneClickExporter.Export(fixture.Source, "Look-at regression", "Tests", warnings,
+            UniVrmOneClickExporter.Export(fixture.Source, "Look-at regression", "Tests", exporterVersion: null, warnings: warnings,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
 
         static Dictionary<string, object> Vrm(byte[] bytes) =>
