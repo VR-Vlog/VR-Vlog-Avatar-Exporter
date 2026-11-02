@@ -2914,6 +2914,40 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // Without the QR module nothing registers the third page, and going there says to
+        // install it. A module turned off for this package version counts as missing.
+        [Test]
+        public void WithoutTheTransferModuleTheThirdPageAsksForIt()
+        {
+            var registered = (AppTransferBoardPage.available, AppTransferBoardPage.create, AppTransferBoardPage.transferring, AppTransferBoardPage.setChangeAvatar);
+            AppTransferBoardPage.available = null;
+            AppTransferBoardPage.create = null;
+            AppTransferBoardPage.transferring = null;
+            AppTransferBoardPage.setChangeAvatar = null;
+            var window = BoardHarness.Create();
+            try
+            {
+                Assert.That(AppTransferBoardPage.Create, Is.Null);
+                Assert.That(AppTransferBoardPage.Transferring, Is.Null);
+                Assert.That(AppTransferBoardPage.SetChangeAvatar, Is.Null);
+                var thrown = Assert.Throws<System.Reflection.TargetInvocationException>(() => window.Call("OpenTransferDetails"));
+                Assert.That(thrown.InnerException, Is.TypeOf<InvalidOperationException>());
+                Assert.That(thrown.InnerException.Message, Is.EqualTo(ExporterLocalization.T("QR対応のパッケージを導入してください。")));
+                Assert.That(window.Call("TransferPanel"), Is.Null);
+
+                var on = false;
+                AppTransferBoardPage.Register(() => on, (avatar, back, savePrimary) => new UnityEngine.UIElements.VisualElement(), _ => false, (element, change) => { });
+                Assert.That(AppTransferBoardPage.Create, Is.Null);
+                on = true;
+                Assert.That(AppTransferBoardPage.Create, Is.Not.Null);
+            }
+            finally
+            {
+                (AppTransferBoardPage.available, AppTransferBoardPage.create, AppTransferBoardPage.transferring, AppTransferBoardPage.setChangeAvatar) = registered;
+                Object.DestroyImmediate(window);
+            }
+        }
+
         // A saved list that leaves no preview does not lock the avatar out of the
         // board: it opens with every object and the list waits to be fixed.
         [Test]

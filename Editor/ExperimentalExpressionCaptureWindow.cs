@@ -2567,11 +2567,11 @@ namespace VRVlog.LilToonExporter
                     Repaint();
                     return;
                 }
-                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
+                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(ExportEntry.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
             }
-            var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
+            var recovery = ExportEntry.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in
                 // one attempt the standard faces use the check made for it (the
                 // one above on the first attempt, Export's own on a retry).
@@ -2623,7 +2623,7 @@ namespace VRVlog.LilToonExporter
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RebuildBoard();
-            if (LilToonExporterWindow.EmbeddedTransferMethod() == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
+            if (AppTransferBoardPage.Create == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
             SetPage(InfoPage);
         }
 
@@ -2641,8 +2641,8 @@ namespace VRVlog.LilToonExporter
             get
             {
                 if (transferPanel?.panel == null) return false;
-                try { return Equals(LilToonExporterWindow.EmbeddedTransferringMethod()?.Invoke(null, new object[] { transferPanel }), true); }
-                catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); return false; }
+                try { return AppTransferBoardPage.Transferring?.Invoke(transferPanel) ?? false; }
+                catch (Exception exception) { Debug.LogException(exception); return false; }
             }
         }
 
@@ -2653,22 +2653,14 @@ namespace VRVlog.LilToonExporter
             transferPanel = null; transferPanelTried = true; transferPanelFor = source;
             // Its "戻る" goes to the objects page, asking first while it transfers. "QRコードを作る" is the
             // blue button, never "VRMを保存".
-            try
-            {
-                transferPanel = LilToonExporterWindow.EmbeddedTransferMethod()?.Invoke(null,
-                    new object[] { source, (Action)(() => PanelBack(TransferPanelTransferring)), (Func<bool>)(() => false) }) as UnityEngine.UIElements.VisualElement;
-            }
-            catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
+            try { transferPanel = AppTransferBoardPage.Create?.Invoke(source, () => PanelBack(TransferPanelTransferring), () => false); }
+            catch (Exception exception) { Debug.LogException(exception); }
             if (transferPanel != null)
             {
                 transferPanel.style.position = UnityEngine.UIElements.Position.Absolute;
                 // "別のアバターを選ぶ" after a transfer: the avatar change of the first page.
-                try
-                {
-                    LilToonExporterWindow.EmbeddedChangeAvatarMethod()?.Invoke(null, new object[] { transferPanel,
-                        (Action)(() => { if (ConfirmChangeAvatar()) Queue(ChangeAvatar); }) });
-                }
-                catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
+                try { AppTransferBoardPage.SetChangeAvatar?.Invoke(transferPanel, () => { if (ConfirmChangeAvatar()) Queue(ChangeAvatar); }); }
+                catch (Exception exception) { Debug.LogException(exception); }
             }
             return transferPanel;
         }

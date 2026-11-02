@@ -48,7 +48,6 @@ TRANSFER_FILES = {
 TRANSFER_REFERENCE = re.compile(
     r"\b(?:LanTransfer\w*|CloudTransfer\w*|CloudDevelopment\w*|(?:Cloud|Lan)VrmTransfer\w*|CloudEncryptedSnapshot|ZXing|BouncyCastle)\b"
     r"|\b(?:GUID:)?b15e228f27f843bdbdd4c2335be4354b\b", re.IGNORECASE)
-OPTIONAL_TRANSFER_TYPE_LITERAL = '"VRVlog.LilToonExporter.LanTransfer.CloudVrmTransferWindow, VRVlog.LanTransfer.Editor"'
 VERSION = re.compile(r"\d+\.\d+\.\d+(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
 
 
@@ -119,10 +118,8 @@ def verify_transfer_dependencies(contents, transfer):
             if not transfer:
                 text = re.sub(r"\\u([0-9a-fA-F]{4})|\\U([0-9a-fA-F]{8})",
                               lambda match: chr(int(match[1] or match[2], 16)), text)
-                # One optional lookup is reviewed. No typed/GUID reference or
-                # copied transfer implementation may enter the stable package.
-                if name == "Editor/LilToonExporterWindow.cs" and text.count(OPTIONAL_TRANSFER_TYPE_LITERAL) == 1:
-                    text = text.replace(OPTIONAL_TRANSFER_TYPE_LITERAL, '""')
+                # The transfer references the exporter, never the other way: no name,
+                # GUID reference or copied transfer implementation may enter the stable package.
                 if TRANSFER_REFERENCE.search(text):
                     raise ValueError("QR transfer dependency cannot be distributed in stable: " + name)
     if not transfer:
