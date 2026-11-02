@@ -112,8 +112,6 @@ namespace VRVlog.LilToonExporter
         Vector2? dragMouse;
         // Window-relative slot rectangles, kept for tests and screenshots.
         readonly System.Collections.Generic.Dictionary<Place, Rect> slotRects = new System.Collections.Generic.Dictionary<Place, Rect>();
-        // The step row as last drawn, kept for tests.
-        StepIndicator.Layout stepLayout;
         // Tiles with a × button, which shows only under the mouse; the
         // window repaints when the mouse moves onto or off one of them.
         readonly System.Collections.Generic.List<Rect> closableTiles = new System.Collections.Generic.List<Rect>();
@@ -929,7 +927,6 @@ namespace VRVlog.LilToonExporter
             var names = StepIndicator.Names();
             var shown = StepIndicator.Shown(session != null, page);
             var repaint = Event.current.type == EventType.Repaint;
-            if (repaint) stepLayout = layout;
             for (var index = 0; index < names.Length; index++)
             {
                 if (index > 0 && repaint) EditorGUI.DrawRect(layout.Lines[index - 1], CardBorderColor);
