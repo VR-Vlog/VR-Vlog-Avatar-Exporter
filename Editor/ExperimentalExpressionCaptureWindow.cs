@@ -2788,7 +2788,6 @@ namespace VRVlog.LilToonExporter
             blinkFallback = null; blinkFallbackStale = true;
         }
     }
-#if UNITY_5_3_OR_NEWER
     // projectChanged does not fire for every in-place .anim reimport.
     internal sealed class ExpressionCaptureAssetPostprocessor : AssetPostprocessor
     {
@@ -2801,6 +2800,5 @@ namespace VRVlog.LilToonExporter
                 ExperimentalExpressionCaptureWindow.AnimationAssetsReimported();
         }
     }
-#endif
 
 }
