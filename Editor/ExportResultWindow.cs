@@ -371,7 +371,7 @@ namespace VRVlog.LilToonExporter
 
         void Copy()
         {
-            ExportDetailsText.Copy(result?.Text(LilToonExporterWindow.PackageVersion()));
+            ExportDetailsText.Copy(result?.Text(ExportEntry.PackageVersion()));
             feedback = ExporterLocalization.T("全文をコピーしました");
             feedbackFailed = false;
         }
@@ -385,7 +385,7 @@ namespace VRVlog.LilToonExporter
 
         void SaveText()
         {
-            var text = result?.Text(LilToonExporterWindow.PackageVersion());
+            var text = result?.Text(ExportEntry.PackageVersion());
             var done = ExportDetailsText.Save(text, () => EditorUtility.SaveFilePanel(
                 ExporterLocalization.T("書き出し詳細を保存"), "", "VRVlog-export-details", "txt"), out var error);
             if (done || error != null)

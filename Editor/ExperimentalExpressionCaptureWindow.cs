@@ -2582,11 +2582,11 @@ namespace VRVlog.LilToonExporter
                     Repaint();
                     return;
                 }
-                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
+                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(ExportEntry.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
             }
-            var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
+            var recovery = ExportEntry.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in
                 // one attempt the standard faces use the check made for it (the
                 // one above on the first attempt, Export's own on a retry).

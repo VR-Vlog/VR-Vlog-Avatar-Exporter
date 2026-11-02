@@ -16,6 +16,7 @@ glb = (root / "Editor/GlbDocument.cs").read_text(encoding="utf-8")
 injector = (root / "Editor/LilToonGlbExtension.cs").read_text(encoding="utf-8")
 reader = (root / "Editor/LilToonMaterialReader.cs").read_text(encoding="utf-8")
 window = (root / "Editor/LilToonExporterWindow.cs").read_text(encoding="utf-8")
+entry = (root / "Editor/ExportEntry.cs").read_text(encoding="utf-8")
 one_click = (root / "Editor/UniVrmOneClickExporter.cs").read_text(encoding="utf-8")
 recovery = (root / "Editor/ExportRecovery.cs").read_text(encoding="utf-8")
 fingerprint = (root / "Editor/ExportSourceFingerprint.cs").read_text(encoding="utf-8")
@@ -159,32 +160,32 @@ assert "File.Replace(temporary, destination, null)" in recovery_session
 assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in recovery_session
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
 assert "UniVrmOneClickExporter.Export" not in window
-assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
-assert 'var version = InstalledLilToonVersion();' in window and 'return version;' in window
+assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in entry
+assert 'var version = InstalledLilToonVersion();' in entry and 'return version;' in entry
 # lilToon is the registered package or, imported from its unitypackage, found under Assets.
 installation = (root / "Editor/Compatibility/LilToonInstallation.cs").read_text(encoding="utf-8")
-assert 'internal static string InstalledLilToonVersion() => Compatibility.LilToonInstallation.Find()?.Version;' in window
+assert 'internal static string InstalledLilToonVersion() => Compatibility.LilToonInstallation.Find()?.Version;' in entry
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 assert 'public const string PackageName = "jp.lilxyzw.liltoon";' in installation and 'package.name, PackageName' in installation
 assert installation.index('PackageInfo.GetAllRegisteredPackages()') < installation.index('return FindUnderAssets();')
 assert 'PackageJsonGuid = "397d2fa9e93fb5d44a9540d5f01437fc"' in installation
-assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in window
+assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in entry
 # Both export entries compare the shaders the avatar uses with the catalogue;
 # only a missing lilToon (or its baker) stops, other differences are warnings.
-assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);")
-assert "LilToonExporterWindow.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
+assert entry.index("if (error != null) throw new InvalidOperationException(error);") < entry.index("LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);")
+assert "ExportEntry.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 # Both "アプリに転送" exports go through the expression board's save; the quick
 # one prepares a board out of sight, so it writes what an untouched "通常" writes.
 assert "ExperimentalExpressionCaptureWindow.PrepareHidden(avatar)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert "board.TransferExport(" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert "UniVrmOneClickExporter.Export" not in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
-assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
+assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in entry
 # The installed manifest supplies the release version. A patch release can
 # preserve the UI source, including its older fallback for unregistered copies.
-assert '!string.IsNullOrWhiteSpace(info.version) ? info.version :' in window
-assert "using UnityEditor.PackageManager;" not in window
-assert "using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;" in window
-assert "FindLilToonPackage" not in window and "GetAllRegisteredPackages" not in window
+assert '!string.IsNullOrWhiteSpace(info.version) ? info.version :' in entry
+assert "using UnityEditor.PackageManager;" not in entry
+assert "using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;" in entry
+assert "FindLilToonPackage" not in entry and "GetAllRegisteredPackages" not in entry
 assert "Vrm10AppearanceExporter.Export" in one_click
 assert one_click.index("NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true)") < one_click.index("VrChatExpressionMenu.Read(source)")
 assert one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)") < one_click.index("NdmfExportPreparation.ValidateCopy(source, clone,") < one_click.index("MaAppearanceSnapshot.Apply(source, clone,")
@@ -287,7 +288,7 @@ assert 'OutlineMaskTexture.Create(Texture(source, "_OutlineWidthMask"), textures
 assert "HasPortableOutline(source)" in one_click
 assert 'OutlineWidthMultiplyTexture = outlineEnabled ? Texture(source, "_OutlineTex")' not in one_click
 assert 'private string avatarName = "";' not in window
-normal_export = window.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
+normal_export = entry.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
     'internal static string PackageVersion()', 1
 )[0]
 assert 'bytes = create(new ExportRecoveryOptions(), report, warnings);' in normal_export
@@ -332,7 +333,7 @@ assert 'session.CreatePreview(' not in recovery_comparison
 assert 'GUILayout.Toolbar(' not in recovery_comparison
 assert 'controlRigGenerationOption: ControlRigGenerationOption.None' in recovery_comparison
 assert '!HasVrmPreview || !session.CanSave' in recovery_comparison
-assert 'BuildSupportText(LilToonExporterWindow.PackageVersion())' in failure_window
+assert 'BuildSupportText(ExportEntry.PackageVersion())' in failure_window
 assert (root / "Tests/Editor/ExportRecoveryTests.cs").is_file()
 assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone)') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')

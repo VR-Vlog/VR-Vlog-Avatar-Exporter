@@ -458,7 +458,7 @@ namespace VRVlog.LilToonExporter
             UniVrmOneClickExporter.ValidateSourceHumanoid(Source);
             UniVrmOneClickExporter.ValidateSourceHasMesh(Source);
             // Stop without lilToon before preparing the export copy; other versions only warn.
-            var lilToonVersion = LilToonExporterWindow.RequireLilToon(Source, warnings);
+            var lilToonVersion = ExportEntry.RequireLilToon(Source, warnings);
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
             // A chosen "none" is a face without a pose or morphs: an empty
@@ -498,7 +498,7 @@ namespace VRVlog.LilToonExporter
             try
             {
                 var authoredVrm = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings: warnings,
-                    exporterVersion: LilToonExporterWindow.PackageVersion(),
+                    exporterVersion: ExportEntry.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,

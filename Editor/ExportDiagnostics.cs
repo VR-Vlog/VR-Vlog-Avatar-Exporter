@@ -295,8 +295,8 @@ namespace VRVlog.LilToonExporter
 
             var head = diagnostics.head;
             head.Add("VR Vlog 書き出し診断");
-            head.Add("Exporter " + LilToonExporterWindow.PackageVersion() + " / Unity " + Application.unityVersion +
-                " / lilToon " + (LilToonExporterWindow.InstalledLilToonVersion() ?? "なし"));
+            head.Add("Exporter " + ExportEntry.PackageVersion() + " / Unity " + Application.unityVersion +
+                " / lilToon " + (ExportEntry.InstalledLilToonVersion() ?? "なし"));
             head.Add("書き出し方法 " + (string.IsNullOrEmpty(kind) ? "書き出し" : kind) +
                 " / マテリアルの形式 " + (records.Count == 0 ? "MToonのみ" : (full ? "lilToon" : "lilToon（モバイル）") + " " + records.Count + "/" + gltfMaterials.Count));
             head.Add("合計 メッシュ " + diagnostics.meshes.Count + " / 頂点 " + Number(vertexTotal) + " / マテリアル " + gltfMaterials.Count +
