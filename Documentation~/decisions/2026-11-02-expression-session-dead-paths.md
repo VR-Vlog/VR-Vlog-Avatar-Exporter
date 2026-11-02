@@ -1,7 +1,7 @@
 # 表情のセッションから、本番で通らない経路と同じ表の写しを消す
 
 - 日付: 2026-11-02
-- 対象: `Editor/ExperimentalExpressionCaptureSession*.cs`・`Editor/ExpressionPresetStore.cs`・`Editor/Locales`・`Tests/Editor`
+- 対象: `Editor/ExperimentalExpressionCaptureSession*.cs`・`Editor/ExpressionPresetStore.cs`・`Editor/VrmTrackingExpressions.cs`・`Editor/Locales`・`Tests/Editor`
 
 ## 背景
 
@@ -13,6 +13,7 @@
   - `ExpressionPresetStore` が 1 件ずつ読むのに使う検査は `LoadPreset` として残した。同じ表情の重複は、これまでどおり `ExpressionPresetStore.Load` が飛ばす。
   - 消した経路だけが出していた訳文 10 件を 4 言語から消した。
   - 保存・読み込みの往復だけを確かめていたテストは消し、`LoadPreset` が壊れた割り当てを拒むテストを足した。
+- 書き出した VRM に PerfectSync の 52 表情を後から書き足す `VrmTrackingExpressions.Add` と、それだけが使う補助と、それだけが出す訳文 1 件を消した。書き出しの呼び出しが無くなってから使われていない。追跡の設定の検査（`Validate`・`ValidateMorph`）は書き出しが使うので残した。`TrackingExpressionNames` は Unity の型を持たずに Unity を使わないテストでコンパイルするファイルなので、検査はそこへ移さない。
 
 ## 確かめたこと
 
