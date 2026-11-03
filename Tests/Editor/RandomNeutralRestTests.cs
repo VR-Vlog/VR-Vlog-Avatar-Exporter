@@ -81,8 +81,6 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var before = ExportSourceFingerprint.Compute(avatar); var warnings = new List<string>();
             var error = Assert.Catch<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar, warnings: warnings));
-            Assert.That(VrChatParameterDriver.IsRandomCapability(error), Is.False,
-                "Malformed data and unknown effects must never be mislabeled as a recoverable Random capability.");
             Assert.That(warnings.Any(value => value.Contains("Random")), Is.False);
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17));

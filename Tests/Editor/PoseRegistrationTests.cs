@@ -380,6 +380,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("BlendTreeBody", TestName = "BlendTreeThatMovesTheBodyStillReportsThePose")]
         [TestCase("Body", TestName = "BodyMenuStillReportsUnrelatedTrackingControl")]
         [TestCase("Driver", TestName = "DriverForwardedMenuStillReportsUnrelatedTrackingControl")]
+        [TestCase("Unreadable", TestName = "UnreadableBodyReachKeepsTheFullProofAndWarnsWhy")]
         public void MenuThatCannotReachABodyLayerIsNotAnUnsupportedPose(string scenario)
         {
             using var f = new AttachmentConnectionTests.Fixture(); var descriptor = Descriptor(f.Source);
@@ -420,7 +421,7 @@ namespace VRVlog.LilToonExporter.Tests
                 SetBodyAnimation(tracking); VrcAvatar.Set(tracking, "trackingLeftHand", "Tracking");
                 Edge(handMachine, fist).AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
                 var gestureLayers = new List<AnimatorControllerLayer> { new AnimatorControllerLayer { name = "Left Hand", defaultWeight = 1, stateMachine = handMachine } };
-                if (scenario != "Clothing" && !blendTree)
+                if (scenario != "Clothing" && scenario != "Unreadable" && !blendTree)
                 {
                     var input = scenario == "Body" ? "Toggle_A" : "Pose_B";
                     gesture.AddParameter(input, AnimatorControllerParameterType.Bool);
@@ -456,6 +457,12 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     fx.AddParameter("Toggle_A", AnimatorControllerParameterType.Bool);
                     var shown = fxMachine.AddState("On"); shown.writeDefaultValues = false; shown.motion = on;
+                    // A clothing toggle nested deeper than the reach check reads.
+                    for (var depth = 0; scenario == "Unreadable" && depth < 66; depth++)
+                    {
+                        var nested = new BlendTree { name = "Nested " + depth }; nested.AddChild(shown.motion); owned.Add(nested);
+                        shown.motion = nested;
+                    }
                     var hidden = fxMachine.AddState("Off"); hidden.writeDefaultValues = false; hidden.motion = off;
                     Edge(fxMachine, hidden).AddCondition(AnimatorConditionMode.If, 0, "Toggle_A");
                     Edge(fxMachine, shown).AddCondition(AnimatorConditionMode.IfNot, 0, "Toggle_A");
@@ -502,6 +509,9 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 // The existing proof still runs and still rejects the pose.
                 Assert.That(result[0].NotBodyPose, Is.False);
+                Assert.That(warnings.Count(w => w.StartsWith(PoseMenuResolver.BodyReachUnknownWarning, StringComparison.Ordinal)), Is.EqualTo(scenario == "Unreadable" ? 1 : 0));
+                if (scenario == "Unreadable")
+                    Assert.That(warnings, Has.Member(PoseMenuResolver.BodyReachUnknownWarning + "BlendTreeの階層が深すぎます。"));
                 if (scenario == "BlendTreeBody")
                 {
                     Assert.That(result[0].Error, Is.Not.Null);

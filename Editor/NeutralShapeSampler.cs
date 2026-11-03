@@ -36,7 +36,7 @@ namespace VRVlog.LilToonExporter
             // a large expression menu or reusing a pre-NDMF controller.
             var metadata = VrChatExpressionMenu.Read(prepared, new VrChatMenuImportPolicy { SkipAll = true });
             if (metadata.Controller == null) return new List<VrChatExpressionMenu.MorphValue>();
-            NeutralInputProof.Read(prepared, metadata);
+            NeutralInputProof.Read(prepared, metadata, warnings);
             var fixedContext = FixedExpressionContext.Create(metadata.Controller, metadata.Defaults, metadata);
             var automatic = AutomaticChannels(prepared);
             var completed = new HashSet<string>(StringComparer.Ordinal);

@@ -157,18 +157,6 @@ namespace VRVlog.LilToonExporter
             return number;
         }
 
-        private sealed class RandomCapability : InvalidOperationException
-        {
-            internal RandomCapability(string message) : base(message) { }
-        }
-
-        internal static bool IsRandomCapability(Exception error)
-        {
-            for (; error != null; error = error.InnerException)
-                if (error is RandomCapability) return true;
-            return false;
-        }
-
         // The operations whose destinations are needed, with their labels. A
         // program that could not be read stops before any of them.
         private static IEnumerable<(Operation Operation, string Label)> Needed(Program program, ISet<string> needed)
@@ -201,11 +189,13 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal static void Execute(Program program, IDictionary<string, AnimatorControllerParameterType> types,
+        // Returns why an unresolved Random stops the program there, or null
+        // when every needed operation ran. Invalid data still throws.
+        internal static string Execute(Program program, IDictionary<string, AnimatorControllerParameterType> types,
             ISet<string> expressionParameters, ISet<string> needed, bool isLocal, Func<string, double> read, Action<string, double> write,
             ISet<string> suppliedInputs = null)
         {
-            if (program.LocalOnly && !isLocal) return;
+            if (program.LocalOnly && !isLocal) return null;
             // Known SDK operations whose destinations cannot reach this
             // expression need not be approximated (including Random).
             foreach (var (op, label) in Needed(program, needed))
@@ -215,7 +205,7 @@ namespace VRVlog.LilToonExporter
                     if (BuiltIn.Contains(op.Destination)) throw new InvalidOperationException("VRChat組み込みパラメーターへの書き込みはできません。");
                     if (!Writable(types, op.Destination, out var type))
                         throw new InvalidOperationException("書き込み先の型を解決できません。");
-                    if (op.UnresolvedRandom) throw new RandomCapability(op.Error);
+                    if (op.UnresolvedRandom) return label + ": " + op.Error;
                     if (op.Error != null) throw new InvalidOperationException(op.Error);
                     double value;
                     if (op.Kind == "Copy")
@@ -253,6 +243,7 @@ namespace VRVlog.LilToonExporter
                 }
                 catch (InvalidOperationException error) { throw new InvalidOperationException(label + ": " + error.Message, error); }
             }
+            return null;
         }
     }
 }

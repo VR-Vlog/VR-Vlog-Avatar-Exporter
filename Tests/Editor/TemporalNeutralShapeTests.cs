@@ -223,7 +223,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var warnings = new List<string>();
                 var error = Assert.Catch<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar, warnings: warnings));
                 Assert.That(error.Message, Does.Contain("Random"));
-                Assert.That(VrChatParameterDriver.IsRandomCapability(error), Is.False);
                 Assert.That(warnings, Is.Empty, "Malformed Random data must fail before a prepared-rest fallback can mask it.");
             }
             else
