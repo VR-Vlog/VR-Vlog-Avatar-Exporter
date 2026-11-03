@@ -5,7 +5,6 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UnityEngine.UIElements;
 
 namespace VRVlog.LilToonExporter.LanTransfer.Tests
 {
@@ -705,32 +704,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     window.Close();
                     UnityEngine.Object.DestroyImmediate(avatar);
                 }
-            }
-        }
-
-        // Opening a scene destroys the avatar. Its name must leave the avatar field with it.
-        [Test]
-        public void TheAvatarFieldStopsShowingADestroyedAvatar()
-        {
-            const string name = "vrvlog-app-transfer-gone";
-            var panel = new AppTransferPanel();
-            var root = new UnityEngine.UIElements.VisualElement();
-            var avatar = new UnityEngine.GameObject(name, typeof(UnityEngine.Animator));
-            try
-            {
-                panel.Build(root);
-                panel.Select(avatar, true);
-                var label = root.Q<UnityEditor.UIElements.ObjectField>("avatar-field").Q<UnityEngine.UIElements.Label>(null, "unity-object-field-display__label");
-                StringAssert.Contains(name, label.text);
-                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
-                Assert.That(avatar == null, "Opening the scene destroys the avatar.");
-                panel.Refresh();
-                StringAssert.DoesNotContain(name, label.text);
-            }
-            finally
-            {
-                panel.Disable();
-                if (avatar != null) UnityEngine.Object.DestroyImmediate(avatar);
             }
         }
 

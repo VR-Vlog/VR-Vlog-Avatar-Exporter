@@ -1,7 +1,7 @@
 # シーンを開いたあと、アバター欄に消えたアバターの名前を残さない
 
 - 日付: 2026-11-03
-- 対象: `Editor/LanTransfer/AppTransferPanel.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`
+- 対象: `Editor/LanTransfer/AppTransferPanel.cs`・`Tests/LanTransfer/CloudTransferWindowTests.cs`
 
 ## 背景
 
