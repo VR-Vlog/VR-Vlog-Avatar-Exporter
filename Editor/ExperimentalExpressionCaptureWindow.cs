@@ -112,8 +112,6 @@ namespace VRVlog.LilToonExporter
         Vector2? dragMouse;
         // Window-relative slot rectangles, kept for tests and screenshots.
         readonly System.Collections.Generic.Dictionary<Place, Rect> slotRects = new System.Collections.Generic.Dictionary<Place, Rect>();
-        // The step row as last drawn, kept for tests.
-        StepIndicator.Layout stepLayout;
         // Tiles with a × button, which shows only under the mouse; the
         // window repaints when the mouse moves onto or off one of them.
         readonly System.Collections.Generic.List<Rect> closableTiles = new System.Collections.Generic.List<Rect>();
@@ -168,8 +166,6 @@ namespace VRVlog.LilToonExporter
         static Color DashColor => Skin(0x9a9a9a, 0x6a6a6a);
         static Color TextColor => Skin(0xd2d2d2, 0x1e1e1e);
         static Color DimColor => Skin(0x9a9a9a, 0x5a5a5a);
-        static Color AccentColor => Skin(0x7fa6c9, 0x3a72b0);
-        static Color ErrorColor => Skin(0xe0675f, 0xb3261e);
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
         GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim, dropBox,
@@ -824,7 +820,7 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
                 else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
-                session = ExperimentalExpressionCaptureSession.Create(source, replayInstalledDefaults: false, objects, stored.Gimmicks(), keptPoses);
+                session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
                 if (keptPoses == null)
                 {
@@ -848,18 +844,8 @@ namespace VRVlog.LilToonExporter
                 if (renderers.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("表示するメッシュがありません。"));
                 var bounds = renderers[0].bounds;
                 foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
-                var animator = session.Copy.GetComponent<Animator>();
-                var head = animator != null && animator.avatar != null && animator.avatar.isHuman
-                    ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
-                center = head != null ? head.position + Vector3.up * bounds.size.y * .065f : bounds.center;
-                distance = head != null ? Mathf.Max(.35f, bounds.size.y * .65f) : Mathf.Max(.5f, bounds.size.magnitude * 1.2f);
-                preview.camera.fieldOfView = 30;
-                preview.camera.nearClipPlane = .01f; preview.camera.farClipPlane = 100;
-                preview.camera.clearFlags = CameraClearFlags.SolidColor;
-                preview.camera.backgroundColor = new Color(.18f, .18f, .2f);
-                preview.lights[0].intensity = 1;
-                preview.lights[0].transform.rotation = Quaternion.Euler(30, 150, 0);
-                preview.lights[1].intensity = .5f; preview.ambientColor = Color.gray;
+                PreviewRendering.FrameHead(session.Copy, bounds, out center, out distance);
+                PreviewRendering.Apply(preview);
                 yaw = 0; zoom = 1;
                 previewName = ExporterLocalization.T("基準の顔");
                 status = null;
@@ -937,57 +923,6 @@ namespace VRVlog.LilToonExporter
 
         internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません・ファイルを直すか書き出さない表情へ移す・{1}";
 
-        internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
-        internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
-        // The ordinary route kept the menu faces, fewer than the list; some list
-        // faces are not in the VRM. Which ones and how many is not known: menu faces
-        // and list clips share no key, and a non-FX layer can break menu faces the list has.
-        internal const string MenuShortKeptMenuFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧{1}件のうち書き出していない表情があります";
-        // The ordinary route kept menu faces the list does not show; nothing was left out.
-        internal const string MenuExceedsListFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧は{1}件です";
-
-        // What a save does when the menu gives fewer faces than the list. The
-        // saved bytes, the list count it was decided with and the lines of the result.
-        internal sealed class MenuShortResult
-        {
-            public byte[] Exported;
-            public int ListedFaces;
-            public string Recorded;
-            public string Error;
-            public string Kept;
-        }
-
-        // rebuildBoard is null once the board closed; otherwise it rebuilds the
-        // board and gives its list count.
-        // A failed recordList is undone by exportMenuAgain, whose bytes are saved.
-        internal static MenuShortResult ResolveMenuShort(byte[] exported, int menuFaces, int listedFaces,
-            Func<int> rebuildBoard, Func<byte[]> recordList, Func<byte[]> exportMenuAgain)
-        {
-            var result = new MenuShortResult { Exported = exported, ListedFaces = listedFaces };
-            // A recovery attempt after the board closed has no list to record.
-            if (rebuildBoard == null)
-            {
-                result.Kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
-                return result;
-            }
-            // The board may have changed before a recovery attempt.
-            var listed = rebuildBoard();
-            result.ListedFaces = listed;
-            try
-            {
-                result.Exported = recordList();
-                result.Recorded = string.Format(ExporterLocalization.T(MenuShortRecordedFormat), menuFaces, listed);
-            }
-            catch (Exception exception) when (!(exception is OperationCanceledException))
-            {
-                // The menu result saved before this change is saved again.
-                result.Exported = exportMenuAgain();
-                result.Error = exception.Message;
-                result.Kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listed);
-            }
-            return result;
-        }
-
         // ---- Pages ----
 
         // Circles joined by lines, each followed by the step name: a check for
@@ -1002,7 +937,6 @@ namespace VRVlog.LilToonExporter
             var names = StepIndicator.Names();
             var shown = StepIndicator.Shown(session != null, page);
             var repaint = Event.current.type == EventType.Repaint;
-            if (repaint) stepLayout = layout;
             for (var index = 0; index < names.Length; index++)
             {
                 if (index > 0 && repaint) EditorGUI.DrawRect(layout.Lines[index - 1], CardBorderColor);
@@ -1020,7 +954,7 @@ namespace VRVlog.LilToonExporter
 
         void DrawStepMarker(Rect circle, StepIndicator.Marker marker, string number)
         {
-            var fill = marker == StepIndicator.Marker.Error ? ErrorColor : marker == StepIndicator.Marker.Ring ? DimColor : AccentButtonColor;
+            var fill = marker == StepIndicator.Marker.Error ? ExporterColors.Error : marker == StepIndicator.Marker.Ring ? DimColor : AccentButtonColor;
             GUI.DrawTexture(circle, Disc(marker == StepIndicator.Marker.Ring), ScaleMode.StretchToFill, true, 0, fill, 0, 0);
             if (marker == StepIndicator.Marker.Error) DrawStepGlyph(circle, "!", stepMarkerText);
             else if (marker == StepIndicator.Marker.Check)
@@ -1499,7 +1433,7 @@ namespace VRVlog.LilToonExporter
         {
             var title = ExporterLocalization.T(label) + "　" + Count(presets);
             GUI.Label(rect, new GUIContent(Fit(title, cardText, rect.width), title), cardText);
-            if (presets != ExperimentalExpressionCaptureSession.BlinkPresets) return;
+            if (presets != ExpressionPresetGroups.Blinks) return;
             var note = ExporterLocalization.T("左右はアバターから見て");
             var used = cardText.CalcSize(new GUIContent(title)).x + 10;
             if (used + dimMini.CalcSize(new GUIContent(note)).x <= rect.width)
@@ -1564,7 +1498,7 @@ namespace VRVlog.LilToonExporter
                 // An empty slot can also be filled from the list, without a drag.
                 if (GUI.Button(thumb, new GUIContent("", ExporterLocalization.T("一覧から選ぶ")), GUIStyle.none)) ShowPresetMenu(preset, thumb);
             }
-            if (repaint && Nullable.Equals(dropHover, target)) Outline(tile, AccentColor);
+            if (repaint && Nullable.Equals(dropHover, target)) Outline(tile, ExporterColors.Accent);
 
             var stateRect = new Rect(rect.x + 1, tile.yMax + 1, rect.width - 2, ExpressionSlotLayout.State);
             var state = reason ?? SlotState(preset, assignment);
@@ -1596,7 +1530,7 @@ namespace VRVlog.LilToonExporter
             if (session.HasAuthoredPreset(preset)) return ExporterLocalization.T("元のVRM設定");
             // A blink slot nobody chose follows the blink setting; "none" chosen
             // on it leaves it empty.
-            if ((assignment == null || assignment.Automatic) && ExperimentalExpressionCaptureSession.BlinkPresets.Contains(preset)) return blinkFallback ?? "";
+            if ((assignment == null || assignment.Automatic) && ExpressionPresetGroups.Blinks.Contains(preset)) return blinkFallback ?? "";
             // An open gaze or neutral slot is filled from names at export.
             if (assignment == null && ExperimentalExpressionCaptureSession.FilledFromNames(preset)) return ExporterLocalization.T("名前から埋める");
             return ExporterLocalization.T("空のまま保存");
@@ -1650,7 +1584,7 @@ namespace VRVlog.LilToonExporter
             // A short line in the middle, so the gap does not read as the edge of the footer.
             if (current.type == EventType.Repaint)
                 EditorGUI.DrawRect(new Rect(Mathf.Round(handle.center.x - 16), Mathf.Round(handle.center.y - 1), 32, 2),
-                    GUIUtility.hotControl == id ? AccentColor : CardBorderColor);
+                    GUIUtility.hotControl == id ? ExporterColors.Accent : CardBorderColor);
             switch (current.GetTypeForControl(id))
             {
                 case EventType.MouseDown when current.button == 0 && handle.Contains(current.mousePosition):
@@ -1704,7 +1638,7 @@ namespace VRVlog.LilToonExporter
             if (Event.current.type == EventType.Repaint)
             {
                 EditorGUI.DrawRect(rect, PanelColor);
-                Outline(rect, Nullable.Equals(dropHover, target) ? AccentColor : LineColor);
+                Outline(rect, Nullable.Equals(dropHover, target) ? ExporterColors.Accent : LineColor);
                 EditorGUI.DrawRect(new Rect(rect.x, rect.y + PanelHeader, rect.width, 1), LineColor);
             }
             var header = new Rect(rect.x + 8, rect.y, rect.width - 16, PanelHeader);
@@ -1737,7 +1671,7 @@ namespace VRVlog.LilToonExporter
             DrawTile(tile, thumb, board.NameOf(clip), clip, broken ? null : Thumbnail(clip, null, null, size), false,
                 null, ItemTooltip(item), closeTooltip, close);
             if (!broken || Event.current.type != EventType.Repaint) return;
-            Outline(tile, ErrorColor);
+            Outline(tile, ExporterColors.Error);
             var icon = EditorGUIUtility.IconContent("console.erroricon").image;
             if (icon != null) GUI.DrawTexture(new Rect(thumb.center.x - 16, thumb.center.y - 16, 32, 32), icon, ScaleMode.ScaleToFit);
         }
@@ -1948,7 +1882,7 @@ namespace VRVlog.LilToonExporter
             if (Event.current.type != EventType.Repaint || dragMouse == null || !(DragAndDrop.GetGenericData(DragKey) is AnimationClip clip)) return;
             var text = Fit(board != null ? board.NameOf(clip) : clip.name, cardText, 200);
             var rect = new Rect(dragMouse.Value.x + 14, dragMouse.Value.y + 6, Mathf.Min(216, cardText.CalcSize(new GUIContent(text)).x + 16), 22);
-            EditorGUI.DrawRect(rect, CardColor); Outline(rect, AccentColor);
+            EditorGUI.DrawRect(rect, CardColor); Outline(rect, ExporterColors.Accent);
             GUI.Label(new Rect(rect.x + 8, rect.y, rect.width - 12, rect.height), text, cardText);
         }
 
@@ -2189,12 +2123,12 @@ namespace VRVlog.LilToonExporter
             cardText = Label(EditorStyles.label, TextColor);
             cardTextDisabled = Label(EditorStyles.label, Hex(0x6e6e6e));
             dimText = Label(EditorStyles.label, DimColor);
-            errorText = Label(EditorStyles.label, ErrorColor);
+            errorText = Label(EditorStyles.label, ExporterColors.Error);
             boldText = Label(EditorStyles.boldLabel, TextColor);
             dimMini = Label(EditorStyles.miniLabel, DimColor);
             dimMiniRight = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleRight);
             dimMiniBold = Label(EditorStyles.miniBoldLabel, DimColor);
-            errorMini = Label(EditorStyles.miniLabel, ErrorColor);
+            errorMini = Label(EditorStyles.miniLabel, ExporterColors.Error);
             nameCenter = Label(EditorStyles.label, TextColor, TextAnchor.MiddleCenter);
             // The badge sits on the thumbnail, so it is light on both skins.
             badgeText = Label(EditorStyles.miniLabel, Hex(0xd2d2d2), TextAnchor.MiddleCenter);
@@ -2204,7 +2138,7 @@ namespace VRVlog.LilToonExporter
             // The step circles: white on the filled ones, dimmed in the ring.
             stepMarkerText = Label(EditorStyles.miniBoldLabel, Color.white, TextAnchor.MiddleCenter);
             stepMarkerDim = Label(EditorStyles.miniBoldLabel, DimColor, TextAnchor.MiddleCenter);
-            stepErrorBold = Label(EditorStyles.boldLabel, ErrorColor);
+            stepErrorBold = Label(EditorStyles.boldLabel, ExporterColors.Error);
             // Drop areas: the hint is centred in the box and readable on both skins.
             dropBox = Label(GUI.skin.box, DimColor, TextAnchor.MiddleCenter);
             dropBox.wordWrap = true;
@@ -2341,7 +2275,7 @@ namespace VRVlog.LilToonExporter
             var area = GUILayoutUtility.GetRect(100, 42, GUILayout.ExpandWidth(true));
             GUI.Box(area, label, dropBox);
             var current = Event.current;
-            if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, AccentColor);
+            if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, ExporterColors.Accent);
             if (!area.Contains(current.mousePosition) || current.type != EventType.DragUpdated && current.type != EventType.DragPerform) return;
             var clips = DragAndDrop.objectReferences.OfType<AnimationClip>().Where(clip => clip != null).Distinct().ToArray();
             var valid = GUI.enabled && clips.Length > 0 && DragAndDrop.objectReferences.All(item => item is AnimationClip);
@@ -2591,7 +2525,7 @@ namespace VRVlog.LilToonExporter
             var listed = board.ExportedCustom();
             var unusableNote = board.UnusableCustomNote();
             var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
-            var slotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
+            var slotFaces = ExpressionPresetGroups.Emotions.Select(board.SlotValue)
                 .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
                 .Where(clip => clip != null && !listed.Contains(clip) &&
                     (session.IsGestureClip(clip) || VrChatGestureExpressions.HasChangingMorph(clip, null) && !session.HeldAtOneFrame(clip)) &&
@@ -2645,11 +2579,11 @@ namespace VRVlog.LilToonExporter
                     Repaint();
                     return;
                 }
-                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
+                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(ExportEntry.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
             }
-            var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
+            var recovery = ExportEntry.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in
                 // one attempt the standard faces use the check made for it (the
                 // one above on the first attempt, Export's own on a retry).
@@ -2688,7 +2622,7 @@ namespace VRVlog.LilToonExporter
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
             {
                 Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), changed.Detail ?? ""));
-                using var current = ExperimentalExpressionCaptureSession.Create(target.Source, replayInstalledDefaults: false, target.ExcludedObjects, target.GimmickOptions);
+                using var current = ExperimentalExpressionCaptureSession.Create(target.Source, target.ExcludedObjects, target.GimmickOptions);
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
                 return export(current, true);
             }
@@ -2701,7 +2635,7 @@ namespace VRVlog.LilToonExporter
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RebuildBoard();
-            if (LilToonExporterWindow.EmbeddedTransferMethod() == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
+            if (AppTransferBoardPage.Create == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
             SetPage(InfoPage);
         }
 
@@ -2719,8 +2653,8 @@ namespace VRVlog.LilToonExporter
             get
             {
                 if (transferPanel?.panel == null) return false;
-                try { return Equals(LilToonExporterWindow.EmbeddedTransferringMethod()?.Invoke(null, new object[] { transferPanel }), true); }
-                catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); return false; }
+                try { return AppTransferBoardPage.Transferring?.Invoke(transferPanel) ?? false; }
+                catch (Exception exception) { Debug.LogException(exception); return false; }
             }
         }
 
@@ -2731,22 +2665,14 @@ namespace VRVlog.LilToonExporter
             transferPanel = null; transferPanelTried = true; transferPanelFor = source;
             // Its "戻る" goes to the objects page, asking first while it transfers. "QRコードを作る" is the
             // blue button, never "VRMを保存".
-            try
-            {
-                transferPanel = LilToonExporterWindow.EmbeddedTransferMethod()?.Invoke(null,
-                    new object[] { source, (Action)(() => PanelBack(TransferPanelTransferring)), (Func<bool>)(() => false) }) as UnityEngine.UIElements.VisualElement;
-            }
-            catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
+            try { transferPanel = AppTransferBoardPage.Create?.Invoke(source, () => PanelBack(TransferPanelTransferring), () => false); }
+            catch (Exception exception) { Debug.LogException(exception); }
             if (transferPanel != null)
             {
                 transferPanel.style.position = UnityEngine.UIElements.Position.Absolute;
                 // "別のアバターを選ぶ" after a transfer: the avatar change of the first page.
-                try
-                {
-                    LilToonExporterWindow.EmbeddedChangeAvatarMethod()?.Invoke(null, new object[] { transferPanel,
-                        (Action)(() => { if (ConfirmChangeAvatar()) Queue(ChangeAvatar); }) });
-                }
-                catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
+                try { AppTransferBoardPage.SetChangeAvatar?.Invoke(transferPanel, () => { if (ConfirmChangeAvatar()) Queue(ChangeAvatar); }); }
+                catch (Exception exception) { Debug.LogException(exception); }
             }
             return transferPanel;
         }
@@ -2802,18 +2728,6 @@ namespace VRVlog.LilToonExporter
         // The blink setting the export receives (null is automatic).
         BlinkExportOptions ExportBlinkOptions() => automaticBlink ? configuredBlink?.Copy() : new BlinkExportOptions { Mode = BlinkExportMode.None };
 
-        internal static void AtomicWrite(string path, byte[] bytes)
-        {
-            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                File.WriteAllBytes(temporary, bytes);
-                if (File.Exists(path)) File.Replace(temporary, path, null);
-                else File.Move(temporary, path);
-            }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        }
-
         string AvatarName() => source != null && !string.IsNullOrWhiteSpace(source.name) ? source.name.Trim() : "avatar";
 
         void SelectSource(GameObject next)
@@ -2861,7 +2775,6 @@ namespace VRVlog.LilToonExporter
             blinkFallback = null; blinkFallbackStale = true;
         }
     }
-#if UNITY_5_3_OR_NEWER
     // projectChanged does not fire for every in-place .anim reimport.
     internal sealed class ExpressionCaptureAssetPostprocessor : AssetPostprocessor
     {
@@ -2874,6 +2787,5 @@ namespace VRVlog.LilToonExporter
                 ExperimentalExpressionCaptureWindow.AnimationAssetsReimported();
         }
     }
-#endif
 
 }

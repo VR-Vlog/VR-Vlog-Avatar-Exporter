@@ -113,23 +113,6 @@ namespace VRVlog.LilToonExporter
             Dictionary<string, object> MenuBinding(Dictionary<string, object> json, UnityEngine.SkinnedMeshRenderer renderer, string shape, float weight);
         }
 
-        // Counts the expressions this exporter registered: those listed in the
-        // expression animation extension that bind a morph. Authored custom
-        // expressions and unbound names are not counted.
-        internal static int CountRegistered(byte[] bytes)
-        {
-            var json = GlbDocument.Read(bytes).Json;
-            var custom = Path(json, "extensions", "VRMC_vrm", "expressions", "custom");
-            if (custom == null) return 0;
-            return RegisteredNames(json).Count(name => custom.TryGetValue(name, out var value) &&
-                value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
-                binds is List<object> list && list.Count > 0);
-        }
-
-        // Names the expression animation extension lists as registered by this
-        // exporter, with their final duplicate-name suffix. Empty without it.
-        internal static IReadOnlyCollection<string> RegisteredNames(byte[] bytes) => RegisteredNames(GlbDocument.Read(bytes).Json);
-
         // The expressions Add registered, by final name, with the text emotion
         // inference reads for each: the same text as before names lost their
         // menu path, so a "Smile" submenu still makes its item "1" happy.
@@ -141,23 +124,6 @@ namespace VRVlog.LilToonExporter
         internal static Dictionary<string, IReadOnlyList<(string Shape, float Weight)>> EmotionShapes(IEnumerable<Expression> expressions) =>
             (expressions ?? Enumerable.Empty<Expression>()).Where(e => e.RegisteredName != null && e.Shapes.Count > 0)
                 .ToDictionary(e => e.RegisteredName, e => (IReadOnlyList<(string Shape, float Weight)>)e.Shapes, StringComparer.Ordinal);
-
-        static IReadOnlyCollection<string> RegisteredNames(Dictionary<string, object> json)
-        {
-            var extensions = Path(json, "extensions");
-            if (extensions == null || !extensions.TryGetValue(ExpressionAnimationData.Extension, out var value)) return Array.Empty<string>();
-            return ExpressionAnimationData.ReadDocument(value).Expressions.Select(e => e.Expression).ToArray();
-        }
-
-        static Dictionary<string, object> Path(Dictionary<string, object> current, params string[] keys)
-        {
-            foreach (var key in keys)
-            {
-                if (!current.TryGetValue(key, out var value) || !(value is Dictionary<string, object> next)) return null;
-                current = next;
-            }
-            return current;
-        }
 
         static readonly HashSet<string> PresetNames = new HashSet<string>(
             Enum.GetNames(typeof(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset)).Where(name => name != "custom"), StringComparer.Ordinal);
@@ -379,12 +345,7 @@ namespace VRVlog.LilToonExporter
                     document.Transforms.Add(transforms);
                 }
             }
-            var extensions = (Dictionary<string, object>)glb.Json["extensions"];
-            if (extensions.ContainsKey(ExpressionAnimationData.Extension))
-                throw new InvalidOperationException("既存の表情アニメーション拡張を上書きできません。");
-            extensions.Add(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document));
-            if (!glb.Json.TryGetValue("extensionsUsed", out var used)) glb.Json["extensionsUsed"] = used = new List<object>();
-            ((List<object>)used).Add(ExpressionAnimationData.Extension);
+            glb.PlaceExtension(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document), "既存の表情アニメーション拡張を上書きできません。");
             return glb.Write();
         }
 

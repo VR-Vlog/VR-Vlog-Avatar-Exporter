@@ -326,7 +326,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach(var renderer in skins)renderer.sharedMaterial=source;
                 skins[1].sharedMaterials=new Material[1];
                 var warnings=new List<string>();
-                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Empty slot","Tests",warnings,exporterVersion:"0.10.0",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Empty slot","Tests",warnings:warnings,exporterVersion:"0.10.0",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var glb=GlbDocument.Read(bytes);F.Validate(glb.Json,bytes.Length,glb.Binary.Length);
                 var bindings=F.List(F.Root(glb.Json),"bindings").Select(F.Object).ToArray();
                 Assert.That(bindings.Length,Is.EqualTo(skins.Length-1),"Only the renderer with the empty slot is left unbound.");
@@ -355,7 +355,7 @@ namespace VRVlog.LilToonExporter.Tests
                 skins[1].sharedMesh=twoSlots;
                 skins[1].sharedMaterials=new[]{source,null};
                 var warnings=new List<string>();
-                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Empty slot","Tests",warnings,exporterVersion:"0.10.0",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Empty slot","Tests",warnings:warnings,exporterVersion:"0.10.0",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var glb=GlbDocument.Read(bytes);F.Validate(glb.Json,bytes.Length,glb.Binary.Length);
                 var bindings=F.List(F.Root(glb.Json),"bindings").Select(F.Object).ToArray();
                 Assert.That(bindings.Length,Is.EqualTo(skins.Length-1),"Only the renderer with the empty slot is left unbound.");

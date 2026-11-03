@@ -22,9 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var folder = "__VRVlogExcludedLayers_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            directory = "Assets/" + folder;
+            directory = TempAssetFolder.Create("__VRVlogExcludedLayers_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
             controller.AddParameter("Smile", AnimatorControllerParameterType.Bool);
             avatar = new GameObject("Avatar", typeof(Animator));

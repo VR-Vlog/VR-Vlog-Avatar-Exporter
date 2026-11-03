@@ -39,14 +39,8 @@ namespace VRVlog.LilToonExporter.Tests
             return texture;
         }
 
-        Material Substitute(Material source, List<Texture2D> textures = null)
-        {
-            textures = textures ?? new List<Texture2D>();
-            var output = UnsupportedShaderSubstitution.Create(source, out _, out _, out _, textures);
-            owned.AddRange(textures);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source, List<Texture2D> textures = null) =>
+            TestObjects.Substitute(owned, source, null, out _, out _, out _, textures ?? new List<Texture2D>());
 
         static void AssertMask(Material output, float mode, float scale, float value)
         {

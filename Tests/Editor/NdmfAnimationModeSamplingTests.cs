@@ -18,12 +18,9 @@ namespace VRVlog.LilToonExporter.Tests
     {
         const string PluginType = "VRVlog.LilToonExporter.Tests.AnimationModeSamplingTestPlugin";
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
+        static void Set(string field, object value) => OptionalTools.Find(PluginType)?.GetField(field)?.SetValue(null, value);
 
-        static void Set(string field, object value) => InstalledType(PluginType)?.GetField(field)?.SetValue(null, value);
-
-        static object Get(string field) => InstalledType(PluginType).GetField(field).GetValue(null);
+        static object Get(string field) => OptionalTools.Find(PluginType).GetField(field).GetValue(null);
 
         [SetUp]
         public void SetUp()
@@ -41,11 +38,11 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode()
         {
-            var descriptorType = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var proxyType = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
-            if (descriptorType == null || proxyType == null || InstalledType(PluginType) == null)
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            if (descriptorType == null || proxyType == null || OptionalTools.Find(PluginType) == null)
                 Assert.Ignore("Install the real VRChat SDK, Modular Avatar and NDMF to run their real processing pipeline.");
-            var optimizerType = InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize");
+            var optimizerType = OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = fixture.Source;
             Assert.That(source.GetComponent<Animator>().runtimeAnimatorController, Is.Null);
@@ -61,7 +58,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", warnings);
+                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", exporterVersion: null, warnings: warnings);
                 var log = string.Join("\n", warnings);
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty, log);
                 Assert.That(Get("Layers"), Is.EqualTo(-1), "Optimizing passes must see a VRChat avatar's root without a lent controller.");
@@ -76,13 +73,11 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void GenericAvatarLendsAaoAControllerThatAnimationModeCanSample()
         {
-            var optimizerType = InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize");
-            if (optimizerType == null || InstalledType("nadena.dev.ndmf.BuildContext") == null || InstalledType(PluginType) == null)
+            var optimizerType = OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize");
+            if (optimizerType == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null || OptionalTools.Find(PluginType) == null)
                 Assert.Ignore("Install the real Avatar Optimizer and NDMF to run their real processing pipeline.");
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
-                value.name == "com.anatawa12.avatar-optimizer");
-            if (package != null && Version.TryParse(package.version.Split('-', '+')[0], out var version) && version < new Version(1, 9))
-                Assert.Ignore("Avatar Optimizer runs on generic-platform avatars from 1.9.0 (installed " + package.version + ").");
+            OptionalTools.IgnoreBelow("com.anatawa12.avatar-optimizer", new Version(1, 9),
+                "Avatar Optimizer runs on generic-platform avatars from 1.9.0");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = fixture.Source;
             Assert.That(source.GetComponent<Animator>().runtimeAnimatorController, Is.Null);
@@ -93,7 +88,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", warnings);
+                var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", exporterVersion: null, warnings: warnings);
                 var log = string.Join("\n", warnings);
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty, log);
                 Assert.That(Get("Layers"), Is.EqualTo(1), "The controller lent to AAO has one layer; one without layers crashes AnimationMode sampling.");

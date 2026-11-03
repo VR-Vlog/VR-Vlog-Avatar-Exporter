@@ -12,8 +12,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void MaskLimitsTheAddedMatcapToTheMaskedArea()
         {
             var material = Create(1);
-            var mask = Image(Color.black, Color.white, Color.black, Color.white);
-            var main = Solid(Color.white);
+            var mask = TestTextures.Image(Color.black, Color.white, Color.black, Color.white);
+            var main = TestTextures.Solid(Color.white);
             var created = new List<Material>();
             var textures = new List<Texture2D>();
             try
@@ -24,8 +24,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(textures, Has.Count.EqualTo(1));
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.AreSame(textures[0], weight);
-                Assert.That(Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not add the MatCap.");
-                Assert.That(Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
+                Assert.That(TestTextures.Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not add the MatCap.");
+                Assert.That(TestTextures.Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
                 Assert.AreSame(main, fallback.GetTexture("_MainTex"), "An added MatCap does not change the main image.");
                 Assert.AreSame(mask, material.GetTexture("_MatCapBlendMask"));
                 // Without a MatCap image there is nothing to weigh.
@@ -33,7 +33,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.IsNull(UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures).GetTexture("_RimTex"));
                 Assert.That(textures, Has.Count.EqualTo(1));
             }
-            finally { Destroy(material, created, textures, mask, main); }
+            finally { TestObjects.Destroy(material, created, textures, mask, main); }
         }
 
         [TestCase("_UseRim", "_RimColor")]
@@ -41,9 +41,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void MaskStaysWhenARimLightIsOn(string toggle, string color)
         {
             var material = Create(1);
-            var mask = Image(Color.black, Color.white, Color.black, Color.white);
-            var rim = Solid(Color.white);
-            var main = Solid(Color.white);
+            var mask = TestTextures.Image(Color.black, Color.white, Color.black, Color.white);
+            var rim = TestTextures.Solid(Color.white);
+            var main = TestTextures.Solid(Color.white);
             var created = new List<Material>();
             var textures = new List<Texture2D>();
             try
@@ -58,8 +58,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fallback.GetColor("_RimColor").maxColorComponent, Is.GreaterThan(0f));
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.AreSame(textures[0], weight, "The mask replaces the rim image.");
-                Assert.That(Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f));
-                Assert.That(Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
+                Assert.That(TestTextures.Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f));
+                Assert.That(TestTextures.Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
                 // Without a mask the MatCap covers the mesh in lilToon too, so
                 // the rim keeps its own image.
                 material.SetTexture("_MatCapBlendMask", null);
@@ -69,16 +69,16 @@ namespace VRVlog.LilToonExporter.Tests
                 else Assert.IsNull(unmasked);
                 Assert.That(textures, Has.Count.EqualTo(1));
             }
-            finally { Destroy(material, created, textures, mask, rim, main); }
+            finally { TestObjects.Destroy(material, created, textures, mask, rim, main); }
         }
 
         [Test]
         public void MultiplyMatcapDarkensTheMainImageWhereMasked()
         {
             var material = Create(3);
-            var matcap = Solid(new Color(.5f, .25f, 1, 1));
-            var mask = Image(Color.black, Color.white, Color.black, Color.white);
-            var main = Solid(Color.white);
+            var matcap = TestTextures.Solid(new Color(.5f, .25f, 1, 1));
+            var mask = TestTextures.Image(Color.black, Color.white, Color.black, Color.white);
+            var main = TestTextures.Solid(Color.white);
             var created = new List<Material>();
             var textures = new List<Texture2D>();
             try
@@ -92,15 +92,15 @@ namespace VRVlog.LilToonExporter.Tests
                 var baked = (Texture2D)fallback.GetTexture("_MainTex");
                 Assert.AreSame(textures[0], baked);
                 Assert.AreSame(baked, fallback.GetTexture("_ShadeTex"), "The shade image is the main image.");
-                Assert.That(Linear(baked.GetPixel(0, 0)).r, Is.EqualTo(1f).Within(.015f), "Black mask keeps the main image.");
-                var pixel = Linear(baked.GetPixel(1, 0));
+                Assert.That(TestTextures.Linear(baked.GetPixel(0, 0)).r, Is.EqualTo(1f).Within(.015f), "Black mask keeps the main image.");
+                var pixel = TestTextures.Linear(baked.GetPixel(1, 0));
                 Assert.That(pixel.r, Is.EqualTo(.5f).Within(.015f));
                 Assert.That(pixel.g, Is.EqualTo(.25f).Within(.015f));
                 Assert.That(pixel.b, Is.EqualTo(1f).Within(.015f));
                 Assert.IsNull(fallback.GetTexture("_MatcapTex"), "MToon would add a multiply MatCap.");
                 Assert.AreSame(main, material.GetTexture("_MainTex"));
             }
-            finally { Destroy(material, created, textures, matcap, mask, main); }
+            finally { TestObjects.Destroy(material, created, textures, matcap, mask, main); }
         }
 
         // 55 materials need 111 images without the bakes and 166 with them.
@@ -110,8 +110,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var quad = new Mesh { name = "MatCap quad" };
-            var matcap = Solid(Color.white);
-            var mask = Image(Color.black, Color.white, Color.black, Color.white);
+            var matcap = TestTextures.Solid(Color.white);
+            var mask = TestTextures.Image(Color.black, Color.white, Color.black, Color.white);
             var materials = new List<Material>();
             var images = new List<Texture2D> { matcap, mask };
             try
@@ -123,8 +123,8 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < count; i++)
                 {
                     // Distinct colors keep the images from being merged.
-                    var main = Solid(new Color(i / 64f, .5f, 1 - i / 64f, 1));
-                    var normal = Solid(new Color(.5f, .5f, i / 64f, 1));
+                    var main = TestTextures.Solid(new Color(i / 64f, .5f, 1 - i / 64f, 1));
+                    var normal = TestTextures.Solid(new Color(.5f, .5f, i / 64f, 1));
                     images.Add(main);
                     images.Add(normal);
                     var material = Create(0);
@@ -143,7 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 // The export made again keeps one copy of each warning.
                 var warnings = new List<string> { "Earlier" };
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", warnings, exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", warnings: warnings, exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(warnings, Is.Unique);
                 Assert.That(warnings, Does.Contain("Earlier"));
@@ -176,24 +176,5 @@ namespace VRVlog.LilToonExporter.Tests
             return material;
         }
 
-        private static Texture2D Solid(Color color) => Image(color, color, color, color);
-
-        private static Texture2D Image(params Color[] pixels)
-        {
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
-            texture.SetPixels(pixels);
-            texture.Apply();
-            return texture;
-        }
-
-        private static Color Linear(Color pixel) => QualitySettings.activeColorSpace == ColorSpace.Linear ? pixel.linear : pixel;
-
-        private static void Destroy(Material material, List<Material> created, List<Texture2D> textures, params Texture2D[] images)
-        {
-            foreach (var item in created) Object.DestroyImmediate(item);
-            foreach (var texture in textures) Object.DestroyImmediate(texture);
-            foreach (var image in images) Object.DestroyImmediate(image);
-            Object.DestroyImmediate(material);
-        }
     }
 }

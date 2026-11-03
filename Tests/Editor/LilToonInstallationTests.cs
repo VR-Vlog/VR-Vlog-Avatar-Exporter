@@ -39,8 +39,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var found = LilToonInstallation.FromPackageJson(AssetsJson, json);
             Assert.That(found.Version, Is.EqualTo(DependencyPolicy.LilToonUnknownVersion));
-            Assert.That(DependencyPolicy.LilToonError(found.Version), Is.Null);
-            Assert.That(DependencyPolicy.LilToonWarning(found.Version), Does.Contain("不明"));
+            Assert.That(DependencyPolicy.LilToonError(found.Version, t => t), Is.Null);
+            Assert.That(DependencyPolicy.LilToonWarning(found.Version, t => t), Does.Contain("不明"));
         }
 
         [Test]
@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             Assert.That(DependencyDiagnostics.Version(DependencyDiagnostics.Installed(), LilToonInstallation.PackageName), Is.EqualTo(found.Version));
             Assert.That(DependencyDiagnostics.CreateReport(), Does.Contain(LilToonInstallation.PackageName + ": " + found.Report()));
-            Assert.That(LilToonExporterWindow.InstalledLilToonVersion(), Is.EqualTo(found.Version));
+            Assert.That(ExportEntry.InstalledLilToonVersion(), Is.EqualTo(found.Version));
         }
 
         [Test]
@@ -114,9 +114,9 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
                 var warnings = new List<string>();
                 var installed = LilToonInstallation.Find().Version;
-                Assert.That(LilToonExporterWindow.RequireLilToon(fixture.Source, warnings), Is.EqualTo(installed));
+                Assert.That(ExportEntry.RequireLilToon(fixture.Source, warnings), Is.EqualTo(installed));
                 // The board's export: lilToon extension written, installed version recorded.
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var bytes = session.Export("Installed lilToon", "Tests", System.Array.Empty<(string, AnimationClip, float)>(), new List<string>());
                 var glb = GlbDocument.Read(bytes);
                 Assert.That(VRVlog.LilToon.LilToonFullContract.Text(VRVlog.LilToon.LilToonFullContract.Root(glb.Json), "sourceLilToonVersion"), Is.EqualTo("2.3.4"));

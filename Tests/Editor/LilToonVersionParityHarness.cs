@@ -125,14 +125,14 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
             // The same preflight as the export window: lilToon present, structure check, installed version.
-            installed = LilToonExporterWindow.RequireLilToon(fixture.Source, warnings);
-            return UniVrmOneClickExporter.Export(fixture.Source, "Parity " + name, "Tests", warnings,
+            installed = ExportEntry.RequireLilToon(fixture.Source, warnings);
+            return UniVrmOneClickExporter.Export(fixture.Source, "Parity " + name, "Tests", warnings: warnings,
                 exporterVersion: ExporterVersion, lilToonVersion: installed, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
         }
 
         static object FindLilToon()
         {
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(p => p.name == "jp.lilxyzw.liltoon");
+            var package = OptionalTools.Package("jp.lilxyzw.liltoon");
             return package == null ? null : new Dictionary<string, object> { { "version", package.version }, { "source", package.source.ToString() } };
         }
 
@@ -216,7 +216,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             material.SetFloat("_TransparentMode", shader.Contains("Fur") ? 5 : shader.Contains("Gem") ? 6 : shader.Contains("Refraction") ? 3 : 2);
             material.SetFloat("_UseOutline", shader.Contains("Outline") ? 1 : 0);
-            var utility = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("lilToon.lilMaterialUtils")).FirstOrDefault(t => t != null);
+            var utility = OptionalTools.Find("lilToon.lilMaterialUtils");
             utility?.GetMethod("SetupMultiMaterial", new[] { typeof(Material) })?.Invoke(null, new object[] { material });
         }
 

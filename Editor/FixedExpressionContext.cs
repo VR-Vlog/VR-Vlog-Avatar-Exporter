@@ -61,73 +61,27 @@ namespace VRVlog.LilToonExporter
             commands = new HashSet<StateMachineBehaviour>();
             if (machine == null || fixedValues == null || parameters == null) return false;
             var reachedCommands = commands;
-            var parents = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
-            var owners = new Dictionary<AnimatorState, AnimatorStateMachine>();
             var types = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
             foreach (var parameter in parameters)
             {
                 if (parameter == null || string.IsNullOrEmpty(parameter.name) || types.ContainsKey(parameter.name)) return false;
                 types.Add(parameter.name, parameter.type);
             }
-            bool Index(AnimatorStateMachine current, AnimatorStateMachine parent)
-            {
-                if (current == null || parents.ContainsKey(current)) return false;
-                parents.Add(current, parent);
-                foreach (var child in current.states)
-                {
-                    if (child.state == null || owners.ContainsKey(child.state)) return false;
-                    owners.Add(child.state, current);
-                }
-                foreach (var child in current.stateMachines) if (!Index(child.stateMachine, current)) return false;
-                return true;
-            }
-            if (!Index(machine, null)) return false;
-
-            bool Valid(AnimatorTransitionBase transition)
-            {
-                if (transition == null) return false;
-                if (transition.isExit) return transition.destinationState == null && transition.destinationStateMachine == null;
-                if (transition.destinationState != null)
-                    return transition.destinationStateMachine == null && owners.ContainsKey(transition.destinationState);
-                return transition.destinationStateMachine != null && parents.ContainsKey(transition.destinationStateMachine);
-            }
+            var graph = AnimatorGraph.Build(machine);
+            if (graph == null) return false;
+            var parents = graph.Parents; var owners = graph.Owners;
             foreach (var current in parents.Keys)
             {
                 if (current.defaultState != null && (!owners.TryGetValue(current.defaultState, out var owner) || owner != current)) return false;
-                if (current.entryTransitions.Any(t => !Valid(t)) || current.anyStateTransitions.Any(t => !Valid(t))) return false;
-                foreach (var child in current.states) if (child.state.transitions.Any(t => !Valid(t))) return false;
+                if (current.entryTransitions.Any(t => !graph.Valid(t)) || current.anyStateTransitions.Any(t => !graph.Valid(t))) return false;
+                foreach (var child in current.states) if (child.state.transitions.Any(t => !graph.Valid(t))) return false;
                 foreach (var child in current.stateMachines)
-                    if (current.GetStateMachineTransitions(child.stateMachine).Any(t => !Valid(t))) return false;
+                    if (current.GetStateMachineTransitions(child.stateMachine).Any(t => !graph.Valid(t))) return false;
             }
 
-            bool? Condition(AnimatorCondition condition)
-            {
-                if (string.IsNullOrEmpty(condition.parameter) || !fixedValues.TryGetValue(condition.parameter, out var value) ||
-                    !types.TryGetValue(condition.parameter, out var type) || float.IsNaN(value) || float.IsInfinity(value)) return null;
-                if (type == AnimatorControllerParameterType.Bool)
-                {
-                    if (condition.mode == AnimatorConditionMode.If) return value != 0;
-                    if (condition.mode == AnimatorConditionMode.IfNot) return value == 0;
-                    return null;
-                }
-                if (type == AnimatorControllerParameterType.Trigger || float.IsNaN(condition.threshold) || float.IsInfinity(condition.threshold)) return null;
-                // Fractional Int thresholds have no portable authored semantics.
-                if (type == AnimatorControllerParameterType.Int && (condition.threshold != Math.Truncate(condition.threshold) || value != Math.Truncate(value))) return null;
-                switch (condition.mode)
-                {
-                    case AnimatorConditionMode.Equals: return type == AnimatorControllerParameterType.Int ? value == condition.threshold : (bool?)null;
-                    case AnimatorConditionMode.NotEqual: return type == AnimatorControllerParameterType.Int ? value != condition.threshold : (bool?)null;
-                    case AnimatorConditionMode.Greater: return value > condition.threshold;
-                    case AnimatorConditionMode.Less: return value < condition.threshold;
-                    default: return null;
-                }
-            }
-            IEnumerable<AnimatorTransitionBase> Enabled(IEnumerable<AnimatorTransitionBase> transitions)
-            {
-                var siblings = transitions.ToArray();
-                var solo = siblings.Any(t => t.solo);
-                return siblings.Where(t => !t.mute && (!solo || t.solo));
-            }
+            bool? Condition(AnimatorCondition condition) =>
+                string.IsNullOrEmpty(condition.parameter) || !fixedValues.TryGetValue(condition.parameter, out var value) ||
+                !types.TryGetValue(condition.parameter, out var type) ? null : AnimatorConditions.Evaluate(condition, value, type);
             bool CanTake(AnimatorTransitionBase transition) => !transition.conditions.Any(c => Condition(c) == false);
             bool AlwaysTakes(AnimatorTransitionBase transition) => transition.conditions.All(c => Condition(c) == true);
 
@@ -143,7 +97,7 @@ namespace VRVlog.LilToonExporter
                 var parent = parents[current];
                 if (parent != null) Activate(parent);
                 reachedCommands.UnionWith(current.behaviours);
-                foreach (var transition in Enabled(current.anyStateTransitions))
+                foreach (var transition in AnimatorConditions.Enabled(current.anyStateTransitions))
                     if (CanTake(transition)) Destination(transition, current);
             }
             void Enter(AnimatorStateMachine current)
@@ -151,7 +105,7 @@ namespace VRVlog.LilToonExporter
                 if (!entered.Add(current)) return;
                 Activate(current);
                 var fallsThrough = true;
-                foreach (var transition in Enabled(current.entryTransitions))
+                foreach (var transition in AnimatorConditions.Enabled(current.entryTransitions))
                 {
                     if (!CanTake(transition)) continue;
                     Destination(transition, current);
@@ -168,7 +122,7 @@ namespace VRVlog.LilToonExporter
                 if (!exited.Add(current)) return;
                 var parent = parents[current];
                 if (parent == null) return;
-                foreach (var transition in Enabled(parent.GetStateMachineTransitions(current)))
+                foreach (var transition in AnimatorConditions.Enabled(parent.GetStateMachineTransitions(current)))
                     if (CanTake(transition)) Destination(transition, parent);
             }
             void Destination(AnimatorTransitionBase transition, AnimatorStateMachine current)
@@ -186,7 +140,7 @@ namespace VRVlog.LilToonExporter
                 var owner = owners[state];
                 Activate(owner);
                 reachedCommands.UnionWith(state.behaviours);
-                foreach (var transition in Enabled(state.transitions))
+                foreach (var transition in AnimatorConditions.Enabled(state.transitions))
                     if (CanTake(transition)) Destination(transition, owner);
             }
             return valid;

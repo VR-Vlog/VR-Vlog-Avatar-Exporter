@@ -97,9 +97,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new[] { ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Hair detail") });
             var quickPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-" + Guid.NewGuid().ToString("N") + ".vrm");
             var boardPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-board-" + Guid.NewGuid().ToString("N") + ".vrm");
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             try
             {
                 var saved = 0;
@@ -107,8 +105,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(saved, Is.EqualTo(1));
 
                 // The board opened for the same avatar and saved without a change.
-                type.GetField("source", flags).SetValue(window, fixture.Source);
-                type.GetMethod("Prepare", flags).Invoke(window, null);
+                window.Load(fixture.Source);
                 var boardSaved = false;
                 Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), boardPath, () => boardSaved = true, false), Is.Null);
                 Assert.That(boardSaved, Is.True);
@@ -145,8 +142,7 @@ namespace VRVlog.LilToonExporter.Tests
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                var blink = (BlinkExportOptions)typeof(ExperimentalExpressionCaptureWindow)
-                    .GetMethod("ExportBlinkOptions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(board, null);
+                var blink = (BlinkExportOptions)board.Call("ExportBlinkOptions");
                 if (mode == BlinkExportMode.Auto) Assert.That(blink, Is.Null, "Automatic, as the board starts without a saved blink.");
                 else Assert.That(blink.Mode, Is.EqualTo(mode));
                 if (mode == BlinkExportMode.Manual)
@@ -168,15 +164,13 @@ namespace VRVlog.LilToonExporter.Tests
             settings.Poses.Excluded.Add("SamplePose");
             settings.Poses.Names["SamplePose"] = "Sample";
             ExportSettingsStore.Save(fixture.Source, settings);
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                PoseExportOptions Poses() => ((ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board)).PoseOptions;
+                PoseExportOptions Poses() => board.Session().PoseOptions;
                 Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
                 Assert.That(Poses().Names["SamplePose"], Is.EqualTo("Sample"));
-                type.GetMethod("RebuildKeepingAssignments", flags).Invoke(board, new object[] { Array.Empty<GameObject>(), null });
+                board.Call("RebuildKeepingAssignments", Array.Empty<GameObject>(), null);
                 Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
                 Assert.That(Poses().Names.Count, Is.EqualTo(1));
             }
@@ -285,8 +279,7 @@ namespace VRVlog.LilToonExporter.Tests
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                typeof(ExperimentalExpressionCaptureWindow).GetField("excludedObjectEdits", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                    .SetValue(board, new List<GameObject>());
+                board.SetField("excludedObjectEdits", new List<GameObject>());
                 var needsFix = ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
                 var saved = false;
                 Assert.That(board.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), path, () => saved = true, false),
@@ -307,14 +300,12 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ChangingTheAvatarTurnsTheBlinkBackOn()
         {
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             try
             {
-                type.GetField("automaticBlink", flags).SetValue(window, false);
-                type.GetMethod("ChangeAvatar", flags).Invoke(window, null);
-                Assert.That(type.GetField("automaticBlink", flags).GetValue(window), Is.True);
+                window.SetField("automaticBlink", false);
+                window.Call("ChangeAvatar");
+                Assert.That(window.Field("automaticBlink"), Is.True);
             }
             finally { Object.DestroyImmediate(window); }
         }

@@ -17,9 +17,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(t => t != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             rig = new AttachmentConnectionTests.Fixture(); avatar = rig.Source;
             foreach (var renderer in avatar.GetComponentsInChildren<SkinnedMeshRenderer>()) Object.DestroyImmediate(renderer.gameObject);
             skin = new GameObject("Merged geometry", typeof(SkinnedMeshRenderer)).GetComponent<SkinnedMeshRenderer>();

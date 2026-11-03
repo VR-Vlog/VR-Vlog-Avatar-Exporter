@@ -45,7 +45,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             FakeProcessor.GeneratingAction = null;
             FakeContext.SerializeAction = null;
-            NdmfExportPreparation.PluginPackagesOverride = null;
+            ExportTestHooks.PluginPackagesOverride = null;
             NdmfExportPreparation.VrcFuryOverride = null;
             Object.DestroyImmediate(source);
             Object.DestroyImmediate(clone);
@@ -526,16 +526,16 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ComponentFromAPackageExportingAPluginStartsTheBuild()
         {
-            var editorOnly = InstalledType("VRC.SDKBase.IEditorOnly");
+            var editorOnly = OptionalTools.Find("VRC.SDKBase.IEditorOnly");
             if (editorOnly == null)
             {
                 // Without the VRChat SDK the package alone decides.
                 var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
                 if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
                 source.AddComponent<GimmickSettingsProbe>();
-                NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+                ExportTestHooks.PluginPackagesOverride = new HashSet<string>();
                 Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
-                NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
+                ExportTestHooks.PluginPackagesOverride = new HashSet<string> { package };
                 Assert.IsTrue(NdmfExportPreparation.NeedsProcessing(source));
                 return;
             }
@@ -551,20 +551,20 @@ namespace VRVlog.LilToonExporter.Tests
             var holder = new GameObject("tool");
             holder.transform.SetParent(source.transform, false);
             Assert.IsNotNull(holder.AddComponent(tool), tool.FullName);
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+            ExportTestHooks.PluginPackagesOverride = new HashSet<string>();
             Assert.IsFalse(NdmfExportPreparation.HasPluginToolComponent(source));
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { toolPackage };
+            ExportTestHooks.PluginPackagesOverride = new HashSet<string> { toolPackage };
             Assert.IsTrue(NdmfExportPreparation.HasPluginToolComponent(source));
         }
 
         [Test]
         public void RuntimeComponentFromAPluginPackageDoesNotStartTheBuildWithTheVrchatSdk()
         {
-            if (InstalledType("VRC.SDKBase.IEditorOnly") == null) Assert.Ignore("Install the VRChat SDK to test its editor-only marker.");
+            if (OptionalTools.Find("VRC.SDKBase.IEditorOnly") == null) Assert.Ignore("Install the VRChat SDK to test its editor-only marker.");
             var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
             if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
             source.AddComponent<GimmickSettingsProbe>();
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
+            ExportTestHooks.PluginPackagesOverride = new HashSet<string> { package };
             Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
         }
 
@@ -586,8 +586,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf()
         {
-            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            var descriptor = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the VRChat SDK to test VRCFury's avatar requirement.");
             foreach (var root in new[] { source, clone })
             {
                 root.AddComponent(descriptor);
@@ -627,8 +626,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild()
         {
-            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            var descriptor = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the VRChat SDK to test VRCFury's avatar requirement.");
             foreach (var root in new[] { source, clone })
             {
                 root.AddComponent(descriptor);
@@ -654,8 +652,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrcFuryRunsAfterTransformingAndBeforeTheExportCallback()
         {
-            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            var descriptor = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the VRChat SDK to test VRCFury's avatar requirement.");
             clone.AddComponent(descriptor);
             clone.AddComponent<VF.Component.VRCFuryComponent>();
             var order = new List<string>();
@@ -689,8 +686,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FailedVrcFuryBuildFailsThePreparation()
         {
-            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            var descriptor = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the VRChat SDK to test VRCFury's avatar requirement.");
             clone.AddComponent(descriptor);
             clone.AddComponent<VF.Component.VRCFuryComponent>();
             NdmfExportPreparation.VrcFuryOverride = root => false;
@@ -751,8 +747,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AuthoredNdmfRootMarkerRetainsItsProcessingSemantics()
         {
-            var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (rootType == null) Assert.Ignore("Install NDMF to test its real avatar root marker.");
+            var rootType = OptionalTools.Require("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot", "Install NDMF to test its real avatar root marker.");
             var sourceMarker = source.AddComponent(rootType);
             var cloneMarker = clone.AddComponent(rootType);
             Assert.IsTrue(NdmfExportPreparation.NeedsProcessing(source));
@@ -767,8 +762,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InjectedCopyRootRetainsInactiveAuthoringAcrossValidationAndPreparation()
         {
-            var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (rootType == null) Assert.Ignore("Install NDMF to test its real avatar root marker.");
+            var rootType = OptionalTools.Require("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot", "Install NDMF to test its real avatar root marker.");
             var sourceTag = AddMerge(source, "inactive wardrobe", false, source.transform, false);
             var cloneTag = AddMerge(clone, "inactive wardrobe", false, clone.transform, false);
             Assert.IsNull(source.GetComponent(rootType));
@@ -914,8 +908,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // NDMF before 1.8.0 has no NDMFAvatarRoot to put on the copy, and MA
             // finds the avatar of a reference by its VRChat descriptor there.
-            if (InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null &&
-                InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") is Type descriptor)
+            if (OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null &&
+                OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") is Type descriptor)
             {
                 source.AddComponent(descriptor);
                 clone.AddComponent(descriptor);
@@ -974,12 +968,11 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static Component AddMerge(GameObject root, string name, bool active, Transform target, bool identifyAvatar = true)
         {
-            var type = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
-            if (type == null) Assert.Ignore("Install Modular Avatar to test its real authoring metadata.");
+            var type = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature", "Install Modular Avatar to test its real authoring metadata.");
             // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
             // avatar by its descriptor, as a real avatar would be found.
-            var marker = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ??
-                InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var marker = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ??
+                OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (identifyAvatar && marker != null &&!root.GetComponentsInChildren<Component>(true).Any(component => component.transform == root.transform && component.GetType() == marker))
                 root.AddComponent(marker);
             var node = Child(root.transform, name, Vector3.zero).gameObject;
@@ -994,10 +987,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static Component AddBoneProxy(GameObject root, string name)
         {
-            var type = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
-            if (type == null) Assert.Ignore("Install Modular Avatar to test its real authoring metadata.");
-            var marker = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ??
-                InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var type = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy", "Install Modular Avatar to test its real authoring metadata.");
+            var marker = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ??
+                OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (marker != null && root.GetComponent(marker) == null) root.AddComponent(marker);
             // A new Bone Proxy has no bone and no path: its target is missing.
             return Child(root.transform, name, Vector3.zero).gameObject.AddComponent(type);
@@ -1073,8 +1065,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression()
         {
-            var mergeType = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
-            var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
+            var rootType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (mergeType == null || rootType == null) Assert.Ignore("Install Modular Avatar and NDMF to run their real processing pipeline.");
             IgnoreNonVRChatAvatarBeforeMa113();
             source.AddComponent(rootType);
@@ -1131,8 +1123,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void InstalledModularAvatarRejectsTargetOutsideSelectedSubtreeBeforeCloning(bool deferUnresolvedTargets)
         {
-            var mergeType = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
-            var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
+            var rootType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (mergeType == null || rootType == null) Assert.Ignore("Install Modular Avatar and NDMF to test their authored references.");
             var wholeAvatar = new GameObject("whole-avatar");
             try
@@ -1174,23 +1166,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         // MA before 1.13.0 skips avatars without a VRChat Avatar Descriptor, so
         // fixtures that mark a non-VRChat avatar with NDMFAvatarRoot cannot run there.
-        internal static void IgnoreNonVRChatAvatarBeforeMa113()
-        {
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
-                value.name == "nadena.dev.modular-avatar");
-            if (package != null && Version.TryParse(package.version.Split('-', '+')[0], out var version) && version < new Version(1, 13))
-                Assert.Ignore("Non-VRChat avatars need Modular Avatar 1.13.0 or later (installed " + package.version + ").");
-        }
-
-        private static Type InstalledType(string name)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var type = assembly.GetType(name, false);
-                if (type != null) return type;
-            }
-            return null;
-        }
+        internal static void IgnoreNonVRChatAvatarBeforeMa113() => OptionalTools.IgnoreBelow("nadena.dev.modular-avatar",
+            new Version(1, 13), "Non-VRChat avatars need Modular Avatar 1.13.0 or later");
 
         private void ReplaceWithGenerated(GameObject root)
         {
@@ -1205,7 +1182,7 @@ namespace VRVlog.LilToonExporter.Tests
             return mesh;
         }
 
-        private static NdmfExportPreparation.Bridge Resolve(string version = "1.14.8") =>
+        internal static NdmfExportPreparation.Bridge Resolve(string version = "1.14.8") =>
             NdmfExportPreparation.Bridge.Resolve(FakeType, version);
 
         private static Type FakeType(string name)

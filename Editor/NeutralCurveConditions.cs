@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -70,8 +71,8 @@ namespace VRVlog.LilToonExporter
                     for (var other = 0; other < layers.Length && safe; other++)
                     {
                         if (other == owner) continue;
-                        var competing = AllStates(layers[other].stateMachine).ToArray();
-                        if (competing.SelectMany(state => Clips(state.motion)).Any(clip => AnimationUtility.GetCurveBindings(clip)
+                        var competing = AnimatorGraph.AllStates(layers[other].stateMachine).ToArray();
+                        if (competing.SelectMany(state => AnimatorGraph.Clips(state.motion)).Any(clip => AnimationUtility.GetCurveBindings(clip)
                             .Any(curve => curve.type == typeof(Animator) && curve.propertyName == name))) { safe = false; break; }
                         // WD can implicitly reset a parameter without listing
                         // its binding. Only an unchanging WD layer is harmless:
@@ -98,44 +99,7 @@ namespace VRVlog.LilToonExporter
                 AnimationUtility.GetCurveBindings(clip).All(binding => Constant(AnimationUtility.GetEditorCurve(clip, binding), out _));
         }
 
-        static bool Constant(AnimationCurve curve, out float value)
-        {
-            value = 0;
-            if (curve == null || curve.length == 0) return false;
-            value = curve.keys[0].value;
-            if (float.IsNaN(value) || float.IsInfinity(value)) return false;
-            var constant = value;
-            return curve.keys.All(key => Finite(key.time) && key.value == constant && (key.inTangent == 0 || float.IsInfinity(key.inTangent)) &&
-                (key.outTangent == 0 || float.IsInfinity(key.outTangent)));
-        }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
-
-        static IEnumerable<AnimatorState> AllStates(AnimatorStateMachine root)
-        {
-            if (root == null) yield break;
-            var seen = new HashSet<AnimatorStateMachine>();
-            var pending = new Stack<AnimatorStateMachine>(); pending.Push(root);
-            while (pending.Count > 0)
-            {
-                var machine = pending.Pop();
-                if (machine == null || !seen.Add(machine)) continue;
-                foreach (var state in machine.states) if (state.state != null) yield return state.state;
-                foreach (var child in machine.stateMachines) pending.Push(child.stateMachine);
-            }
-        }
-
-        static IEnumerable<AnimationClip> Clips(Motion root)
-        {
-            var seen = new HashSet<Motion>();
-            var pending = new Stack<Motion>(); pending.Push(root);
-            while (pending.Count > 0)
-            {
-                var motion = pending.Pop();
-                if (motion == null || !seen.Add(motion)) continue;
-                if (motion is AnimationClip clip) yield return clip;
-                else if (motion is BlendTree tree) foreach (var child in tree.children) pending.Push(child.motion);
-            }
-        }
+        static bool Constant(AnimationCurve curve, out float value) =>
+            CurveChecks.Constant(curve, out value, emptyIsConstant: false, finite: true);
     }
 }

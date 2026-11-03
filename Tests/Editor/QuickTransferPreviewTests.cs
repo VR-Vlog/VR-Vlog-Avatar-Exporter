@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using NUnit.Framework;
-using UnityEditor.SceneManagement;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -49,8 +47,7 @@ namespace VRVlog.LilToonExporter.Tests
             return renderer;
         }
 
-        static int OwnedCopies(string name) => Resources.FindObjectsOfTypeAll<GameObject>()
-            .Count(item => item != null && item.name == name && item.transform.parent == null && EditorSceneManager.IsPreviewScene(item.scene));
+        static int OwnedCopies(string name) => ExcludedObjectsPreviewTests.OwnedCopies(name);
 
         [Test] public void HidesTheSavedExclusionsAndTheRemovedGimmicks()
         {

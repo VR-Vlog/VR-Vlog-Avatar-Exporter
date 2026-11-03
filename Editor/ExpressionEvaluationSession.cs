@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using static VRVlog.LilToonExporter.NumericChecks;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter
@@ -23,6 +24,8 @@ namespace VRVlog.LilToonExporter
         private readonly ISet<string> suppliedInputs;
         private readonly bool preserveSyncedOverrides;
         private InvalidOperationException failure;
+        // The failure when it is an unresolved Random that stopped a program.
+        internal InvalidOperationException RandomStop { get; private set; }
         private int entries;
         private bool neutralFxObserved;
 
@@ -176,8 +179,41 @@ namespace VRVlog.LilToonExporter
             }
             root.layers = layers;
             if (preserveSyncedOverrides)
-                ExperimentalExpressionControllerScope.RemapSyncedOverrides(root, original, State, Motion, Behaviours);
+                RemapSyncedOverrides(root, original, State, Motion, Behaviours);
             return root;
+        }
+
+        private static void RemapSyncedOverrides(AnimatorController target, AnimatorController original,
+            Func<AnimatorState, AnimatorState> state, Func<Motion, Motion> motion,
+            Func<IEnumerable<StateMachineBehaviour>, StateMachineBehaviour[]> behaviours)
+        {
+            var authored = original.layers;
+            var current = target.layers;
+            target.layers = current.Select(layer => new AnimatorControllerLayer { name = layer.name,
+                stateMachine = layer.stateMachine, avatarMask = layer.avatarMask, blendingMode = layer.blendingMode,
+                defaultWeight = layer.defaultWeight, iKPass = layer.iKPass, syncedLayerIndex = layer.syncedLayerIndex,
+                syncedLayerAffectsTiming = layer.syncedLayerAffectsTiming }).ToArray();
+            for (var index = 0; index < authored.Length; index++)
+            {
+                if (authored[index].syncedLayerIndex < 0 || current[index].syncedLayerIndex < 0) continue;
+                var source = index; var seen = new HashSet<int>();
+                while (authored[source].syncedLayerIndex >= 0)
+                {
+                    if (!seen.Add(source)) throw new InvalidOperationException("表情の同期レイヤー参照が循環しています。");
+                    source = authored[source].syncedLayerIndex;
+                    if (source >= authored.Length) throw new InvalidOperationException("表情の同期レイヤー参照が不正です。");
+                }
+                void Visit(AnimatorStateMachine machine)
+                {
+                    foreach (var child in machine.states)
+                    {
+                        target.SetStateEffectiveMotion(state(child.state), motion(original.GetStateEffectiveMotion(child.state, index)), index);
+                        target.SetStateEffectiveBehaviours(state(child.state), index, behaviours(original.GetStateEffectiveBehaviours(child.state, index) ?? Array.Empty<StateMachineBehaviour>()));
+                    }
+                    foreach (var child in machine.stateMachines) Visit(child.stateMachine);
+                }
+                Visit(authored[source].stateMachine);
+            }
         }
 
         internal static void Enter(int sessionId, int programIndex, Animator animator, AnimatorControllerPlayable playable)
@@ -260,8 +296,10 @@ namespace VRVlog.LilToonExporter
                 }
             }
             var local = types.ContainsKey("IsLocal") ? Read("IsLocal") != 0 : defaultLocal;
-            VrChatParameterDriver.Execute(program, types, expressionParameters, dependencies.Parameters, local, Read, Write, suppliedInputs);
-            return changed;
+            var random = VrChatParameterDriver.Execute(program, types, expressionParameters, dependencies.Parameters, local, Read, Write, suppliedInputs);
+            // On entry it ends the evaluation; a repeat probe counts it as a change.
+            if (random != null && apply) failure = RandomStop = new InvalidOperationException(random);
+            return changed || random != null;
         }
 
         internal void Check() { if (failure != null) throw failure; }
@@ -291,21 +329,10 @@ namespace VRVlog.LilToonExporter
                     var value = type == AnimatorControllerParameterType.Float ? playable.GetFloat(condition.parameter) :
                         type == AnimatorControllerParameterType.Int ? playable.GetInteger(condition.parameter) :
                         type == AnimatorControllerParameterType.Bool ? (playable.GetBool(condition.parameter) ? 1 : 0) : float.NaN;
-                    if (!NeutralShapeSnapshot.Finite(value)) return false;
-                    switch (condition.mode)
-                    {
-                        case AnimatorConditionMode.If: return value == 0;
-                        case AnimatorConditionMode.IfNot: return value != 0;
-                        case AnimatorConditionMode.Equals: return value != condition.threshold;
-                        case AnimatorConditionMode.NotEqual: return value == condition.threshold;
-                        case AnimatorConditionMode.Greater: return value <= condition.threshold;
-                        case AnimatorConditionMode.Less: return value >= condition.threshold;
-                        default: return false;
-                    }
+                    return Finite(value) && AnimatorConditions.Evaluate(condition, value) == false;
                 }
                 var transitions = current[0].transitions;
-                var solo = transitions.Any(transition => transition.solo);
-                if (transitions.Any(transition => !transition.mute && (!solo || transition.solo) &&
+                if (AnimatorConditions.Enabled(transitions).Any(transition =>
                     (transition.destinationState != current[0] || transition.canTransitionToSelf) &&
                     !transition.conditions.Any(False)))
                     throw new NeutralShapeSamplingException("FXレイヤー制御に未完了の状態遷移があるため、初期表情を確定できません: " + layer.name + " / VRCAnimatorLayerControl");

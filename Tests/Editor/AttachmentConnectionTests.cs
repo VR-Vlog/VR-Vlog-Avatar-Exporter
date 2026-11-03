@@ -33,17 +33,17 @@ namespace VRVlog.LilToonExporter.Tests
             var originalMesh = f.Mesh;
             var originalBinds = originalMesh.bindposes;
             var originalWeights = originalMesh.boneWeights;
-            var before = WorldVertices(f.Skins[0]);
-            var sourceBefore = WorldVertices(f.Source.GetComponentInChildren<SkinnedMeshRenderer>());
+            var before = TestObjects.WorldVertices(f.Skins[0]);
+            var sourceBefore = TestObjects.WorldVertices(f.Source.GetComponentInChildren<SkinnedMeshRenderer>());
             var headBefore = f.Head.localToWorldMatrix;
             var review = new ExportAttachmentSession(f.Source, f.Copy);
             review.Attach(f.Hair, f.Head);
-            AssertVertices(before, WorldVertices(f.Skins[0]));
+            AssertVertices(before, TestObjects.WorldVertices(f.Skins[0]));
             Assert.That(new ExportAttachmentSession(f.Source, f.Copy).Parts.Count, Is.Zero);
             f.Head.localRotation = Quaternion.Euler(18f, 44f, -12f);
             var delta = f.Head.localToWorldMatrix * headBefore.inverse;
-            foreach (var skin in f.Skins) AssertVertices(before.Select(delta.MultiplyPoint3x4).ToArray(), WorldVertices(skin));
-            AssertVertices(sourceBefore, WorldVertices(f.Source.GetComponentInChildren<SkinnedMeshRenderer>()));
+            foreach (var skin in f.Skins) AssertVertices(before.Select(delta.MultiplyPoint3x4).ToArray(), TestObjects.WorldVertices(skin));
+            AssertVertices(sourceBefore, TestObjects.WorldVertices(f.Source.GetComponentInChildren<SkinnedMeshRenderer>()));
             Assert.That(f.Source.transform.Find("Independent hair").parent, Is.SameAs(f.Source.transform));
             Assert.That(f.Skins.All(s => s.sharedMesh == originalMesh), Is.True);
             Assert.That(originalMesh.bindposes, Is.EqualTo(originalBinds));
@@ -68,7 +68,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var f = new Fixture();
             var sourceSkin = f.Source.GetComponentInChildren<SkinnedMeshRenderer>();
-            var sourceBefore = WorldVertices(sourceSkin);
+            var sourceBefore = TestObjects.WorldVertices(sourceSkin);
             var sourceBones = sourceSkin.bones;
             var sourceWeights = f.Mesh.boneWeights;
             var sourceBinds = f.Mesh.bindposes;
@@ -85,20 +85,20 @@ namespace VRVlog.LilToonExporter.Tests
                 input.boneWeights = Enumerable.Range(0, input.vertexCount).Select(i =>
                     weightMode == 1 || (weightMode == 2 && i == 1) ? new BoneWeight() :
                     new BoneWeight { boneIndex0 = 0, weight0 = 1 }).ToArray();
-                var before = WorldVertices(skin);
+                var before = TestObjects.WorldVertices(skin);
                 if (weightMode == 2)
                 {
                     var error = Assert.Throws<InvalidOperationException>(() => SkinnedMeshFallbackWeights.Preserve(f.Copy, owned, null, fixedJoints));
                     Assert.That(error.Message, Does.Contain("ウェイトのない頂点"));
                     Assert.That(skin.sharedMesh, Is.SameAs(input));
-                    AssertVertices(sourceBefore, WorldVertices(sourceSkin));
+                    AssertVertices(sourceBefore, TestObjects.WorldVertices(sourceSkin));
                     Assert.That(sourceSkin.bones, Is.EqualTo(sourceBones));
                     Assert.That(f.Mesh.boneWeights, Is.EqualTo(sourceWeights));
                     return;
                 }
                 SkinnedMeshFallbackWeights.Preserve(f.Copy, owned, null, fixedJoints);
                 Assert.That(fixedJoints.Count, Is.EqualTo(weightMode == 0 ? 1 : 0));
-                AssertVertices(before, WorldVertices(skin));
+                AssertVertices(before, TestObjects.WorldVertices(skin));
                 // The same identity set survives both sides of authoring preparation.
                 SkinnedMeshFallbackWeights.Preserve(f.Copy, owned, null, fixedJoints);
                 Assert.That(fixedJoints.Count, Is.EqualTo(weightMode == 0 ? 1 : 0));
@@ -121,10 +121,10 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     review.Attach(f.Hair, f.Head);
                     f.Head.localRotation = Quaternion.Euler(14, 37, -9);
-                    AssertVertices(before, WorldVertices(skin));
+                    AssertVertices(before, TestObjects.WorldVertices(skin));
                     Assert.That(fixedJoints.All(j => j.parent == f.Copy.transform), Is.True);
                 }
-                AssertVertices(sourceBefore, WorldVertices(sourceSkin));
+                AssertVertices(sourceBefore, TestObjects.WorldVertices(sourceSkin));
                 Assert.That(sourceSkin.bones, Is.EqualTo(sourceBones));
                 Assert.That(sourceSkin.sharedMesh, Is.SameAs(f.Mesh));
                 Assert.That(f.Mesh.boneWeights, Is.EqualTo(sourceWeights));
@@ -256,8 +256,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledMaBoneProxyAutomaticallyConnectsHairWithoutAnInferredTarget()
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (proxyType == null || markerType == null) Assert.Ignore("Requires installed Modular Avatar and NDMF in Unity.");
             using var f = new Fixture();
             foreach (var avatarRoot in new[] { f.Source, f.Copy })
@@ -268,15 +268,15 @@ namespace VRVlog.LilToonExporter.Tests
                 var mode = proxyType.GetField("attachmentMode");
                 mode.SetValue(proxy, Enum.Parse(mode.FieldType, "AsChildKeepWorldPose"));
             }
-            var before = WorldVertices(f.Skins[0]);
+            var before = TestObjects.WorldVertices(f.Skins[0]);
             using (NdmfExportPreparation.Prepare(f.Source, f.Copy))
             {
                 Assert.That(new ExportAttachmentSession(f.Source, f.Copy).Parts.Count, Is.Zero);
-                AssertVertices(before, WorldVertices(f.Skins[0]));
+                AssertVertices(before, TestObjects.WorldVertices(f.Skins[0]));
                 var matrix = f.Head.localToWorldMatrix;
                 f.Head.localRotation = Quaternion.Euler(10, 35, 0);
                 var delta = f.Head.localToWorldMatrix * matrix.inverse;
-                AssertVertices(before.Select(delta.MultiplyPoint3x4).ToArray(), WorldVertices(f.Skins[0]));
+                AssertVertices(before.Select(delta.MultiplyPoint3x4).ToArray(), TestObjects.WorldVertices(f.Skins[0]));
                 Assert.That(f.Source.transform.Find("Independent hair").parent, Is.SameAs(f.Source.transform));
                 Assert.That(f.Source.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh, Is.SameAs(f.Mesh));
             }
@@ -359,12 +359,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var target = imported.Runtime.ControlRig.GetBoneTransform(HumanBodyBones.Head);
                 Assert.That(imported.TryGetBoneTransform(HumanBodyBones.Head, out var originalHead), Is.True);
                 imported.Runtime.Process();
-                var before = WorldVertices(skin);
+                var before = TestObjects.WorldVertices(skin);
                 var matrix = originalHead.localToWorldMatrix;
                 target.localRotation = Quaternion.Euler(12, 40, 0);
                 imported.Runtime.Process();
                 var delta = originalHead.localToWorldMatrix * matrix.inverse;
-                AssertVertices(before.Select(delta.MultiplyPoint3x4).ToArray(), WorldVertices(skin));
+                AssertVertices(before.Select(delta.MultiplyPoint3x4).ToArray(), TestObjects.WorldVertices(skin));
                 Assert.That(skin.sharedMesh.blendShapeCount, Is.EqualTo(1));
             }
             finally
@@ -377,8 +377,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task OneClickExportsRootLevelMaHairWithoutManualConnectionEvenWithIndependentPet(bool includePet)
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (proxyType == null || markerType == null) Assert.Ignore("Requires installed Modular Avatar and NDMF in Unity.");
             using var f = new Fixture();
             f.Source.AddComponent(markerType);
@@ -389,8 +389,7 @@ namespace VRVlog.LilToonExporter.Tests
             var mode = proxyType.GetField("attachmentMode");
             mode.SetValue(proxy, Enum.Parse(mode.FieldType, "AsChildKeepWorldPose"));
             Mesh petMesh = null;
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             var exportMaterial = new Material(shader);
             foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
                 skin.sharedMaterials = new[] { exportMaterial };
@@ -415,7 +414,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // Use the same complete entry point as the window: no target
                 // selection callback, preview, or manual Attach call.
                 f.Mesh.colors = Enumerable.Range(0, f.Mesh.vertexCount).Select(i => new Color(.25f + i*.1f,.6f,.7f,.8f - i*.1f)).ToArray();
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Automatic MA hair", "Test", warnings,
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Automatic MA hair", "Test", warnings: warnings,
                     exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(sourceHair.parent, Is.SameAs(f.Source.transform));
                 Assert.That(f.Source.GetComponentsInChildren<Transform>(true).Select(t => t.localToWorldMatrix), Is.EqualTo(sourceBefore));
@@ -435,9 +434,9 @@ namespace VRVlog.LilToonExporter.Tests
                         Assert.That(hairSkin.sharedMesh.colors[i].a, Is.EqualTo(.8f - i*.1f).Within(.005f));
                     }
                 }
-                var before = hairSkins.ToDictionary(skin => skin, WorldVertices);
+                var before = hairSkins.ToDictionary(skin => skin, TestObjects.WorldVertices);
                 var petSkin = skins.FirstOrDefault(skin => skin.name == "Independent pet");
-                var petBefore = petSkin != null ? WorldVertices(petSkin) : null;
+                var petBefore = petSkin != null ? TestObjects.WorldVertices(petSkin) : null;
                 Assert.That(petSkin != null, Is.EqualTo(includePet));
                 Assert.That(imported.TryGetBoneTransform(HumanBodyBones.Head, out var originalHead), Is.True);
                 var matrix = originalHead.localToWorldMatrix;
@@ -446,12 +445,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var delta = originalHead.localToWorldMatrix * matrix.inverse;
                 foreach (var skin in hairSkins)
                 {
-                    AssertVertices(before[skin].Select(delta.MultiplyPoint3x4).ToArray(), WorldVertices(skin));
-                    // "Hair detail" is unused, so it is left out; connecting adds no morph.
+                    AssertVertices(before[skin].Select(delta.MultiplyPoint3x4).ToArray(), TestObjects.WorldVertices(skin));
+                    // Nothing binds the hair morph, so the export leaves it out of the VRM.
                     Assert.That(Enumerable.Range(0, skin.sharedMesh.blendShapeCount)
-                        .Count(i => !skin.sharedMesh.GetBlendShapeName(i).StartsWith("__VRVlog_BlinkNone_")), Is.Zero);
+                        .Count(i => !skin.sharedMesh.GetBlendShapeName(i).StartsWith("__VRVlog_BlinkNone_")), Is.EqualTo(0));
                 }
-                if (petSkin != null) AssertVertices(petBefore, WorldVertices(petSkin));
+                if (petSkin != null) AssertVertices(petBefore, TestObjects.WorldVertices(petSkin));
             }
             finally
             {
@@ -466,8 +465,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // Instantiate keeps a skin's references to scene objects outside the
             // avatar, which UniVRM cannot look up among the exported nodes.
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var f = new Fixture();
             var exportMaterial = new Material(shader);
             var outside = new GameObject("Outside bone").transform;
@@ -480,7 +478,7 @@ namespace VRVlog.LilToonExporter.Tests
                 front.bones = new[] { outside, head };
                 front.rootBone = outside;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Outside bones", "Test", warnings,
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Outside bones", "Test", warnings: warnings,
                     exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(bytes, Is.Not.Empty);
                 var prefix = ExporterLocalization.T(UniVrmOneClickExporter.OutsideBonesDropped);
@@ -499,8 +497,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(7)]
         public async Task ManualAndMaAppearanceMatchAfterCompleteExportAndReload(int changes)
         {
-            var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-            var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (proxyType == null || markerType == null) Assert.Ignore("Requires installed MA/NDMF.");
             using var f = new Fixture();
             var original = new Material(Shader.Find("lilToon"));
@@ -549,7 +547,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(actual.Select(s=>s.name),Is.EquivalentTo(expected.Keys));
                     foreach(var skin in actual)
                     {
-                        AssertVertices(WorldVertices(expected[skin.name]),WorldVertices(skin));
+                        AssertVertices(TestObjects.WorldVertices(expected[skin.name]),TestObjects.WorldVertices(skin));
                         Assert.That(skin.sharedMaterial.GetColor("_Color"),Is.EqualTo(expected[skin.name].sharedMaterial.GetColor("_Color")));
                     }
                 }
@@ -563,13 +561,6 @@ namespace VRVlog.LilToonExporter.Tests
                 if(manual!=null) Object.DestroyImmediate(manual.gameObject);
                 Object.DestroyImmediate(original); Object.DestroyImmediate(replacement);
             }
-        }
-
-        private static Vector3[] WorldVertices(SkinnedMeshRenderer skin)
-        {
-            var baked = new Mesh();
-            try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
         }
 
         private static void AssertVertices(Vector3[] expected, Vector3[] actual)
@@ -590,14 +581,14 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal void PrepareMeshesForExport()
             {
-                var before = Skins.Select(WorldVertices).ToArray();
+                var before = Skins.Select(TestObjects.WorldVertices).ToArray();
                 var bones = Skins.Select(s => s.bones).ToArray();
                 UniVrmOneClickExporter.MakeRendererMeshesUnique(Copy, exportMeshes);
                 Assert.That(Skins.Select(s => s.sharedMesh).Distinct().Count(), Is.EqualTo(Skins.Length));
                 Assert.That(Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(s => s.sharedMesh == Mesh), Is.True);
                 for (var i = 0; i < Skins.Length; i++)
                 {
-                    AssertVertices(before[i], WorldVertices(Skins[i]));
+                    AssertVertices(before[i], TestObjects.WorldVertices(Skins[i]));
                     Assert.That(Skins[i].bones, Is.EqualTo(bones[i]));
                     Assert.That(Skins[i].GetBlendShapeWeight(0), Is.EqualTo(35f));
                 }

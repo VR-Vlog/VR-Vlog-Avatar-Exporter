@@ -62,13 +62,9 @@ namespace VRVlog.LilToonExporter
             var mapped = new List<string>();
             var vrchat = new List<string>();
             var dropped = new List<string>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(copy))
+            // Particle and trail materials are not exported and are not listed.
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(copy))
             {
-                // Only renderers that become glTF meshes, as in LilToonFullSnapshot.
-                // Particle and trail materials are not exported and are not listed.
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 var slots = renderer.sharedMaterials;
                 var changed = false;
                 for (var i = 0; i < slots.Length; i++)
@@ -554,7 +550,7 @@ namespace VRVlog.LilToonExporter
         static readonly Regex Whitespace = new Regex(@"\s+");
         // Indices are UnityEngine.Rendering.CompareFunction and CullMode; Off is
         // the ZTest keyword for no depth test.
-        static readonly string[] DepthComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always", "Off" };
+        static readonly string[] DepthComparisons = StencilComparisons.Append("Off").ToArray();
         static readonly string[] CullModes = { "Off", "Front", "Back" };
         static readonly string[] StencilOperations = { "Keep", "Zero", "Replace", "IncrSat", "DecrSat", "Invert", "IncrWrap", "DecrWrap" };
 
@@ -843,9 +839,59 @@ namespace VRVlog.LilToonExporter
             else material.SetFloat(name, value);
         }
 
+        // The middle row of an image in linear values, read through the GPU so
+        // that images without CPU access are read too.
+        static Color[] ReadRow(Texture texture)
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
+            const int Width = 64;
+            try
+            {
+                return GpuReadback.LinearPixels(Width, 1, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f)));
+            }
+            catch (Exception) { return null; }
+        }
+
+        // The pixels as a shader samples them, at the given size. Null when they
+        // cannot be read (no graphics device).
+        static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
+
+        // The same through the image's tiling and offset: the pixels are laid
+        // out in the mesh's UV space.
+        static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
+            try
+            {
+                return GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target, scale, offset));
+            }
+            catch (Exception) { return null; }
+        }
+
+        // An image owned by textures, with the wrap and filter of origin. linear
+        // keeps the pixels as stored values instead of sRGB colors.
+        static Texture2D NewImage(Texture origin, string suffix, int width, int height, Color[] pixels, List<Texture2D> textures, bool linear)
+        {
+            if (textures == null) return null;
+            var image = new Texture2D(width, height, TextureFormat.RGBA32, false, linear)
+            {
+                name = DeterministicNames.Unique((origin != null ? origin.name : "Color") + suffix,
+                    candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
+                wrapModeU = origin != null ? origin.wrapModeU : TextureWrapMode.Repeat,
+                wrapModeV = origin != null ? origin.wrapModeV : TextureWrapMode.Repeat,
+                filterMode = origin != null ? origin.filterMode : FilterMode.Bilinear,
+            };
+            image.SetPixels(pixels);
+            image.Apply(false, false);
+            textures.Add(image);
+            return image;
+        }
+
         // Values of the source material. A missing shader no longer declares
         // its properties, so they are read from the saved material data.
-        sealed class SourceValues
+        internal sealed class SourceValues
         {
             readonly Dictionary<string, (Texture Texture, Vector2 Scale, Vector2 Offset)> textures = new Dictionary<string, (Texture, Vector2, Vector2)>(StringComparer.Ordinal);
             readonly Dictionary<string, float> floats = new Dictionary<string, float>(StringComparer.Ordinal);

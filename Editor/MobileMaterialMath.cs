@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    internal static class MobileMaterialMath
+    internal static partial class MobileMaterialMath
     {
         internal static float ShadowShift(float border, float blur)
         {
