@@ -199,6 +199,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(resolved.Inferences, Is.Empty, "A known pair is not a guess.");
         }
 
+        // Named sides that also move something the blink does not (here the
+        // brows) would change the blink, so it keeps its bilateral shape.
+        [Test] public void SidesThatMoveMoreThanTheBlinkLeaveItAsItWas()
+        {
+            Face("Blink", "Blink_L:LE", "Blink_R:RF");
+            var resolved = BlinkExportSession.Resolve(Root);
+            Assert.That(Shapes(resolved, 0), Is.EqualTo(new[] { "Blink" }));
+            Assert.That(Shapes(resolved, 1), Is.EqualTo(new[] { "Blink_L" }));
+            Assert.That(Shapes(resolved, 2), Is.EqualTo(new[] { "Blink_R" }));
+        }
+
         // Without sides the blink stays its bilateral shape.
         [Test] public void WithoutSidesTheBlinkStaysAsItWas()
         {

@@ -53,10 +53,15 @@ namespace VRVlog.LilToonExporter
 
         sealed class Side
         {
-            internal int Index;
             internal string Name;
             internal Vector3[] Within; // deltas on the bilateral shape's vertices
-            internal float Outside;    // squared movement elsewhere
+            internal double Outside;   // squared movement elsewhere
+            internal double Squared;   // |Within|^2
+            internal double OnTarget;  // Within . bilateral
+            // Where it moves off its own side (or on the centre line): the
+            // only vertices a left and a right shape can both move.
+            internal int[] Spill;
+            internal bool MarksTheOtherEye;
         }
 
         internal static Pair Find(SkinnedMeshRenderer renderer, string both, Vector3 centre, Vector3 leftAxis)
@@ -70,40 +75,63 @@ namespace VRVlog.LilToonExporter
             var support = Enumerable.Range(0, deltas.Length).Where(i => deltas[i] != Vector3.zero).ToArray();
             if (support.Length == 0) return null;
             var target = support.Select(i => deltas[i]).ToArray();
-            var energy = target.Sum(delta => delta.sqrMagnitude);
+            var energy = target.Sum(delta => (double)delta.sqrMagnitude);
             var inSupport = new bool[deltas.Length];
             foreach (var i in support) inSupport[i] = true;
 
             var side = SidesOfVertices(renderer, centre, leftAxis);
             if (side == null) return null;
+            var supportSide = support.Select(i => side[i]).ToArray();
             var lefts = new List<Side>(); var rights = new List<Side>();
             for (var index = 0; index < mesh.blendShapeCount; index++)
             {
                 if (index == bothIndex || mesh.GetBlendShapeFrameCount(index) == 0) continue;
                 Final(mesh, index, deltas);
+                // Most shapes (mouth, brows, ...) never move the bilateral
+                // shape's vertices, so they cannot be a side: skip them before
+                // going through the whole mesh.
+                var touches = false;
+                foreach (var i in support) if (Moves(deltas[i])) { touches = true; break; }
+                if (!touches) continue;
                 float total = 0, outside = 0, onLeft = 0, onRight = 0;
                 for (var i = 0; i < deltas.Length; i++)
                 {
-                    var moved = deltas[i].sqrMagnitude;
+                    var d = deltas[i];
+                    var moved = d.x * d.x + d.y * d.y + d.z * d.z;
                     if (moved == 0) continue;
                     total += moved;
                     if (!inSupport[i]) outside += moved;
                     if (side[i] > 0) onLeft += moved; else if (side[i] < 0) onRight += moved;
                 }
                 if (total == 0 || outside > total * (1 - Inside)) continue;
-                var list = onLeft >= total * OneSided ? lefts : onRight >= total * OneSided ? rights : null;
-                list?.Add(new Side { Index = index, Name = mesh.GetBlendShapeName(index),
-                    Within = support.Select(i => deltas[i]).ToArray(), Outside = outside });
+                var isLeft = onLeft >= total * OneSided;
+                if (!isLeft && onRight < total * OneSided) continue;
+                var within = support.Select(i => deltas[i]).ToArray();
+                double squared = 0, onTarget = 0; var spill = new List<int>();
+                for (var k = 0; k < within.Length; k++)
+                {
+                    if (!Moves(within[k])) continue;
+                    squared += within[k].sqrMagnitude; onTarget += Vector3.Dot(within[k], target[k]);
+                    if (isLeft ? supportSide[k] <= 0 : supportSide[k] >= 0) spill.Add(k);
+                }
+                (isLeft ? lefts : rights).Add(new Side { Name = mesh.GetBlendShapeName(index), Within = within, Outside = outside,
+                    Squared = squared, OnTarget = onTarget, Spill = spill.ToArray(),
+                    MarksTheOtherEye = Contradicts(mesh.GetBlendShapeName(index), isLeft ? BlinkShapeNames.ClosingLeft : BlinkShapeNames.ClosingRight) });
             }
 
             Pair best = null; var bestNamed = false;
             foreach (var l in lefts)
                 foreach (var r in rights)
                 {
-                    if (Contradicts(l.Name, BlinkShapeNames.ClosingLeft) || Contradicts(r.Name, BlinkShapeNames.ClosingRight)) continue;
-                    var miss = l.Outside + r.Outside;
-                    for (var k = 0; k < target.Length; k++) miss += (l.Within[k] + r.Within[k] - target[k]).sqrMagnitude;
-                    var residual = miss / energy;
+                    if (l.MarksTheOtherEye || r.MarksTheOtherEye) continue;
+                    // |l + r - t|^2 = |l|^2 + |r|^2 + |t|^2 + 2 l.r - 2 l.t - 2 r.t,
+                    // where l.r only sums where both move: l's spill (off the
+                    // left) and r's spill on the left.
+                    double cross = 0;
+                    foreach (var k in l.Spill) cross += Vector3.Dot(l.Within[k], r.Within[k]);
+                    foreach (var k in r.Spill) if (supportSide[k] > 0) cross += Vector3.Dot(l.Within[k], r.Within[k]);
+                    var miss = l.Outside + r.Outside + l.Squared + r.Squared + energy + 2 * (cross - l.OnTarget - r.OnTarget);
+                    var residual = (float)(Math.Max(0, miss) / energy);
                     if (residual > Rebuilt) continue;
                     var named = Siblings(l.Name, r.Name);
                     // Equally good pairs (the same shapes under two names) go
@@ -114,6 +142,37 @@ namespace VRVlog.LilToonExporter
                 }
             return best;
         }
+
+        // Whether the side shapes together move the meshes as the bilateral
+        // bindings do, within Rebuilt. Sides that also move something else
+        // (a mouth corner, a brow) would change the blink.
+        internal static bool Rebuilds(IEnumerable<BlinkShapeBinding> bilateral, IEnumerable<BlinkShapeBinding> sides)
+        {
+            var bothSum = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+            var sideSum = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+            bool Add(Dictionary<SkinnedMeshRenderer, Vector3[]> sums, BlinkShapeBinding binding)
+            {
+                var mesh = binding.Renderer != null ? binding.Renderer.sharedMesh : null;
+                var index = mesh != null ? mesh.GetBlendShapeIndex(binding.Shape) : -1;
+                if (index < 0 || mesh.GetBlendShapeFrameCount(index) == 0) return false;
+                if (!bothSum.ContainsKey(binding.Renderer)) bothSum[binding.Renderer] = new Vector3[mesh.vertexCount];
+                if (!sideSum.ContainsKey(binding.Renderer)) sideSum[binding.Renderer] = new Vector3[mesh.vertexCount];
+                var deltas = new Vector3[mesh.vertexCount]; Final(mesh, index, deltas);
+                var sum = sums[binding.Renderer]; var scale = binding.Weight / 100f;
+                for (var i = 0; i < deltas.Length; i++) sum[i] += deltas[i] * scale;
+                return true;
+            }
+            if (!bilateral.All(binding => Add(bothSum, binding)) || !sides.All(binding => Add(sideSum, binding))) return false;
+            double miss = 0, energy = 0;
+            foreach (var renderer in bothSum.Keys)
+            {
+                var b = bothSum[renderer]; var s = sideSum[renderer];
+                for (var i = 0; i < b.Length; i++) { energy += b[i].sqrMagnitude; miss += (s[i] - b[i]).sqrMagnitude; }
+            }
+            return energy > 0 && miss <= Rebuilt * energy;
+        }
+
+        static bool Moves(Vector3 delta) => delta.x != 0 || delta.y != 0 || delta.z != 0;
 
         static void Final(Mesh mesh, int index, Vector3[] deltas) =>
             mesh.GetBlendShapeFrameVertices(index, mesh.GetBlendShapeFrameCount(index) - 1, deltas, null, null);

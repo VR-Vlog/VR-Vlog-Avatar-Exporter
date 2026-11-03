@@ -296,11 +296,13 @@ namespace VRVlog.LilToonExporter
 
         // mk 11/03: once both eyes have their own shapes, blink closes the two
         // of them, so blink looks exactly like blinkLeft and blinkRight
-        // together. A mesh without sides keeps its bilateral shape.
+        // together. A mesh without sides keeps its bilateral shape, and so
+        // does a blink whose sides together move more than it does.
         void ComposeBlinkFromSides()
         {
             if (Slots[1].Count == 0 || Slots[2].Count == 0) return;
             var sided = new HashSet<SkinnedMeshRenderer>(Slots[1].Concat(Slots[2]).Select(binding => binding.Renderer));
+            if (!EyeClosureSides.Rebuilds(Slots[0].Where(binding => sided.Contains(binding.Renderer)), Slots[1].Concat(Slots[2]))) return;
             composedFrom = Slots[0].Select(binding => binding.Copy()).ToList();
             foreach (var binding in Slots[0]) CaptureCandidate(binding);
             var kept = Slots[0].Where(binding => !sided.Contains(binding.Renderer)).ToList();
