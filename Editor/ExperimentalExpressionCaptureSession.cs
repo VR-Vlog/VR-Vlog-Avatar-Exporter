@@ -65,7 +65,8 @@ namespace VRVlog.LilToonExporter
         internal readonly List<string> Warnings = new List<string>();
         internal readonly List<Channel> Channels = new List<Channel>();
         internal readonly List<Pose> Expressions = new List<Pose>();
-        internal readonly PoseExportOptions PoseOptions = new PoseExportOptions();
+        // The board keeps one list across its copies, so a pose window open on it stays current.
+        internal readonly PoseExportOptions PoseOptions;
         readonly Dictionary<string, SkinnedMeshRenderer> authoringRenderers = new Dictionary<string, SkinnedMeshRenderer>(StringComparer.Ordinal);
         // Meshes left out of recording because another mesh shares their path.
         // A face's curves on them are dropped; the rest of the face is kept.
@@ -125,13 +126,13 @@ namespace VRVlog.LilToonExporter
         // board does too, instead of stopping the transfer before any file is
         // written. The export still runs the build passes on its own copy.
         internal static ExperimentalExpressionCaptureSession Create(GameObject source, bool replayInstalledDefaults,
-            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, PoseExportOptions poseOptions = null)
         {
-            try { return new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions); }
+            try { return new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions, poseOptions: poseOptions); }
             catch (Exception error) when (error.Data.Contains(BuildPassFailureKey) && ExportStageGuard.ContinueByDefault)
             {
                 Debug.LogWarning("VR Vlog: " + error);
-                var session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions, skipBuildPasses: true);
+                var session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions, skipBuildPasses: true, poseOptions: poseOptions);
                 session.Warnings.Add(ExporterLocalization.T(WithoutBuildPassesWarning));
                 return session;
             }
@@ -140,9 +141,11 @@ namespace VRVlog.LilToonExporter
         // Manual exclusions and gimmick options follow the ordinary export:
         // detection skips what is excluded by hand, and both leave Copy.
         internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults,
-            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, bool skipBuildPasses = false)
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, bool skipBuildPasses = false,
+            PoseExportOptions poseOptions = null)
         {
             Source = source;
+            PoseOptions = poseOptions ?? new PoseExportOptions();
             try
             {
                 if (source == null) throw new ArgumentNullException(nameof(source));

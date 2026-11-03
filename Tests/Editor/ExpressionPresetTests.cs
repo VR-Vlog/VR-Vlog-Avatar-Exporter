@@ -183,6 +183,39 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A looping face that starts at rest, holds, and eases back toward
+        // rest by its last frame is exported as the face it holds
+        // (ClipFaceTime), not as its last frame.
+        [Test]
+        public async Task PresetFromAMovingClipBakesTheFaceItHolds()
+        {
+            using var fixture = Fixture(smile: false);
+            var clip = new AnimationClip { name = "Sad loop" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                new AnimationCurve(new Keyframe(0, 0, 0, 0), new Keyframe(.5f, 70, 0, 0), new Keyframe(1, 90, 0, 0), new Keyframe(3, 90, 0, 0), new Keyframe(4, 40, 0, 0)));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(clip, settings);
+            Vrm10Instance imported = null;
+            try
+            {
+                Assert.That(ExperimentalExpressionCaptureWindow.DefaultTime(null, clip), Is.EqualTo(2).Within(1e-5), "The board shows the same frame.");
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.FaceTime(clip), Is.EqualTo(2).Within(1e-5), "The board reads the same frame with the avatar's rest weights.");
+                session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, clip));
+                Assert.That(session.PresetError(ExpressionPreset.sad, session.Presets[ExpressionPreset.sad]), Is.Null);
+                var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Load(bytes);
+                var front = imported.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+                imported.Runtime.Expression.SetWeight(ExpressionKey.Sad, 1); imported.Runtime.Process();
+                Assert.That(Vector3.Distance(FirstVertex(front), fixture.Mesh.vertices[0] + HairDelta * .9f), Is.LessThan(.0001),
+                    "The held weight 90, not the last frame's 40.");
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+                Object.DestroyImmediate(clip);
+            }
+        }
+
         // The board takes a clip that also names a shape the avatar never had.
         // In a standard slot it must save too, binding only the shapes the
         // mesh has. ShapesLostByPreparationStayUnsupportedOnTheBoard covers

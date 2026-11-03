@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 
@@ -5,6 +6,31 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class OptimizationLocalizationTests
     {
+        [System.Serializable]
+        sealed class LocaleEntry { public string source; public string translated; }
+
+        [System.Serializable]
+        sealed class LocaleTable { public LocaleEntry[] entries; }
+
+        // Characters that do not belong in each table. English has no CJK characters or full-width
+        // punctuation at all. Korean has no kana or kanji. Chinese has no kana; the kanji, 「」 and the
+        // middle dot ・ are its own, so only kana other than ・ and half-width kana are left.
+        [TestCase("en", @"[　-〿぀-ヿ一-鿿＀-￯]")]
+        [TestCase("ko", @"[぀-ヿ一-鿿ｦ-ﾟ]")]
+        [TestCase("zh-Hans", @"[぀-ヺー-ヿｦ-ﾟ]")]
+        [TestCase("zh-Hant", @"[぀-ヺー-ヿｦ-ﾟ]")]
+        public void TranslationsHoldNoJapaneseCharacters(string locale, string japanese)
+        {
+            var path = UnityEditor.AssetDatabase.FindAssets("ExporterLocale_" + locale + " t:TextAsset")
+                .Select(UnityEditor.AssetDatabase.GUIDToAssetPath)
+                .Single(found => found.EndsWith("/Editor/Locales/ExporterLocale_" + locale + ".json", System.StringComparison.Ordinal));
+            var table = UnityEngine.JsonUtility.FromJson<LocaleTable>(System.IO.File.ReadAllText(path));
+            Assert.That(table.entries.Length, Is.GreaterThan(1000), locale + ": the table was not read");
+            var pattern = new System.Text.RegularExpressions.Regex(japanese);
+            var bad = table.entries.Where(entry => pattern.IsMatch(entry.translated)).Select(entry => entry.translated).ToList();
+            Assert.That(bad, Is.Empty, locale + ": Japanese left in the translations");
+        }
+
         [TestCase("en")]
         [TestCase("ko")]
         [TestCase("zh-Hans")]

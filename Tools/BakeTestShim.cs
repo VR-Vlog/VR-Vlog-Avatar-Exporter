@@ -328,5 +328,11 @@ namespace VRVlog.LilToonExporter
         }
     }
     internal static class LilToonMobileProfile { internal const int MaximumTextureSize = 2048; internal const int DefaultMaximumTextureSize = 1024; }
+    // The locale tables need AssetDatabase; the harness keeps the Japanese source.
+    public static class ExporterLocalization
+    {
+        public static string T(string source) => source;
+        public static string Format(string template, params object[] values) => string.Format(T(template), values);
+    }
 }
 #endif
