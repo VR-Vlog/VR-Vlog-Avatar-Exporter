@@ -196,7 +196,7 @@ namespace VRVlog.LilToonExporter
                 if (curve == null) throw new InvalidOperationException("表情アニメーションの曲線を読み取れません: " + clip.name);
                 // The static value is the first pose. The animated channels
                 // are exported separately and replayed by VR Vlog; the VRM
-                // expression takes their last frame.
+                // expression takes them at the face time (ClipFaceTime).
                 var weight = (float)ReadCurve(curve).Evaluate(0);
                 var renderer = VrChatExpressionSampler.FindRenderer(avatar, binding.path);
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy)
@@ -250,6 +250,14 @@ namespace VRVlog.LilToonExporter
         internal static ExpressionAnimationData.Curve ReadCurve(AnimationCurve curve)
         {
             if (curve == null) throw new InvalidOperationException("表情アニメーションの曲線を読み取れません。");
+            var result = ConvertCurve(curve);
+            result.Validate();
+            return result;
+        }
+
+        // The curve as the animation stores it, without the schema's limits.
+        internal static ExpressionAnimationData.Curve ConvertCurve(AnimationCurve curve)
+        {
             string Wrap(WrapMode mode) => mode == WrapMode.Loop ? "loop" : mode == WrapMode.PingPong ? "pingPong" : "clamp";
             var result = new ExpressionAnimationData.Curve { PreWrap = Wrap(curve.preWrapMode), PostWrap = Wrap(curve.postWrapMode) };
             foreach (var k in curve.keys)
@@ -261,7 +269,6 @@ namespace VRVlog.LilToonExporter
                     InWeight = (k.weightedMode & WeightedMode.In) != 0 ? k.inWeight : 1.0 / 3,
                     OutWeight = (k.weightedMode & WeightedMode.Out) != 0 ? k.outWeight : 1.0 / 3
                 });
-            result.Validate();
             return result;
         }
 

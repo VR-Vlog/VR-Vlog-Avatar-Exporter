@@ -128,6 +128,26 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The board's time to read a clip (ClipFaceTime): its BlendShapes on the
+        // avatar's paths, measured from the baseline face, without the meshes
+        // the recorded face leaves out.
+        internal float FaceTime(AnimationClip clip)
+        {
+            if (clip == null) return 0;
+            string root;
+            try { root = ClipRoot(clip); }
+            catch (InvalidOperationException) { root = ""; } // Reading the clip reports it.
+            return ClipFaceTime.Of(clip, binding =>
+            {
+                var path = string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path;
+                if (skippedPaths.Contains(path)) return null;
+                var shape = binding.propertyName.Substring("blendShape.".Length);
+                var row = Baseline?.Rows.FirstOrDefault(candidate => candidate.Path == path);
+                var index = row == null ? -1 : Array.IndexOf(row.Shapes, shape);
+                return index >= 0 ? row.Weights[index] : 0;
+            });
+        }
+
         string ClipRoot(AnimationClip clip)
         {
             if (!clipRoots.TryGetValue(clip, out var roots)) return ""; // Explicit, unregistered .anim uses avatar-relative paths.
@@ -330,7 +350,7 @@ namespace VRVlog.LilToonExporter
             var result = new Dictionary<AnimationClip, string>();
             foreach (var clip in clips.Where(clip => clip != null).Distinct())
             {
-                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, clip.length, "プレビュー"))); }
+                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, FaceTime(clip), "プレビュー"))); }
                 catch (InvalidOperationException error) { result.Add(clip, error.Message); }
             }
             return result;
