@@ -1100,6 +1100,20 @@ namespace VRVlog.LilToonExporter.LanTransfer
             createButton.EnableInClassList("primary", !saveFirst);
         }
 
+        private void ShowAvatarInField()
+        {
+            var shown = avatarField.value;
+            if (shown != avatar) avatarField.SetValueWithoutNotify(avatar);
+            // Unity's == counts a destroyed object as null, for the field too, so setting
+            // null over one is no change and its name stays. Changing the type redraws it.
+            else if (shown == null && !ReferenceEquals(shown, null))
+            {
+                avatarField.SetValueWithoutNotify(null);
+                avatarField.objectType = typeof(UnityEngine.Object);
+                avatarField.objectType = typeof(GameObject);
+            }
+        }
+
         private void RefreshForm()
         {
             var playing = EditorApplication.isPlayingOrWillChangePlaymode;
@@ -1116,7 +1130,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             consentFields.SetEnabled(!playing && entry != null);
 
             avatarLabel.text = T(AppTransferText.Avatar);
-            if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
+            ShowAvatarInField();
             // What the export takes from elsewhere, and where to change it.
             summaryText.text = entry != null ? entry.SettingsSummary(avatar, detailed) : "";
             summaryButton.text = T(!detailed ? AppTransferText.EditDetails : BoardReady ? AppTransferText.BackToBoard : AppTransferText.OpenBoard);
