@@ -114,8 +114,6 @@ namespace VRVlog.LilToonExporter
                 {
                     AddFollowingTail(chain);
                     var spring = new Vrm10InstanceSpringBone.Spring(component.name);
-                    // A head center would cancel the desired hair inertia, so only
-                    // a spring that asks for it through Immobile gets one.
                             if (group != null) spring.ColliderGroups.Add(group);
                     var settled = Quaternion.identity;
                     for (var i = 0; i < chain.Count; i++)
@@ -415,7 +413,7 @@ namespace VRVlog.LilToonExporter
         {
             void Note(string sentence) => warnings?.Add(ExportNoteText.Spring(source.name, sentence));
             Note(ExportNoteText.SpringForces);
-            if (EnumNumber(source, "integrationType", 0) != 0 || Number(source, "stiffness", 0) != 0) Note(ExportNoteText.SpringAdvanced);
+            if (EnumNumber(source, "integrationType", 0) != 0) Note(ExportNoteText.SpringAdvanced);
             if (Number(source, "immobile", 0) != 0)
                 Note(EnumNumber(source, "immobileType", 0) == 0 ? ExportNoteText.SpringImmobileAllMotion : ExportNoteText.SpringImmobileWorld);
             if (Number(source, "gravityFalloff", 0) != 0) Note(ExportNoteText.SpringGravityFalloff);
