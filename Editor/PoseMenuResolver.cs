@@ -266,7 +266,7 @@ namespace VRVlog.LilToonExporter
             }
             catch (Exception error)
             {
-                var warning = BodyReachUnknownWarning + error.Message;
+                var warning = ExporterLocalization.T(BodyReachUnknownWarning) + error.Message;
                 if (warnings != null && !warnings.Contains(warning)) warnings.Add(warning);
                 return false;
             }
