@@ -49,7 +49,7 @@ Four avatars with many kinds of chains, 119 chains:
 | | old_raw | new_raw | old_app | new_app |
 |---|---|---|---|---|
 | Direction error, mean (degrees) | 10.07 | 5.33 | 7.86 | 6.51 |
-| Tip distance RMS (% of chain length) | 10.40 | 5.53 | 8.15 | 7.34 |
+| Tip distance RMS (% of chain length) | 10.40 | 5.54 | 8.15 | 7.33 |
 | Last bone rotation error (degrees) | 20.78 | 11.88 | 17.48 | 13.97 |
 | Swing size against the source | 0.97 | 1.07 | 1.13 | 1.15 |
 | Settling time difference (s) | 0.26 | 0.15 | 0.27 | 0.14 |
@@ -92,6 +92,83 @@ integration type, version, length and starting direction.
 
 The worst chains point straight up with gravity 1. That rest pose is an unstable
 balance on the source, so a small difference decides which way the chain falls.
+
+## Results on the whole list
+
+300 models that could be assembled in one Unity project, 8558 chains. The same
+timeline and the same four bodies as above. This run was made before the last
+review fixes. Those fixes only touch a force at its ceiling, a bone pointing
+straight up and a last bone scaled to zero. On the four models above they moved
+the means by less than 0.01 degrees.
+
+| | old_raw | new_raw | old_app | new_app |
+|---|---|---|---|---|
+| Direction error, mean (degrees) | 11.01 | 4.87 | 9.11 | 6.47 |
+| Direction error, median model | 9.92 | 5.61 | 7.78 | 6.16 |
+| Direction error, 90th percentile model | 13.10 | 7.89 | 14.44 | 9.91 |
+| Direction error, worst model | 47.70 | 47.52 | 51.00 | 47.65 |
+| Tip distance RMS (% of chain length) | 11.41 | 6.15 | 9.36 | 7.89 |
+| Last bone rotation error (degrees) | 24.17 | 9.59 | 21.63 | 12.46 |
+| Swing size against the source | 3.49 | 1.07 | 3.66 | 1.16 |
+| Settling time difference (s) | 0.21 | 0.09 | 0.23 | 0.13 |
+
+| Section | old_raw | new_raw | old_app | new_app |
+|---|---|---|---|---|
+| idle | 2.09 | 1.42 | 2.10 | 1.44 |
+| walk | 15.52 | 5.49 | 11.63 | 7.54 |
+| turn | 16.28 | 6.17 | 13.69 | 9.12 |
+| head | 12.61 | 6.61 | 11.19 | 8.56 |
+| jump | 19.05 | 8.49 | 14.33 | 10.67 |
+| rest | 4.36 | 2.44 | 4.35 | 3.29 |
+
+| Part | chains | old_raw | new_raw | old_app | new_app |
+|---|---|---|---|---|---|
+| hair | 3388 | 12.60 | 4.69 | 9.11 | 6.71 |
+| skirt | 1474 | 5.52 | 5.22 | 5.93 | 5.75 |
+| tail | 434 | 11.23 | 2.92 | 5.97 | 6.59 |
+| ear | 652 | 8.51 | 2.70 | 5.36 | 4.34 |
+| breast | 148 | 0.55 | 0.48 | 0.56 | 2.01 |
+| sleeve | 182 | 17.86 | 4.99 | 16.83 | 6.07 |
+| other | 2280 | 11.35 | 4.41 | 9.71 | 5.70 |
+
+Against the previous conversion, the plain VRM improved on 299 models, stayed the
+same on 1 and got worse on none. With the app's load settings, 261 models improved,
+3 stayed the same and 36 got worse, by 1.27 degrees at most.
+
+22 more models gave no comparison. 18 have no PhysBone, and on 4 the only PhysBones
+are on a camera gadget with no chain to compare.
+
+The worst model stays at 47 degrees in both versions. A PhysBone rooted at Hips
+covers its whole body, arms, legs and fingers included, and follows the animation
+through Is Animated. A VRM chain has no animated rest pose, which is the likely
+cause, though it was not isolated by a separate run. Going by bone names, it is the
+only model among the 300 with chains starting on body bones.
+
+Models that could not be measured here: those whose assets are not in this project
+or need another Unity project.
+
+## Exported files
+
+The numbers above convert inside one Unity process. To check that a file gives the
+same result, five models were exported through the normal export and read back:
+
+| Model | Inside the process | Exported file |
+|---|---|---|
+| 1 | 7.99 | 7.99 |
+| 2 | 6.43 | 6.47 |
+| 3 | 1.13 | 1.13 |
+| 4 | 5.77 | 5.77 |
+| 5 | 5.31 | 5.44 |
+
+## Frame rate
+
+VRM drag is applied per frame and the mapping is stated at 60 Hz. Stepping the VRM
+solver at 30 Hz on the four models, compared on the frames it ran:
+
+| | old_raw | new_raw | old_app | new_app |
+|---|---|---|---|---|
+| 60 Hz, direction error (degrees) | 10.07 | 5.33 | 7.86 | 6.51 |
+| 30 Hz, direction error (degrees) | 10.35 | 5.67 | 7.82 | 6.53 |
 
 ## What stays different
 
