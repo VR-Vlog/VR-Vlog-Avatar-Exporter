@@ -9,9 +9,9 @@ PhysBoneのRoot TransformにHipsを指定した全身の揺れものを変換す
 
 ## 決定
 
-- 連鎖を作るときにHumanoidのボーンを関節にしない。
-- Humanoidのボーンの先にある、Humanoidでないボーンは、それぞれ別の連鎖として揺らす。
-- 外したことをPhysBoneごとに警告へ出す。
+- 連鎖を作るときにHumanoidのボーンとその親を関節にしない。割り当ての無い中間のボーンも、手足や頭を載せているので同じ扱いにする。
+- その先にあるボーンは、それぞれ別の連鎖として揺らす。1本だけでEndpointも無いときは揺らす区間が無いので省略する。
+- 外したことで出力が変わるPhysBoneにだけ警告を出す。Multi Child TypeがIgnoreで子が複数あるボーンは、もともと動かないので警告しない。
 - Humanoidでないアバターは今までと同じ。
 
 ## 考えた別案
@@ -20,6 +20,6 @@ PhysBoneのRoot TransformにHipsを指定した全身の揺れものを変換す
 
 ## 確かめ方
 
-`HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings`が、HipsをRootにしたPhysBoneでHumanoidのボーンが関節に入らず、脚の先のボーンは関節に入り、警告が出ることを見る。
+`HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings`が、HipsをRootにしたPhysBoneでHumanoidのボーンが関節に入らず、脚の先のボーンは関節に入り、警告が出ることを見る。`BonesBetweenHumanoidBonesStayOutOfChains`が割り当ての無い中間のボーンを、`AHumanoidRootThatNeverMovedDoesNotWarn`が警告の条件を見る。
 
 検証環境の実アバターでは、Humanoidを根元にした連鎖が4本から0本になった。元と比べた差の平均は47度台のままだが、これは元の体が全身のPhysBoneで動き、比べる基準が変わるため。全身のPhysBoneを両方から外して測ると、残る11本の差は61.92度から1.40度になり、髪や耳などの換算に問題はなかった。

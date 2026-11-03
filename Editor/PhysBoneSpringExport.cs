@@ -79,7 +79,7 @@ namespace VRVlog.LilToonExporter
             var children = copy.GetComponentsInChildren<Transform>(true)
                 .ToDictionary(t => t, t => t.Cast<Transform>().Where(c => c.gameObject.activeInHierarchy).ToArray());
             var roots = components.Where(Active).ToDictionary(c => c, c => Root(c));
-            var humanoid = ConstraintExport.HumanoidBones(copy);
+            var body = BodyBones(copy);
             var plans = new List<SpringPlan>();
             foreach (var component in components)
             {
@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter
                 var root = roots[component];
                 RequireLocal(copy, root);
                 if (!root.gameObject.activeInHierarchy) { Skip(result, warnings, component, "Root Transformが非表示"); continue; }
-                plans.Add(Plan(component, root, roots, children, humanoid, warnings));
+                plans.Add(Plan(component, root, roots, children, body, warnings));
             }
             // A more local root owns an overlapping moving joint. For the same
             // root, prefer its attached component, then stable hierarchy/component
@@ -163,8 +163,18 @@ namespace VRVlog.LilToonExporter
             internal readonly Dictionary<Transform, int> Depths = new Dictionary<Transform, int>();
         }
 
+        // Everything from a humanoid bone up to the root is the body: a bone left
+        // unmapped between two humanoid bones still carries the limbs under it.
+        static HashSet<Transform> BodyBones(GameObject copy)
+        {
+            var body = new HashSet<Transform>();
+            foreach (var bone in ConstraintExport.HumanoidBones(copy))
+                for (var node = bone; node != null && body.Add(node); node = node.parent) { }
+            return body;
+        }
+
         static SpringPlan Plan(Component source, Transform root, Dictionary<Component, Transform> roots,
-            Dictionary<Transform, Transform[]> hierarchy, HashSet<Transform> humanoid, ICollection<string> warnings)
+            Dictionary<Transform, Transform[]> hierarchy, HashSet<Transform> body, ICollection<string> warnings)
         {
             var plan = new SpringPlan { Source = source, Root = root };
             for (var parent = root.parent; parent != null; parent = parent.parent) plan.RootDepth++;
@@ -180,14 +190,16 @@ namespace VRVlog.LilToonExporter
             {
                 if (depth > 256) throw Unsupported(source, "256段を超えるボーン階層");
                 plan.Depths[node] = depth; plan.MaximumDepth = Math.Max(plan.MaximumDepth, depth);
-                // The solver overwrites a joint's rotation every frame, so a humanoid
-                // bone in a chain would stop following the animation. Keep the bone
-                // out and let what hangs from it swing as chains of its own.
-                if (humanoid.Contains(node))
+                // The solver overwrites a joint's rotation every frame, so a body bone
+                // in a chain would stop following the animation. Keep the bone out and
+                // let what hangs from it swing as chains of its own. Nothing above a
+                // body bone can be in a chain, so the path is always empty here.
+                if (body.Contains(node))
                 {
-                    leftHumanoid = true;
-                    Add(path);
-                    foreach (var child in hierarchy[node].Where(t => !ignored.Contains(t))) Walk(child, new List<PlannedJoint>(), depth + 1);
+                    var next = hierarchy[node].Where(t => !ignored.Contains(t)).ToArray();
+                    // A bone with several children and Multi-Child Ignore never moved.
+                    leftHumanoid |= next.Length == 1 || (next.Length > 1 ? multi != 0 : endpoint.sqrMagnitude > 1e-12f);
+                    foreach (var child in next) Walk(child, new List<PlannedJoint>(), depth + 1);
                     return;
                 }
                 path.Add(new PlannedJoint { Node = node });

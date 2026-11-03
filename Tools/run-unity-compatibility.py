@@ -160,6 +160,7 @@ BEHAVIOR_CASES = {
         'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
     },
     'PhysBoneSpringExportTests': {
+        'AHumanoidRootThatNeverMovedDoesNotWarn': 1,
         'AParentTailCannotShareTheChildOwnersFirstJoint': 1,
         'AbsentSdkAndRigidModelsRemainValidWithoutInventedSprings': 1,
         'ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance': 1,
@@ -167,6 +168,7 @@ BEHAVIOR_CASES = {
         'AllMotionImmobileDragNeverExceedsOne': 1,
         'AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp': 2,
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
+        'BonesBetweenHumanoidBonesStayOutOfChains': 2,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,
         'PlaneInsideBoundsAndUnknownShapesDoNotStopConversion': 2,
