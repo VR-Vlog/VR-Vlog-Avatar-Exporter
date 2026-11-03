@@ -875,6 +875,17 @@ BEHAVIOR_CASES = {
     },
 }
 INTEGRATION_CASES = {
+    'NdmfLostMorphFollowTests': {
+        'LenientExportFollowsShapesAfterAPassBeyondModularAvatar': 3,
+        'LenientExportDoesNotFollowAShapeIntoAnotherMeshWithTheSameName': 1,
+        'LenientExportFollowsLipSyncToTheRenamedOrMergedFace': 2,
+        'LenientExportKeepsTheOtherMouthShapesWhenAPassStripsOne': 1,
+        'StrictExportStillStopsWhenTheFaceIsMerged': 1,
+        'BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes': 1,
+        'AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport': 1,
+        'AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer': 1,
+        'ABoardWhoseBuildPassesFailIsMadeWithoutThem': 1,
+    },
     'NdmfSharedObjectTests': {
         'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
     },
