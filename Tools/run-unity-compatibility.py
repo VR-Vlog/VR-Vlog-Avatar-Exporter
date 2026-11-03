@@ -174,6 +174,7 @@ BEHAVIOR_CASES = {
         'ExistingTerminalFieldsAndVerificationBaselinesAreProtected': 1,
         'ExistingVrmSettingsWinAndRemovedExplicitRootsDoNotAnimateTheBody': 1,
         'GeneratedEndpointsDoNotTurnAnInertNestedPhysBoneIntoAnotherDriver': 1,
+        'HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings': 1,
         'IgnoredSubtreesDisabledBonesAndOverlappingOwnersAreExplicit': 1,
         'InactiveExplicitRootsChildrenAndColliderRootsAreSkipped': 1,
         'MalformedPhysBoneDataStillStopsConversion': 3,

@@ -38,6 +38,11 @@ PhysBoneとSpringBoneは別のソルバーです。見た目が一致する保�
 重複の整理は静止姿勢、ボーンの配置、メッシュ、マテリアルを変更しません。
 同じ関節を重ねて動かす挙動は再現できないため、揺れ方は上記の優先順位による
 近似になります。警告に対象と方針を残します。
+
+Humanoidのボーンは連鎖に入れません。SpringBoneのソルバーは関節の回転を毎フレーム
+上書きするので、手足や胴を連鎖に入れるとアニメーションに従わなくなるためです。
+Hipsなどをルートにした全身のPhysBoneでは体は揺れず、Humanoidのボーンにぶら下がる
+ボーンだけがそれぞれの連鎖として揺れます。
 カーブ評価後のPullをp、Spring / Momentumをs、Gravityをg、
 Gravity Falloffをfとすると、stiffness = 4p、dragForce = 0.6(1-s)、
 gravityPower = |g|(1-f)です。PhysBone 1.1ではgravityPowerに4pを掛けます。

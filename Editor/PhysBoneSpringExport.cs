@@ -79,6 +79,7 @@ namespace VRVlog.LilToonExporter
             var children = copy.GetComponentsInChildren<Transform>(true)
                 .ToDictionary(t => t, t => t.Cast<Transform>().Where(c => c.gameObject.activeInHierarchy).ToArray());
             var roots = components.Where(Active).ToDictionary(c => c, c => Root(c));
+            var humanoid = ConstraintExport.HumanoidBones(copy);
             var plans = new List<SpringPlan>();
             foreach (var component in components)
             {
@@ -86,7 +87,7 @@ namespace VRVlog.LilToonExporter
                 var root = roots[component];
                 RequireLocal(copy, root);
                 if (!root.gameObject.activeInHierarchy) { Skip(result, warnings, component, "Root Transformが非表示"); continue; }
-                plans.Add(Plan(component, root, roots, children, warnings));
+                plans.Add(Plan(component, root, roots, children, humanoid, warnings));
             }
             // A more local root owns an overlapping moving joint. For the same
             // root, prefer its attached component, then stable hierarchy/component
@@ -163,7 +164,7 @@ namespace VRVlog.LilToonExporter
         }
 
         static SpringPlan Plan(Component source, Transform root, Dictionary<Component, Transform> roots,
-            Dictionary<Transform, Transform[]> hierarchy, ICollection<string> warnings)
+            Dictionary<Transform, Transform[]> hierarchy, HashSet<Transform> humanoid, ICollection<string> warnings)
         {
             var plan = new SpringPlan { Source = source, Root = root };
             for (var parent = root.parent; parent != null; parent = parent.parent) plan.RootDepth++;
@@ -173,11 +174,22 @@ namespace VRVlog.LilToonExporter
             var endpoint = Vector(source, "endpointPosition", Vector3.zero);
             var multi = EnumNumber(source, "multiChildType", 0);
             if (multi < 0 || multi > 2) throw Unsupported(source, "Multi-Child Type");
+            var leftHumanoid = false;
             void Add(List<PlannedJoint> chain) { if (chain.Count >= 2) plan.Chains.Add(chain); }
             void Walk(Transform node, List<PlannedJoint> path, int depth)
             {
                 if (depth > 256) throw Unsupported(source, "256段を超えるボーン階層");
                 plan.Depths[node] = depth; plan.MaximumDepth = Math.Max(plan.MaximumDepth, depth);
+                // The solver overwrites a joint's rotation every frame, so a humanoid
+                // bone in a chain would stop following the animation. Keep the bone
+                // out and let what hangs from it swing as chains of its own.
+                if (humanoid.Contains(node))
+                {
+                    leftHumanoid = true;
+                    Add(path);
+                    foreach (var child in hierarchy[node].Where(t => !ignored.Contains(t))) Walk(child, new List<PlannedJoint>(), depth + 1);
+                    return;
+                }
                 path.Add(new PlannedJoint { Node = node });
                 var children = hierarchy[node].Where(t => !ignored.Contains(t)).ToArray();
                 if (children.Length == 0)
@@ -208,6 +220,7 @@ namespace VRVlog.LilToonExporter
                 }
             }
             if (!ignored.Contains(root)) Walk(root, new List<PlannedJoint>(), 0);
+            if (leftHumanoid) warnings?.Add(source.name + ": Humanoidのボーンはアニメーションに従うよう揺れものから外しました。");
             foreach (var point in plan.Chains.SelectMany(c => c))
                 if (!Finite(point.Position.x) || !Finite(point.Position.y) || !Finite(point.Position.z))
                     throw Unsupported(source, "ボーン位置が非有限値");

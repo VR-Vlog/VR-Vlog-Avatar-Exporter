@@ -243,6 +243,26 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var animator = fixture.Copy.GetComponent<Animator>();
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var strap = Child(animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg), "Strap", new Vector3(-.2f, .8f, 0));
+            var strapTip = Child(strap, "Strap tip", new Vector3(-.2f, .6f, 0));
+            PhysBone(hips.gameObject);
+            var warnings = new List<string>();
+            PhysBoneSpringExport.Convert(fixture.Source, fixture.Copy, warnings);
+            var joints = fixture.Copy.GetComponent<Vrm10Instance>().SpringBone.Springs
+                .SelectMany(spring => spring.Joints).Select(joint => joint.transform).ToArray();
+            var humanoid = Enumerable.Range(0, (int)HumanBodyBones.LastBone)
+                .Select(bone => animator.GetBoneTransform((HumanBodyBones)bone)).Where(bone => bone != null);
+            Assert.That(joints.Intersect(humanoid), Is.Empty);
+            Assert.That(joints, Does.Contain(strap).And.Contain(strapTip));
+            Assert.That(warnings, Has.Some.Contains("Humanoidのボーン"));
+        }
+
         [TestCase(0, 2)]
         [TestCase(1, 2)]
         [TestCase(2, 3)]
