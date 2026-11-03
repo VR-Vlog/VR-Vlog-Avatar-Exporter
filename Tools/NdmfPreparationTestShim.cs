@@ -127,6 +127,7 @@ namespace UnityEditor
     using Object = UnityEngine.Object;
     public class MonoScript : Object { public System.Type GetClass() => null; }
     public static class MonoImporter { public static MonoScript[] GetAllRuntimeMonoScripts() => new MonoScript[0]; }
+    public static class EditorPrefs { public static bool GetBool(string key, bool defaultValue) => defaultValue; }
     public static class EditorUtility
     {
         public static void CopySerialized(Object source, Object destination)
@@ -299,6 +300,10 @@ namespace VRVlog.LilToonExporter.Vendor.UniVRM10
 namespace VRVlog.LilToonExporter
 {
     // Warnings keep their Japanese source text; translation is not tested here.
-    public static class ExporterLocalization { public static string T(string source) => source; }
+    public static class ExporterLocalization
+    {
+        public static string T(string source) => source;
+        public static string Format(string template, params object[] values) => string.Format(T(template), values);
+    }
 }
 #endif

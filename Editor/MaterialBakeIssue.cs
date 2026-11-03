@@ -42,14 +42,4 @@ namespace VRVlog.LilToonExporter
             SourceUnchanged = sourceUnchanged;
         }
     }
-
-    // Consent is scoped to a single export attempt, never persisted on an asset
-    // or in preferences. Identity is the source material, not its display name.
-    internal sealed class MaterialBakeOptions
-    {
-        private readonly Dictionary<Material, HashSet<string>> omitted = new Dictionary<Material, HashSet<string>>();
-
-        internal bool Omits(Material material, string layer) => material != null &&
-            omitted.TryGetValue(material, out var layers) && layers.Contains(layer);
-    }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering;
 using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
 using static VRVlog.LilToonExporter.NumericChecks;
 
@@ -381,37 +380,6 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        // The middle row of an image in linear values, read through the GPU so
-        // that images without CPU access are read too.
-        static Color[] ReadRow(Texture texture)
-        {
-            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
-            const int Width = 64;
-            try
-            {
-                return GpuReadback.LinearPixels(Width, 1, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
-                    target => Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f)));
-            }
-            catch (Exception) { return null; }
-        }
-
-        // The pixels as a shader samples them, at the given size. Null when they
-        // cannot be read (no graphics device).
-        static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
-
-        // The same through the image's tiling and offset: the pixels are laid
-        // out in the mesh's UV space.
-        static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
-        {
-            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
-            try
-            {
-                return GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
-                    target => Graphics.Blit(texture, target, scale, offset));
-            }
-            catch (Exception) { return null; }
-        }
-
         // The source reads one channel of a mask (R, G, B, A), maybe inverted;
         // lilToon multiplies the matcap by its mask's RGB and the rim and
         // emission by RGBA. A grey, opaque red-channel mask is copied (also when
@@ -456,16 +424,7 @@ namespace VRVlog.LilToonExporter
                 if (inverted) v = 1 - v;
                 pixels[i] = new Color(v, v, v, 1);
             }
-            var baked = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
-            {
-                name = DeterministicNames.Unique(mask.name + "__VRVlog_Mask" + "RGBAY"[channel] + (inverted ? "_Inverted" : ""),
-                    candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
-                wrapModeU = mask.wrapModeU, wrapModeV = mask.wrapModeV, filterMode = mask.filterMode,
-            };
-            baked.SetPixels(pixels);
-            baked.Apply(false, false);
-            textures.Add(baked);
-            return baked;
+            return NewImage(mask, "__VRVlog_Mask" + "RGBAY"[channel] + (inverted ? "_Inverted" : ""), width, height, pixels, textures, true);
         }
 
         // prefix "" is the first matcap and "2" the second; lilToon's second

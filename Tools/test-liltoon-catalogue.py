@@ -172,7 +172,7 @@ class SyntheticSourceTests(unittest.TestCase):
         self.assertTrue(text.startswith('// Generated from the official lilToon 9.9.9 shader declarations.\n'))
         self.assertIn('public static class LilToon999Catalogue', text)
         self.assertIn('{"_ReflectionCubeTex", 6},', text)
-        self.assertIn('{"Hidden/lilToonGem", "FORWARD_PRE".Split(', text)
+        self.assertIn('("Hidden/lilToonGem", new (string, string)[] {("FORWARD_PRE", "ForwardBase")}),', text)
         back = lc.parse_catalogue(text)
         self.assertEqual(lc.structure_hash(self.catalogue), lc.structure_hash(back))
 
@@ -254,8 +254,8 @@ class CommittedCatalogueTests(unittest.TestCase):
             'property type': ('{"_Cutoff", "float:runtime"}', '{"_Cutoff", "vector:runtime"}'),
             'property role': ('{"_AsUnlit", "float:runtime"}', '{"_AsUnlit", "float:editor"}'),
             'texture faces': ('{"_ReflectionCubeTex", 6}', '{"_ReflectionCubeTex", 1}'),
-            'light mode': ('{"lilToon", new Dictionary<string, string>(StringComparer.Ordinal) {{"FORWARD", "ForwardBase"}',
-                           '{"lilToon", new Dictionary<string, string>(StringComparer.Ordinal) {{"FORWARD", "ForwardAdd"}'),
+            'light mode': ('("lilToon", new (string, string)[] {("FORWARD", "ForwardBase")',
+                           '("lilToon", new (string, string)[] {("FORWARD", "ForwardAdd")'),
             'shader file': ('{"Hidden/lilToonGem", "lts_gem"}', '{"Hidden/lilToonGem", "lts_gem2"}'),
             'required property': ('{"_lil/[Optional] lilToonFakeShadow", "_Invisible,', '{"_lil/[Optional] lilToonFakeShadow", "'),
         }
@@ -266,11 +266,11 @@ class CommittedCatalogueTests(unittest.TestCase):
                 changed = lc.parse_catalogue(self.text.replace(old, new))
                 self.assertNotEqual([], lc.check_structure_table(self.table, changed, lc.DEFAULT_VERIFIED_RANGE))
 
-    def test_inconsistent_pass_sections_cannot_be_read(self):
-        old = '{"lilToon", "FORWARD,FORWARD_ADD,META,SHADOW_CASTER".Split('
+    def test_a_pass_listed_twice_cannot_be_read(self):
+        old = '("lilToon", new (string, string)[] {("FORWARD", "ForwardBase"), ("FORWARD_ADD", "ForwardAdd")'
         self.assertEqual(1, self.text.count(old))
         with self.assertRaises(lc.CatalogueError):
-            lc.parse_catalogue(self.text.replace(old, '{"lilToon", "FORWARD,META,SHADOW_CASTER".Split('))
+            lc.parse_catalogue(self.text.replace(old, '("lilToon", new (string, string)[] {("FORWARD", "ForwardBase"), ("FORWARD", "ForwardAdd")'))
 
 
 class StructureTableTests(unittest.TestCase):

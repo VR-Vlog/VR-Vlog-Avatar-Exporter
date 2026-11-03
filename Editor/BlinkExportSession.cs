@@ -12,46 +12,76 @@ namespace VRVlog.LilToonExporter
     // afterwards. Only the disposable export copy receives generated geometry.
     internal sealed class BlinkExportSession : IDisposable
     {
-        internal readonly List<BlinkShapeBinding>[] Slots = {
-            new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>()
-        };
-        internal string Description;
-        internal bool PreserveAuthored;
-        internal bool ConfiguredByDescriptor;
-        internal bool Disabled;
+        internal List<BlinkShapeBinding>[] Slots => state.Slots;
+        internal string Description => state.Description;
+        internal bool PreserveAuthored => state.PreserveAuthored;
+        internal bool ConfiguredByDescriptor => state.ConfiguredByDescriptor;
+        internal bool Disabled => state.Disabled;
         // Automatic setup found no closing shape at all and fell back to no blink.
-        internal bool MissingAutomatic;
+        internal bool MissingAutomatic => state.MissingAutomatic;
         internal const string MissingAutomaticDescription = "瞬きなし（閉眼用の変形が見つかりません）";
         internal const string MissingAutomaticWarning = "閉眼用の変形が見つからないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
         // Automatic setup found closing names but could not pick one (duplicate
         // names, an eye without its other side, or shapes that do not move), so
         // it fell back to no blink. UnresolvedReason keeps the old error text.
-        internal bool UnresolvedAutomatic;
-        internal string UnresolvedReason;
+        internal bool UnresolvedAutomatic => state.UnresolvedAutomatic;
+        internal string UnresolvedReason => state.UnresolvedReason;
         internal const string UnresolvedAutomaticDescription = "瞬きなし（閉眼用の変形を自動で決められません）";
         internal const string UnresolvedAutomaticWarning = "閉眼用の変形を自動で決められないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
         internal const string DuplicateClosingNames = "閉眼用の名前が重複しています。「確認・調整」で設定してください。";
         internal const string UnmatchedClosingSide = "閉眼用の左右がそろっていません: ";
         internal const string UnusableClosingShapes = "閉眼用の変形を特定できません。「確認・調整」で選択するか「瞬きなし」を指定してください。";
         // What a name fallback chose, for the export details.
-        internal readonly List<string> Inferences = new List<string>();
+        internal List<string> Inferences => state.Inferences;
         internal const string InferredSidesLog = "瞬きの左右を両目の変形の名前から決めました: ";
+        internal const string MeasuredSidesLog = "瞬きの左右を、両目の変形を左右に分けた変形から決めました: ";
         internal const string InferredNamesLog = "瞬きの変形を名前から決めました: ";
-        bool allowMissingAutomaticBlink;
-        bool deferredAutomatic;
         sealed class Candidate
         {
             internal BlinkShapeBinding Binding;
             internal bool Moving;
             internal float ReferenceWeight;
         }
-        readonly List<Candidate> candidates = new List<Candidate>();
-        readonly Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float> inferredEndpoints =
-            new Dictionary<(SkinnedMeshRenderer, string), float>();
-        internal bool HasBilateralPreset => authored[0] || Slots[0].Count > 0;
-        internal bool RequiresUnifiedEvidence => allowMissingAutomaticBlink && !PreserveAuthored && Slots[0].Count == 0 && Slots[1].Count == 0;
+        // Everything resolving decided. A later resolution replaces it whole,
+        // and an export copy gets the same decision on its own renderers.
+        sealed class Resolution
+        {
+            internal readonly List<BlinkShapeBinding>[] Slots = {
+                new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>(), new List<BlinkShapeBinding>()
+            };
+            internal string Description;
+            internal bool PreserveAuthored, ConfiguredByDescriptor, Disabled, MissingAutomatic, UnresolvedAutomatic;
+            internal string UnresolvedReason;
+            internal readonly List<string> Inferences = new List<string>();
+            internal bool AllowMissingAutomaticBlink, DeferredAutomatic;
+            internal readonly List<Candidate> Candidates = new List<Candidate>();
+            internal readonly Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float> InferredEndpoints =
+                new Dictionary<(SkinnedMeshRenderer, string), float>();
+            internal readonly bool[] Authored = new bool[3];
+            // The bilateral bindings before blink became left + right, restored
+            // when the build passes lose inferred sides.
+            internal List<BlinkShapeBinding> ComposedFrom;
+
+            internal Resolution Map(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> target)
+            {
+                var copy = new Resolution { Description = Description, PreserveAuthored = PreserveAuthored, ConfiguredByDescriptor = ConfiguredByDescriptor,
+                    Disabled = Disabled, MissingAutomatic = MissingAutomatic, UnresolvedAutomatic = UnresolvedAutomatic, UnresolvedReason = UnresolvedReason,
+                    AllowMissingAutomaticBlink = AllowMissingAutomaticBlink, DeferredAutomatic = DeferredAutomatic };
+                Array.Copy(Authored, copy.Authored, Authored.Length);
+                copy.Inferences.AddRange(Inferences);
+                BlinkShapeBinding Moved(BlinkShapeBinding binding) { var row = binding.Copy(); row.Renderer = target(row.Renderer); return row; }
+                for (var slot = 0; slot < Slots.Length; slot++) copy.Slots[slot].AddRange(Slots[slot].Select(Moved));
+                copy.Candidates.AddRange(Candidates.Select(candidate =>
+                    new Candidate { Binding = Moved(candidate.Binding), Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight }));
+                foreach (var pair in InferredEndpoints) copy.InferredEndpoints.Add((target(pair.Key.Renderer), pair.Key.Shape), pair.Value);
+                copy.ComposedFrom = ComposedFrom?.Select(Moved).ToList();
+                return copy;
+            }
+        }
+        Resolution state = new Resolution();
+        internal bool HasBilateralPreset => state.Authored[0] || Slots[0].Count > 0;
+        internal bool RequiresUnifiedEvidence => state.AllowMissingAutomaticBlink && !PreserveAuthored && Slots[0].Count == 0 && Slots[1].Count == 0;
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
-        readonly bool[] authored = new bool[3];
         readonly List<Object> expressionCopies = new List<Object>();
 
         internal static BlinkExportSession Resolve(GameObject source, BlinkExportOptions options = null,
@@ -70,12 +100,13 @@ namespace VRVlog.LilToonExporter
             if (source == null) throw new InvalidOperationException("アバターを指定してください。");
             options = options ?? new BlinkExportOptions();
             var result = new BlinkExportSession();
+            var resolution = result.state;
             // Any exact, unified or one-sided closing name, even an inert one.
             var namedClosure = false;
             if (options.Mode == BlinkExportMode.None)
             {
-                result.Disabled = true;
-                result.Description = "瞬きなし";
+                resolution.Disabled = true;
+                resolution.Description = "瞬きなし";
                 return result;
             }
             if (options.Mode == BlinkExportMode.Manual)
@@ -83,7 +114,7 @@ namespace VRVlog.LilToonExporter
                 var selected = new[] { options.Both, options.Left, options.Right };
                 for (var slot = 0; slot < selected.Length; slot++)
                     result.Slots[slot].AddRange(selected[slot].Select(b => b.Copy()));
-                result.Description = "手動設定";
+                resolution.Description = "手動設定";
             }
             else
             {
@@ -91,12 +122,12 @@ namespace VRVlog.LilToonExporter
                 var clips = new[] { expressions?.Blink, expressions?.BlinkLeft, expressions?.BlinkRight };
                 if (clips.Any(c => c != null))
                 {
-                    result.PreserveAuthored = true;
-                    result.Description = "元のVRM設定";
+                    resolution.PreserveAuthored = true;
+                    resolution.Description = "元のVRM設定";
                     for (var slot = 0; slot < clips.Length; slot++)
                     {
                         var clip = clips[slot];
-                        result.authored[slot] = clip != null;
+                        resolution.Authored[slot] = clip != null;
                         if (clip == null) continue;
                         foreach (var binding in clip.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>())
                         {
@@ -110,21 +141,21 @@ namespace VRVlog.LilToonExporter
                 }
                 else if (TryDescriptor(source, excluded, out var descriptorBinding))
                 {
-                    result.ConfiguredByDescriptor = true;
+                    resolution.ConfiguredByDescriptor = true;
                     result.Slots[0].Add(descriptorBinding);
-                    result.Description = "VRChatの閉眼設定";
-                    result.InferSides();
+                    resolution.Description = "VRChatの閉眼設定";
+                    result.InferSides(source);
                 }
                 else
                 {
-                    result.deferredAutomatic = deferAutomaticUsability;
+                    resolution.DeferredAutomatic = deferAutomaticUsability;
                     var rendererNames = ExportRendererSelection.Enumerate(source).OfType<SkinnedMeshRenderer>()
                         .Where(renderer => excluded?.Invoke(renderer.transform) != true && renderer.sharedMesh != null)
                         .ToDictionary(renderer => renderer, renderer => Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
                             .Select(renderer.sharedMesh.GetBlendShapeName).ToArray());
                     namedClosure = rendererNames.Values.Any(names =>
                         BlinkShapeNames.AutomaticCandidates(names).Any() || BlinkShapeNames.PartialCandidates(names).Any());
-                    result.allowMissingAutomaticBlink = deferAutomaticUsability || source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile == null &&
+                    resolution.AllowMissingAutomaticBlink = deferAutomaticUsability || source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile == null &&
                         UnifiedExpressionPreparation.HasUsableEvidence(source, excluded, suppressSharedTextureEmission, suppressHdrTextureEmission);
                     var completePairs = true;
                     var partialFamilies = new Dictionary<int, List<BlinkShapeBinding>[]>();
@@ -141,11 +172,11 @@ namespace VRVlog.LilToonExporter
                             usable);
                         if (resolved[0] == -2)
                         {
-                            result.UnresolvedReason = result.UnresolvedReason ?? DuplicateClosingNames;
+                            resolution.UnresolvedReason = resolution.UnresolvedReason ?? DuplicateClosingNames;
                             continue;
                         }
                         var completePair = resolved[1] >= 0 && resolved[2] >= 0;
-                        if (!result.allowMissingAutomaticBlink && resolved[0] < 0 && !completePair &&
+                        if (!resolution.AllowMissingAutomaticBlink && resolved[0] < 0 && !completePair &&
                             (resolved[1] >= 0 || resolved[2] >= 0)) requiredPartialRenderers.Add(renderer);
                         if (resolved[0] >= 0 && !completePair) completePairs = false;
                         for (var slot = 0; slot < resolved.Length; slot++)
@@ -184,7 +215,7 @@ namespace VRVlog.LilToonExporter
                     }
                     var unmatched = requiredPartialRenderers.FirstOrDefault(renderer => !claimedPartialRenderers.Contains(renderer));
                     if (unmatched != null)
-                        result.UnresolvedReason = result.UnresolvedReason ?? UnmatchedClosingSide + unmatched.name;
+                        resolution.UnresolvedReason = resolution.UnresolvedReason ?? UnmatchedClosingSide + unmatched.name;
                     // Resolve bilateral closure across the avatar: UE models
                     // may put their left and right eyes on different renderers.
                     if (result.Slots[1].Count > 0 && result.Slots[2].Count > 0)
@@ -195,25 +226,25 @@ namespace VRVlog.LilToonExporter
                     }
                     else { result.Slots[1].Clear(); result.Slots[2].Clear(); }
                     if (!completePairs) { result.Slots[1].Clear(); result.Slots[2].Clear(); }
-                    result.Description = "自動設定";
+                    resolution.Description = "自動設定";
                     if (result.UnresolvedReason == null)
                     {
                         if (!namedClosure && result.Slots.All(slot => slot.Count == 0)) result.FindByName(rendererNames);
-                        result.InferSides();
+                        result.InferSides(source);
                     }
                     // Closing names that never move cannot close the eyes either.
-                    if (result.UnresolvedReason == null && namedClosure && !result.allowMissingAutomaticBlink &&
+                    if (result.UnresolvedReason == null && namedClosure && !resolution.AllowMissingAutomaticBlink &&
                         result.Slots[0].Count == 0 && result.Slots[1].Count == 0)
-                        result.UnresolvedReason = UnusableClosingShapes;
+                        resolution.UnresolvedReason = UnusableClosingShapes;
                 }
             }
             // No closing name anywhere: export without blink instead of stopping.
             if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.ConfiguredByDescriptor &&
-                !result.allowMissingAutomaticBlink && !namedClosure && result.UnresolvedReason == null && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
+                !resolution.AllowMissingAutomaticBlink && !namedClosure && result.UnresolvedReason == null && result.Slots.All(slot => slot.Count == 0) && resolution.Candidates.Count == 0)
             {
-                result.Disabled = true;
-                result.MissingAutomatic = true;
-                result.Description = MissingAutomaticDescription;
+                resolution.Disabled = true;
+                resolution.MissingAutomatic = true;
+                resolution.Description = MissingAutomaticDescription;
             }
             // Ambiguous, one-sided or inert closing names: the automatic setup
             // does not guess. It exports without blink and says why; a manual
@@ -221,10 +252,11 @@ namespace VRVlog.LilToonExporter
             if (result.UnresolvedReason != null)
             {
                 foreach (var slot in result.Slots) slot.Clear();
-                result.Disabled = true;
-                result.UnresolvedAutomatic = true;
-                result.Description = UnresolvedAutomaticDescription;
+                resolution.Disabled = true;
+                resolution.UnresolvedAutomatic = true;
+                resolution.Description = UnresolvedAutomaticDescription;
             }
+            if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.Disabled) result.ComposeBlinkFromSides();
             result.Validate(source, excluded);
             foreach (var binding in result.Slots.SelectMany(slot => slot)) result.CaptureCandidate(binding);
             return result;
@@ -258,23 +290,52 @@ namespace VRVlog.LilToonExporter
         static string Describe(BlinkShapeBinding binding) => binding.Renderer.name + "/" + binding.Shape;
 
         // The bilateral closure is known but no rule named its sides: use
-        // the left and right forms of its own name on the same mesh. Every
+        // the left and right forms of its own name on the same mesh, else the
+        // two one-eye shapes that rebuild it (EyeClosureSides). Every
         // bilateral binding needs its pair, or none of them gets one.
-        void InferSides()
+        void InferSides(GameObject source)
         {
             if (Slots[0].Count == 0 || Slots[1].Count > 0 || Slots[2].Count > 0) return;
             var lefts = new List<BlinkShapeBinding>(); var rights = new List<BlinkShapeBinding>();
+            var measured = false;
+            (bool Found, Vector3 Centre, Vector3 Left)? axis = null;
             foreach (var both in Slots[0])
             {
                 var names = ShapeNames(both.Renderer.sharedMesh);
                 var (left, right) = BlinkShapeNames.DerivedSides(names, both.Shape);
-                if (left < 0 || !OneEyeEach(both.Renderer, left, right)) return;
-                lefts.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = names[left], Weight = both.Weight });
-                rights.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = names[right], Weight = both.Weight });
+                string leftName, rightName;
+                if (left >= 0 && OneEyeEach(both.Renderer, left, right)) { leftName = names[left]; rightName = names[right]; }
+                else
+                {
+                    if (axis == null)
+                        axis = EyeClosureSides.TryLeftAxis(source.transform, out var centre, out var leftAxis) ? (true, centre, leftAxis) : (false, centre, leftAxis);
+                    var found = axis.Value.Found ? EyeClosureSides.Find(both.Renderer, both.Shape, axis.Value.Centre, axis.Value.Left) : null;
+                    if (found == null) return;
+                    leftName = found.Left; rightName = found.Right; measured = true;
+                }
+                lefts.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = leftName, Weight = both.Weight });
+                rights.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = rightName, Weight = both.Weight });
             }
             Slots[1].AddRange(lefts); Slots[2].AddRange(rights);
-            Inferences.Add(InferredSidesLog + string.Join(", ", Slots[0].Select((both, i) =>
+            Inferences.Add((measured ? MeasuredSidesLog : InferredSidesLog) + string.Join(", ", Slots[0].Select((both, i) =>
                 Describe(both) + " → " + lefts[i].Shape + " / " + rights[i].Shape)));
+        }
+
+        // mk 11/03: once both eyes have their own shapes, blink closes the two
+        // of them, so blink looks exactly like blinkLeft and blinkRight
+        // together. A mesh without sides keeps its bilateral shape, and so
+        // does a blink whose sides together move more than it does.
+        void ComposeBlinkFromSides()
+        {
+            if (Slots[1].Count == 0 || Slots[2].Count == 0) return;
+            var sided = new HashSet<SkinnedMeshRenderer>(Slots[1].Concat(Slots[2]).Select(binding => binding.Renderer));
+            if (!EyeClosureSides.Rebuilds(Slots[0].Where(binding => sided.Contains(binding.Renderer)), Slots[1].Concat(Slots[2]))) return;
+            state.ComposedFrom = Slots[0].Select(binding => binding.Copy()).ToList();
+            foreach (var binding in Slots[0]) CaptureCandidate(binding);
+            var kept = Slots[0].Where(binding => !sided.Contains(binding.Renderer)).ToList();
+            Slots[0].Clear();
+            Slots[0].AddRange(kept);
+            Slots[0].AddRange(Slots[1].Concat(Slots[2]).Select(binding => binding.Copy()));
         }
 
         // No rule found any closing name: read the meshes' own names. One
@@ -321,16 +382,16 @@ namespace VRVlog.LilToonExporter
 
         void CaptureCandidate(BlinkShapeBinding binding)
         {
-            if (candidates.Any(candidate => candidate.Binding.Renderer == binding.Renderer && candidate.Binding.Shape == binding.Shape)) return;
+            if (state.Candidates.Any(candidate => candidate.Binding.Renderer == binding.Renderer && candidate.Binding.Shape == binding.Shape)) return;
             var index = binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape);
             var reference = binding.Renderer.GetBlendShapeWeight(index);
             var endpoint = Endpoint(binding);
             var moving = AvatarBaseShape.HasUsableMorphEndpoint(binding.Renderer.sharedMesh, index, reference, endpoint);
             if (!moving) { reference = 0; moving = AvatarBaseShape.HasUsableMorphEndpoint(binding.Renderer.sharedMesh, index, reference, endpoint); }
-            candidates.Add(new Candidate { Binding = binding.Copy(), Moving = moving, ReferenceWeight = reference });
+            state.Candidates.Add(new Candidate { Binding = binding.Copy(), Moving = moving, ReferenceWeight = reference });
         }
 
-        float Endpoint(BlinkShapeBinding binding) => inferredEndpoints.TryGetValue((binding.Renderer, binding.Shape), out var weight)
+        float Endpoint(BlinkShapeBinding binding) => state.InferredEndpoints.TryGetValue((binding.Renderer, binding.Shape), out var weight)
             ? weight : binding.Weight;
 
         // The closing amount this session bakes for one of its bindings, for a
@@ -349,12 +410,12 @@ namespace VRVlog.LilToonExporter
             if (float.IsNaN(endpoint) || float.IsInfinity(endpoint) || endpoint <= 0) return;
             // The raw UE target exports its final source frame. Keep that
             // endpoint internally; public/manual closure amounts remain0..100.
-            inferredEndpoints[(binding.Renderer, binding.Shape)] = endpoint;
+            state.InferredEndpoints[(binding.Renderer, binding.Shape)] = endpoint;
         }
 
         internal void VerifyPreparedIdentity(GameObject prepared, Func<Transform, bool> excluded = null)
         {
-            foreach (var candidate in candidates)
+            foreach (var candidate in state.Candidates)
             {
                 var binding = candidate.Binding;
                 var renderer = binding.Renderer;
@@ -370,20 +431,13 @@ namespace VRVlog.LilToonExporter
 
         internal void RebindPrepared(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> replacement)
         {
-            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
-            var mapped = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
-            SkinnedMeshRenderer Map(SkinnedMeshRenderer old)
-            {
-                if (!mapped.TryGetValue(old, out var current)) mapped.Add(old, current = replacement(old));
-                if (current == null) throw new InvalidOperationException(NdmfExportPreparation.UnknownRendererRelocation);
-                return current;
-            }
+            var map = new PreparedRendererMap(replacement);
             InvalidOperationException Conflict(SkinnedMeshRenderer renderer, string shape) => new InvalidOperationException(
                 "Modular Avatar / NDMF の処理で同じ瞬きの変形に異なる閉眼量が統合されました。統合前の瞬き設定を一致させてください。: " + renderer.name + " / " + shape);
             var nextEndpoints = new Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float>();
-            foreach (var pair in inferredEndpoints)
+            foreach (var pair in state.InferredEndpoints)
             {
-                var current = Map(pair.Key.Renderer);
+                var current = map.Require(pair.Key.Renderer);
                 var key = (current, pair.Key.Shape);
                 if (nextEndpoints.TryGetValue(key, out var endpoint) && !endpoint.Equals(pair.Value))
                     throw Conflict(current, pair.Key.Shape);
@@ -396,7 +450,7 @@ namespace VRVlog.LilToonExporter
                 var seen = new Dictionary<(SkinnedMeshRenderer Renderer, string Shape), (float Endpoint, float Weight)>();
                 foreach (var binding in Slots[slot])
                 {
-                    var row = binding.Copy(); row.Renderer = Map(binding.Renderer);
+                    var row = binding.Copy(); row.Renderer = map.Require(binding.Renderer);
                     var key = (row.Renderer, row.Shape);
                     var endpoint = Endpoint(binding);
                     if (seen.TryGetValue(key, out var previous))
@@ -414,18 +468,16 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("Modular Avatar / NDMF の処理で左右別の瞬きが同じ変形に統合されました。左右を別々に操作できる変形を残してください。");
             // Keep each captured deformation obligation, including different
             // source reference weights, even when output bindings coalesce.
-            var nextCandidates = candidates.Select(candidate => {
-                var row = candidate.Binding.Copy(); row.Renderer = Map(row.Renderer);
+            var nextCandidates = state.Candidates.Select(candidate => {
+                var row = candidate.Binding.Copy(); row.Renderer = map.Require(row.Renderer);
                 return new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight };
             }).ToArray();
+            var nextComposedFrom = state.ComposedFrom?.Select(binding => { var row = binding.Copy(); row.Renderer = map.Require(row.Renderer); return row; }).ToList();
             // Publish only after every mapping and collision has been checked.
-            inferredEndpoints.Clear();
-            foreach (var pair in nextEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
-            for (var slot = 0; slot < Slots.Length; slot++)
-            {
-                Slots[slot].Clear(); Slots[slot].AddRange(nextSlots[slot]);
-            }
-            candidates.Clear(); candidates.AddRange(nextCandidates);
+            PreparedRendererMap.Publish(state.InferredEndpoints, nextEndpoints);
+            for (var slot = 0; slot < Slots.Length; slot++) PreparedRendererMap.Publish(Slots[slot], nextSlots[slot]);
+            PreparedRendererMap.Publish(state.Candidates, nextCandidates);
+            state.ComposedFrom = nextComposedFrom;
         }
 
         internal const string LostBlinkDescription = "瞬きなし（ビルド処理で閉眼用の変形が失われました）";
@@ -449,14 +501,15 @@ namespace VRVlog.LilToonExporter
                 if (shape != null) set.Add(shape);
             }
             foreach (var binding in Slots.SelectMany(slot => slot)) Need(binding.Renderer, binding.Shape);
-            foreach (var candidate in candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
-            foreach (var pair in inferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
+            foreach (var candidate in state.Candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
+            foreach (var pair in state.InferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
             // Sides read from the bilateral name are a guess: if the build
             // passes lose them, follow the bilateral closure alone as before.
-            var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal));
-            var bilateral = Slots[0].ToArray();
-            var keptCandidates = candidates.ToArray();
-            var keptEndpoints = inferredEndpoints.ToArray();
+            var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal) ||
+                line.StartsWith(MeasuredSidesLog, StringComparison.Ordinal));
+            var bilateral = (state.ComposedFrom ?? Slots[0]).ToArray();
+            var keptCandidates = state.Candidates.ToArray();
+            var keptEndpoints = state.InferredEndpoints.ToArray();
             try
             {
                 var map = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
@@ -481,11 +534,12 @@ namespace VRVlog.LilToonExporter
                 {
                     foreach (var slot in Slots) slot.Clear();
                     Slots[0].AddRange(bilateral);
-                    candidates.Clear();
-                    candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
+                    state.ComposedFrom = null;
+                    state.Candidates.Clear();
+                    state.Candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
                         binding.Renderer == candidate.Binding.Renderer && binding.Shape == candidate.Binding.Shape)));
-                    inferredEndpoints.Clear();
-                    foreach (var pair in keptEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
+                    state.InferredEndpoints.Clear();
+                    foreach (var pair in keptEndpoints) state.InferredEndpoints.Add(pair.Key, pair.Value);
                     Inferences.RemoveAt(inferredSides);
                     return FollowPrepared(prepared, follow, out moved, out reason);
                 }
@@ -496,51 +550,21 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        void DisableLost()
-        {
-            foreach (var slot in Slots) slot.Clear();
-            candidates.Clear();
-            inferredEndpoints.Clear();
-            Inferences.Clear();
-            Array.Clear(authored, 0, authored.Length);
-            PreserveAuthored = false;
-            ConfiguredByDescriptor = false;
-            MissingAutomatic = false;
-            allowMissingAutomaticBlink = false;
-            deferredAutomatic = false;
-            Disabled = true;
-            Description = LostBlinkDescription;
-        }
+        void DisableLost() => state = new Resolution { Disabled = true, Description = LostBlinkDescription };
 
         internal void ResolvePreparedNeutral(GameObject prepared, Func<Transform, bool> excluded = null,
             bool suppressSharedTextureEmission = false, bool suppressHdrTextureEmission = false)
         {
-            if (!deferredAutomatic) { Validate(prepared, excluded); return; }
+            if (!state.DeferredAutomatic) { Validate(prepared, excluded); return; }
             using var resolved = Resolve(prepared, new BlinkExportOptions(), excluded,
                 suppressSharedTextureEmission, suppressHdrTextureEmission);
-            for (var slot = 0; slot < Slots.Length; slot++)
-            {
-                Slots[slot].Clear(); Slots[slot].AddRange(resolved.Slots[slot].Select(binding => binding.Copy()));
-            }
-            Description = resolved.Description;
-            Disabled = resolved.Disabled;
-            MissingAutomatic = resolved.MissingAutomatic;
-            UnresolvedAutomatic = resolved.UnresolvedAutomatic;
-            UnresolvedReason = resolved.UnresolvedReason;
-            PreserveAuthored = resolved.PreserveAuthored;
-            Array.Copy(resolved.authored, authored, authored.Length);
-            allowMissingAutomaticBlink = resolved.allowMissingAutomaticBlink;
-            Inferences.Clear(); Inferences.AddRange(resolved.Inferences);
-            inferredEndpoints.Clear();
-            foreach (var pair in resolved.inferredEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
-            deferredAutomatic = false;
+            state = resolved.state;
         }
 
         internal static bool TryDescriptor(GameObject source, Func<Transform, bool> excluded, out BlinkShapeBinding binding)
         {
             binding = null;
-            var descriptor = source.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(source);
             if (!(VrChatExpressionMenu.Member(descriptor, "enableEyeLook") is bool enabled) || !enabled) return false;
             var settings = VrChatExpressionMenu.Member(descriptor, "customEyeLookSettings");
             // The public SDK enum is Blendshapes. Never use LookingUp/Down slots.
@@ -583,7 +607,7 @@ namespace VRVlog.LilToonExporter
             if (PreserveAuthored) return; // An intentionally empty clip is authoritative.
             if (Slots[1].Count == 0 != (Slots[2].Count == 0))
                 throw new InvalidOperationException("左右別の瞬きは左目・右目を両方指定してください。");
-            if (Slots[0].Count == 0 && Slots[1].Count == 0 && !allowMissingAutomaticBlink)
+            if (Slots[0].Count == 0 && Slots[1].Count == 0 && !state.AllowMissingAutomaticBlink)
                 throw new InvalidOperationException("閉眼用の変形を特定できません。「確認・調整」で選択するか「瞬きなし」を指定してください。");
             if (Slots[1].Any(left => Slots[2].Any(right => left.Renderer == right.Renderer &&
                 string.Equals(left.Shape, right.Shape, StringComparison.Ordinal))))
@@ -593,38 +617,18 @@ namespace VRVlog.LilToonExporter
         internal BlinkExportSession ForClone(GameObject source, GameObject clone)
         {
             if (source == clone) throw new ArgumentException("An independent export copy is required.");
-            var copy = new BlinkExportSession { Description = Description, PreserveAuthored = PreserveAuthored, Disabled = Disabled, MissingAutomatic = MissingAutomatic,
-                UnresolvedAutomatic = UnresolvedAutomatic, UnresolvedReason = UnresolvedReason,
-                allowMissingAutomaticBlink = allowMissingAutomaticBlink, deferredAutomatic = deferredAutomatic };
-            Array.Copy(authored, copy.authored, authored.Length);
-            copy.Inferences.AddRange(Inferences);
             SkinnedMeshRenderer Target(SkinnedMeshRenderer renderer)
             {
-                var route = new Stack<int>();
-                for (var t = renderer.transform; t != source.transform; t = t.parent) route.Push(t.GetSiblingIndex());
-                var target = clone.transform;
-                while (route.Count != 0) target = target.GetChild(route.Pop());
+                var target = ExportRecoveryCopySession.Resolve(renderer.transform, source.transform, clone.transform);
                 var index = Array.IndexOf(renderer.GetComponents<SkinnedMeshRenderer>(), renderer);
                 return target.GetComponents<SkinnedMeshRenderer>()[index];
             }
-            for (var slot = 0; slot < Slots.Length; slot++)
-                foreach (var binding in Slots[slot])
-                {
-                    var row = binding.Copy(); row.Renderer = Target(binding.Renderer);
-                    copy.Slots[slot].Add(row);
-                }
-            foreach (var candidate in candidates)
-            {
-                var row = candidate.Binding.Copy(); row.Renderer = Target(row.Renderer);
-                copy.candidates.Add(new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight });
-            }
-            foreach (var pair in inferredEndpoints) copy.inferredEndpoints.Add((Target(pair.Key.Renderer), pair.Key.Shape), pair.Value);
-            return copy;
+            return new BlinkExportSession { state = state.Map(Target) };
         }
 
         internal void Bake(GameObject clone, ICollection<Mesh> owned)
         {
-            if (deferredAutomatic) throw new InvalidOperationException("瞬きの自動設定にはFXのneutral評価が必要です。");
+            if (state.DeferredAutomatic) throw new InvalidOperationException("瞬きの自動設定にはFXのneutral評価が必要です。");
             Validate(clone);
             var used = DeterministicNames.BlendShapeNames(clone);
             string PathOf(SkinnedMeshRenderer skin) => UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform);
@@ -632,8 +636,7 @@ namespace VRVlog.LilToonExporter
             {
                 // A no-op standard binding prevents a viewer's raw-name blink
                 // fallback from driving the original morphs when blinking is off.
-                var renderer = ExportRendererSelection.Enumerate(clone).OfType<SkinnedMeshRenderer>()
-                    .FirstOrDefault(r => ExportRendererSelection.HasGeometry(r.sharedMesh));
+                var renderer = ExportRendererSelection.ExportedMeshRenderers(clone).OfType<SkinnedMeshRenderer>().FirstOrDefault();
                 if (renderer == null) return;
                 var mesh = Object.Instantiate(renderer.sharedMesh); owned.Add(mesh); renderer.sharedMesh = mesh;
                 var name = DeterministicNames.Unique("__VRVlog_BlinkNone_" + DeterministicNames.Hash("BlinkNone", PathOf(renderer)), used);
@@ -653,7 +656,7 @@ namespace VRVlog.LilToonExporter
                     // A shape bound to both blink and one side gets one channel
                     // per slot, so the slot is part of the name.
                     var name = DeterministicNames.Unique("__VRVlog_Blink_" + DeterministicNames.Hash("Blink",
-                        PathOf(renderer), binding.Shape, BlinkShapeNames.Presets[slot]), used);
+                        PathOf(renderer), binding.Shape, ExpressionPresetGroups.Blinks[slot].ToString()), used);
                     AvatarBaseShape.AppendAnimatedShape(original, generated, name, index,
                         renderer.GetBlendShapeWeight(index), Endpoint(binding));
                     binding.Shape = name;
@@ -717,16 +720,16 @@ namespace VRVlog.LilToonExporter
             var presets = ObjectMap(expressions, "preset");
             if (PreserveAuthored)
             {
-                for (var slot = 0; slot < authored.Length; slot++)
-                    if (authored[slot] && !presets.ContainsKey(BlinkShapeNames.Presets[slot]))
+                for (var slot = 0; slot < state.Authored.Length; slot++)
+                    if (state.Authored[slot] && !presets.ContainsKey(ExpressionPresetGroups.Blinks[slot].ToString()))
                         throw new InvalidOperationException("元のVRMの瞬き設定が出力時に失われました。");
             }
-            else foreach (var preset in BlinkShapeNames.Presets) presets.Remove(preset);
+            else foreach (var preset in ExpressionPresetGroups.Blinks) presets.Remove(preset.ToString());
             var outputNodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
             for (var slot = 0; slot < Slots.Length; slot++)
             {
-                if (PreserveAuthored && (!authored[slot] || Slots[slot].Count == 0)) continue;
+                if (PreserveAuthored && (!state.Authored[slot] || Slots[slot].Count == 0)) continue;
                 if (Slots[slot].Count == 0 && !Disabled) continue;
                 var binds = new List<object>();
                 foreach (var binding in Slots[slot])
@@ -744,8 +747,8 @@ namespace VRVlog.LilToonExporter
                         { "weight", PreserveAuthored ? (double)binding.Weight / 100.0 : 1.0 } });
                 }
                 if (PreserveAuthored)
-                    ((Dictionary<string, object>)presets[BlinkShapeNames.Presets[slot]])["morphTargetBinds"] = binds;
-                else presets[BlinkShapeNames.Presets[slot]] = new Dictionary<string, object> { { "morphTargetBinds", binds }, { "isBinary", false } };
+                    ((Dictionary<string, object>)presets[ExpressionPresetGroups.Blinks[slot].ToString()])["morphTargetBinds"] = binds;
+                else presets[ExpressionPresetGroups.Blinks[slot].ToString()] = new Dictionary<string, object> { { "morphTargetBinds", binds }, { "isBinary", false } };
             }
             // Perfect Sync custom keys must agree with an explicit override too.
             if (!PreserveAuthored && expressions.TryGetValue("custom", out var rawCustom) && rawCustom is Dictionary<string, object> custom)
@@ -754,7 +757,7 @@ namespace VRVlog.LilToonExporter
                         string.Equals(key, "EyeBlinkRight", StringComparison.OrdinalIgnoreCase))
                     {
                         var slot = key.EndsWith("Left", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
-                        if (presets.TryGetValue(BlinkShapeNames.Presets[slot], out var value) || presets.TryGetValue("blink", out value))
+                        if (presets.TryGetValue(ExpressionPresetGroups.Blinks[slot].ToString(), out var value) || presets.TryGetValue("blink", out value))
                             custom[key] = value;
                     }
             return glb.Write();

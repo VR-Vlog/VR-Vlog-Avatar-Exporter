@@ -169,10 +169,9 @@ namespace VRVlog.LilToonExporter.Tests
         // with a Random driver, rock'n'roll plays a clip not on the board.
         private bool BuildAvatar()
         {
-            var descriptorType = SdkType("VRCAvatarDescriptor");
-            if (descriptorType == null || SdkType("VRCAvatarParameterDriver") == null) { Assert.Ignore("Install the real VRChat SDK."); return false; }
-            var name = "__ExpressionGestures_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            var descriptorType = VrcAvatar.ComponentType("VRCAvatarDescriptor");
+            if (descriptorType == null || VrcAvatar.ComponentType("VRCAvatarParameterDriver") == null) { Assert.Ignore("Install the real VRChat SDK."); return false; }
+            folder = TempAssetFolder.Create("__ExpressionGestures_");
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -188,33 +187,26 @@ namespace VRVlog.LilToonExporter.Tests
             var empty = Clip("Empty", null);
             fx.layers[0].stateMachine.defaultState = fx.layers[0].stateMachine.AddState("Base");
 
-            var left = Layer("Left hand");
-            var leftIdle = State(left, "Idle", empty);
+            var left = FxGraph.Layer(fx, "Left hand");
+            var leftIdle = FxGraph.StartState(left, "Idle", empty, true);
             var tree = new BlendTree { name = "Fist trigger", blendType = BlendTreeType.Simple1D, blendParameter = "GestureLeftWeight", useAutomaticThresholds = false };
             AssetDatabase.AddObjectToAsset(tree, fx);
             tree.AddChild(empty, 0); tree.AddChild(smile, 1);
-            var fist = State(left, "Fist", tree);
-            var open = State(left, "Open", angry);
+            var fist = FxGraph.StartState(left, "Fist", tree, true);
+            var open = FxGraph.StartState(left, "Open", angry, true);
             Enter(left, leftIdle, "GestureLeft", 0); Enter(left, fist, "GestureLeft", 1); Enter(left, open, "GestureLeft", 2);
 
-            var right = Layer("Right hand");
-            var rightIdle = State(right, "Idle", empty);
-            var point = State(right, "Point", wink);
-            var random = State(right, "Random", empty);
+            var right = FxGraph.Layer(fx, "Right hand");
+            var rightIdle = FxGraph.StartState(right, "Idle", empty, true);
+            var point = FxGraph.StartState(right, "Point", wink, true);
+            var random = FxGraph.StartState(right, "Random", empty, true);
             ParameterDriverExpressionTests.Driver(random, ParameterDriverExpressionTests.Op("Random", "Picked", 0));
-            var other = State(right, "Other", unlisted);
+            var other = FxGraph.StartState(right, "Other", unlisted, true);
             Enter(right, rightIdle, "GestureRight", 0); Enter(right, point, "GestureRight", 3); Enter(right, random, "GestureRight", 4); Enter(right, other, "GestureRight", 5);
             foreach (var value in new[] { 1, 2, 6, 7 }) Enter(right, rightIdle, "GestureRight", value);
 
             var descriptor = avatar.AddComponent(descriptorType);
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-            type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = fx;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, fx);
             AssetDatabase.SaveAssets();
             return true;
         }
@@ -227,19 +219,6 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, fx); return clip;
         }
 
-        private AnimatorStateMachine Layer(string name)
-        {
-            fx.AddLayer(name); var layers = fx.layers; layers[layers.Length - 1].defaultWeight = 1; fx.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = true;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
-        }
-
         private static void Enter(AnimatorStateMachine machine, AnimatorState state, string parameter, int value)
         {
             var transition = machine.AddAnyStateTransition(state);
@@ -247,7 +226,5 @@ namespace VRVlog.LilToonExporter.Tests
             transition.AddCondition(AnimatorConditionMode.Equals, value, parameter);
         }
 
-        private static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components." + name)).FirstOrDefault(type => type != null);
     }
 }

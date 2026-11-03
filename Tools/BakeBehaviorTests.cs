@@ -39,9 +39,9 @@ public static class ExporterBakeBehaviorTests
         catch (T error) { Check(error.GetType() == typeof(T), message + " exact exception type"); return error; }
         throw new Exception("FAILED: " + message + " did not throw " + typeof(T).Name);
     }
-    private static void Valid(GameObject avatar, string message, Func<Transform, bool> excluded = null, MaterialBakeOptions options = null)
+    private static void Valid(GameObject avatar, string message, Func<Transform, bool> excluded = null)
     {
-        LilToonMainTextureBaker.ValidateAvatar(avatar, excluded, options);
+        LilToonMainTextureBaker.ValidateAvatar(avatar, excluded);
         Check(true, message);
     }
     private static Material LayerMaterial(string name = "Clothing", string layer = "2nd")

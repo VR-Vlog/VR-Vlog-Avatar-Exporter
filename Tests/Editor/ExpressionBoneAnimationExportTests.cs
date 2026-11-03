@@ -22,7 +22,6 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp] public void TurnTransformsOn() => transforms = new ExpressionTransformsSwitch(true);
         [TearDown] public void RestoreTransforms() => transforms?.Dispose();
 
-        static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static EditorCurveBinding Bone(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
         static EditorCurveBinding Shown(string path) => EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive");
         static EditorCurveBinding Shape => EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
@@ -138,29 +137,19 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal Scene(bool spring = false)
             {
-                var descriptorType = SdkType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                if (descriptorType == null || Shader.Find("lilToon") == null || spring && SdkType(PhysBoneSpringExport.PhysBoneType) == null)
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                if (descriptorType == null || Shader.Find("lilToon") == null || spring && OptionalTools.Find(PhysBoneSpringExport.PhysBoneType) == null)
                 {
                     Dispose(); Assert.Ignore("Install the real VRChat SDK and lilToon.");
                 }
                 // The export writes lilToon materials only.
                 material = new Material(Shader.Find("lilToon"));
                 foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterials = new[] { material };
-                var name = "__ExpressionBones_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+                folder = TempAssetFolder.Create("__ExpressionBones_");
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 var idle = Controller.layers[0].stateMachine.AddState("Idle"); idle.writeDefaultValues = false;
                 var descriptor = Fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-                    var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = Controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, Controller);
                 // An object the export leaves out (inactive) and an empty one
                 // the export prunes.
                 var prop = new GameObject("Hidden prop", typeof(MeshFilter), typeof(MeshRenderer));
@@ -171,7 +160,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new GameObject("Marker").transform.SetParent(Fixture.Source.transform, false);
                 if (spring)
                 {
-                    var physBone = Fixture.Source.transform.Find(Joint).gameObject.AddComponent(SdkType(PhysBoneSpringExport.PhysBoneType));
+                    var physBone = Fixture.Source.transform.Find(Joint).gameObject.AddComponent(OptionalTools.Find(PhysBoneSpringExport.PhysBoneType));
                     using var data = new SerializedObject(physBone);
                     data.FindProperty("endpointPosition").vector3Value = new Vector3(0, .1f, 0);
                     data.ApplyModifiedPropertiesWithoutUndo();
@@ -181,7 +170,7 @@ namespace VRVlog.LilToonExporter.Tests
             internal AnimationClip Add(AnimationClip clip) { AssetDatabase.AddObjectToAsset(clip, Controller); return clip; }
 
             internal byte[] Export(List<string> warnings, params AnimationClip[] faces) =>
-                UniVrmOneClickExporter.Export(Fixture.Source, "Expression bones", "Tests", warnings,
+                UniVrmOneClickExporter.Export(Fixture.Source, "Expression bones", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: faces.Select(face => (face.name, face, 0f)).ToList());
 

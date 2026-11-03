@@ -4,6 +4,7 @@ using System.Linq;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter
@@ -114,7 +115,7 @@ namespace VRVlog.LilToonExporter
             // Malformed declarations deliberately reserve authored coverage in
             // the existing export contract. Rewriting their positive portion
             // could accidentally turn a disabled route into usable evidence.
-            if (bindings.Any(binding => !NeutralShapeSnapshot.Finite(binding.Weight) || binding.Weight < 0 || binding.Weight > 1)) return;
+            if (bindings.Any(binding => !Finite(binding.Weight) || binding.Weight < 0 || binding.Weight > 1)) return;
             var first = new HashSet<(NeutralShapeSnapshot.RendererState, int)>();
             foreach (var binding in bindings)
             {
@@ -181,7 +182,7 @@ namespace VRVlog.LilToonExporter
                 endpoint = new Endpoint { State = state, Pose = (float[])state.Weights.Clone(), Name = name };
                 endpoints.Add(state, endpoint);
             }
-            if (!NeutralShapeSnapshot.Finite(weight)) throw new InvalidOperationException("表情のBlendShape値が不正です。");
+            if (!Finite(weight)) throw new InvalidOperationException("表情のBlendShape値が不正です。");
             declared[key] = weight;
             endpoint.Pose[shape] = weight;
         }

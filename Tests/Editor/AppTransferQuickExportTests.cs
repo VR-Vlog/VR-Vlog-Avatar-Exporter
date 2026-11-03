@@ -97,9 +97,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new[] { ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Hair detail") });
             var quickPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-" + Guid.NewGuid().ToString("N") + ".vrm");
             var boardPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-board-" + Guid.NewGuid().ToString("N") + ".vrm");
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             try
             {
                 var saved = 0;
@@ -107,8 +105,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(saved, Is.EqualTo(1));
 
                 // The board opened for the same avatar and saved without a change.
-                type.GetField("source", flags).SetValue(window, fixture.Source);
-                type.GetMethod("Prepare", flags).Invoke(window, null);
+                window.Load(fixture.Source);
                 var boardSaved = false;
                 Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), boardPath, () => boardSaved = true, false), Is.Null);
                 Assert.That(boardSaved, Is.True);
@@ -145,8 +142,7 @@ namespace VRVlog.LilToonExporter.Tests
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                var blink = (BlinkExportOptions)typeof(ExperimentalExpressionCaptureWindow)
-                    .GetMethod("ExportBlinkOptions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(board, null);
+                var blink = (BlinkExportOptions)board.Call("ExportBlinkOptions");
                 if (mode == BlinkExportMode.Auto) Assert.That(blink, Is.Null, "Automatic, as the board starts without a saved blink.");
                 else Assert.That(blink.Mode, Is.EqualTo(mode));
                 if (mode == BlinkExportMode.Manual)
@@ -168,19 +164,110 @@ namespace VRVlog.LilToonExporter.Tests
             settings.Poses.Excluded.Add("SamplePose");
             settings.Poses.Names["SamplePose"] = "Sample";
             ExportSettingsStore.Save(fixture.Source, settings);
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                PoseExportOptions Poses() => ((ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board)).PoseOptions;
+                PoseExportOptions Poses() => board.Session().PoseOptions;
                 Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
                 Assert.That(Poses().Names["SamplePose"], Is.EqualTo("Sample"));
-                type.GetMethod("RebuildKeepingAssignments", flags).Invoke(board, new object[] { Array.Empty<GameObject>(), null });
+                board.Call("RebuildKeepingAssignments", Array.Empty<GameObject>(), null);
                 Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
                 Assert.That(Poses().Names.Count, Is.EqualTo(1));
             }
             finally { Object.DestroyImmediate(board); }
+        }
+
+        // Making the copy again (a changed object list, an avatar that changed
+        // under the board) keeps the blink and pose windows open, and the pose
+        // window keeps editing the list the new copy exports. Leaving the avatar closes them.
+        [Test]
+        public void ARebuildKeepsTheBlinkAndPoseWindowsOpen()
+        {
+            using var fixture = new SavedFixture();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            var blink = ScriptableObject.CreateInstance<BlinkConfigurationWindow>();
+            var poses = ScriptableObject.CreateInstance<PoseReviewWindow>();
+            try
+            {
+                PoseExportOptions Poses() => ((ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board)).PoseOptions;
+                var edited = Poses();
+                typeof(PoseReviewWindow).GetField("options", flags).SetValue(poses, edited);
+                // Shown, as the board opens them; a window never shown cannot be closed.
+                blink.ShowUtility(); poses.ShowUtility();
+                type.GetField("blinkConfiguration", flags).SetValue(board, blink);
+                type.GetField("poseReview", flags).SetValue(board, poses);
+                type.GetMethod("RebuildKeepingAssignments", flags).Invoke(board, new object[] { Array.Empty<GameObject>(), null });
+                Assert.That(blink != null, Is.True, "The blink window stays open.");
+                Assert.That(poses != null, Is.True, "The pose window stays open.");
+                Assert.That(type.GetField("blinkConfiguration", flags).GetValue(board), Is.SameAs(blink));
+                Assert.That(type.GetField("poseReview", flags).GetValue(board), Is.SameAs(poses));
+                Assert.That(Poses(), Is.SameAs(edited), "The new copy exports the list the pose window edits.");
+                edited.Excluded.Add("SamplePose");
+                Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                // Following an avatar that changed under the board, the pose window previews it again.
+                Assert.That(poses.IsBusy, Is.False);
+                type.GetMethod("FollowSource", flags).Invoke(board, new object[] { "test" });
+                Assert.That(blink != null && poses != null, Is.True, "Following the avatar keeps the windows open.");
+                Assert.That(Poses(), Is.SameAs(edited));
+                Assert.That(poses.IsBusy, Is.True, "The pose window previews the avatar as it is now.");
+                type.GetMethod("ChangeAvatar", flags).Invoke(board, null);
+                Assert.That(blink == null, Is.True, "Leaving the avatar closes the blink window.");
+                Assert.That(poses == null, Is.True, "Leaving the avatar closes the pose window.");
+            }
+            finally
+            {
+                if (blink != null) blink.Close();
+                if (poses != null) poses.Close();
+                Object.DestroyImmediate(board);
+            }
+        }
+
+        // A rebuild whose objects leave no preview falls back to the previous
+        // objects and keeps the windows and the poses as they were; one with
+        // nothing to fall back to leaves no avatar on the board and closes them.
+        [Test]
+        public void AFailedRebuildKeepsThePosesAndClosesTheWindowsOnlyWithoutACopy()
+        {
+            using var fixture = new SavedFixture();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            var blink = ScriptableObject.CreateInstance<BlinkConfigurationWindow>();
+            var poses = ScriptableObject.CreateInstance<PoseReviewWindow>();
+            try
+            {
+                ExperimentalExpressionCaptureSession Session() => (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board);
+                var edited = Session().PoseOptions;
+                edited.Excluded.Add("SamplePose"); edited.Names["SamplePose"] = "Sample";
+                typeof(PoseReviewWindow).GetField("options", flags).SetValue(poses, edited);
+                blink.ShowUtility(); poses.ShowUtility();
+                type.GetField("blinkConfiguration", flags).SetValue(board, blink);
+                type.GetField("poseReview", flags).SetValue(board, poses);
+                // Leaving out every mesh leaves nothing to preview.
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToArray();
+                var rebuild = type.GetMethod("RebuildKeepingAssignments", flags);
+                var problem = (string)rebuild.Invoke(board, new object[] { meshes, Array.Empty<GameObject>() });
+                Assert.That(problem, Is.Not.Null, "The objects asked for leave no preview.");
+                Assert.That(Session(), Is.Not.Null);
+                Assert.That(blink != null && poses != null, Is.True, "With the previous objects back, the windows stay open.");
+                Assert.That(Session().PoseOptions, Is.SameAs(edited));
+                Assert.That(edited.Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                Assert.That(edited.Names, Is.EquivalentTo(new Dictionary<string, string> { ["SamplePose"] = "Sample" }));
+                Assert.That(edited.Manual, Is.Empty, "The saved poses are not read again.");
+                var failure = Assert.Throws<System.Reflection.TargetInvocationException>(() => rebuild.Invoke(board, new object[] { meshes, null }));
+                Assert.That(failure.InnerException, Is.Not.Null);
+                Assert.That(Session(), Is.Null);
+                Assert.That(blink == null, Is.True, "Without a copy the blink window closes.");
+                Assert.That(poses == null, Is.True, "Without a copy the pose window closes.");
+            }
+            finally
+            {
+                if (blink != null) blink.Close();
+                if (poses != null) poses.Close();
+                Object.DestroyImmediate(board);
+            }
         }
 
         // Out of sight, a blocked board names what to fix; the open board shows it itself.
@@ -192,8 +279,7 @@ namespace VRVlog.LilToonExporter.Tests
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                typeof(ExperimentalExpressionCaptureWindow).GetField("excludedObjectEdits", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                    .SetValue(board, new List<GameObject>());
+                board.SetField("excludedObjectEdits", new List<GameObject>());
                 var needsFix = ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
                 var saved = false;
                 Assert.That(board.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), path, () => saved = true, false),
@@ -214,14 +300,12 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ChangingTheAvatarTurnsTheBlinkBackOn()
         {
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             try
             {
-                type.GetField("automaticBlink", flags).SetValue(window, false);
-                type.GetMethod("ChangeAvatar", flags).Invoke(window, null);
-                Assert.That(type.GetField("automaticBlink", flags).GetValue(window), Is.True);
+                window.SetField("automaticBlink", false);
+                window.Call("ChangeAvatar");
+                Assert.That(window.Field("automaticBlink"), Is.True);
             }
             finally { Object.DestroyImmediate(window); }
         }

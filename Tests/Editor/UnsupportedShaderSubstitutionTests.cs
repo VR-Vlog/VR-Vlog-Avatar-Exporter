@@ -26,12 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
         Texture2D Texture(string name) => Own(new Texture2D(4, 4) { name = name });
         Material Standard(string name = "Plain") => Own(new Material(Shader.Find("Standard")) { name = name });
 
-        Material Substitute(Material source)
-        {
-            var output = UnsupportedShaderSubstitution.Create(source);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source) => TestObjects.Substitute(owned, source, null, out _, out _, out _);
 
         [Test] public void AStandardMaterialKeepsItsMainImageColorNormalAndEmission()
         {
@@ -474,12 +469,7 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly Vector4 NeutralTone = new Vector4(0, 1, 1, 1);
         Material ColorProbe(string name = "Adjusted") => Own(new Material(Shader.Find("Hidden/VRVlogTests/ToonColorAdjustProbe")) { name = name });
 
-        Material Substitute(Material source, out bool colorSkipped)
-        {
-            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source, out bool colorSkipped) => TestObjects.Substitute(owned, source, null, out colorSkipped, out _, out _);
 
         static void AssertTone(Material output, Vector4 expected) =>
             Assert.That(Vector4.Distance(output.GetVector("_MainTexHSVG"), expected), Is.LessThan(1e-6f), output.GetVector("_MainTexHSVG").ToString("F4"));
@@ -687,7 +677,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in skins.Skip(1)) skin.sharedMaterial = plain;
             var report = new ExportRecoveryReport();
             var warnings = new List<string>();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Substituted", "Tests", warnings,
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Substituted", "Tests", warnings: warnings,
                 exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
             var glb = GlbDocument.Read(bytes);
@@ -711,7 +701,7 @@ namespace VRVlog.LilToonExporter.Tests
             skins[0].sharedMaterial = official;
             foreach (var skin in skins.Skip(1)) skin.sharedMaterial = screen;
             var report = new ExportRecoveryReport();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", new List<string>(),
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", warnings: new List<string>(),
                 exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
             var glb = GlbDocument.Read(bytes);

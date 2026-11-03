@@ -28,10 +28,9 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            if (SdkType("VRCAvatarDescriptor") == null || SdkType("VRCAnimatorLayerControl") == null || SdkType("VRCPlayableLayerControl") == null)
+            if (VrcAvatar.ComponentType("VRCAvatarDescriptor") == null || VrcAvatar.ComponentType("VRCAnimatorLayerControl") == null || VrcAvatar.ComponentType("VRCPlayableLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__NeutralLayerControl_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__NeutralLayerControl_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -41,7 +40,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Body size", 100, Enumerable.Repeat(Vector3.right * .02f, 3).ToArray(), null, null);
             mesh.AddBlendShapeFrame("Open", 100, Enumerable.Repeat(Vector3.up * .015f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 23);
-            descriptor = avatar.AddComponent(SdkType("VRCAvatarDescriptor"));
+            descriptor = avatar.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor"));
             BuildGraph(controller, new[] { "Body" }, out bodyState, out controlState);
             SetControllers(descriptor, controller);
         }
@@ -52,22 +51,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (avatar != null) Object.DestroyImmediate(avatar);
             if (mesh != null) Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
-        }
-
-        private static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components." + name)).FirstOrDefault(type => type != null);
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
-        }
-
-        private static AnimatorStateMachine Layer(AnimatorController target, string name)
-        {
-            target.AddLayer(name); var layers = target.layers; layers[layers.Length - 1].defaultWeight = 1; target.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
         }
 
         private static AnimationClip Clip(AnimatorController target, string name, IEnumerable<string> paths = null, string shape = null, float weight = 0)
@@ -81,22 +64,16 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static void BuildGraph(AnimatorController target, string[] paths, out AnimatorState body, out AnimatorState control)
         {
-            State(target.layers[0].stateMachine, "Uncontrolled base", Clip(target, "Base"));
-            body = State(Layer(target, "Controlled body"), "Body rest", Clip(target, "Body rest", paths, "Body size", 63));
-            control = State(Layer(target, "Layer weight control"), "Control", Clip(target, "Control"));
-            State(Layer(target, "Independent upper face"), "Always open", Clip(target, "Always open", paths, "Open", 100));
-        }
-
-        private static AnimatorStateTransition Transition(AnimatorState from, AnimatorState to, string parameter, AnimatorConditionMode mode, float threshold)
-        {
-            var transition = from.AddTransition(to); transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(mode, threshold, parameter); return transition;
+            FxGraph.StartState(target.layers[0].stateMachine, "Uncontrolled base", Clip(target, "Base"));
+            body = FxGraph.StartState(FxGraph.Layer(target, "Controlled body"), "Body rest", Clip(target, "Body rest", paths, "Body size", 63));
+            control = FxGraph.StartState(FxGraph.Layer(target, "Layer weight control"), "Control", Clip(target, "Control"));
+            FxGraph.StartState(FxGraph.Layer(target, "Independent upper face"), "Always open", Clip(target, "Always open", paths, "Open", 100));
         }
 
         private static StateMachineBehaviour Control(AnimatorState state, string target = "FX", int layer = BodyLayer,
             float weight = 0, float duration = 0, bool global = false)
         {
-            var control = state.AddStateMachineBehaviour(SdkType(global ? "VRCPlayableLayerControl" : "VRCAnimatorLayerControl"));
+            var control = state.AddStateMachineBehaviour(VrcAvatar.ComponentType(global ? "VRCPlayableLayerControl" : "VRCAnimatorLayerControl"));
             using var data = new SerializedObject(control);
             var playable = data.FindProperty(global ? "layer" : "playable");
             var index = Array.IndexOf(playable.enumNames, target); Assert.That(index, Is.GreaterThanOrEqualTo(0), target);
@@ -132,13 +109,13 @@ namespace VRVlog.LilToonExporter.Tests
             var layers = target.layers; layers[ControlLayer].name = maNames ? "Modular Avatar: MMD Control" : "Generic relay controller"; target.layers = layers;
             var clip = Clip(target, "Relay signal");
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), parameter), AnimationCurve.Constant(0, 1, 1));
-            var initial = State(machine, maNames ? "Initial" : "Starting", clip);
-            var normal = State(machine, maNames ? "NotMMD" : "Enabled", clip);
-            var mmd = State(machine, maNames ? "MMD" : "Disabled", clip);
+            var initial = FxGraph.StartState(machine, maNames ? "Initial" : "Starting", clip);
+            var normal = FxGraph.StartState(machine, maNames ? "NotMMD" : "Enabled", clip);
+            var mmd = FxGraph.StartState(machine, maNames ? "MMD" : "Disabled", clip);
             machine.defaultState = initial;
-            Transition(initial, mmd, parameter, AnimatorConditionMode.Less, .5f);
-            Transition(mmd, normal, parameter, AnimatorConditionMode.Greater, .5f);
-            Transition(normal, mmd, parameter, AnimatorConditionMode.Less, .5f);
+            FxGraph.Transition(initial, mmd, parameter, AnimatorConditionMode.Less, .5f);
+            FxGraph.Transition(mmd, normal, parameter, AnimatorConditionMode.Greater, .5f);
+            FxGraph.Transition(normal, mmd, parameter, AnimatorConditionMode.Less, .5f);
             Control(normal, weight: 1); Control(mmd, weight: 0);
         }
 
@@ -147,9 +124,9 @@ namespace VRVlog.LilToonExporter.Tests
             target.AddParameter("InStation", AnimatorControllerParameterType.Bool);
             var machine = target.layers[0].stateMachine;
             Control(machine.defaultState, global: true, weight: 1);
-            var station = State(machine, "Station FX zero", Clip(target, "Station"));
+            var station = FxGraph.StartState(machine, "Station FX zero", Clip(target, "Station"));
             Control(station, global: true, weight: 0);
-            Transition(machine.defaultState, station, "InStation", AnimatorConditionMode.If, 0);
+            FxGraph.Transition(machine.defaultState, station, "InStation", AnimatorConditionMode.If, 0);
         }
 
         private static void FiniteTiming(AnimatorStateTransition transition, bool fixedDuration)
@@ -196,7 +173,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             reference = reference ?? controller;
             var clone = Object.Instantiate(referenceAvatar ?? avatar); var graph = PlayableGraph.Create("Original native relay with SDK primitive bridge");
-            var sdk = SdkType("VRCAnimatorLayerControl");
+            var sdk = VrcAvatar.ComponentType("VRCAnimatorLayerControl");
             try
             {
                 foreach (var behaviour in clone.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
@@ -242,7 +219,7 @@ namespace VRVlog.LilToonExporter.Tests
                     prior = active;
                     if (expectUnitGlobalFx)
                     {
-                        var now = new HashSet<(int Layer, int Hash)>(); var globalSdk = SdkType("VRCPlayableLayerControl");
+                        var now = new HashSet<(int Layer, int Hash)>(); var globalSdk = VrcAvatar.ComponentType("VRCPlayableLayerControl");
                         for (var index = 0; index < reference.layers.Length; index++)
                         {
                             var definition = reference.layers[index];
@@ -337,7 +314,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
             var entry = new VrChatExpressionMenu.Entry();
-            VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)bodyState.motion, entry, metadata: metadata);
+            VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)bodyState.motion, entry);
             VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, BodyLayer,
                 metadata: metadata, sourceState: bodyState);
             Assert.That(entry.Error, Is.Null);
@@ -377,7 +354,7 @@ namespace VRVlog.LilToonExporter.Tests
             FiniteTiming(machine.states[2].state.transitions.Single(), fixedDuration);
             FiniteTiming(machine.states[1].state.transitions.Single(), fixedDuration);
             var enabled = machine.states[1].state;
-            var command = enabled.behaviours.Single(behaviour => SdkType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
+            var command = enabled.behaviours.Single(behaviour => VrcAvatar.ComponentType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
             using (var data = new SerializedObject(command))
             { data.FindProperty("goalWeight").floatValue = .5f; data.ApplyModifiedPropertiesWithoutUndo(); }
             AnimationUtility.SetEditorCurve((AnimationClip)controller.layers[0].stateMachine.defaultState.motion,
@@ -403,7 +380,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var transition in child.state.transitions)
                     if (remainsInitial || child.state != machine.defaultState) FiniteTiming(transition, true);
             var goal = remainsInitial ? 1 : .5f;
-            var command = machine.states[1].state.behaviours.Single(behaviour => SdkType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
+            var command = machine.states[1].state.behaviours.Single(behaviour => VrcAvatar.ComponentType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
             using (var data = new SerializedObject(command))
             { data.FindProperty("goalWeight").floatValue = goal; data.ApplyModifiedPropertiesWithoutUndo(); }
             AnimationUtility.SetEditorCurve((AnimationClip)controller.layers[0].stateMachine.defaultState.motion,
@@ -452,7 +429,7 @@ namespace VRVlog.LilToonExporter.Tests
                 EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"),
                 AnimationCurve.Constant(0, 1, 17));
             var enabled = controller.layers[ControlLayer].stateMachine.states[1].state;
-            var command = enabled.behaviours.Single(behaviour => SdkType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
+            var command = enabled.behaviours.Single(behaviour => VrcAvatar.ComponentType("VRCAnimatorLayerControl").IsInstanceOfType(behaviour));
             using (var data = new SerializedObject(command))
             { data.FindProperty("goalWeight").floatValue = goal; data.ApplyModifiedPropertiesWithoutUndo(); }
             Assert.That(controller.layers[BodyLayer].defaultWeight, Is.EqualTo(1));
@@ -497,14 +474,14 @@ namespace VRVlog.LilToonExporter.Tests
             else if (variation == "changing defaults")
             {
                 bodyState.writeDefaultValues = true;
-                var future = State(controller.layers[BodyLayer].stateMachine, "Future WD", Clip(controller, "Future WD motion"));
+                var future = FxGraph.StartState(controller.layers[BodyLayer].stateMachine, "Future WD", Clip(controller, "Future WD motion"));
                 var transition = bodyState.AddTransition(future); transition.hasExitTime = true; transition.exitTime = 20; transition.duration = 0;
             }
             else
             {
                 var additional = AnimatorController.CreateAnimatorControllerAtPath(folder + "/RelayProducer.controller");
                 additional.AddParameter("Generic layer relay", AnimatorControllerParameterType.Float);
-                var state = State(additional.layers[0].stateMachine, "Another signal producer", Clip(additional, "Another signal"));
+                var state = FxGraph.StartState(additional.layers[0].stateMachine, "Another signal producer", Clip(additional, "Another signal"));
                 AnimationUtility.SetEditorCurve((AnimationClip)state.motion, signal, AnimationCurve.Constant(0, 1, 1));
                 SetControllers(descriptor, controller, additional);
             }
@@ -532,27 +509,19 @@ namespace VRVlog.LilToonExporter.Tests
 
         private float NativeBodyWithIdempotentWeight(float goal)
         {
-            var clone = Object.Instantiate(avatar); var animator = clone.GetComponent<Animator>();
-            animator.runtimeAnimatorController = null; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.fireEvents = false;
-            var graph = PlayableGraph.Create("Original controller with unchanged layer weight"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
-            {
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Original graph", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60);
-                Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
-                var nativeSkin = clone.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
-                var before = nativeSkin.GetBlendShapeWeight(0);
-                // Apply the documented per-layer primitive to the original
-                // graph, independently of dependency pruning and callbacks.
-                playable.SetLayerWeight(BodyLayer, goal);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60);
-                Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
-                Assert.That(nativeSkin.GetBlendShapeWeight(0), Is.EqualTo(before).Within(.01));
-                return before;
-            }
-            finally { graph.Destroy(); Object.DestroyImmediate(clone); }
+            using var native = new NativeFxPlayback(avatar, controller);
+            var playable = native.Playable;
+            native.Start(); native.Run(120);
+            Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
+            var nativeSkin = native.Skin("Body");
+            var before = nativeSkin.GetBlendShapeWeight(0);
+            // Apply the documented per-layer primitive to the original
+            // graph, independently of dependency pruning and callbacks.
+            playable.SetLayerWeight(BodyLayer, goal);
+            native.Run(120);
+            Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
+            Assert.That(nativeSkin.GetBlendShapeWeight(0), Is.EqualTo(before).Within(.01));
+            return before;
         }
 
         [TestCase(.5f)]
@@ -561,7 +530,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var layers = controller.layers; layers[BodyLayer].defaultWeight = weight; controller.layers = layers;
             Control(controlState, weight: weight);
-            var later = State(controller.layers[ControlLayer].stateMachine, "Equivalent command", Clip(controller, "Equivalent command motion"));
+            var later = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Equivalent command", Clip(controller, "Equivalent command motion"));
             var transition = controlState.AddTransition(later); transition.hasExitTime = false; transition.duration = 0;
             Control(later, weight: weight);
             var before = CaptureAssets(); var warnings = new List<string>();
@@ -583,12 +552,12 @@ namespace VRVlog.LilToonExporter.Tests
             if (variation == "third controller")
             {
                 var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Competing.controller");
-                var state = State(other.layers[0].stateMachine, "Competing producer", Clip(other, "Competing empty"));
+                var state = FxGraph.StartState(other.layers[0].stateMachine, "Competing producer", Clip(other, "Competing empty"));
                 Control(state, weight: 0); SetControllers(descriptor, controller, other);
             }
             else
             {
-                var later = State(controller.layers[ControlLayer].stateMachine, "Another reachable command", Clip(controller, "Another command motion"));
+                var later = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Another reachable command", Clip(controller, "Another command motion"));
                 var transition = controlState.AddTransition(later); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
                 Control(later, weight: variation == "changed goal" || variation == "global command" ? 0 : 1,
                     duration: variation == "delayed command" ? 2 : 0, global: variation == "global command");
@@ -633,7 +602,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (otherController)
             {
                 other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
-                state = State(other.layers[0].stateMachine, "Body playable command", Clip(other, "Other empty"));
+                state = FxGraph.StartState(other.layers[0].stateMachine, "Body playable command", Clip(other, "Other empty"));
                 SetControllers(descriptor, controller, other);
             }
             var command = Control(state, target, layer: 0, weight: .5f, duration: 2);
@@ -653,9 +622,8 @@ namespace VRVlog.LilToonExporter.Tests
             var parameter = type == "Bool" ? "AFK" : type == "Int" ? "TrackingType" : "GestureLeftWeight";
             controller.AddParameter(new AnimatorControllerParameter { name = parameter,
                 type = (AnimatorControllerParameterType)Enum.Parse(typeof(AnimatorControllerParameterType), type), defaultBool = true, defaultInt = 0, defaultFloat = 1 });
-            var dormant = State(controller.layers[ControlLayer].stateMachine, "Dormant SDK control", Clip(controller, "Dormant"));
-            Transition(controlState, dormant, parameter, type == "Bool" ? AnimatorConditionMode.If : type == "Int" ? AnimatorConditionMode.Equals : AnimatorConditionMode.Greater,
-                type == "Float" ? .5f : 0);
+            var dormant = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Dormant SDK control", Clip(controller, "Dormant"));
+            FxGraph.Transition(controlState, dormant, parameter, type == "Bool" ? AnimatorConditionMode.If : type == "Int" ? AnimatorConditionMode.Equals : AnimatorConditionMode.Greater, type == "Float" ? .5f : 0);
             Control(dormant, duration: 2); var before = CaptureAssets(); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(63).Within(.01));
@@ -668,7 +636,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AReachableAdditionalPlayableFxCommandKeepsPreparedNeutralWithoutRunningCallbacks(bool global)
         {
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
-            var state = State(other.layers[0].stateMachine, "Additional SDK control", Clip(other, "Additional empty"));
+            var state = FxGraph.StartState(other.layers[0].stateMachine, "Additional SDK control", Clip(other, "Additional empty"));
             var command = Control(state, global: global); SetControllers(descriptor, controller, other);
             var commandBefore = EditorJsonUtility.ToJson(command); var before = CaptureAssets(); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
@@ -692,8 +660,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void MalformedSdkLayerControlDataRemainsHardEvenOnADormantBranch(string corruption)
         {
             controller.AddParameter("AFK", AnimatorControllerParameterType.Bool);
-            var dormant = State(controller.layers[ControlLayer].stateMachine, "Invalid dormant control", Clip(controller, "Invalid dormant"));
-            Transition(controlState, dormant, "AFK", AnimatorConditionMode.If, 0);
+            var dormant = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Invalid dormant control", Clip(controller, "Invalid dormant"));
+            FxGraph.Transition(controlState, dormant, "AFK", AnimatorConditionMode.If, 0);
             var command = Control(dormant);
             using (var data = new SerializedObject(command))
             {
@@ -724,7 +692,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void KnownLayerControlFallbackCannotHideUnknownCallbacksOrBadAnimationData(string damage)
         {
             Control(controlState);
-            var later = State(controller.layers[ControlLayer].stateMachine, "Later unsafe data", Clip(controller, "Later unsafe clip"));
+            var later = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Later unsafe data", Clip(controller, "Later unsafe clip"));
             var transition = controlState.AddTransition(later); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
             var clip = (AnimationClip)later.motion;
             if (damage == "unknown") Assert.That(later.AddStateMachineBehaviour<UnknownStateCallbackProbe>(), Is.Not.Null);
@@ -771,13 +739,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Additional.controller");
             var machine = other.layers[0].stateMachine;
-            var idle = State(machine, "Additional default", Clip(other, "Additional empty"));
+            var idle = FxGraph.StartState(machine, "Additional default", Clip(other, "Additional empty"));
             Control(idle, global: true); // All captured FX roots require prepared-rest fallback.
-            var bad = State(machine, "Additional unsafe state", Clip(other, "Additional unsafe clip"));
+            var bad = FxGraph.StartState(machine, "Additional unsafe state", Clip(other, "Additional unsafe clip"));
             if (dormant)
             {
                 other.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
-                Transition(idle, bad, "AFK", AnimatorConditionMode.If, 0);
+                FxGraph.Transition(idle, bad, "AFK", AnimatorConditionMode.If, 0);
             }
             else
             {
@@ -794,8 +762,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 other.AddParameter("Driver read", AnimatorControllerParameterType.Float);
                 ParameterDriverExpressionTests.Driver(bad, ParameterDriverExpressionTests.Op("Set", "Driver read", float.NaN));
-                var after = State(machine, "Reads malformed destination", Clip(other, "Additional end"));
-                Transition(bad, after, "Driver read", AnimatorConditionMode.Greater, .5f);
+                var after = FxGraph.StartState(machine, "Reads malformed destination", Clip(other, "Additional end"));
+                FxGraph.Transition(bad, after, "Driver read", AnimatorConditionMode.Greater, .5f);
             }
             SetControllers(descriptor, controller, other); return other;
         }
@@ -822,9 +790,9 @@ namespace VRVlog.LilToonExporter.Tests
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
             other.AddParameter(input, AnimatorControllerParameterType.Float);
             var machine = other.layers[0].stateMachine;
-            var idle = State(machine, "Action reads FX driver", Clip(other, "Action idle"));
-            var later = State(machine, "Action later", Clip(other, "Action later"));
-            Transition(idle, later, input, AnimatorConditionMode.Greater, .5f);
+            var idle = FxGraph.StartState(machine, "Action reads FX driver", Clip(other, "Action idle"));
+            var later = FxGraph.StartState(machine, "Action later", Clip(other, "Action later"));
+            FxGraph.Transition(idle, later, input, AnimatorConditionMode.Greater, .5f);
             var control = Control(idle, global: true); SetControllers(descriptor, controller, other);
             var before = CaptureAssets(); var beforeOther = EditorJsonUtility.ToJson(other);
             var beforeControl = EditorJsonUtility.ToJson(control); var beforeDriver = EditorJsonUtility.ToJson(driver);
@@ -849,21 +817,21 @@ namespace VRVlog.LilToonExporter.Tests
             var moving = Clip(fx, "Unresolved lower native motion", new[] { "Body" }, "Body size", 63);
             AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"),
                 AnimationCurve.Linear(0, 63, 1, 91));
-            State(fx.layers[0].stateMachine, "Moving lower", moving);
+            FxGraph.StartState(fx.layers[0].stateMachine, "Moving lower", moving);
             var selectedClip = Clip(fx, "Authored direct endpoint", new[] { "Body" }, "Body size", 80);
             AnimatorState selected = null;
             if (inactiveProvenance)
             {
-                selected = State(Layer(fx, "Inactive authored slot"), "Authored candidate", selectedClip);
+                selected = FxGraph.StartState(FxGraph.Layer(fx, "Inactive authored slot"), "Authored candidate", selectedClip);
                 var layers = fx.layers; layers[1].defaultWeight = 0; fx.layers = layers;
             }
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/DirectAction.controller");
             other.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
             var machine = other.layers[0].stateMachine;
-            var idle = State(machine, "Normal Action", Clip(other, "Action idle"));
-            var command = State(machine, "Additional direct-clip control", Clip(other, "Action command"));
+            var idle = FxGraph.StartState(machine, "Normal Action", Clip(other, "Action idle"));
+            var command = FxGraph.StartState(machine, "Additional direct-clip control", Clip(other, "Action command"));
             Control(command, layer: 0);
-            Transition(idle, command, "AFK", AnimatorConditionMode.If, 0);
+            FxGraph.Transition(idle, command, "AFK", AnimatorConditionMode.If, 0);
             if (!dormant) machine.defaultState = command;
             SetControllers(descriptor, fx, other);
             var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
@@ -887,7 +855,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task MmdControlledNativeRestAndAuthoredEndpointSurviveFullExportAndVrmRoundTrip()
         {
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             Vrm10Instance imported = null; GameObject expected = null;
             try
@@ -899,7 +867,7 @@ namespace VRVlog.LilToonExporter.Tests
                 { renderer.sharedMaterial.shader = shader; renderer.SetBlendShapeWeight(0, 17); renderer.SetBlendShapeWeight(1, 23); }
                 var fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/RoundTrip.controller");
                 BuildGraph(fx, new[] { "Front", "Back" }, out _, out _); MmdRelay(fx, true);
-                SetControllers(fixture.Source.AddComponent(SdkType("VRCAvatarDescriptor")), fx);
+                SetControllers(fixture.Source.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor")), fx);
                 var nativeRest = NativeSdkRelay("__MA/Internal/MMDNotActive", fx, fixture.Source, "Front");
                 var vrm = ScriptableObject.CreateInstance<VRM10Object>();
                 var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Absolute body endpoint";
@@ -912,7 +880,7 @@ namespace VRVlog.LilToonExporter.Tests
                 expected = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "SDK layer control regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "SDK layer control regression", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(warnings.Any(value => value.Contains("Body size") && value.Contains("VRCAnimatorLayerControl")), Is.False, string.Join("\n", warnings));
@@ -926,7 +894,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var reference = expected.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
                         reference.SetBlendShapeWeight(0, input == 0 ? nativeRest : 80); reference.SetBlendShapeWeight(1, 100);
                         var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == path);
-                        var a = Vertices(reference); var b = Vertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
+                        var a = TestObjects.WorldVertices(reference); var b = TestObjects.WorldVertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
                         for (var i = 0; i < a.Length; i++) Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f),
                             path + " / " + input + "\n" + string.Join("\n", warnings));
                     }
@@ -942,11 +910,5 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        private static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var baked = new Mesh();
-            try { renderer.BakeMesh(baked, false); return baked.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
-        }
     }
 }

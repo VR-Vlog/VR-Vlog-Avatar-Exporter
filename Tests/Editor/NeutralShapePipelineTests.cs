@@ -29,8 +29,7 @@ namespace VRVlog.LilToonExporter.Tests
         // humanoid. The receiving app stores its exported bytes for regression.
         internal static byte[] ExportFixture(float endpoint = 0, string evidenceDirectory = null)
         {
-            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var f = new AttachmentConnectionTests.Fixture();
             var folder = "Assets/__NeutralPipeline_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folder.Substring(7));
@@ -73,7 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var selected = machine.AddState("Authored endpoint"); selected.writeDefaultValues = false; selected.motion = Clip("Authored endpoint", endpoint);
                 var transition = neutral.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "Face");
-                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -83,7 +82,7 @@ namespace VRVlog.LilToonExporter.Tests
                     item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Face";
                     item.FindPropertyRelative("value").floatValue = 1; data.ApplyModifiedPropertiesWithoutUndo();
                 }
-                var parameters = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+                var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
                 AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
                 using (var data = new SerializedObject(parameters))
                 {
@@ -128,7 +127,8 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     finally { Object.DestroyImmediate(measure); }
                 }
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Synthetic FX neutral regression", "VR Vlog tests", blinkOptions: blink,
+                // The export reads faces only from the board's list.
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Synthetic FX neutral regression", "VR Vlog tests", exporterVersion: null, blinkOptions: blink,
                     listFaces: new[] { ("Authored endpoint", (AnimationClip)selected.motion, 0f) });
                 Assert.That(skins.All(s => s.sharedMesh == f.Mesh && s.GetBlendShapeWeight(0) == 0), Is.True);
                 Assert.That(skins.Select(s => s.GetBlendShapeWeight(1)), Is.EqualTo(new[] { 25f, 50f }));
@@ -143,8 +143,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { PlayerSettings.legacyClampBlendShapeWeights = legacyClamp; AssetDatabase.DeleteAsset(folder); }
         }
-
-        static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
 
         [TestCase(0f)]
         [TestCase(25f)]
@@ -163,6 +161,11 @@ namespace VRVlog.LilToonExporter.Tests
                     var open = input == 0 ? .03f : endpoint <= 50 ? endpoint * .0004f : .02f + (endpoint - 50) * .0002f;
                     foreach (var skin in imported.GetComponentsInChildren<SkinnedMeshRenderer>())
                     {
+                        // Shapes nothing binds are left out of the VRM, so the 220
+                        // authored shapes are not all kept; the endpoint still binds
+                        // a shape on each shared mesh.
+                        Assert.That(expression.MorphTargetBindings.Any(bind => imported.transform.Find(bind.RelativePath) == skin.transform &&
+                            bind.Index < skin.sharedMesh.blendShapeCount), Is.True, skin.name);
                         // The source has over 220 morphs; the unused ones are left out.
                         var names = Enumerable.Range(0, skin.sharedMesh.blendShapeCount).Select(skin.sharedMesh.GetBlendShapeName).ToArray();
                         Assert.That(names.Where(name => name.StartsWith("Authoring ", StringComparison.Ordinal)), Is.Empty);

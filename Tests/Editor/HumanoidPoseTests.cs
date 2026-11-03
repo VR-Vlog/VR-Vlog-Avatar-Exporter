@@ -451,6 +451,8 @@ namespace VRVlog.LilToonExporter.Tests
                     new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Pose fixture", Authors = new List<string> { "Test" } }, afterExport: session.Bind);
                 var legacy = bytes; bytes = session.Inject(bytes, f.Copy.transform.localScale);
                 var json = GlbDocument.Read(bytes).Json;
+                Assert.That(((List<object>)json["extensionsUsed"]).Count(name => Equals(name, HumanoidPoseData.Extension)), Is.EqualTo(1));
+                Assert.That(() => session.Inject(bytes, f.Copy.transform.localScale), Throws.InvalidOperationException);
                 var data = HumanoidPoseData.Read(((Dictionary<string, object>)json["extensions"])[HumanoidPoseData.Extension]);
                 HumanoidPoseData.ValidateReferences(data, json);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
