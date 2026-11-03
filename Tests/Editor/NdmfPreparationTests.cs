@@ -625,8 +625,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild()
         {
-            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            var descriptor = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the VRChat SDK to test VRCFury's avatar requirement.");
             foreach (var root in new[] { source, clone })
             {
                 root.AddComponent(descriptor);

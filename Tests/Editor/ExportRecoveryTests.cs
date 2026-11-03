@@ -565,7 +565,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
-                    UniVrmOneClickExporter.Export(f.Source, "Scene opening", "Tests", warnings,
+                    UniVrmOneClickExporter.Export(f.Source, "Scene opening", "Tests", warnings: warnings,
                         exporterVersion: "0.11.5", lilToonVersion: "2.3.4",
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                         recoveryOptions: options, recoveryReport: report));
