@@ -26,8 +26,15 @@ namespace VRVlog.LilToonExporter.Tests
         public void SetUp()
         {
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
-            folder = TempAssetFolder.Create("__NeutralShapeSampler_");
-            controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+            // One import for the folder and the controller instead of two. The
+            // controller is the same persisted asset at the same path.
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                folder = TempAssetFolder.Create("__NeutralShapeSampler_");
+                controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+            }
+            finally { AssetDatabase.StopAssetEditing(); }
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
             skin = body.GetComponent<SkinnedMeshRenderer>();
