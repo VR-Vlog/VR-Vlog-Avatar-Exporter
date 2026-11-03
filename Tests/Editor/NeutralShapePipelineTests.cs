@@ -166,6 +166,9 @@ namespace VRVlog.LilToonExporter.Tests
                         // a shape on each shared mesh.
                         Assert.That(expression.MorphTargetBindings.Any(bind => imported.transform.Find(bind.RelativePath) == skin.transform &&
                             bind.Index < skin.sharedMesh.blendShapeCount), Is.True, skin.name);
+                        // The source has over 220 morphs; the unused ones are left out.
+                        var names = Enumerable.Range(0, skin.sharedMesh.blendShapeCount).Select(skin.sharedMesh.GetBlendShapeName).ToArray();
+                        Assert.That(names.Where(name => name.StartsWith("Authoring ", StringComparison.Ordinal)), Is.Empty);
                         var baked = new Mesh();
                         try
                         {
