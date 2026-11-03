@@ -33,12 +33,12 @@ public static class E145ZipProbe
             const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
             var source = BuildAvatar();
             var packageVersion = (string)window.GetMethod("PackageVersion", Any).Invoke(null, null);
-            var installed = (string)window.GetMethod("RequireSupportedLilToon", Any).Invoke(null, new object[] { source });
+            var warnings = new List<string>();
+            var installed = (string)window.GetMethod("RequireLilToon", Any).Invoke(null, new object[] { source, warnings });
             Log("exporterVersion", packageVersion);
-            Log("requireSupportedLilToon", installed);
+            Log("installedLilToon", installed);
             var export = exporter.GetMethod("Export", Any);
             var args = export.GetParameters().Select(p => p.HasDefaultValue ? p.DefaultValue : Type.Missing).ToArray();
-            var warnings = new List<string>();
             args[0] = source; args[1] = "Generated avatar"; args[2] = "E145"; args[3] = warnings;
             args[5] = packageVersion; args[6] = installed;
             var bytes = (byte[])export.Invoke(null, args);
