@@ -33,8 +33,8 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal static FacialProjectionScope For(GameObject avatar, VrChatExpressionMenu.Source metadata)
-            => metadata?.FacialProjectionSession != null ? metadata.FacialProjectionSession.Get(avatar) : Create(avatar);
+        internal static FacialProjectionScope For(GameObject avatar, FxAnalysis analysis)
+            => analysis?.FacialProjection != null ? analysis.FacialProjection.Get(avatar) : Create(avatar);
 
         internal static FacialProjectionScope Create(GameObject avatar)
         {

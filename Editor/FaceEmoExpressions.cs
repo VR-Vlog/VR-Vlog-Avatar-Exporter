@@ -359,7 +359,7 @@ namespace VRVlog.LilToonExporter
             }
 
             internal PlayerSelection ReadClip(GameObject avatar, AnimationClip original, VrChatExpressionMenu.Entry entry,
-                RuntimeAnimatorController runtime = null, VrChatExpressionMenu.Source metadata = null)
+                RuntimeAnimatorController runtime = null, FxAnalysis analysis = null)
             {
                 if (avatar != clone) throw new InvalidOperationException("FaceEmoの表情参照は書き出し用コピーと一致していません。");
                 if (!targets.TryGetValue(original, out var paths))
@@ -420,7 +420,7 @@ namespace VRVlog.LilToonExporter
                     // its additional synchronized channels are part of the
                     // prepared expression, not optional matching evidence.
                     var read = selected.ReadPreparedMotion ? selected.Motion : clip;
-                    VrChatGestureExpressions.ReadClip(avatar, read, entry, PreparedExcludedPath, metadata);
+                    VrChatGestureExpressions.ReadClip(avatar, read, entry, PreparedExcludedPath, analysis);
                     if (entry.Animation.Count > 0)
                     {
                         if (read.length <= 0 || read.length > 600)
@@ -586,18 +586,18 @@ namespace VRVlog.LilToonExporter
         // here too, so its permanent overrides and, for an entry whose Source
         // is FaceEmo, the common DEFAULT FACE apply as they do here.
         internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry, VrChatExpressionMenu.Source source,
-            Func<string, bool> excludedPath, BindingSnapshot bindings)
+            Func<string, bool> excludedPath, BindingSnapshot bindings, FxAnalysis analysis = null)
         {
             PlayerSelection selected;
             if (bindings == null)
             {
-                VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source);
+                VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, analysis);
                 selected = ResolvePlayer(source.Controller, clip, clip);
             }
-            else selected = bindings.ReadClip(avatar, clip, entry, source.Controller, source);
+            else selected = bindings.ReadClip(avatar, clip, entry, source.Controller, analysis);
             if (bindings?.DeferPermanentOverrides == true) bindings.Defer(entry, selected);
             else VrChatExpressionSampler.ApplyPermanentOverrides(avatar, source.Controller, entry, selected.Layer, selected.WriteDefaults,
-                excludedPath: bindings == null ? excludedPath : bindings.PreparedExcludedPath, metadata: source, sourceState: selected.State);
+                excludedPath: bindings == null ? excludedPath : bindings.PreparedExcludedPath, metadata: source, sourceState: selected.State, analysis: analysis);
         }
 
         private static AnimationClip Resolve(object animation)

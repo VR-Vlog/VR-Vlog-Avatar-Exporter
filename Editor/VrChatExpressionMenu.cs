@@ -82,7 +82,6 @@ namespace VRVlog.LilToonExporter
 
         internal sealed class Source
         {
-            internal FacialProjectionScope.Session FacialProjectionSession;
             internal RuntimeAnimatorController Controller;
             internal readonly Dictionary<string, float> Defaults = new Dictionary<string, float>(StringComparer.Ordinal);
             internal readonly HashSet<string> ExpressionParameters = new HashSet<string>(StringComparer.Ordinal);

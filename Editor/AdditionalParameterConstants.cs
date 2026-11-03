@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter
     {
         internal static Dictionary<string, float> Prove(RuntimeAnimatorController runtime,
             VrChatExpressionMenu.Source source, FixedExpressionContext context,
-            IDictionary<string, float> defaults = null, IDictionary<string, float> selection = null)
+            IDictionary<string, float> defaults = null, IDictionary<string, float> selection = null, FxAnalysis analysis = null)
         {
             var result = new Dictionary<string, float>(StringComparer.Ordinal);
             if (source == null || source.OtherControllers.Count == 0) return result;
@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter
                 }
                 var inspected = ExpressionDependencies.Inspect(current, null,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true,
-                    typedConditions: true, fxLayerCount: ExpressionDependencies.Controller(runtime).layers.Length);
+                    typedConditions: true, fxLayerCount: ExpressionDependencies.Controller(runtime).layers.Length, analysis: analysis);
                 raw.AddRange(inspected);
                 if (current != runtime) rawAdditionalWrites.UnionWith(inspected.SelectMany(layer => layer.Writes));
             }
@@ -75,7 +75,7 @@ namespace VRVlog.LilToonExporter
             foreach (var current in runtimes)
                 reachable.AddRange(ExpressionDependencies.Inspect(current, null,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true,
-                    invariant, typedConditions: true, fxLayerCount: ExpressionDependencies.Controller(runtime).layers.Length));
+                    invariant, typedConditions: true, fxLayerCount: ExpressionDependencies.Controller(runtime).layers.Length, analysis: analysis));
             if (unknown.Count != 0 || reachable.SelectMany(layer => layer.Clips)
                 .Any(clip => AnimationUtility.GetAnimationEvents(clip).Length != 0)) return result;
             var curves = new HashSet<string>(reachable.SelectMany(layer => layer.CurveWrites), StringComparer.Ordinal);

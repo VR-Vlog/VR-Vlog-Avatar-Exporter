@@ -68,10 +68,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         HashSet<int> Find() => HeldAutomaticExpressionLayers.Find(controller, source, Automatic, 1, Selected);
 
-        VrChatExpressionMenu.Entry Hold()
+        VrChatExpressionMenu.Entry Hold(FxAnalysis analysis = null)
         {
-            var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, faceClip, entry);
-            VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, 1, false, metadata: source, sourceState: selected);
+            var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, faceClip, entry, analysis: analysis);
+            VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, 1, false, metadata: source, sourceState: selected, analysis: analysis);
             return entry;
         }
 
@@ -262,11 +262,25 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         (HashSet<int> Layers, HashSet<EditorCurveBinding> Preserved) UnownedRest(RuntimeAnimatorController runtime,
-            FixedExpressionContext context, ISet<string> selectedInputs)
+            FixedExpressionContext context, ISet<string> selectedInputs, FxAnalysis analysis = null)
         {
             var layers = HeldAutomaticExpressionLayers.FindUnownedRandomRest(avatar, runtime, source,
-                new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(faceClip)), context, out var preserved, selectedInputs);
+                new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(faceClip)), context, out var preserved, selectedInputs, analysis);
             return (layers, preserved);
+        }
+
+        [Test]
+        public void HeldProbeRunsTheSelectionAnalysesOnce()
+        {
+            UnownedRandomFixture();
+            var analysis = new FxAnalysis(avatar);
+            var entry = Hold(analysis);
+            // The probe samples the face several times; the selection, and with
+            // it the unowned random rest, is proved once for the entry.
+            Assert.That(analysis.RandomRestHits + analysis.RandomRestMisses, Is.EqualTo(1));
+            Assert.That(entry.Values.Single(value => value.Shape == "Authored").Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(entry.Values.Single(value => value.Shape == "Rest").Weight, Is.EqualTo(12).Within(.01));
+            Assert.That(entry.Values.Any(value => value.Shape == "Blink" || value.Shape == "Recovery channel"), Is.False);
         }
 
         [Test]
@@ -278,13 +292,13 @@ namespace VRVlog.LilToonExporter.Tests
             var unselected = UnownedRest(controller, context, null); var selectedWriter = UnownedRest(controller, context, writer);
             Assert.That(unselected.Layers, Is.EquivalentTo(new[] { 2 }));
             Assert.That(selectedWriter.Layers, Is.Empty, "The selected input still decides the result after the shared proof.");
-            using var cache = ExpressionInspectCache.Begin();
-            var first = UnownedRest(controller, context, writer);
+            var cache = new FxAnalysis();
+            var first = UnownedRest(controller, context, writer, cache);
             Assert.That(first.Layers, Is.EquivalentTo(selectedWriter.Layers)); Assert.That(first.Preserved, Is.EquivalentTo(selectedWriter.Preserved));
-            var second = UnownedRest(controller, context, null);
+            var second = UnownedRest(controller, context, null, cache);
             Assert.That(second.Layers, Is.EquivalentTo(unselected.Layers)); Assert.That(second.Preserved, Is.EquivalentTo(unselected.Preserved));
             second.Layers.Clear(); second.Preserved.Clear();
-            var third = UnownedRest(controller, context, null);
+            var third = UnownedRest(controller, context, null, cache);
             Assert.That(third.Layers, Is.EquivalentTo(unselected.Layers)); Assert.That(third.Preserved, Is.EquivalentTo(unselected.Preserved));
             Assert.That(cache.RandomRestMisses, Is.EqualTo(1));
             Assert.That(cache.RandomRestHits, Is.EqualTo(2));
@@ -295,16 +309,16 @@ namespace VRVlog.LilToonExporter.Tests
         {
             UnownedRandomFixture();
             var context = FixedExpressionContext.Create(controller, source.Defaults, source);
-            using var cache = ExpressionInspectCache.Begin();
-            var key = cache.RandomRestSignature(avatar, controller, source, context);
-            Assert.That(key, Is.Not.Null);
-            Assert.That(cache.TryRandomRest(key, source, out _), Is.False);
-            var stored = new HashSet<int> { 2 }; cache.StoreRandomRest(key, source, stored); stored.Add(5);
-            Assert.That(cache.TryRandomRest(key, source, out var first), Is.True); first.Add(7);
-            Assert.That(cache.TryRandomRest(key, source, out var second), Is.True);
+            var cache = new FxAnalysis();
+            var stored = cache.RandomRest(avatar, controller, source, context, () => new HashSet<int> { 2 }); stored.Add(5);
+            Assert.That(cache.RandomRestMisses, Is.EqualTo(1));
+            var first = cache.RandomRest(avatar, controller, source, context, () => throw new AssertionException("kept")); first.Add(7);
+            var second = cache.RandomRest(avatar, controller, source, context, () => throw new AssertionException("kept"));
             Assert.That(second, Is.EquivalentTo(new[] { 2 })); Assert.That(second, Is.Not.SameAs(first));
-            // Another Source never reuses the entry, even under the same key.
-            Assert.That(cache.TryRandomRest(key, new VrChatExpressionMenu.Source(), out _), Is.False);
+            Assert.That(cache.RandomRestHits, Is.EqualTo(2));
+            // Another Source never reuses the entry.
+            Assert.That(cache.RandomRest(avatar, controller, new VrChatExpressionMenu.Source(), context, () => new HashSet<int>()), Is.Empty);
+            Assert.That(cache.RandomRestMisses, Is.EqualTo(2));
         }
 
         [Test]
@@ -319,9 +333,9 @@ namespace VRVlog.LilToonExporter.Tests
             var station = FixedExpressionContext.Create(controller, source.Defaults, source); station.Values["InStation"] = 1;
             var expectedNormal = UnownedRest(controller, normal, null); var expectedStation = UnownedRest(controller, station, null);
             Assert.That(expectedNormal.Layers, Is.EquivalentTo(new[] { 2 })); Assert.That(expectedStation.Layers, Is.Empty);
-            using var cache = ExpressionInspectCache.Begin();
-            Assert.That(UnownedRest(controller, normal, null).Layers, Is.EquivalentTo(expectedNormal.Layers));
-            Assert.That(UnownedRest(controller, station, null).Layers, Is.EquivalentTo(expectedStation.Layers));
+            var cache = new FxAnalysis();
+            Assert.That(UnownedRest(controller, normal, null, cache).Layers, Is.EquivalentTo(expectedNormal.Layers));
+            Assert.That(UnownedRest(controller, station, null, cache).Layers, Is.EquivalentTo(expectedStation.Layers));
             Assert.That(cache.RandomRestMisses, Is.EqualTo(2)); Assert.That(cache.RandomRestHits, Is.Zero);
         }
 
@@ -330,11 +344,12 @@ namespace VRVlog.LilToonExporter.Tests
         {
             UnownedRandomFixture();
             var context = FixedExpressionContext.Create(controller, source.Defaults, source);
-            var closed = ExpressionInspectCache.Begin(); closed.Dispose();
-            Assert.That(ExpressionInspectCache.Current, Is.Null);
+            // There is no ambient scope: a call not handed the analysis proves
+            // the rest afresh and leaves the analysis untouched.
+            var unused = new FxAnalysis();
             Assert.That(UnownedRest(controller, context, null).Layers, Is.EquivalentTo(new[] { 2 }));
             Assert.That(UnownedRest(controller, context, null).Layers, Is.EquivalentTo(new[] { 2 }));
-            Assert.That(closed.RandomRestHits + closed.RandomRestMisses, Is.Zero);
+            Assert.That(unused.RandomRestHits + unused.RandomRestMisses, Is.Zero);
         }
 
         [TestCase("unsaved FX")]
@@ -351,10 +366,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var context = FixedExpressionContext.Create(runtime, source.Defaults, source);
                 var expected = UnownedRest(runtime, context, null);
                 Assert.That(expected.Layers, Is.EquivalentTo(new[] { 2 }), "The fixture must reach the random rest proof, not an earlier exit.");
-                using var cache = ExpressionInspectCache.Begin();
-                Assert.That(UnownedRest(runtime, context, null).Layers, Is.EquivalentTo(expected.Layers));
-                Assert.That(UnownedRest(runtime, context, null).Layers, Is.EquivalentTo(expected.Layers));
-                Assert.That(cache.RandomRestHits + cache.RandomRestMisses, Is.Zero);
+                var cache = new FxAnalysis();
+                Assert.That(UnownedRest(runtime, context, null, cache).Layers, Is.EquivalentTo(expected.Layers));
+                Assert.That(UnownedRest(runtime, context, null, cache).Layers, Is.EquivalentTo(expected.Layers));
+                // Both calls prove the rest; neither is kept.
+                Assert.That(cache.RandomRestHits, Is.Zero);
+                Assert.That(cache.RandomRestMisses, Is.EqualTo(2));
             }
             finally { Object.DestroyImmediate(probe); }
         }

@@ -52,6 +52,9 @@ namespace VRVlog.LilToonExporter
         internal static bool HasEffectfulBehaviours(IEnumerable<StateMachineBehaviour> behaviours) => behaviours.Any(behaviour =>
             !IsInertAuthoringMarker(behaviour));
 
+        // One FX layer as Inspect walked it. FxAnalysis hands the same Layer
+        // to every caller of one export, so nothing changes it after the walk;
+        // a caller that narrows one works on its own Copy().
         internal sealed class Layer
         {
             internal readonly HashSet<string> Reads = new HashSet<string>(StringComparer.Ordinal);
@@ -67,6 +70,22 @@ namespace VRVlog.LilToonExporter
             internal readonly Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> FxCommands = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
             internal readonly Dictionary<StateMachineBehaviour, SdkLayerWeightControl> WeightControls = new Dictionary<StateMachineBehaviour, SdkLayerWeightControl>();
             internal bool WriteDefaults, HasBindings, EmptyMotion, FxControl, Timed, NonMorphBindings;
+
+            internal Layer Copy()
+            {
+                var copy = new Layer
+                {
+                    WriteDefaults = WriteDefaults, HasBindings = HasBindings, EmptyMotion = EmptyMotion,
+                    FxControl = FxControl, Timed = Timed, NonMorphBindings = NonMorphBindings
+                };
+                copy.Reads.UnionWith(Reads); copy.ControlReads.UnionWith(ControlReads); copy.CopyInputs.UnionWith(CopyInputs);
+                copy.Writes.UnionWith(Writes); copy.DriverWrites.UnionWith(DriverWrites); copy.CurveWrites.UnionWith(CurveWrites);
+                copy.Morphs.UnionWith(Morphs); copy.DynamicMorphs.UnionWith(DynamicMorphs); copy.Clips.UnionWith(Clips);
+                copy.DriverPrograms.AddRange(DriverPrograms);
+                foreach (var pair in FxCommands) copy.FxCommands.Add(pair.Key, pair.Value);
+                foreach (var pair in WeightControls) copy.WeightControls.Add(pair.Key, pair.Value);
+                return copy;
+            }
         }
 
         internal readonly HashSet<int> Layers = new HashSet<int>();
@@ -131,31 +150,31 @@ namespace VRVlog.LilToonExporter
         // A reduced probe controller has no authored state callbacks. Validate
         // those callbacks on the original graph before reconstruction so layer
         // controls cannot silently turn a permanent effect on, off or down.
-        internal static Layer[] ValidateProbeBehaviours(RuntimeAnimatorController runtime, Func<string, bool> excludedPath)
+        internal static Layer[] ValidateProbeBehaviours(RuntimeAnimatorController runtime, Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
             var unknown = new List<string>();
-            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown);
+            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, analysis: analysis);
             if (unknown.Count > 0)
                 throw new InvalidOperationException("FXの影響範囲を確定できないState Behaviourがあります: " + string.Join(", ", unknown));
             return layers;
         }
 
-        internal static HashSet<string> SelectedLayerDriverWrites(RuntimeAnimatorController runtime, int layerIndex, Func<string, bool> excludedPath)
+        internal static HashSet<string> SelectedLayerDriverWrites(RuntimeAnimatorController runtime, int layerIndex, Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
             var unknown = new List<string>();
-            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown);
+            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, analysis: analysis);
             if (unknown.Count > 0)
                 throw new InvalidOperationException("FXの影響範囲を確定できないState Behaviourがあります: " + string.Join(", ", unknown));
             var omittedWeight = layers[layerIndex].WeightControls.Values.FirstOrDefault(control => control.Playable == "FX");
             if (omittedWeight != null)
                 throw new InvalidOperationException("選択したFXレイヤー制御の元状態を特定できません: " + omittedWeight.Location);
-            return layers[layerIndex].DriverWrites;
+            return new HashSet<string>(layers[layerIndex].DriverWrites, StringComparer.Ordinal);
         }
 
         internal static void ValidateAdditionalProbeBehaviours(RuntimeAnimatorController runtime,
-            VrChatExpressionMenu.Source source, FixedExpressionContext fixedContext, ISet<EditorCurveBinding> morphs)
+            VrChatExpressionMenu.Source source, FixedExpressionContext fixedContext, ISet<EditorCurveBinding> morphs, FxAnalysis analysis = null)
         {
-            foreach (var other in InspectOtherControllers(runtime, source, fixedContext))
+            foreach (var other in InspectOtherControllers(runtime, source, fixedContext, analysis: analysis))
             {
                 var writes = other.Layers.SelectMany(layer => layer.Morphs).Where(morphs.Contains)
                     .Select(binding => binding.path + "/" + binding.propertyName).Distinct();
@@ -170,24 +189,24 @@ namespace VRVlog.LilToonExporter
 
         internal static ExpressionDependencies Analyze(RuntimeAnimatorController runtime, IEnumerable<string> selected,
             Func<string, bool> excludedPath, VrChatExpressionMenu.Source source = null, IDictionary<string, float> defaults = null, IDictionary<string, float> selection = null,
-            IEnumerable<EditorCurveBinding> initialMorphs = null, bool preserveNativeBasePose = false, FixedExpressionContext fixedContext = null)
+            IEnumerable<EditorCurveBinding> initialMorphs = null, bool preserveNativeBasePose = false, FixedExpressionContext fixedContext = null, FxAnalysis analysis = null)
             => AnalyzeCore(runtime, selected, excludedPath, source, defaults, selection, null,
-                fixedContext: fixedContext, initialMorphs: initialMorphs, preserveNativeBasePose: preserveNativeBasePose);
+                fixedContext: fixedContext, initialMorphs: initialMorphs, preserveNativeBasePose: preserveNativeBasePose, analysis: analysis);
 
         internal static IEnumerable<HashSet<EditorCurveBinding>> NeutralRoots(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
-            VrChatExpressionMenu.Source source, ISet<EditorCurveBinding> automatic = null, FixedExpressionContext fixedContext = null)
+            VrChatExpressionMenu.Source source, ISet<EditorCurveBinding> automatic = null, FixedExpressionContext fixedContext = null, FxAnalysis analysis = null)
         {
             var unknown = new List<string>();
-            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
+            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true, analysis: analysis);
             if (layers.All(layer => layer.Morphs.Count == 0)) return Array.Empty<HashSet<EditorCurveBinding>>();
             if (unknown.Count > 0)
                 throw new InvalidOperationException("FXの影響範囲を確定できないState Behaviourがあります: " + string.Join(", ", unknown));
-            var trackingValues = FixedNeutralValues(runtime, source, layers, excludedPath);
+            var trackingValues = FixedNeutralValues(runtime, source, layers, excludedPath, analysis: analysis);
             var trackingLayers = fixedContext == null ? null : Inspect(runtime, excludedPath,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, trackingValues);
-            var fixedValues = fixedContext == null ? trackingValues : FixedNeutralValues(runtime, source, layers, excludedPath, fixedContext);
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, trackingValues, analysis: analysis);
+            var fixedValues = fixedContext == null ? trackingValues : FixedNeutralValues(runtime, source, layers, excludedPath, fixedContext, analysis: analysis);
             layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
-                new List<string>(), true, fixedValues);
+                new List<string>(), true, fixedValues, analysis: analysis);
             RemoveIndependentAutomaticWriters(layers, automatic, source, trackingValues, trackingLayers);
             return layers.Where(layer => layer.Morphs.Count > 0).Select(layer => new HashSet<EditorCurveBinding>(layer.Morphs));
         }
@@ -195,14 +214,14 @@ namespace VRVlog.LilToonExporter
         internal static ExpressionDependencies AnalyzeNeutral(RuntimeAnimatorController runtime, ISet<EditorCurveBinding> morphs,
             Func<string, bool> excludedPath, VrChatExpressionMenu.Source source, ISet<EditorCurveBinding> automatic = null,
             FixedExpressionContext fixedContext = null, bool preserveCommittedMorphs = false, bool evaluateLayerWeights = false,
-            int weightLayerOffset = 0)
+            int weightLayerOffset = 0, FxAnalysis analysis = null)
         {
             var defaults = new Dictionary<string, float>(source.Defaults, StringComparer.Ordinal);
             if (fixedContext != null)
                 foreach (var input in fixedContext.Values) defaults[input.Key] = input.Value;
             return AnalyzeCore(runtime, Array.Empty<string>(), excludedPath, source, defaults,
                 new Dictionary<string, float>(), morphs, automatic, fixedContext, initialMorphs: morphs, preserveNativeBasePose: true,
-                preserveCommittedMorphs: preserveCommittedMorphs, evaluateLayerWeights: evaluateLayerWeights, weightLayerOffset: weightLayerOffset);
+                preserveCommittedMorphs: preserveCommittedMorphs, evaluateLayerWeights: evaluateLayerWeights, weightLayerOffset: weightLayerOffset, analysis: analysis);
         }
 
         // Appearance ownership includes custom menu alternatives. Normal
@@ -210,10 +229,10 @@ namespace VRVlog.LilToonExporter
         // rule out dormant branches; authored wardrobe defaults alone cannot.
         internal static Layer[] NormalInputLayers(RuntimeAnimatorController runtime,
             VrChatExpressionMenu.Source source, FixedExpressionContext fixedContext, Func<string, bool> excludedPath,
-            IDictionary<string, float> selection = null)
+            IDictionary<string, float> selection = null, FxAnalysis analysis = null)
         {
             var unknown = new List<string>();
-            var raw = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
+            var raw = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true, analysis: analysis);
             if (fixedContext == null) return raw;
             var rawOther = new List<Layer>();
             var declarations = new Dictionary<string, List<AnimatorControllerParameter>>(StringComparer.Ordinal);
@@ -228,7 +247,7 @@ namespace VRVlog.LilToonExporter
                 }
                 if (controller != runtime)
                     rawOther.AddRange(Inspect(controller, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
-                        typedConditions: true, fxLayerCount: Controller(runtime).layers.Length));
+                        typedConditions: true, fxLayerCount: Controller(runtime).layers.Length, analysis: analysis));
             }
             // Unknown callbacks can invalidate every constant. Retain their
             // complete clip graph so the dependency guards diagnose them.
@@ -254,7 +273,7 @@ namespace VRVlog.LilToonExporter
             }
             if (source?.NeutralInputInventoryComplete == true)
             {
-                var normalOther = InspectOtherControllers(runtime, source, fixedContext, selection: selection);
+                var normalOther = InspectOtherControllers(runtime, source, fixedContext, selection: selection, analysis: analysis);
                 if (normalOther.All(item => item.Unknown.Count == 0))
                 {
                     var reachableWrites = new HashSet<string>(normalOther.SelectMany(item => item.Layers).SelectMany(layer => layer.Writes), StringComparer.Ordinal);
@@ -313,7 +332,7 @@ namespace VRVlog.LilToonExporter
                 }
             }
             var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
-                new List<string>(), true, invariant);
+                new List<string>(), true, invariant, analysis: analysis);
             // Sets in dormant states cannot select a branch. Fewer reached
             // states only shrink the domains, so the loop terminates.
             Dictionary<string, ISet<float>> domains = null;
@@ -326,34 +345,34 @@ namespace VRVlog.LilToonExporter
                 if (domains != null && next.All(item => domains[item.Key].SetEquals(item.Value))) break;
                 domains = next;
                 layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
-                    new List<string>(), true, invariant, domains: domains);
+                    new List<string>(), true, invariant, domains: domains, analysis: analysis);
             }
             return layers;
         }
 
         internal static HashSet<AnimationClip> NeutralClips(RuntimeAnimatorController runtime, IDictionary<string, float> fixedValues,
-            Func<string, bool> excludedPath) => new HashSet<AnimationClip>(NeutralLayerClips(runtime, fixedValues, excludedPath)
+            Func<string, bool> excludedPath, FxAnalysis analysis = null) => new HashSet<AnimationClip>(NeutralLayerClips(runtime, fixedValues, excludedPath, analysis: analysis)
                 .SelectMany(clips => clips));
 
         // The same clips per FX layer, in the order of Inspect: a clip shared
         // by two layers is a rest clip only in the layer that reaches it.
         internal static HashSet<AnimationClip>[] NeutralLayerClips(RuntimeAnimatorController runtime, IDictionary<string, float> fixedValues,
-            Func<string, bool> excludedPath) => Inspect(runtime, excludedPath,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues)
+            Func<string, bool> excludedPath, FxAnalysis analysis = null) => Inspect(runtime, excludedPath,
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues, analysis: analysis)
                 .Select(layer => new HashSet<AnimationClip>(layer.Clips)).ToArray();
 
         private static ExpressionDependencies AnalyzeCore(RuntimeAnimatorController runtime, IEnumerable<string> selected,
             Func<string, bool> excludedPath, VrChatExpressionMenu.Source source, IDictionary<string, float> defaults,
             IDictionary<string, float> selection, ISet<EditorCurveBinding> neutralMorphs, ISet<EditorCurveBinding> automatic = null,
             FixedExpressionContext fixedContext = null, IEnumerable<EditorCurveBinding> initialMorphs = null, bool preserveNativeBasePose = false,
-            bool preserveCommittedMorphs = false, bool evaluateLayerWeights = false, int weightLayerOffset = 0)
+            bool preserveCommittedMorphs = false, bool evaluateLayerWeights = false, int weightLayerOffset = 0, FxAnalysis analysis = null)
         {
             var result = new ExpressionDependencies();
             var requiredMorphs = new HashSet<EditorCurveBinding>(initialMorphs ?? Enumerable.Empty<EditorCurveBinding>());
             result.Morphs.UnionWith(requiredMorphs);
             var controller = Controller(runtime);
             var unknown = new List<string>();
-            var info = Inspect(runtime, excludedPath, result.Drivers, unknown, true);
+            var info = Inspect(runtime, excludedPath, result.Drivers, unknown, true, analysis: analysis);
             evaluateLayerWeights |= neutralMorphs == null;
             void RemapWeights(Layer[] inspected)
             {
@@ -374,18 +393,18 @@ namespace VRVlog.LilToonExporter
             // Arbitrary behaviours can affect any parameter, layer or scene
             // object. No name/path-based independence claim is safe for them.
             if (unknown.Count > 0) throw new InvalidOperationException("FXの影響範囲を確定できないState Behaviourがあります: " + string.Join(", ", unknown));
-            var otherControllers = InspectOtherControllers(runtime, source, fixedContext, defaults, selection);
-            var preservedParameterWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, defaults, selection);
+            var otherControllers = InspectOtherControllers(runtime, source, fixedContext, defaults, selection, analysis: analysis);
+            var preservedParameterWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, defaults, selection, analysis: analysis);
             if (neutralMorphs != null)
             {
-                var trackingValues = FixedNeutralValues(runtime, source, info, excludedPath);
+                var trackingValues = FixedNeutralValues(runtime, source, info, excludedPath, analysis: analysis);
                 var trackingLayers = fixedContext == null ? null : Inspect(runtime, excludedPath,
-                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, trackingValues);
-                var fixedValues = fixedContext == null ? trackingValues : FixedNeutralValues(runtime, source, info, excludedPath, fixedContext);
+                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, trackingValues, analysis: analysis);
+                var fixedValues = fixedContext == null ? trackingValues : FixedNeutralValues(runtime, source, info, excludedPath, fixedContext, analysis: analysis);
                 foreach (var pair in fixedValues) result.NeutralFixedValues.Add(pair.Key, pair.Value);
                 // Keep all driver programs for the private controller copy, but
                 // root neutral dependencies only in reachable default states.
-                info = Inspect(runtime, excludedPath, result.Drivers, new List<string>(), true, result.NeutralFixedValues);
+                info = Inspect(runtime, excludedPath, result.Drivers, new List<string>(), true, result.NeutralFixedValues, analysis: analysis);
                 RemapWeights(info);
                 // Live automatic layers still contribute native defaults to
                 // additive and fractional blending. Remember their activity
@@ -397,7 +416,7 @@ namespace VRVlog.LilToonExporter
                 // and execute their SDK commands; never substitute its final
                 // parameter value into startup reachability.
                 if (CanEvaluateNeutralRelay(runtime, source, rawInfo, info,
-                    result.NeutralFixedValues, otherControllers, fixedContext, out var relaySignals))
+                    result.NeutralFixedValues, otherControllers, fixedContext, out var relaySignals, analysis: analysis))
                 {
                     evaluateLayerWeights = true;
                     result.RequireSettledWeightControls = true;
@@ -426,7 +445,7 @@ namespace VRVlog.LilToonExporter
                     var final = selection != null && selection.TryGetValue(name, out supplied) ? supplied : initial;
                     if (Finite(initial) && Finite(final) && initial == final) invariant[name] = initial;
                 }
-                weightScope = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, invariant);
+                weightScope = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, invariant, analysis: analysis);
                 RemapWeights(weightScope);
                 // Selected probes need the same post-startup relay proof as
                 // neutral capture. The input seeds above exclude every raw
@@ -434,7 +453,7 @@ namespace VRVlog.LilToonExporter
                 // graph and SDK callbacks still establish the native order.
                 if (CanEvaluateNeutralRelay(runtime, source, rawInfo, weightScope,
                     invariant, otherControllers, fixedContext, out var relaySignals,
-                    new HashSet<string>(selection?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal)))
+                    new HashSet<string>(selection?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal), analysis: analysis))
                 {
                     result.RequireSettledWeightControls = true;
                     result.NeutralRelaySignals.UnionWith(relaySignals);
@@ -482,6 +501,7 @@ namespace VRVlog.LilToonExporter
                         else if (controller.layers[index].syncedLayerIndex < 0 &&
                             TryFixedGateReads(controller.layers[index].stateMachine, UniqueParameters(controller), fixedValues, out var reads, out var reached))
                         {
+                            info[index] = info[index].Copy();
                             info[index].Reads.IntersectWith(reads);
                             reachedCommands = reached;
                         }
@@ -603,7 +623,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var index in result.Layers)
                     if (!info[index].Morphs.Overlaps(requiredMorphs)) result.NativeSupportLayers.Add(index);
                 if (neutralMorphs != null)
-                    result.IndependentTopOverrideLayer = NeutralParameterDependencies.IndependentTopOverride(runtime, result.Morphs, excludedPath);
+                    result.IndependentTopOverrideLayer = NeutralParameterDependencies.IndependentTopOverride(runtime, result.Morphs, excludedPath, analysis: analysis);
             }
             if (result.Layers.Count == 0) throw new InvalidOperationException("このメニューに対応するFXの表情がありません。");
             result.Parameters.UnionWith(read);
@@ -727,7 +747,7 @@ namespace VRVlog.LilToonExporter
         private static bool CanEvaluateNeutralRelay(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source source,
             Layer[] raw, Layer[] reachable, IDictionary<string, float> fixedValues,
             IEnumerable<OtherControllerInspection> otherControllers, FixedExpressionContext fixedContext,
-            out HashSet<string> provenSignals, ISet<string> selectedInputs = null)
+            out HashSet<string> provenSignals, ISet<string> selectedInputs = null, FxAnalysis analysis = null)
         {
             provenSignals = null;
             var controller = Controller(runtime);
@@ -746,10 +766,10 @@ namespace VRVlog.LilToonExporter
                 var unknown = new List<string>();
                 foreach (var additional in source.OtherControllers.Where(value => value != null))
                     rawOthers.AddRange(Inspect(additional, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
-                        unknown, allowFxControls: true, typedConditions: true, fxLayerCount: layers.Length));
+                        unknown, allowFxControls: true, typedConditions: true, fxLayerCount: layers.Length, analysis: analysis));
                 if (unknown.Count != 0 || rawOthers.Any(layer => layer.FxControl ||
                     layer.WeightControls.Values.Any(control => control.Playable == "FX")) ||
-                    !HeldAutomaticExpressionLayers.HasOnlyUnchangedUnitFxCommands(runtime, source, raw, rawOthers, fixedContext, selectedInputs)) return false;
+                    !HeldAutomaticExpressionLayers.HasOnlyUnchangedUnitFxCommands(runtime, source, raw, rawOthers, fixedContext, selectedInputs, analysis: analysis)) return false;
             }
             var owners = new HashSet<int>(commands.Select(item => item.Owner));
             var targets = new HashSet<int>(commands.Select(item => item.Control.LayerIndex));
@@ -868,33 +888,32 @@ namespace VRVlog.LilToonExporter
         // proven stationary default clip; gesture and timed layers still enter
         // the graph solely through their real property/parameter dependencies.
         internal static HashSet<EditorCurveBinding> StationaryMorphBindings(RuntimeAnimatorController runtime,
-            Func<string, bool> excludedPath = null) => StationaryMorphBindings(StationaryLayers(runtime, excludedPath), excludedPath);
+            Func<string, bool> excludedPath = null, FxAnalysis analysis = null) =>
+            StationaryMorphBindings(StationaryLayers(runtime, excludedPath, analysis), excludedPath, analysis);
 
         // Takes the result of StationaryLayers for the same runtime and
         // exclusion, so one caller does not prove the same layers twice.
         internal static HashSet<EditorCurveBinding> StationaryMorphBindings(Dictionary<int, AnimationClip> stationaryLayers,
-            Func<string, bool> excludedPath)
+            Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
-            var cache = ExpressionInspectCache.Current;
             var result = new HashSet<EditorCurveBinding>();
             foreach (var clip in stationaryLayers.Values)
-                result.UnionWith((cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip)).Where(binding => excludedPath?.Invoke(binding.path) != true));
+                result.UnionWith((analysis?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip)).Where(binding => excludedPath?.Invoke(binding.path) != true));
             return result;
         }
 
         internal static Dictionary<int, AnimationClip> StationaryLayers(RuntimeAnimatorController runtime,
-            Func<string, bool> excludedPath = null)
+            Func<string, bool> excludedPath = null, FxAnalysis analysis = null)
         {
-            var cache = ExpressionInspectCache.Current;
             var result = new Dictionary<int, AnimationClip>();
-            foreach (var (index, clip) in cache?.StationaryCandidates(runtime) ?? StationaryCandidates(runtime))
+            foreach (var (index, clip) in analysis?.StationaryCandidates(runtime) ?? StationaryCandidates(runtime))
             {
-                if ((cache?.ObjectBindings(clip) ?? AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                if ((analysis?.ObjectBindings(clip) ?? AnimationUtility.GetObjectReferenceCurveBindings(clip))
                     .Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
-                var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
+                var bindings = (analysis?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
                     .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
                 if (bindings.Length == 0 || bindings.Any(binding => !PoseSampling.IsBlendShape(binding) ||
-                    !(cache?.Constant(clip, binding) ?? CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
+                    !(analysis?.Constant(clip, binding) ?? CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
                 result.Add(index, clip);
             }
             return result;
@@ -950,19 +969,20 @@ namespace VRVlog.LilToonExporter
                 // input drives every channel; a timed clip drives only its
                 // varying ones, so a constant channel held beside a blink
                 // loop (a closed-mouth viseme) stays the default face.
+                layers[index] = layer = layer.Copy();
                 if (external) layer.Morphs.Clear(); else layer.Morphs.ExceptWith(tracking.DynamicMorphs);
                 if (layer.Morphs.Count == 0) { layer.HasBindings = false; layer.EmptyMotion = false; }
             }
         }
 
         internal static Dictionary<string, float> FixedNeutralValues(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source source, Layer[] layers,
-            Func<string, bool> excludedPath, FixedExpressionContext fixedContext = null)
+            Func<string, bool> excludedPath, FixedExpressionContext fixedContext = null, FxAnalysis analysis = null)
         {
             var controller = Controller(runtime);
             var written = new HashSet<string>(layers.SelectMany(layer => layer.Writes), StringComparer.Ordinal);
-            var preservedWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext);
+            var preservedWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, analysis: analysis);
             var otherWritten = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var other in InspectOtherControllers(runtime, source, fixedContext))
+            foreach (var other in InspectOtherControllers(runtime, source, fixedContext, analysis: analysis))
             {
                 otherWritten.UnionWith(other.Layers.SelectMany(layer => layer.Writes));
                 if (other.Unknown.Count > 0) otherWritten.UnionWith(controller.parameters.Select(parameter => parameter.name));
@@ -997,7 +1017,7 @@ namespace VRVlog.LilToonExporter
             {
                 changed = false;
                 var programs = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
-                var reachable = Inspect(runtime, excludedPath, programs, new List<string>(), true, result);
+                var reachable = Inspect(runtime, excludedPath, programs, new List<string>(), true, result, analysis: analysis);
                 var curveWrites = new HashSet<string>(reachable.SelectMany(layer => layer.CurveWrites), StringComparer.Ordinal);
                 foreach (var parameter in UniqueParameters(controller).Where(parameter => initial.ContainsKey(parameter.name) && !result.ContainsKey(parameter.name)))
                 {
@@ -1030,8 +1050,8 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static List<OtherControllerInspection> InspectNeutralOtherControllers(RuntimeAnimatorController runtime,
-            VrChatExpressionMenu.Source source, FixedExpressionContext fixedContext) =>
-            InspectOtherControllers(runtime, source, fixedContext);
+            VrChatExpressionMenu.Source source, FixedExpressionContext fixedContext, FxAnalysis analysis = null) =>
+            InspectOtherControllers(runtime, source, fixedContext, analysis: analysis);
 
         // Other playable layers share the avatar's inputs. A dormant AFK or
         // station branch cannot write the sampled face when its fixed input
@@ -1039,7 +1059,7 @@ namespace VRVlog.LilToonExporter
         // every authored parameter writer from that proof across all layers.
         private static List<OtherControllerInspection> InspectOtherControllers(RuntimeAnimatorController runtime,
             VrChatExpressionMenu.Source source, FixedExpressionContext fixedContext, IDictionary<string, float> defaults = null,
-            IDictionary<string, float> selection = null)
+            IDictionary<string, float> selection = null, FxAnalysis analysis = null)
         {
             var result = new List<OtherControllerInspection>();
             if (source == null) return result;
@@ -1047,13 +1067,13 @@ namespace VRVlog.LilToonExporter
             {
                 var item = new OtherControllerInspection { Runtime = other };
                 item.Layers = Inspect(other, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), item.Unknown,
-                    typedConditions: true, fxLayerCount: Controller(runtime).layers.Length);
+                    typedConditions: true, fxLayerCount: Controller(runtime).layers.Length, analysis: analysis);
                 result.Add(item);
             }
             if (fixedContext == null || result.Count == 0 || result.Any(item => item.Unknown.Count > 0))
                 return result;
             var fxUnknown = new List<string>();
-            var fx = Inspect(runtime, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), fxUnknown, true);
+            var fx = Inspect(runtime, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), fxUnknown, true, analysis: analysis);
             if (fxUnknown.Count > 0) return result;
             var written = new HashSet<string>(fx.SelectMany(layer => layer.Writes)
                 .Concat(result.SelectMany(item => item.Layers).SelectMany(layer => layer.Writes)), StringComparer.Ordinal);
@@ -1061,7 +1081,7 @@ namespace VRVlog.LilToonExporter
                 .SelectMany(value => UniqueParameters(value)).GroupBy(parameter => parameter.name, StringComparer.Ordinal);
             var incompatible = new HashSet<string>(declarations.Where(group => group.Select(parameter => parameter.type).Distinct().Count() != 1)
                 .Select(group => group.Key), StringComparer.Ordinal);
-            var preservedWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, defaults, selection);
+            var preservedWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, defaults, selection, analysis: analysis);
             foreach (var item in result)
             {
                 var controller = Controller(item.Runtime);
@@ -1089,7 +1109,7 @@ namespace VRVlog.LilToonExporter
                 item.Unknown.Clear();
                 item.Layers = Inspect(item.Runtime, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
                     item.Unknown, neutralFixed: invariant, typedConditions: true,
-                    fxLayerCount: Controller(runtime).layers.Length);
+                    fxLayerCount: Controller(runtime).layers.Length, analysis: analysis);
             }
             return result;
         }
@@ -1270,35 +1290,37 @@ namespace VRVlog.LilToonExporter
         internal static Layer[] Inspect(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls = false,
             IDictionary<string, float> neutralFixed = null, bool typedConditions = false, int? fxLayerCount = null,
-            IDictionary<string, ISet<float>> domains = null)
+            IDictionary<string, ISet<float>> domains = null, FxAnalysis analysis = null)
         {
-            var cache = ExpressionInspectCache.Current;
-            var key = cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains);
-            if (key != null && cache.TryReplay(key, excludedPath, neutralFixed != null, drivers, unknown, out var cached)) return cached;
-            var trace = key == null ? null : cache.Record(Controller(runtime).layers.Length);
-            var result = Inspect(runtime, excludedPath, drivers, unknown, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains, cache, trace);
-            if (trace != null) cache.Store(key, trace, result);
-            return result;
+            Layer[] Fresh(Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> into, List<string> unknownInto) =>
+                Walk(runtime, excludedPath, into, unknownInto, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains, analysis);
+            var key = analysis?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains);
+            return key == null ? Fresh(drivers, unknown) : analysis.Inspect(key, excludedPath, drivers, unknown, Fresh);
         }
 
-        private static Layer[] Inspect(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
+        // The type of each parameter name declared once; repeated names are left out.
+        internal static Dictionary<string, AnimatorControllerParameterType> ParameterTypes(RuntimeAnimatorController runtime,
+            FxAnalysis analysis = null) => analysis?.ParameterTypes(runtime) ?? ReadParameterTypes(runtime);
+
+        internal static Dictionary<string, AnimatorControllerParameterType> ReadParameterTypes(RuntimeAnimatorController runtime) =>
+            UniqueParameters(runtime).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+                .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
+
+        private static Layer[] Walk(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls,
             IDictionary<string, float> neutralFixed, bool typedConditions, int? fxLayerCount,
-            IDictionary<string, ISet<float>> domains, ExpressionInspectCache cache, ExpressionInspectCache.Trace trace)
+            IDictionary<string, ISet<float>> domains, FxAnalysis analysis)
         {
             void Driver(StateMachineBehaviour behaviour, VrChatParameterDriver.Program program)
             {
-                trace?.Drivers.Add(new KeyValuePair<StateMachineBehaviour, VrChatParameterDriver.Program>(behaviour, program));
                 if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, program);
             }
-            void Unknown(string text) { trace?.Unknown.Add(text); unknown.Add(text); }
             var excludedPaths = excludedPath == null ? null : new Dictionary<string, bool>(StringComparer.Ordinal);
             var controller = Controller(runtime);
             var replacements = Overrides(runtime);
             var layers = controller.layers;
             var result = new Layer[layers.Length];
-            var conditionTypes = !typedConditions && neutralFixed == null ? null : UniqueParameters(controller).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
-                .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
+            var conditionTypes = !typedConditions && neutralFixed == null ? null : ParameterTypes(controller, analysis);
             for (var index = 0; index < layers.Length; index++)
             {
                 var info = result[index] = new Layer();
@@ -1344,13 +1366,13 @@ namespace VRVlog.LilToonExporter
                             VrChatParameterDriver.IsTemporaryPoseSpace(behaviour) || VrChatParameterDriver.IsLocomotionControl(behaviour)) continue;
                         if (!VrChatParameterDriver.IsDriver(behaviour))
                         {
-                            Unknown(path + " / " + (behaviour == null ? "欠けたBehaviour" : behaviour.GetType().Name));
+                            unknown.Add(path + " / " + (behaviour == null ? "欠けたBehaviour" : behaviour.GetType().Name));
                             continue;
                         }
                         var program = VrChatParameterDriver.Read(behaviour, path);
                         info.DriverPrograms.Add(program);
                         Driver(behaviour, program);
-                        if (program.Error != null) { Unknown(path + " / Parameter Driver: " + program.Error); continue; }
+                        if (program.Error != null) { unknown.Add(path + " / Parameter Driver: " + program.Error); continue; }
                         foreach (var op in program.Operations)
                         {
                             info.Writes.Add(op.Destination);
@@ -1387,8 +1409,7 @@ namespace VRVlog.LilToonExporter
                         if (!(motion is AnimationClip clip)) return;
                         if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
                         info.Clips.Add(clip);
-                        trace?.Clips[index].Add(clip);
-                        InspectClipBindings(info, clip, excludedPath, excludedPaths, neutralFixed != null, cache);
+                        InspectClipBindings(info, clip, excludedPath, excludedPaths, neutralFixed != null, analysis);
                     }
                     finally { motions.Remove(motion); }
                 }
@@ -1433,10 +1454,10 @@ namespace VRVlog.LilToonExporter
 
         // excludedPaths remembers the caller's answer per path for one call;
         // large FX graphs repeat the same few renderer paths in every clip.
-        internal static void InspectClipBindings(Layer info, AnimationClip clip, Func<string, bool> excludedPath,
-            Dictionary<string, bool> excludedPaths, bool readRanges, ExpressionInspectCache cache)
+        private static void InspectClipBindings(Layer info, AnimationClip clip, Func<string, bool> excludedPath,
+            Dictionary<string, bool> excludedPaths, bool readRanges, FxAnalysis analysis)
         {
-            var bindings = cache?.Bindings(clip) ?? ReadBindings(clip);
+            var bindings = analysis?.Bindings(clip) ?? ReadBindings(clip);
             if (bindings.Length == 0) info.EmptyMotion = true;
             foreach (var binding in bindings)
             {
@@ -1453,7 +1474,7 @@ namespace VRVlog.LilToonExporter
                 if (PoseSampling.IsBlendShape(binding))
                 {
                     info.Morphs.Add(binding);
-                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorphs.Add(binding);
+                    if (readRanges && (analysis == null ? ReadDynamic(clip, binding) : analysis.Dynamic(clip, binding)) == true) info.DynamicMorphs.Add(binding);
                 }
                 else info.NonMorphBindings = true;
             }

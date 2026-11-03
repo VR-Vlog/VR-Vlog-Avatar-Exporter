@@ -754,6 +754,7 @@ BEHAVIOR_CASES = {
         'CoexistingKnownBlinkFamiliesAllKeepTheirAutomaticOwnership': 1,
         'UnownedRandomRecoveryIsPreservedWithoutRecapturingItsStationaryReset': 2,
         'HeldProbeReportsTheUnownedRandomRestOnce': 1,
+        'HeldProbeRunsTheSelectionAnalysesOnce': 1,
         'ReadOnlyRandomGateProducersKeepTheirNativeSelectedCallbacks': 2,
         'ReadOnlyRandomGateCannotConcealMalformedTypedProducerOperations': 3,
         'ReadOnlyRandomGateRequiresReproducibleNativeProducerOperations': 2,

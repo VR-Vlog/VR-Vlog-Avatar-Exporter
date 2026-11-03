@@ -75,10 +75,10 @@ namespace VRVlog.LilToonExporter.Tests
         private static EditorCurveBinding Morph(string path, string shape) =>
             EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
 
-        private static string Run(RuntimeAnimatorController runtime, Func<string, bool> excludedPath)
+        private static string Run(RuntimeAnimatorController runtime, Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
-            var layers = ExpressionDependencies.StationaryLayers(runtime, excludedPath);
-            var bindings = ExpressionDependencies.StationaryMorphBindings(runtime, excludedPath);
+            var layers = ExpressionDependencies.StationaryLayers(runtime, excludedPath, analysis);
+            var bindings = ExpressionDependencies.StationaryMorphBindings(runtime, excludedPath, analysis);
             return string.Join(";", layers.Keys.Select(index => index + "=" + layers[index].name)) + "|" +
                 string.Join(";", bindings.Select(binding => binding.path + "/" + binding.propertyName));
         }
@@ -98,10 +98,10 @@ namespace VRVlog.LilToonExporter.Tests
             var cases = Cases();
             var expected = cases.Select(item => Run(item.Runtime, item.Excluded)).ToArray();
             Assert.That(expected.Distinct().Count(), Is.EqualTo(cases.Length), "Each case must observe a different result.");
-            using var cache = ExpressionInspectCache.Begin();
+            var cache = new FxAnalysis();
             for (var round = 0; round < 2; round++)
                 for (var index = 0; index < cases.Length; index++)
-                    Assert.That(Run(cases[index].Runtime, cases[index].Excluded), Is.EqualTo(expected[index]), "round " + round + " case " + index);
+                    Assert.That(Run(cases[index].Runtime, cases[index].Excluded, cache), Is.EqualTo(expected[index]), "round " + round + " case " + index);
         }
 
         [Test]
@@ -110,15 +110,15 @@ namespace VRVlog.LilToonExporter.Tests
             var expected = Run(fx, null);
             var candidates = ExpressionDependencies.StationaryCandidates(fx);
             var curves = AnimationUtility.GetCurveBindings(hair);
-            using var cache = ExpressionInspectCache.Begin();
-            var first = ExpressionDependencies.StationaryLayers(fx, null);
+            var cache = new FxAnalysis();
+            var first = ExpressionDependencies.StationaryLayers(fx, null, cache);
             first.Remove(0);
             first[2] = hair;
             var hit = cache.StationaryCandidates(fx);
             hit[0] = (9, null);
             var bindings = cache.CurveBindings(hair);
             bindings[0] = default;
-            Assert.That(Run(fx, null), Is.EqualTo(expected));
+            Assert.That(Run(fx, null, cache), Is.EqualTo(expected));
             Assert.That(cache.StationaryCandidates(fx), Is.EqualTo(candidates));
             Assert.That(cache.StationaryCandidates(fx), Is.Not.SameAs(cache.StationaryCandidates(fx)));
             Assert.That(cache.CurveBindings(hair), Is.EqualTo(curves));
@@ -135,10 +135,10 @@ namespace VRVlog.LilToonExporter.Tests
                 probe.AddLayer("Base");
                 var machine = probe.layers[0].stateMachine;
                 var state = machine.AddState("Rest"); state.motion = clip; machine.defaultState = state;
-                using var cache = ExpressionInspectCache.Begin();
-                Assert.That(ExpressionDependencies.StationaryLayers(probe).Keys, Is.EqualTo(new[] { 0 }));
+                var cache = new FxAnalysis();
+                Assert.That(ExpressionDependencies.StationaryLayers(probe, analysis: cache).Keys, Is.EqualTo(new[] { 0 }));
                 AnimationUtility.SetEditorCurve(clip, Morph("Body", "Smile"), AnimationCurve.Linear(0, 0, 1, 100));
-                Assert.That(ExpressionDependencies.StationaryLayers(probe), Is.Empty);
+                Assert.That(ExpressionDependencies.StationaryLayers(probe, analysis: cache), Is.Empty);
             }
             finally
             {

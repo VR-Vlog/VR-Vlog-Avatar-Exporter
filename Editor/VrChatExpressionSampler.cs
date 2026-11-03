@@ -25,12 +25,13 @@ namespace VRVlog.LilToonExporter
         internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath,
             IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> listFaces, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
         {
-            using var inspectCache = ExpressionInspectCache.Begin();
             var source = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipPlayback = true });
             NeutralInputProof.Read(avatar, source);
-            source.FacialProjectionSession = new FacialProjectionScope.Session(avatar);
-            try { AddListFaces(avatar, source, excludedPath, listFaces, faceEmoBindings); }
-            finally { source.FacialProjectionSession = null; EditorUtility.ClearProgressBar(); }
+            // Built once outside the per-face loop: nothing it keeps changes
+            // during one export, and it is dropped when the export ends.
+            var analysis = new FxAnalysis(avatar);
+            try { AddListFaces(avatar, source, excludedPath, listFaces, faceEmoBindings, analysis); }
+            finally { EditorUtility.ClearProgressBar(); }
             return source;
         }
 
@@ -47,7 +48,8 @@ namespace VRVlog.LilToonExporter
         // FaceEmo registers is read as FaceEmo's own faces are, so the common
         // DEFAULT FACE and its permanent overrides still apply.
         static void AddListFaces(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath,
-            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces, FaceEmoExpressions.BindingSnapshot faceEmoBindings,
+            FxAnalysis analysis)
         {
             if (faces == null) return;
             if (faces.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。");
@@ -65,11 +67,11 @@ namespace VRVlog.LilToonExporter
                 if (faceEmoBindings != null && faceEmoBindings.RegisteredClips.Contains(clip))
                 {
                     entry.Id = "faceemo/list/" + index; entry.Source = VRVlog.Expressions.ExpressionSource.FaceEmo;
-                    try { FaceEmoExpressions.ReadClip(avatar, clip, entry, source, excludedPath, faceEmoBindings); }
+                    try { FaceEmoExpressions.ReadClip(avatar, clip, entry, source, excludedPath, faceEmoBindings, analysis); }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                     continue;
                 }
-                try { VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source); }
+                try { VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, analysis); }
                 catch (InvalidOperationException)
                 {
                     entry.Values.Clear(); entry.Animation.Clear(); entry.Messages.Clear();
@@ -100,13 +102,13 @@ namespace VRVlog.LilToonExporter
         // response is affine and preserves weighted/stepped tangent timing.
         internal static void ApplyPermanentOverrides(GameObject avatar, RuntimeAnimatorController runtime,
             VrChatExpressionMenu.Entry entry, int? layerIndex = null, bool writeDefaults = false, Func<string, bool> excludedPath = null,
-            VrChatExpressionMenu.Source metadata = null, AnimatorState sourceState = null, IDictionary<string, float> nativeInputs = null)
+            VrChatExpressionMenu.Source metadata = null, AnimatorState sourceState = null, IDictionary<string, float> nativeInputs = null, FxAnalysis analysis = null)
         {
             if (runtime == null || entry.Error != null || entry.Values.Count == 0) return;
             // Inspect the authored graph before any early exit: a layer control
             // can enable a stationary layer whose serialized default weight is
             // zero, as well as disable one that the probe would otherwise keep.
-            var authoredGraph = ExpressionDependencies.ValidateProbeBehaviours(runtime, excludedPath);
+            var authoredGraph = ExpressionDependencies.ValidateProbeBehaviours(runtime, excludedPath, analysis: analysis);
             var hasLayerControls = authoredGraph.Any(layer => layer.WeightControls.Values.Any(control => control.Playable == "FX"));
             metadata = metadata ?? VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
             void SelectedInputs(FixedExpressionContext context)
@@ -136,10 +138,10 @@ namespace VRVlog.LilToonExporter
                 SelectedInputs(inputContext);
                 var outputMorphs = new HashSet<EditorCurveBinding>(entry.Values.Select(value =>
                     EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape)));
-                ExpressionDependencies.ValidateAdditionalProbeBehaviours(runtime, metadata, inputContext, outputMorphs);
+                ExpressionDependencies.ValidateAdditionalProbeBehaviours(runtime, metadata, inputContext, outputMorphs, analysis: analysis);
             }
-            var permanent = ExpressionDependencies.StationaryLayers(runtime, excludedPath);
-            var stationaryBindings = StationaryBindings(avatar, permanent, excludedPath);
+            var permanent = ExpressionDependencies.StationaryLayers(runtime, excludedPath, analysis: analysis);
+            var stationaryBindings = StationaryBindings(avatar, permanent, excludedPath, analysis: analysis);
             var originalController = ExpressionDependencies.Controller(runtime);
             var originalLayers = originalController.layers;
             var replacements = ExpressionDependencies.Overrides(runtime);
@@ -149,9 +151,9 @@ namespace VRVlog.LilToonExporter
                 if (!metadata.NeutralInputInventoryComplete) NeutralInputProof.Read(avatar, metadata);
                 var controlContext = FixedExpressionContext.Create(runtime, metadata.Defaults, metadata);
                 SelectedInputs(controlContext);
-                var controlInputs = ExpressionDependencies.FixedNeutralValues(runtime, metadata, authoredGraph, excludedPath, controlContext);
+                var controlInputs = ExpressionDependencies.FixedNeutralValues(runtime, metadata, authoredGraph, excludedPath, controlContext, analysis: analysis);
                 controlScope = ExpressionDependencies.Inspect(runtime, excludedPath,
-                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, controlInputs);
+                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, controlInputs, analysis: analysis);
             }
             var nativeSlot = layerIndex.HasValue && layerIndex.Value > 0;
             // Inactive authored slots still expose their direct clip as a
@@ -229,7 +231,7 @@ namespace VRVlog.LilToonExporter
                         SelectedInputs(inactiveContext);
                         var roots = entry.Values.Select(value => EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape));
                         var retained = ExpressionDependencies.Analyze(runtime, Array.Empty<string>(), excludedPath, metadata,
-                            initial, new Dictionary<string, float>(), roots, preserveNativeBasePose: true, fixedContext: inactiveContext);
+                            initial, new Dictionary<string, float>(), roots, preserveNativeBasePose: true, fixedContext: inactiveContext, analysis: analysis);
                         if (inactiveWrites.Overlaps(retained.Parameters))
                             throw new InvalidOperationException("無効なFXレイヤーのParameter Driverが他の表情レイヤーに影響するため、直接クリップを確定できません: " +
                                 string.Join(", ", inactiveWrites.Intersect(retained.Parameters).OrderBy(name => name, StringComparer.Ordinal)));
@@ -244,7 +246,7 @@ namespace VRVlog.LilToonExporter
             // Known selected states retain their effective state callbacks;
             // unmodelled ancestor callbacks remain a conservative rejection.
             var omittedDriverWrites = layerIndex.HasValue && sourceState == null ?
-                ExpressionDependencies.SelectedLayerDriverWrites(runtime, layerIndex.Value, excludedPath) : null;
+                ExpressionDependencies.SelectedLayerDriverWrites(runtime, layerIndex.Value, excludedPath, analysis: analysis) : null;
             if (!metadata.NeutralInputInventoryComplete) NeutralInputProof.Read(avatar, metadata);
             var defaults = metadata.Defaults;
             // Direct gesture/registered clips use the same explicit normal
@@ -257,12 +259,12 @@ namespace VRVlog.LilToonExporter
             var intendedMorphs = new HashSet<EditorCurveBinding>(stationaryBindings); intendedMorphs.UnionWith(explicitMorphs);
             var ownershipMessages = new List<string>();
             var scalarPlan = NeutralShapePlan.Create(avatar, runtime, new[] { intendedMorphs }, excludedPath,
-                requiredMorphs: explicitMorphs, warnings: ownershipMessages, source: metadata, fixedContext: context, allowUnchangedAppearance: true);
-            var projectionClips = ExpressionDependencies.NormalInputLayers(runtime, metadata, context, excludedPath).SelectMany(layer => layer.Clips).Distinct().ToArray();
+                requiredMorphs: explicitMorphs, warnings: ownershipMessages, source: metadata, fixedContext: context, allowUnchangedAppearance: true, analysis: analysis);
+            var projectionClips = ExpressionDependencies.NormalInputLayers(runtime, metadata, context, excludedPath, analysis: analysis).SelectMany(layer => layer.Clips).Distinct().ToArray();
             // A disjoint wardrobe layer must not narrow an already valid pure
             // morph clip. Rescue only ownership that actually blocked this
             // endpoint, or a clip already projected while reading appearance.
-            var projection = (explicitMorphs.Overlaps(scalarPlan.PreservedMorphs) || entry.UsesFacialProjection) ? FacialProjectionScope.For(avatar, metadata) : null;
+            var projection = (explicitMorphs.Overlaps(scalarPlan.PreservedMorphs) || entry.UsesFacialProjection) ? FacialProjectionScope.For(avatar, analysis) : null;
             if (projection != null)
             {
                 projection.WarnOmitted(intendedMorphs, entry.Messages);
@@ -289,7 +291,7 @@ namespace VRVlog.LilToonExporter
             var competingUpperLayers = new HashSet<int>();
             if (nativeSlot && sourceState != null)
             {
-                var authored = ExpressionDependencies.NormalInputLayers(runtime, metadata, null, excludedPath);
+                var authored = ExpressionDependencies.NormalInputLayers(runtime, metadata, null, excludedPath, analysis: analysis);
                 var causalWrites = new HashSet<string>(authored.Take(layerIndex.Value).SelectMany(layer => layer.Writes), StringComparer.Ordinal);
                 if (nativeInputs != null) causalWrites.UnionWith(nativeInputs.Keys);
                 causalWrites.UnionWith(sourceBehaviours.Where(VrChatParameterDriver.IsDriver)
@@ -463,11 +465,11 @@ namespace VRVlog.LilToonExporter
                         if (selection == null)
                         {
                             var found = HeldAutomaticExpressionLayers.Find(probeRuntime, metadata,
-                                ExpressionInspectCache.Current?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
-                                layerIndex.Value, explicitMorphs);
+                                analysis?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
+                                layerIndex.Value, explicitMorphs, analysis: analysis);
                             var automatic = found.Count > 0;
                             var rest = HeldAutomaticExpressionLayers.FindUnownedRandomRest(avatar, probeRuntime, metadata,
-                                explicitMorphs, context, out var prepared);
+                                explicitMorphs, context, out var prepared, analysis: analysis);
                             found.UnionWith(rest);
                             selection = (found, automatic, rest, prepared);
                         }
@@ -498,7 +500,7 @@ namespace VRVlog.LilToonExporter
                         // against the unpruned graph before neutral reachability
                         // can hide an alternative lower pose.
                         var originalScope = ExpressionDependencies.Analyze(probeRuntime, Array.Empty<string>(), excludedPath,
-                            metadata, defaults, new Dictionary<string, float>(), scalarPlan.CommittedMorphs, nativeSlot, context);
+                            metadata, defaults, new Dictionary<string, float>(), scalarPlan.CommittedMorphs, nativeSlot, context, analysis: analysis);
                         if (omittedDriverWrites.Overlaps(originalScope.Parameters))
                             throw new InvalidOperationException("選択したFXレイヤーのParameter Driverが他の表情レイヤーに影響するため、直接クリップとの合成を確定できません: " +
                                 string.Join(", ", omittedDriverWrites.Intersect(originalScope.Parameters).OrderBy(name => name, StringComparer.Ordinal)));
@@ -507,17 +509,17 @@ namespace VRVlog.LilToonExporter
                     {
                         return ExpressionDependencies.AnalyzeNeutral(probeRuntime, scalarPlan.CommittedMorphs,
                             excludedPath, metadata, fixedContext: context, preserveCommittedMorphs: true, evaluateLayerWeights: true,
-                            weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0);
+                            weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0, analysis: analysis);
                     }
                     var dependencies = nativeSlot ? (probeDependencies ??= AnalyzeProbe()) : AnalyzeProbe();
-                    var values = SampleNeutral(avatar, probeRuntime, dependencies, metadata, excludedPath, context, scalarPlan);
+                    var values = SampleNeutral(avatar, probeRuntime, dependencies, metadata, excludedPath, context, scalarPlan, analysis: analysis);
                     context.UsedParameters.UnionWith(dependencies.Parameters.Where(context.Values.ContainsKey));
                     // A supplied input can establish that a gate is false,
                     // disappearing from the reachable dependency reads. That
                     // proof still used its fixed value. Record raw reads only
                     // on retained evaluation/support layers, not every input
                     // declared anywhere on the avatar.
-                    var authoredInputs = ExpressionDependencies.NormalInputLayers(probeRuntime, metadata, null, excludedPath);
+                    var authoredInputs = ExpressionDependencies.NormalInputLayers(probeRuntime, metadata, null, excludedPath, analysis: analysis);
                     context.UsedParameters.UnionWith(dependencies.Layers.Concat(dependencies.NativeSupportLayers)
                         .SelectMany(index => authoredInputs[index].Reads).Where(context.Values.ContainsKey));
                     return values;
@@ -559,9 +561,9 @@ namespace VRVlog.LilToonExporter
         }
 
         private static HashSet<EditorCurveBinding> StationaryBindings(GameObject avatar, Dictionary<int, AnimationClip> stationaryLayers,
-            Func<string, bool> excludedPath)
+            Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
-            var result = ExpressionDependencies.StationaryMorphBindings(stationaryLayers, excludedPath);
+            var result = ExpressionDependencies.StationaryMorphBindings(stationaryLayers, excludedPath, analysis: analysis);
             // Unused inactive wardrobe layers cannot become a reason to sample
             // another outfit or reject an otherwise retained facial expression.
             result.RemoveWhere(binding =>
@@ -578,7 +580,7 @@ namespace VRVlog.LilToonExporter
         // values retained after an initializer leaves its state.
         internal static List<MorphValue> SampleNeutral(GameObject avatar, RuntimeAnimatorController runtime,
             ExpressionDependencies dependencies, VrChatExpressionMenu.Source metadata, Func<string, bool> excludedPath,
-            FixedExpressionContext fixedContext = null, NeutralShapePlan neutralPlan = null, bool preserveTemporalRest = false)
+            FixedExpressionContext fixedContext = null, NeutralShapePlan neutralPlan = null, bool preserveTemporalRest = false, FxAnalysis analysis = null)
         {
             if (preserveTemporalRest && neutralPlan == null) throw new ArgumentNullException(nameof(neutralPlan));
             var originalController = ExpressionDependencies.Controller(runtime);
@@ -589,7 +591,7 @@ namespace VRVlog.LilToonExporter
             if (affected.Length == 0) return new List<MorphValue>();
             var excludedLayers = new HashSet<int>(Enumerable.Range(0, originalController.layers.Length)
                 .Except(affected.Concat(dependencies.NativeSupportLayers)));
-            var requiredParameterCurves = NeutralParameterDependencies.Required(runtime, dependencies, excludedPath);
+            var requiredParameterCurves = NeutralParameterDependencies.Required(runtime, dependencies, excludedPath, analysis: analysis);
             using var evaluation = new ExpressionEvaluationSession(runtime, dependencies, metadata.ExpressionParameters,
                 !metadata.Defaults.TryGetValue("IsLocal", out var local) || local != 0, fixedContext);
             var controller = evaluation.Controller;
@@ -602,7 +604,7 @@ namespace VRVlog.LilToonExporter
                 ? affected.Concat(dependencies.NativeSupportLayers) : dependencies.NativeSupportLayers;
             var neutralTargets = avatar == null ? null : SelectedExpressionAppearance.TransformsByPath(avatar);
             ValidateNativeSupportMotions(controller, validationLayers, excludedPath, avatar, neutralTargets, neutralPlan,
-                ExpressionDependencies.NeutralClips(runtime, dependencies.NeutralFixedValues, excludedPath), unchangedAppearance);
+                ExpressionDependencies.NeutralClips(runtime, dependencies.NeutralFixedValues, excludedPath, analysis: analysis), unchangedAppearance);
             AnimatorProbe probe = null;
             var graph = default(PlayableGraph);
             try
@@ -656,7 +658,7 @@ namespace VRVlog.LilToonExporter
                     dependencies.NativeSupportLayers, capturedMorphs, neutral: true,
                     neutralFixed: dependencies.NeutralFixedValues, dependencies: dependencies, metadata: metadata,
                     restrictCapturedMorphs: neutralPlan != null, neutralPlan: neutralPlan, shadowedNeutralCurves: shadowedCurves,
-                    requiredParameterCurves: requiredParameterCurves, motionTimeRuntime: runtime, restFace: preserveTemporalRest);
+                    requiredParameterCurves: requiredParameterCurves, motionTimeRuntime: runtime, restFace: preserveTemporalRest, analysis: analysis);
                 var stableWeights = evaluation.CaptureLayerWeights(playable);
                 var bindings = ActiveBindings(playable, affected, excludedPath, equivalentStates, neutral: true, neutralAvatar: avatar,
                     neutralTargets: neutralTargets, neutralPlan: neutralPlan, capturedMorphs: neutralPlan == null ? null : capturedMorphs, unchangedAppearanceClips: unchangedAppearance);
@@ -1163,13 +1165,13 @@ namespace VRVlog.LilToonExporter
             ExpressionDependencies dependencies = null, VrChatExpressionMenu.Source metadata = null, bool restrictCapturedMorphs = false,
             NeutralShapePlan neutralPlan = null, ISet<(int Layer, AnimationClip Clip, EditorCurveBinding Binding)> shadowedNeutralCurves = null,
             ISet<string> requiredParameterCurves = null, IDictionary<string, float> fixedMotionTimeInputs = null,
-            RuntimeAnimatorController motionTimeRuntime = null, ICollection<string> temporalWarnings = null, bool restFace = false)
+            RuntimeAnimatorController motionTimeRuntime = null, ICollection<string> temporalWarnings = null, bool restFace = false, FxAnalysis analysis = null)
         {
             InvalidOperationException Unstable(string message) => neutral ?
                 new NeutralShapeSamplingException(message) : new InvalidOperationException(message);
             var timedValues = neutral ? NeutralCurveConditions.FixedTimedValues(playable, controller, neutralFixed, dependencies, metadata) : neutralFixed;
             var layers = controller.layers;
-            var fixedClocks = FixedMotionTimeInputs(motionTimeRuntime ?? controller, metadata, fixedMotionTimeInputs ?? neutralFixed, excludedPath);
+            var fixedClocks = FixedMotionTimeInputs(motionTimeRuntime ?? controller, metadata, fixedMotionTimeInputs ?? neutralFixed, excludedPath, analysis: analysis);
             for (var layer = 0; layer < layers.Length; layer++)
             {
                 if (excludedLayers.Contains(layer)) continue;
@@ -1341,7 +1343,7 @@ namespace VRVlog.LilToonExporter
         }
 
         private static Dictionary<string, float> FixedMotionTimeInputs(RuntimeAnimatorController original,
-            VrChatExpressionMenu.Source metadata, IDictionary<string, float> supplied, Func<string, bool> excludedPath)
+            VrChatExpressionMenu.Source metadata, IDictionary<string, float> supplied, Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
             var result = new Dictionary<string, float>(StringComparer.Ordinal);
             if (supplied == null || supplied.Count == 0) return result;
@@ -1360,7 +1362,7 @@ namespace VRVlog.LilToonExporter
                 }
                 written.UnionWith(ExpressionDependencies.Inspect(runtime, runtime == original ? excludedPath : null,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true,
-                    typedConditions: true, fxLayerCount: controller.layers.Length).SelectMany(layer => layer.Writes));
+                    typedConditions: true, fxLayerCount: controller.layers.Length, analysis: analysis).SelectMany(layer => layer.Writes));
             }
             if (unknown.Count != 0) return result;
             foreach (var pair in supplied)

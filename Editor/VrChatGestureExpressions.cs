@@ -156,10 +156,10 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static List<VrChatExpressionMenu.MorphValue> ReadPose(GameObject avatar, AnimationClip clip, Func<string, bool> excludedPath = null,
-            VrChatExpressionMenu.Entry entry = null, VrChatExpressionMenu.Source metadata = null, ExpressionTransformCurves.Reading transforms = null)
+            VrChatExpressionMenu.Entry entry = null, FxAnalysis analysis = null, ExpressionTransformCurves.Reading transforms = null)
         {
             SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
-            var projection = FacialProjectionScope.NeedsProjection(avatar, new[] { clip }, excludedPath, transforms?.Handled) ? FacialProjectionScope.For(avatar, metadata) : null;
+            var projection = FacialProjectionScope.NeedsProjection(avatar, new[] { clip }, excludedPath, transforms?.Handled) ? FacialProjectionScope.For(avatar, analysis) : null;
             var plan = projection == null ? null : NeutralShapePlan.CreateProjection(avatar, projection.Morphs, new[] { clip }, excludedPath);
             if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Any(b => excludedPath?.Invoke(b.path) != true && plan?.AllowsEvaluationBinding(clip, b) != true))
                 throw new InvalidOperationException("マテリアル・オブジェクトの差し替えを含む表情アニメーションは未対応です。");
@@ -207,10 +207,10 @@ namespace VRVlog.LilToonExporter
         // Both gesture and FaceEmo clips use this path. Values and animation
         // channels are later resolved/pruned together by PreparedExpressionBindings.
         internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry,
-            Func<string, bool> excludedPath = null, VrChatExpressionMenu.Source metadata = null)
+            Func<string, bool> excludedPath = null, FxAnalysis analysis = null)
         {
             var transforms = ExpressionTransformCurves.Read(avatar, clip, excludedPath);
-            var values = ReadPose(avatar, clip, excludedPath, entry, metadata, transforms);
+            var values = ReadPose(avatar, clip, excludedPath, entry, analysis, transforms);
             var animated = new List<VrChatExpressionMenu.AnimatedMorph>();
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
