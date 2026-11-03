@@ -17,6 +17,9 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class MissingMeshAttributesTests
     {
+        // A morph the app drives: one nothing uses is left out of the VRM.
+        const string AuthoredMorph = "JawOpen";
+
         // Ascending source indices used by the pinned divided MeshWriter,
         // followed by UniVRM's concatenation of the two imported primitives.
         static readonly int[][] PrimitiveSources = { new[] { 0, 1, 3 }, new[] { 1, 2, 3 } };
@@ -456,7 +459,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var expectedUv = overrideUv != null ? overrideUv[ImportedSources[vertex]] : fixture.MissingUv ? Vector2.zero : fixture.Uv[ImportedSources[vertex]];
                         Assert.That(Vector2.Distance(mesh.uv[vertex], expectedUv), Is.LessThan(.00001f));
                     }
-                    var shape = mesh.GetBlendShapeIndex("Authored detail"); Assert.That(shape, Is.GreaterThanOrEqualTo(0));
+                    var shape = mesh.GetBlendShapeIndex(AuthoredMorph); Assert.That(shape, Is.GreaterThanOrEqualTo(0));
                     foreach (var weight in new[] { 0f, 100f, 0f })
                     {
                         renderer.SetBlendShapeWeight(shape, weight);
@@ -523,8 +526,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Mesh.subMeshCount = 2; Mesh.SetTriangles(new[] { 3, 1, 0 }, 0); Mesh.SetTriangles(new[] { 2, 3, 1 }, 1);
                 PositionDeltas = Enumerable.Repeat(new Vector3(.02f, .01f, 0), 4).ToArray();
                 NormalDeltas = Enumerable.Range(0, 4).Select(index => new Vector3(.02f + .01f * index, .005f, 0)).ToArray();
-                Mesh.AddBlendShapeFrame("Authored detail", 50, PositionDeltas.Select(value => value * .5f).ToArray(), NormalDeltas.Select(value => value * .5f).ToArray(), null);
-                Mesh.AddBlendShapeFrame("Authored detail", 100, PositionDeltas, NormalDeltas, null);
+                Mesh.AddBlendShapeFrame(AuthoredMorph, 50, PositionDeltas.Select(value => value * .5f).ToArray(), NormalDeltas.Select(value => value * .5f).ToArray(), null);
+                Mesh.AddBlendShapeFrame(AuthoredMorph, 100, PositionDeltas, NormalDeltas, null);
                 Assert.That(Mesh.normals.Length, Is.EqualTo(missingNormals ? 0 : Positions.Length));
                 Assert.That(Mesh.uv.Length, Is.EqualTo(missingUv ? 0 : Positions.Length));
                 var renderer = target.GetComponent<SkinnedMeshRenderer>(); var material = renderer.sharedMaterial;

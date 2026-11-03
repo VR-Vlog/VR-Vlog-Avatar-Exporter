@@ -57,7 +57,17 @@ namespace VRVlog.LilToonExporter
                 // indices. They cannot have a full binding to an output mesh.
                 // Keep their transforms/bones and every nonempty mesh intact.
                 if(!ExportRendererSelection.HasGeometry(mesh))continue;
-                selected.Add((renderer, renderer.sharedMaterials));
+                // An empty slot exports a primitive without a material, which no
+                // binding can name. That renderer keeps its standard VRM materials;
+                // the rest of the avatar keeps lilToon.
+                var slots = renderer.sharedMaterials;
+                if (slots.Any(material => material == null))
+                {
+                    if (slots.Any(material => material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)))
+                        warnings?.Add(renderer.name + ": マテリアルが空のスロットがあるため、この表示物のlilToonは標準VRMのマテリアルで書き出しました。");
+                    continue;
+                }
+                selected.Add((renderer, slots));
             }
             // Before any material registers a shared texture, so its size does
             // not depend on which material reads it first.
@@ -248,7 +258,7 @@ namespace VRVlog.LilToonExporter
             if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
             else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
+                warnings?.Add(ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
                 {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},

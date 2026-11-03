@@ -157,6 +157,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private bool exporting;
         // The user showed this QR; whether its sound has played.
         private bool revealed, announced;
+        // Opens the result list of the export this transfer sends, given the heading and a note
+        // beside it. Kept until the transfer succeeds; a new export, another avatar or closing drops
+        // it. A new QR for the same export keeps it, also after a failure has opened the list.
+        private Action<string, string> endResult;
+        // The reason the list of this export shows. Another failure with the same reason leaves the
+        // list as it is; a different one opens it again, so it never gives a stale cause.
+        private string shownFailure;
         // Null unless something failed outside the session; empty when there is no reason to add.
         private string failure;
 
@@ -336,6 +343,31 @@ namespace VRVlog.LilToonExporter.LanTransfer
             announced = true;
             return true;
         }
+        // The result list waits for the transfer: set after Upload, opened by TakeEndedResult.
+        internal void ShowResultAtEnd(Action<string, string> open) { endResult = open; shownFailure = null; }
+
+        // When the transfer has ended: opens the result list with that heading. A failure also gives
+        // its reason, so the list does not read as the cause. A QR that expired, was stopped or failed
+        // can be made again for the same export, so after a failure the list waits: a later success
+        // opens it again with the success heading, in the same single list window.
+        internal Action TakeEndedResult(Func<string, string> translate)
+        {
+            var open = endResult;
+            if (open == null) return null;
+            switch (View)
+            {
+                case AppTransferView.Completed:
+                    endResult = null;
+                    return () => open(AppTransferText.Completed, null);
+                case AppTransferView.Failed:
+                    var note = FailureText(translate);
+                    if (note == shownFailure) return null;
+                    shownFailure = note;
+                    return () => open(AppTransferText.TransferFailed, note);
+                default: return null;
+            }
+        }
+
         internal bool Encrypting => session?.State == CloudTransferState.Preparing;
         internal long Transferred => session?.Transferred ?? 0;
         internal long UploadSize => session?.UploadSize ?? 0;
@@ -398,8 +430,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // A failure the session does not know about, such as a QR that cannot be drawn.
         internal void Fail(string reason)
         {
+            // The transfer failed; its result list still opens.
+            var open = endResult;
+            var shown = shownFailure;
             Stop();
             failure = reason ?? "";
+            endResult = open; shownFailure = shown;
         }
 
         // Adopts the exported snapshot: from here this flow deletes it.
@@ -465,6 +501,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             source?.Dispose(); source = null;
             exporting = false; failure = null; StatusUnknown = false; ExportDidFail = false; shownRemaining = 0;
             revealed = announced = false;
+            endResult = null; shownFailure = null;
         }
 
         // Observe abandoned task failures without logging transport details.

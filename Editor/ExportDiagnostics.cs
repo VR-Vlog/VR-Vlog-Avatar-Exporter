@@ -81,7 +81,7 @@ namespace VRVlog.LilToonExporter
         ExportDiagnostics(byte[] bytes) { recordedBytes = bytes; }
 
         // Keeps the diagnostics of the latest export. The same bytes recorded
-        // twice (the result list, then the board that saved them) keep the first record.
+        // twice (before the file is written, then by the board that saved them) keep the first record.
         internal static ExportDiagnostics Record(GameObject source, byte[] bytes, ExportFallbackReport report, IEnumerable<string> warnings, string kind)
         {
             if (bytes == null) return Last;

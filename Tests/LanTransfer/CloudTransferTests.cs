@@ -682,6 +682,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 catch (InvalidOperationException exception) { Assert.That(exception.Message, Is.EqualTo(session.Message)); }
                 Assert.That(session.Message.Contains(reason) && session.Message.Contains(stage), Is.True);
                 Assert.That(new[] { "SECRET", fixture.Path, fixture.Transport.UploadToken, "private service failure" }.Any(value => session.Message.Contains(value)), Is.False);
+                // The transfer screen and the result list show this text: one line per sentence,
+                // the stage, the cause and what to do, without 「。」「、」 or 「ください」.
+                var displayed = session.DisplayMessage(text => text);
+                Assert.That(displayed.Split('\n').Length, Is.EqualTo(3), displayed);
+                Assert.That(new[] { "。", "、", "ください" }.Any(displayed.Contains), Is.False, displayed);
                 Assert.That(session.Qr == null, Is.True);
                 Assert.That(session.HasEncryptionKey, Is.False);
             }
