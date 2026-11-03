@@ -87,6 +87,10 @@ namespace VRVlog.LilToonExporter
             return source;
         }
 
+        // A note of the export written in the language of the Editor (the downscale notes of ExportNoteText).
+        // TransferNotes reads it back with the Japanese template or the translated one.
+        public static string Format(string template, params object[] values) => string.Format(T(template), values);
+
         static void LoadMessages()
         {
             _messages = new Dictionary<string, string>(StringComparer.Ordinal);
