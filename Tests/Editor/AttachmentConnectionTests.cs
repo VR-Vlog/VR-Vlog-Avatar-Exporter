@@ -447,8 +447,9 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in hairSkins)
                 {
                     AssertVertices(before[skin].Select(delta.MultiplyPoint3x4).ToArray(), WorldVertices(skin));
+                    // "Hair detail" is unused, so it is left out; connecting adds no morph.
                     Assert.That(Enumerable.Range(0, skin.sharedMesh.blendShapeCount)
-                        .Count(i => !skin.sharedMesh.GetBlendShapeName(i).StartsWith("__VRVlog_BlinkNone_")), Is.EqualTo(1));
+                        .Count(i => !skin.sharedMesh.GetBlendShapeName(i).StartsWith("__VRVlog_BlinkNone_")), Is.Zero);
                 }
                 if (petSkin != null) AssertVertices(petBefore, WorldVertices(petSkin));
             }

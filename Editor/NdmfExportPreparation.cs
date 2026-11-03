@@ -20,6 +20,10 @@ namespace VRVlog.LilToonExporter
     internal sealed class NdmfExportPreparation : IDisposable
     {
         private readonly HashSet<Object> generated = new HashSet<Object>();
+        // Unsaved objects loaded before the build tools ran. They belong to someone
+        // else (a tool's cache, an open window), so clean-up must leave them alive
+        // even when a tool assigned them to the copy.
+        private HashSet<Object> unsavedBeforeBuild;
         // Provenance only for copies made by our own isolation pass. Assets
         // created or replaced by NDMF plugins never enter this identity map.
         private readonly Dictionary<Object, Object> isolatedAssets = new Dictionary<Object, Object>();
@@ -257,7 +261,11 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings)
+        // An upload saves NDMF's build output before VRCFury runs; serialize
+        // does the same here. VRCFury reads each controller's state behaviours
+        // from the saved asset, so a controller NDMF wrote back would reach it
+        // without them (an outfit's parameter drivers, for example).
+        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings, Action serialize = null)
         {
             if (!HasVrcFuryComponent(clone)) return;
             if (!clone.GetComponents<Component>().Any(component => component != null &&
@@ -267,7 +275,8 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             SkipVrcFuryWriteDefaultsQuestion(clone, FindType("VF.Model.VRCFury"), FindType("VF.Model.Feature.FixWriteDefaults"));
-            var existing = new HashSet<Object>(Dependencies(clone));
+            serialize?.Invoke();
+            RememberUnsavedObjects();
             try
             {
                 bool succeeded;
@@ -285,7 +294,7 @@ namespace VRVlog.LilToonExporter
                 }
                 if (!succeeded) throw new InvalidOperationException(VrcFuryFailureMessage);
             }
-            finally { CaptureGenerated(clone, existing); }
+            finally { CaptureGenerated(clone); }
             warnings?.Add(VrcFuryApplied);
         }
 
@@ -585,8 +594,7 @@ namespace VRVlog.LilToonExporter
             var lease = new NdmfExportPreparation();
             var sourceAssets = Dependencies(source);
             var cloneAssets = Dependencies(clone);
-            var existing = new HashSet<Object>(sourceAssets);
-            existing.UnionWith(cloneAssets);
+            lease.RememberUnsavedObjects();
             var requiredMorphs = ExportMorphs(clone);
             lease.CaptureShapes(clone);
             object context = null;
@@ -637,7 +645,7 @@ namespace VRVlog.LilToonExporter
                         }
                         if (IsSuccessful(bridge, context))
                         {
-                            lease.ApplyVrcFury(clone, warnings);
+                            lease.ApplyVrcFury(clone, warnings, () => Invoke(() => bridge.Serialize.Invoke(context, null)));
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);
@@ -708,7 +716,7 @@ namespace VRVlog.LilToonExporter
                     finally
                     {
                         try { directoryScope?.Dispose(); }
-                        finally { lease.CaptureGenerated(clone, existing); }
+                        finally { lease.CaptureGenerated(clone); }
                     }
                 }
             }
@@ -1021,11 +1029,33 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private void CaptureGenerated(GameObject clone, HashSet<Object> existing)
+        private void RememberUnsavedObjects()
+        {
+            if (unsavedBeforeBuild != null) return;
+            unsavedBeforeBuild = new HashSet<Object>(Resources.FindObjectsOfTypeAll<Object>().Where(value =>
+                !(value is GameObject) && !(value is Component) && !EditorUtility.IsPersistent(value)));
+        }
+
+        private void CaptureGenerated(GameObject clone)
         {
             foreach (var value in Dependencies(clone))
                 if (value != null && !(value is GameObject) && !(value is Component) &&
-                    !EditorUtility.IsPersistent(value) && !existing.Contains(value)) generated.Add(value);
+                    !EditorUtility.IsPersistent(value) && !unsavedBeforeBuild.Contains(value)) generated.Add(value);
+        }
+
+        // NDMF saves every unsaved object the copy references into the temporary
+        // folder, so deleting the folder would destroy these with it.
+        private void TakeOwnObjectsOutOfTemporaryFolder(string folder)
+        {
+            if (unsavedBeforeBuild == null) return;
+            foreach (var value in unsavedBeforeBuild)
+                if (value != null && EditorUtility.IsPersistent(value) &&
+                    AssetDatabase.GetAssetPath(value).StartsWith(folder + "/", StringComparison.Ordinal))
+                {
+                    // The folder must still be deleted, and a failure here must not hide why the export failed.
+                    try { AssetDatabase.RemoveObjectFromAsset(value); }
+                    catch (Exception exception) { Debug.LogWarning("VR Vlog: 一時データから取り出せませんでした: " + value.name + "\n" + exception.Message); }
+                }
         }
 
         private static HashSet<string> ExportMorphs(GameObject root)
@@ -1073,6 +1103,7 @@ namespace VRVlog.LilToonExporter
                     // Do not remove a replacement folder or a moved/user asset.
                     if (AssetDatabase.IsValidFolder(path) && AssetDatabase.AssetPathToGUID(path) == guid)
                     {
+                        TakeOwnObjectsOutOfTemporaryFolder(path);
                         if (!AssetDatabase.DeleteAsset(path))
                             Debug.LogWarning("VR Vlog: 書き出しの一時データを削除できませんでした: " + path);
                     }
@@ -1193,7 +1224,7 @@ namespace VRVlog.LilToonExporter
         internal sealed class Bridge
         {
             internal ConstructorInfo Context, DirectoryScope;
-            internal MethodInfo Process, Finish, PrimaryPlatform;
+            internal MethodInfo Process, Finish, Serialize, PrimaryPlatform;
             internal PropertyInfo Successful, AssetSaver, GenericPlatform;
             internal object First, Generating, Transforming, Optimizing;
 
@@ -1221,6 +1252,7 @@ namespace VRVlog.LilToonExporter
                     DirectoryScope = directory.GetConstructor(new[] { typeof(string) }),
                     Process = processor.GetMethod("ProcessAvatar", staticMembers, null, new[] { context, phase, phase }, null),
                     Finish = context.GetMethod("Finish", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null),
+                    Serialize = context.GetMethod("Serialize", publicInstance, null, Type.EmptyTypes, null),
                     Successful = context.GetProperty("Successful", publicInstance),
                     AssetSaver = context.GetProperty("AssetSaver", publicInstance),
                     PrimaryPlatform = registry?.GetMethod("GetPrimaryPlatformForAvatar", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null),
@@ -1231,7 +1263,7 @@ namespace VRVlog.LilToonExporter
                     Optimizing = phase.GetField("Optimizing", staticMembers)?.GetValue(null)
                 };
                 if (result.Context == null || result.DirectoryScope == null || !typeof(IDisposable).IsAssignableFrom(directory) ||
-                    result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) ||
+                    result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) || result.Serialize?.ReturnType != typeof(void) ||
                     result.Successful?.PropertyType != typeof(bool) || result.Successful.GetMethod == null || result.AssetSaver?.GetMethod == null ||
                     (platforms && (result.PrimaryPlatform?.ReturnType != provider || result.GenericPlatform?.PropertyType != provider)) ||
                     !phase.IsInstanceOfType(result.First) || !phase.IsInstanceOfType(result.Generating) || !phase.IsInstanceOfType(result.Transforming) ||
