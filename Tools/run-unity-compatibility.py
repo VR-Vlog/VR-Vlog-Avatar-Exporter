@@ -137,14 +137,16 @@ BEHAVIOR_CASES = {
         'ARealExportWithAMissingShaderSavesAndWarnsOnce': 1,
         'AStageIsNamedWithItsPhase': 1,
         'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
-        'AnExportWithoutFallbacksNeverAsks': 1,
+        'AnExportWithoutFallbacksOpensNoList': 1,
         'BatchModeSavesWithoutTheList': 1,
         'EveryShippedLocaleTranslatesTheResultWords': 1,
         'KeptItemsAreListedOnceWithoutAsking': 1,
         'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,
         'TargetsAreFoundAgainOnTheAvatarByPath': 1,
         'TheListShowsEveryFallbackWithItsTargets': 1,
-        'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
+        'TheListOpensAfterTheFileIsWritten': 1,
+        'ATransferOpensTheListWhenItHasEnded': 1,
+        'AFailedWriteOpensNoList': 1,
         'TheSavedTitleWarnsOnlyWhenAShaderIsMissing': 1,
         'TwoMaterialsWithTheSameNameCountAsTwo': 1,
     },
@@ -661,6 +663,9 @@ BEHAVIOR_CASES = {
         'PluginPackagesComeFromExportsPluginAndSkipTheExporter': 1,
         'VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf': 1,
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
+        'NdmfOutputIsSavedEarlyOnlyForVrcFury': 1,
+        'ToolKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
+        'VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
         'VrcFuryIsNotAppliedWithoutAnAvatarDescriptor': 1,
         'VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting': 1,
@@ -735,6 +740,7 @@ BEHAVIOR_CASES = {
         'IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport': 1,
         'TwentyAnimDropRemainsUsable': 1,
         'UnsupportedDropIsRejectedAndClosingCancelsPendingWork': 1,
+        'WindowClosesWhenItsAvatarIsGone': 1,
     },
     'SelectedScalarDominanceTests': {
         'ExactUpperScalarDominanceRetainsIndependentRestAndSelectedCallbacks': 2,
@@ -829,6 +835,7 @@ BEHAVIOR_CASES = {
         'ExplicitHeadOrNeckMotionIsIncludedWhileEyeAndJawTracksStayOutsideTheContract': 2,
         'ExplicitMovingHeadAndNeckMusclesMatchNativeHumanoidInterpolation': 2,
         'ManualStartAndLoopArePreservedWithoutAnAdditionalStaticSnapshot': 1,
+        'OnlyTheFrameCountDecidesWhetherAMovingPoseFits': 1,
         'MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement': 1,
         'MovingHumanoidClipKeepsLoopPoseSettingsAndNonMatchingAuthoredEndpoints': 2,
         'MovingHumanoidRootChannelsMatchNativeBodyCoordinatesWithoutSceneRootMotion': 3,
@@ -870,6 +877,20 @@ BEHAVIOR_CASES = {
     },
 }
 INTEGRATION_CASES = {
+    'NdmfLostMorphFollowTests': {
+        'LenientExportFollowsShapesAfterAPassBeyondModularAvatar': 3,
+        'LenientExportDoesNotFollowAShapeIntoAnotherMeshWithTheSameName': 1,
+        'LenientExportFollowsLipSyncToTheRenamedOrMergedFace': 2,
+        'LenientExportKeepsTheOtherMouthShapesWhenAPassStripsOne': 1,
+        'StrictExportStillStopsWhenTheFaceIsMerged': 1,
+        'BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes': 1,
+        'AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport': 1,
+        'AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer': 1,
+        'ABoardWhoseBuildPassesFailIsMadeWithoutThem': 1,
+    },
+    'NdmfSharedObjectTests': {
+        'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
+    },
     # The integration project must install the official MeshDeleterWithTexture
     # package. Synthetic sharedMesh replacement alone is not its integration
     # evidence, and an absent optional package must fail this explicit profile.

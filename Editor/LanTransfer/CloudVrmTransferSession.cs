@@ -151,8 +151,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             : State == CloudTransferState.Expired ? "受取期限が切れました。新しいQRを作成できます。"
             : FailureMessage;
         private string FailureMessage { get { lock (gate) return failure == null
-            ? "転送サービスでエラーが発生しました。新しいQRを作成してください。"
-            : failureStage + "で停止しました。\n" + failure.Message; } }
+            ? "転送サービスでエラーが発生しました\n新しいQRを作る"
+            : failureStage + "で停止しました\n" + failure.Message; } }
 
         // Called by the window on the Editor thread. Upload tasks never access
         // AssetDatabase-backed localization or expose uncontrolled exception text.
@@ -161,7 +161,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             lock (gate)
             {
                 if (state == CloudTransferState.Failed && failure != null)
-                    return string.Format(translate("{0}で停止しました。\n{1}"), translate(failureStage),
+                    return string.Format(translate("{0}で停止しました\n{1}"), translate(failureStage),
                         string.Format(translate(failure.Reason), failure.StatusCode));
                 return translate(Message);
             }
@@ -202,7 +202,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     // lifetime is rejected before any VRM bytes are uploaded.
                     lock (gate) { id = newId; uploadToken = owner; }
                     if (fields.Number("v") != 3 || !CloudTransferProtocol.IsToken(token) || token == owner || fields.Number("partSize") != CloudTransferProtocol.PartSize) throw CloudTransferProtocol.Invalid();
-                    if (expiry <= currentTime || expiry > currentTime + (extendedUpload ? CloudTransferProtocol.UploadLifetimeSeconds + 60 : (CloudTransferProtocol.LifetimeMinutes + 1) * 60)) throw new SafeTransferFailure("PCの日時が転送サービスと合っていません。OSの日時の自動設定を確認してください。");
+                    if (expiry <= currentTime || expiry > currentTime + (extendedUpload ? CloudTransferProtocol.UploadLifetimeSeconds + 60 : (CloudTransferProtocol.LifetimeMinutes + 1) * 60)) throw new SafeTransferFailure("PCの日時が転送サービスと合っていません\nOSの日時の自動設定を確認する");
                     lock (gate) { readToken = token; expiresAt = expiry; uploadDeadline = expiry; if (!disposed && state != CloudTransferState.Canceled) state = CloudTransferState.Uploading; }
                     ct.ThrowIfCancellationRequested();
                     stage = "暗号化ファイルの読み取り";
@@ -329,7 +329,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // A missing endpoint is legacy; never replay create on another route.
             var response = await transport.SendAsync("GET", "/v3/capabilities", null, null, null, ct, 10).ConfigureAwait(false);
             if (response.StatusCode == 404) return false;
-            if (response.StatusCode != 200) throw new SafeTransferFailure("転送サービスが応答できませんでした（HTTP {0}）。時間を置いて新しいQRを作成してください。", response.StatusCode);
+            if (response.StatusCode != 200) throw new SafeTransferFailure("転送サービスが応答できませんでした（HTTP {0}）\n時間を置いて新しいQRを作る", response.StatusCode);
             var fields = CloudTransferProtocol.Fields.Read(response.Body);
             fields.Exact("v", "uploadLifetimeSeconds");
             if (fields.Number("v") != 3) throw CloudTransferProtocol.Invalid();
@@ -374,12 +374,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 if (!diagnose) throw CloudTransferProtocol.Invalid();
                 throw new SafeTransferFailure(response.StatusCode == 429
-                    ? "転送サービスの利用上限または混雑により送信できません（HTTP 429）。時間を置いて試してください。"
+                    ? "転送サービスの利用上限か混雑で送信できません（HTTP 429）\n時間を置いてもう一度試す"
                     : response.StatusCode == 413
-                    ? "転送サイズがサービスの上限を超えています（HTTP 413）。サイズを減らしてください。"
+                    ? "転送サイズがサービスの上限を超えています（HTTP 413）\nサイズを減らす"
                     : response.StatusCode == 401 || response.StatusCode == 403
-                    ? "転送の認証が拒否されました（HTTP {0}）。新しいQRを作成してください。"
-                    : "転送サービスが応答できませんでした（HTTP {0}）。時間を置いて新しいQRを作成してください。", response.StatusCode);
+                    ? "転送の認証が拒否されました（HTTP {0}）\n新しいQRを作る"
+                    : "転送サービスが応答できませんでした（HTTP {0}）\n時間を置いて新しいQRを作る", response.StatusCode);
             }
             return parse ? CloudTransferProtocol.Fields.Read(response.Body) : null;
         }
@@ -397,12 +397,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private static SafeTransferFailure SafeFailure(Exception exception)
         {
             if (exception is SafeTransferFailure safe) return safe;
-            var reason = exception is UnauthorizedAccessException ? "一時ファイルへのアクセスが拒否されました。OSのアクセス権を確認してください。"
-                : exception is InvalidDataException ? "転送サービスの応答を確認できませんでした。最新版の試験用パッケージで再試行してください。"
-                : exception is IOException ? "一時ファイルを読み書きできませんでした。空き容量やファイルを使用中のソフトを確認してください。"
-                : exception is HttpRequestException ? "転送サービスに接続できません。インターネット接続・VPN・プロキシを確認してください。"
-                : exception is OperationCanceledException ? "通信が中断または時間切れになりました。接続を確認して新しいQRを作成してください。"
-                : "転送データを確認できませんでした。最新版の試験用パッケージで再試行してください。";
+            var reason = exception is UnauthorizedAccessException ? "一時ファイルへのアクセスが拒否されました\nOSのアクセス権を確認する"
+                : exception is InvalidDataException ? "転送サービスの応答を確認できませんでした\n最新版の試験用パッケージで再試行する"
+                : exception is IOException ? "一時ファイルを読み書きできませんでした\n空き容量やファイルを使用中のソフトを確認する"
+                : exception is HttpRequestException ? "転送サービスに接続できません\nインターネット接続・VPN・プロキシを確認する"
+                : exception is OperationCanceledException ? "通信が中断または時間切れになりました\n接続を確認して新しいQRを作る"
+                : "転送データを確認できませんでした\n最新版の試験用パッケージで再試行する";
             return new SafeTransferFailure(reason);
         }
 

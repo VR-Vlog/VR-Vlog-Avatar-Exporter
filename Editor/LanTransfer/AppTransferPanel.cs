@@ -355,6 +355,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
             flow.Tick(time);
             SyncQr();
+            flow.TakeEndedResult(T)?.Invoke();
             var view = flow.View;
             if (view == polledView && time < nextRepaint) return;
             polledView = view;
@@ -496,14 +497,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var name = string.IsNullOrWhiteSpace(avatarName) ? avatar.name.Trim() : avatarName.Trim();
             if (name.Length == 0) name = "avatar";
             var source = avatar;
-            // Taken now: the result list or the recovery window can write the file much later.
+            // Taken now: the recovery window can write the file much later.
             var key = SaveKey(name);
             string failure;
             try
             {
                 failure = Exporter.SaveCopy(avatar, name, detailed, (path, missing) =>
                 {
-                    // Also later, when the result list or recovery window saves; by then the panel may
+                    // Also later, when the recovery window saves; by then the panel may
                     // show another avatar, whose row must not claim this file.
                     if (avatar != source) return;
                     SavedCopy(path, missing, ExportedNotes(), Written(AppTransferFlow.FileHashOf(path), key, source));
@@ -707,6 +708,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
+                // What the export worked around is listed once the transfer has succeeded or failed (Poll).
+                flow.ShowResultAtEnd(Exporter?.LastResult?.Invoke());
                 // The stamp is taken now, as the file is written; the upload hashed the snapshot already.
                 sentWritten = complete ? Written(flow.SnapshotHash, key, target) : null;
                 Refresh();
@@ -1033,7 +1036,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (flow == null || flow.UploadSize <= 0) return;
             EditorGUI.ProgressBar(GUILayoutUtility.GetRect(0f, 20f, GUILayout.ExpandWidth(true)), (float)flow.Transferred / flow.UploadSize,
-                string.Format(T("{0:N0} / {1:N0} バイト（暗号化済み）"), flow.Transferred, flow.UploadSize));
+                string.Format(T("{0}（暗号化済み）"), TransferSizeText.Progress(flow.Transferred, flow.UploadSize)));
         }
 
         private static void Show(VisualElement element, bool visible) => element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
@@ -1097,6 +1100,20 @@ namespace VRVlog.LilToonExporter.LanTransfer
             createButton.EnableInClassList("primary", !saveFirst);
         }
 
+        private void ShowAvatarInField()
+        {
+            var shown = avatarField.value;
+            if (shown != avatar) avatarField.SetValueWithoutNotify(avatar);
+            // Unity's == counts a destroyed object as null, for the field too, so setting
+            // null over one is no change and its name stays. Changing the type redraws it.
+            else if (shown == null && !ReferenceEquals(shown, null))
+            {
+                avatarField.SetValueWithoutNotify(null);
+                avatarField.objectType = typeof(UnityEngine.Object);
+                avatarField.objectType = typeof(GameObject);
+            }
+        }
+
         private void RefreshForm()
         {
             var playing = EditorApplication.isPlayingOrWillChangePlaymode;
@@ -1113,7 +1130,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             consentFields.SetEnabled(!playing && entry != null);
 
             avatarLabel.text = T(AppTransferText.Avatar);
-            if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
+            ShowAvatarInField();
             // What the export takes from elsewhere, and where to change it.
             summaryText.text = entry != null ? entry.SettingsSummary(avatar, detailed) : "";
             summaryButton.text = T(!detailed ? AppTransferText.EditDetails : BoardReady ? AppTransferText.BackToBoard : AppTransferText.OpenBoard);
@@ -1279,6 +1296,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<string[]> LastNotes;
             internal Func<Func<string>> LastDiagnostics;
             internal Func<Func<string>> LastNamedDiagnostics;
+            internal Func<Action<string, string>> LastResult;
             internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
             internal Func<GameObject, string> SaveFileName;
             internal Func<string> TermsKey;
@@ -1315,6 +1333,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         LastNotes = (Func<string[]>)Delegate.CreateDelegate(typeof(Func<string[]>), target, "LastNotes"),
                         LastDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastDiagnostics"),
                         LastNamedDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastNamedDiagnostics"),
+                        LastResult = (Func<Action<string, string>>)Delegate.CreateDelegate(typeof(Func<Action<string, string>>), target, "LastResult"),
                         SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
                             typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
                         SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),

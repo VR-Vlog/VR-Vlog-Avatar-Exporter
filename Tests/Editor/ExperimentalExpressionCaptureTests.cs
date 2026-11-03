@@ -743,21 +743,17 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // Answers the result list at once, as if the user pressed 保存する.
+        // Counts the result lists opened.
         sealed class SavingFallbackDialog : IExportFallbackDialog
         {
             internal int Calls;
-            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
-            {
-                Calls++;
-                save();
-            }
+            public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) => Calls++;
         }
 
         // Both transfers ("かんたん" passes interactive false, "通常" true): a
         // failing stage follows the project-wide choice (省いて続ける). On, the
         // stage is left out and listed in the result list, which only the
-        // interactive transfer asks about; off, both stop and open the
+        // interactive transfer opens, once the transfer has ended; off, both stop and open the
         // recovery window. interactive never changes whether the file is written.
         [TestCase(true, false)]
         [TestCase(false, false)]
@@ -797,7 +793,10 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(saved, Is.EqualTo(1));
                     Assert.That(File.Exists(path), Is.True);
                     Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.False);
-                    Assert.That(dialog.Calls, Is.EqualTo(interactive ? 1 : 0), "Only the interactive transfer asks about the left-out stage.");
+                    Assert.That(dialog.Calls, Is.Zero, "The result list waits for the transfer to end.");
+                    Assert.That(window.LastResult != null, Is.EqualTo(interactive), "Only the interactive transfer lists the left-out stage.");
+                    window.LastResult?.Invoke(ExportResultWindow.SavedTitle, null);
+                    Assert.That(dialog.Calls, Is.EqualTo(interactive ? 1 : 0));
                 }
                 else
                 {
@@ -806,6 +805,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(File.Exists(path), Is.False);
                     Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.True);
                     Assert.That(dialog.Calls, Is.Zero);
+                    Assert.That(window.LastResult, Is.Null);
                 }
             }
             finally
