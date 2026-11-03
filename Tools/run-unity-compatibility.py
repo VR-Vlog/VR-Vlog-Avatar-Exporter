@@ -299,6 +299,7 @@ BEHAVIOR_CASES = {
         'SavedExposedUnprovedOrWrittenCustomSignalRetainsItsAppearanceAlternatives': 17,
         'TransientOwnershipProofRetainsUnknownMetadataAndExplicitOrRemoteInputs': 5,
         'CompleteMenuInputInventoryHandlesSharedCyclicAndEmptyOptionalSdkInputs': 3,
+        'UnreadableMenuInventoryStaysUnprovedAndWarnsOnceWithItsReason': 1,
         'AmbiguousOptionalMorphTargetIsRejectedBeforeIgnoringItsMissingShape': 1,
         'AppearanceCoupledStartupKeepsItsEntirePreparedConfiguration': 2,
         'AuthoredEndpointObligationUsesItsFirstBindingAndRetainsDisabledZeroCoverage': 2,

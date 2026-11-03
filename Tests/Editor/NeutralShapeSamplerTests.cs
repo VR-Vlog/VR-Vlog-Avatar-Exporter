@@ -1825,6 +1825,42 @@ namespace VRVlog.LilToonExporter.Tests
                 FixedExpressionContext.Create(controller, metadata.Defaults, metadata), null).SelectMany(layer => layer.Clips).Contains(visual), Is.False);
         }
 
+        sealed class UnreadableName : IEqualityComparer<string>
+        {
+            public bool Equals(string x, string y) => string.Equals(x, y, StringComparison.Ordinal);
+            public int GetHashCode(string value) => throw new InvalidOperationException("Unreadable test asset");
+        }
+
+        // An unreadable SDK asset still leaves every input unproved, as
+        // before, and now says why once in the warnings.
+        [Test]
+        public void UnreadableMenuInventoryStaysUnprovedAndWarnsOnceWithItsReason()
+        {
+            var visual = TransientOwnershipFixture("shared");
+            var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
+            var warnings = new List<string>();
+            NeutralInputProof.Read(avatar, metadata, warnings);
+            Assert.That(metadata.NeutralInputInventoryComplete, Is.True);
+            Assert.That(warnings, Is.Empty, "A readable inventory adds no warning.");
+            // A set that fails on its first input stands in for an asset the
+            // SDK schema cannot read; the readable set is put back afterwards.
+            var field = typeof(VrChatExpressionMenu.Source).GetField(nameof(metadata.MenuInputs),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var readable = (HashSet<string>)field.GetValue(metadata);
+            var unreadable = new HashSet<string>(new UnreadableName());
+            field.SetValue(metadata, unreadable);
+            NeutralInputProof.Read(avatar, metadata, warnings);
+            NeutralInputProof.Read(avatar, metadata, warnings);
+            Assert.That(unreadable.Count, Is.Zero);
+            readable.Clear(); field.SetValue(metadata, readable);
+            Assert.That(metadata.NeutralInputInventoryComplete, Is.False);
+            Assert.That(metadata.ParameterPersistence, Is.Empty);
+            Assert.That(metadata.ExpressionParameterTypes, Is.Empty);
+            Assert.That(warnings, Is.EqualTo(new[] { ExporterLocalization.T(NeutralInputProof.UnreadableWarning) + "Unreadable test asset" }));
+            Assert.That(ExpressionDependencies.NormalInputLayers(controller, metadata,
+                FixedExpressionContext.Create(controller, metadata.Defaults, metadata), null).SelectMany(layer => layer.Clips).Contains(visual), Is.True);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void DormantAfkActionCannotChangeTheNormalNeutralFace(bool declaredInFx)
@@ -2231,7 +2267,6 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var error = Assert.Throws<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar, warnings: warnings));
                 Assert.That(error.Message, Does.Contain("Random"));
-                Assert.That(VrChatParameterDriver.IsRandomCapability(error), Is.False, "Invalid SDK data is never a recoverable Random capability.");
                 Assert.That(warnings, Is.Empty);
             }
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17)); Assert.That(skin.GetBlendShapeWeight(3), Is.EqualTo(35));

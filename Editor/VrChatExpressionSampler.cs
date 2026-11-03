@@ -679,7 +679,7 @@ namespace VRVlog.LilToonExporter
                 }
                 return values;
             }
-            catch (InvalidOperationException error) when (preserveTemporalRest && VrChatParameterDriver.IsRandomCapability(error))
+            catch (InvalidOperationException error) when (preserveTemporalRest && error == evaluation.RandomStop)
             {
                 // An automatic rest has no fixed random phase. Keep the entire
                 // dependent prepared component; manual probes still reject it.

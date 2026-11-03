@@ -15,8 +15,9 @@ namespace VRVlog.LilToonExporter
     {
         static readonly string[] BodyTrackingParts = { "trackingLeftHand", "trackingRightHand", "trackingHip", "trackingLeftFoot", "trackingRightFoot", "trackingLeftFingers", "trackingRightFingers" };
         internal const string NotBodyPoseMessage = "体の姿勢を変えないメニューです。";
+        internal const string BodyReachUnknownWarning = "ポーズ: 体の姿勢を変えないメニューかを判定できなかったため、すべてのメニューで姿勢を確かめました — ";
         internal static IEnumerable<object> Items(object value) => value is IEnumerable e ? e.Cast<object>() : Enumerable.Empty<object>();
-        internal static List<PoseCandidate> Read(GameObject avatar, VrChatMenuImportPolicy menuPolicy = null)
+        internal static List<PoseCandidate> Read(GameObject avatar, VrChatMenuImportPolicy menuPolicy = null, ICollection<string> warnings = null)
         {
             var result = new List<PoseCandidate>();
             var descriptor = VrChatExpressionMenu.Descriptor(avatar);
@@ -38,7 +39,7 @@ namespace VRVlog.LilToonExporter
                 try
                 {
                     if (row.Error != null) throw new InvalidOperationException(row.Error);
-                    if (CannotSelectBody(entry, layers, bodyPaths))
+                    if (CannotSelectBody(entry, layers, bodyPaths, warnings))
                     {
                         row.NotBodyPose = true;
                         throw new InvalidOperationException(NotBodyPoseMessage);
@@ -208,8 +209,8 @@ namespace VRVlog.LilToonExporter
         // a layer that could move the body, the entry cannot select a pose, so
         // an unrelated layer's restriction (e.g. a hand gesture layer's Tracking
         // Control) is not its diagnosis. Any doubt, including a failure here,
-        // keeps the full proof.
-        static bool CannotSelectBody(VrChatExpressionMenu.Entry entry, object[] layers, ISet<string> bodyPaths)
+        // keeps the full proof; a failure is reported once with its reason.
+        static bool CannotSelectBody(VrChatExpressionMenu.Entry entry, object[] layers, ISet<string> bodyPaths, ICollection<string> warnings)
         {
             var tainted = new HashSet<string>(entry.Parameters.Keys, StringComparer.Ordinal);
             if (!string.IsNullOrEmpty(entry.ControlParameter)) tainted.Add(entry.ControlParameter);
@@ -263,7 +264,12 @@ namespace VRVlog.LilToonExporter
                 }
                 return !graphs.Any(g => g.affectsBody && g.inputs.Any(tainted.Contains));
             }
-            catch (Exception) { return false; }
+            catch (Exception error)
+            {
+                var warning = BodyReachUnknownWarning + error.Message;
+                if (warnings != null && !warnings.Contains(warning)) warnings.Add(warning);
+                return false;
+            }
         }
         // SDK controls that only carry data and never write parameters.
         static readonly string[] KnownControls =
