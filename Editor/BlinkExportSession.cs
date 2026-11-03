@@ -36,6 +36,7 @@ namespace VRVlog.LilToonExporter
         // What a name fallback chose, for the export details.
         internal readonly List<string> Inferences = new List<string>();
         internal const string InferredSidesLog = "瞬きの左右を両目の変形の名前から決めました: ";
+        internal const string MeasuredSidesLog = "瞬きの左右を、両目の変形を左右に分けた変形から決めました: ";
         internal const string InferredNamesLog = "瞬きの変形を名前から決めました: ";
         bool allowMissingAutomaticBlink;
         bool deferredAutomatic;
@@ -46,6 +47,9 @@ namespace VRVlog.LilToonExporter
             internal float ReferenceWeight;
         }
         readonly List<Candidate> candidates = new List<Candidate>();
+        // The bilateral bindings before blink became left + right, restored
+        // when the build passes lose inferred sides.
+        List<BlinkShapeBinding> composedFrom;
         readonly Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float> inferredEndpoints =
             new Dictionary<(SkinnedMeshRenderer, string), float>();
         internal bool HasBilateralPreset => authored[0] || Slots[0].Count > 0;
@@ -113,7 +117,7 @@ namespace VRVlog.LilToonExporter
                     result.ConfiguredByDescriptor = true;
                     result.Slots[0].Add(descriptorBinding);
                     result.Description = "VRChatの閉眼設定";
-                    result.InferSides();
+                    result.InferSides(source);
                 }
                 else
                 {
@@ -199,7 +203,7 @@ namespace VRVlog.LilToonExporter
                     if (result.UnresolvedReason == null)
                     {
                         if (!namedClosure && result.Slots.All(slot => slot.Count == 0)) result.FindByName(rendererNames);
-                        result.InferSides();
+                        result.InferSides(source);
                     }
                     // Closing names that never move cannot close the eyes either.
                     if (result.UnresolvedReason == null && namedClosure && !result.allowMissingAutomaticBlink &&
@@ -225,6 +229,7 @@ namespace VRVlog.LilToonExporter
                 result.UnresolvedAutomatic = true;
                 result.Description = UnresolvedAutomaticDescription;
             }
+            if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.Disabled) result.ComposeBlinkFromSides();
             result.Validate(source, excluded);
             foreach (var binding in result.Slots.SelectMany(slot => slot)) result.CaptureCandidate(binding);
             return result;
@@ -258,23 +263,50 @@ namespace VRVlog.LilToonExporter
         static string Describe(BlinkShapeBinding binding) => binding.Renderer.name + "/" + binding.Shape;
 
         // The bilateral closure is known but no rule named its sides: use
-        // the left and right forms of its own name on the same mesh. Every
+        // the left and right forms of its own name on the same mesh, else the
+        // two one-eye shapes that rebuild it (EyeClosureSides). Every
         // bilateral binding needs its pair, or none of them gets one.
-        void InferSides()
+        void InferSides(GameObject source)
         {
             if (Slots[0].Count == 0 || Slots[1].Count > 0 || Slots[2].Count > 0) return;
             var lefts = new List<BlinkShapeBinding>(); var rights = new List<BlinkShapeBinding>();
+            var measured = false;
+            (bool Found, Vector3 Centre, Vector3 Left)? axis = null;
             foreach (var both in Slots[0])
             {
                 var names = ShapeNames(both.Renderer.sharedMesh);
                 var (left, right) = BlinkShapeNames.DerivedSides(names, both.Shape);
-                if (left < 0 || !OneEyeEach(both.Renderer, left, right)) return;
-                lefts.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = names[left], Weight = both.Weight });
-                rights.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = names[right], Weight = both.Weight });
+                string leftName, rightName;
+                if (left >= 0 && OneEyeEach(both.Renderer, left, right)) { leftName = names[left]; rightName = names[right]; }
+                else
+                {
+                    if (axis == null)
+                        axis = EyeClosureSides.TryLeftAxis(source.transform, out var centre, out var leftAxis) ? (true, centre, leftAxis) : (false, centre, leftAxis);
+                    var found = axis.Value.Found ? EyeClosureSides.Find(both.Renderer, both.Shape, axis.Value.Centre, axis.Value.Left) : null;
+                    if (found == null) return;
+                    leftName = found.Left; rightName = found.Right; measured = true;
+                }
+                lefts.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = leftName, Weight = both.Weight });
+                rights.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = rightName, Weight = both.Weight });
             }
             Slots[1].AddRange(lefts); Slots[2].AddRange(rights);
-            Inferences.Add(InferredSidesLog + string.Join(", ", Slots[0].Select((both, i) =>
+            Inferences.Add((measured ? MeasuredSidesLog : InferredSidesLog) + string.Join(", ", Slots[0].Select((both, i) =>
                 Describe(both) + " → " + lefts[i].Shape + " / " + rights[i].Shape)));
+        }
+
+        // mk 11/03: once both eyes have their own shapes, blink closes the two
+        // of them, so blink looks exactly like blinkLeft and blinkRight
+        // together. A mesh without sides keeps its bilateral shape.
+        void ComposeBlinkFromSides()
+        {
+            if (Slots[1].Count == 0 || Slots[2].Count == 0) return;
+            var sided = new HashSet<SkinnedMeshRenderer>(Slots[1].Concat(Slots[2]).Select(binding => binding.Renderer));
+            composedFrom = Slots[0].Select(binding => binding.Copy()).ToList();
+            foreach (var binding in Slots[0]) CaptureCandidate(binding);
+            var kept = Slots[0].Where(binding => !sided.Contains(binding.Renderer)).ToList();
+            Slots[0].Clear();
+            Slots[0].AddRange(kept);
+            Slots[0].AddRange(Slots[1].Concat(Slots[2]).Select(binding => binding.Copy()));
         }
 
         // No rule found any closing name: read the meshes' own names. One
@@ -418,6 +450,7 @@ namespace VRVlog.LilToonExporter
                 var row = candidate.Binding.Copy(); row.Renderer = Map(row.Renderer);
                 return new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight };
             }).ToArray();
+            var nextComposedFrom = composedFrom?.Select(binding => { var row = binding.Copy(); row.Renderer = Map(row.Renderer); return row; }).ToList();
             // Publish only after every mapping and collision has been checked.
             inferredEndpoints.Clear();
             foreach (var pair in nextEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
@@ -426,6 +459,7 @@ namespace VRVlog.LilToonExporter
                 Slots[slot].Clear(); Slots[slot].AddRange(nextSlots[slot]);
             }
             candidates.Clear(); candidates.AddRange(nextCandidates);
+            composedFrom = nextComposedFrom;
         }
 
         internal const string LostBlinkDescription = "瞬きなし（ビルド処理で閉眼用の変形が失われました）";
@@ -453,8 +487,9 @@ namespace VRVlog.LilToonExporter
             foreach (var pair in inferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
             // Sides read from the bilateral name are a guess: if the build
             // passes lose them, follow the bilateral closure alone as before.
-            var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal));
-            var bilateral = Slots[0].ToArray();
+            var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal) ||
+                line.StartsWith(MeasuredSidesLog, StringComparison.Ordinal));
+            var bilateral = (composedFrom ?? Slots[0]).ToArray();
             var keptCandidates = candidates.ToArray();
             var keptEndpoints = inferredEndpoints.ToArray();
             try
@@ -481,6 +516,7 @@ namespace VRVlog.LilToonExporter
                 {
                     foreach (var slot in Slots) slot.Clear();
                     Slots[0].AddRange(bilateral);
+                    composedFrom = null;
                     candidates.Clear();
                     candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
                         binding.Renderer == candidate.Binding.Renderer && binding.Shape == candidate.Binding.Shape)));
@@ -499,6 +535,7 @@ namespace VRVlog.LilToonExporter
         void DisableLost()
         {
             foreach (var slot in Slots) slot.Clear();
+            composedFrom = null;
             candidates.Clear();
             inferredEndpoints.Clear();
             Inferences.Clear();
@@ -531,6 +568,7 @@ namespace VRVlog.LilToonExporter
             Array.Copy(resolved.authored, authored, authored.Length);
             allowMissingAutomaticBlink = resolved.allowMissingAutomaticBlink;
             Inferences.Clear(); Inferences.AddRange(resolved.Inferences);
+            composedFrom = resolved.composedFrom?.Select(binding => binding.Copy()).ToList();
             inferredEndpoints.Clear();
             foreach (var pair in resolved.inferredEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
             deferredAutomatic = false;
@@ -619,6 +657,7 @@ namespace VRVlog.LilToonExporter
                 copy.candidates.Add(new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight });
             }
             foreach (var pair in inferredEndpoints) copy.inferredEndpoints.Add((Target(pair.Key.Renderer), pair.Key.Shape), pair.Value);
+            copy.composedFrom = composedFrom?.Select(binding => { var row = binding.Copy(); row.Renderer = Target(row.Renderer); return row; }).ToList();
             return copy;
         }
 

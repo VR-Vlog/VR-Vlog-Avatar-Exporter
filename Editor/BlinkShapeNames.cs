@@ -66,17 +66,8 @@ namespace VRVlog.LilToonExporter
         // read as a blink. Root is the name without its side marker.
         internal static int NamedClosure(string name, out string root)
         {
-            root = name ?? "";
-            var side = NotClosing;
-            var match = SideSuffix.Match(root);
-            if (!match.Success) match = SidePrefix.Match(root);
-            if (match.Success)
-            {
-                var marker = match.Groups["side"].Value.ToLowerInvariant();
-                side = marker == "l" || marker == "left" || marker == "左" ? ClosingLeft : ClosingRight;
-                // 左目閉じ reads as 左 + 目閉じ.
-                root = match.Groups["eye"].Value + match.Groups["root"].Value;
-            }
+            // 左目閉じ reads as 左 + 目閉じ.
+            var side = MarkedSide(name, out root);
             if (JapaneseClosings.Contains(Regex.Replace(root, @"[ ._-]", "")))
                 return side == NotClosing ? ClosingBoth : side;
             var words = Words.Split(root).Where(word => word.Length > 0).Select(word => word.ToLowerInvariant()).ToArray();
@@ -84,6 +75,19 @@ namespace VRVlog.LilToonExporter
             var rest = words.Where(word => !EyeWords.Contains(word)).ToArray();
             if (rest.Length != 1 || rest[0] != "blink") return NotClosing;
             return side == NotClosing ? ClosingBoth : side;
+        }
+
+        // The side a name marks (ClosingLeft / ClosingRight) whatever it
+        // closes, or NotClosing for none. Root is the name without it.
+        internal static int MarkedSide(string name, out string root)
+        {
+            root = name ?? "";
+            var match = SideSuffix.Match(root);
+            if (!match.Success) match = SidePrefix.Match(root);
+            if (!match.Success) return NotClosing;
+            var marker = match.Groups["side"].Value.ToLowerInvariant();
+            root = match.Groups["eye"].Value + match.Groups["root"].Value;
+            return marker == "l" || marker == "left" || marker == "左" ? ClosingLeft : ClosingRight;
         }
 
         internal static int PartialFamily(string shape, bool left)
