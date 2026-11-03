@@ -135,17 +135,6 @@ namespace VRVlog.Expressions
             static bool Wrap(string value) => value == "clamp" || value == "loop" || value == "pingPong";
         }
 
-        public static Dictionary<string, object> Write(IList<ExpressionAnimationData> animations)
-        {
-            var result = new Dictionary<string, object>
-            {
-                ["schemaVersion"] = 1L,
-                ["animations"] = WriteAnimations(animations, WriteName)
-            };
-            Read(result); // The exporter and runtime enforce the same contract.
-            return result;
-        }
-
         // Writes schema 2 only. Schema 1 files are still read by Read and ReadDocument.
         public static Dictionary<string, object> WriteDocument(ExpressionAnimationDocument document)
         {
@@ -155,7 +144,7 @@ namespace VRVlog.Expressions
                 ["schemaVersion"] = 2L,
                 ["expressions"] = document.Expressions.Select(e => (object)new Dictionary<string, object>
                     { ["expression"] = e.Expression, ["source"] = e.Source }).ToList(),
-                ["animations"] = WriteAnimations(document.Animations, WriteMorph)
+                ["animations"] = WriteAnimations(document.Animations)
             };
             // Omitted when empty, so avatars without bone or visibility keys
             // keep the bytes they had before transforms existed.
@@ -164,7 +153,7 @@ namespace VRVlog.Expressions
             return result;
         }
 
-        static List<object> WriteAnimations(IEnumerable<ExpressionAnimationData> animations, Func<Point, object> target) =>
+        static List<object> WriteAnimations(IEnumerable<ExpressionAnimationData> animations) =>
             animations.Select(a => (object)new Dictionary<string, object>
             {
                 ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
@@ -172,7 +161,7 @@ namespace VRVlog.Expressions
                 {
                     var channel = WriteCurve(c.Curve);
                     channel["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
-                        { ["value"] = p.Value, ["target"] = target(p) }).ToList();
+                        { ["value"] = p.Value, ["target"] = WriteMorph(p) }).ToList();
                     return (object)channel;
                 }).ToList()
             }).ToList();
@@ -195,13 +184,6 @@ namespace VRVlog.Expressions
                     ["curves"] = t.Curves.Select(c => (object)WriteCurve(c)).ToList()
                 }).ToList()
             }).ToList();
-
-        static object WriteName(Point point)
-        {
-            // Schema 1 has no node/index references; dropping one would leave the morph unmoved.
-            if (point.Morph != null) Bad();
-            return point.Target;
-        }
 
         static object WriteMorph(Point point)
         {
