@@ -386,9 +386,8 @@ namespace VRVlog.LilToonExporter
                     case VrChatParameterDriver.Program driver:
                         try
                         {
-                            VrChatParameterDriver.Execute(driver, Types, expressionParameters, writable, true,
-                                name => Read(playable, name), (name, value) => Write(playable, name, (float)value), supplied);
-                            return true;
+                            return VrChatParameterDriver.Execute(driver, Types, expressionParameters, writable, true,
+                                name => Read(playable, name), (name, value) => Write(playable, name, (float)value), supplied) == null;
                         }
                         catch (InvalidOperationException) { return false; }
                     case Exception _:

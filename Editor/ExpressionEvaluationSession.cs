@@ -24,6 +24,8 @@ namespace VRVlog.LilToonExporter
         private readonly ISet<string> suppliedInputs;
         private readonly bool preserveSyncedOverrides;
         private InvalidOperationException failure;
+        // The failure when it is an unresolved Random that stopped a program.
+        internal InvalidOperationException RandomStop { get; private set; }
         private int entries;
         private bool neutralFxObserved;
 
@@ -294,8 +296,10 @@ namespace VRVlog.LilToonExporter
                 }
             }
             var local = types.ContainsKey("IsLocal") ? Read("IsLocal") != 0 : defaultLocal;
-            VrChatParameterDriver.Execute(program, types, expressionParameters, dependencies.Parameters, local, Read, Write, suppliedInputs);
-            return changed;
+            var random = VrChatParameterDriver.Execute(program, types, expressionParameters, dependencies.Parameters, local, Read, Write, suppliedInputs);
+            // On entry it ends the evaluation; a repeat probe counts it as a change.
+            if (random != null && apply) failure = RandomStop = new InvalidOperationException(random);
+            return changed || random != null;
         }
 
         internal void Check() { if (failure != null) throw failure; }

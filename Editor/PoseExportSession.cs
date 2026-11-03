@@ -116,7 +116,7 @@ namespace VRVlog.LilToonExporter
         {
             prepared = copy;
             if (!collect) yield break;
-            Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy));
+            Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy, warnings));
             var seen = new Dictionary<string, PoseCandidate>();
             foreach (var row in Entries.ToArray())
             {
