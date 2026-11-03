@@ -663,6 +663,7 @@ BEHAVIOR_CASES = {
         'PluginPackagesComeFromExportsPluginAndSkipTheExporter': 1,
         'VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf': 1,
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
+        'NdmfOutputIsSavedEarlyOnlyForVrcFury': 1,
         'ToolKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
         'VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
@@ -835,6 +836,7 @@ BEHAVIOR_CASES = {
         'ExplicitHeadOrNeckMotionIsIncludedWhileEyeAndJawTracksStayOutsideTheContract': 2,
         'ExplicitMovingHeadAndNeckMusclesMatchNativeHumanoidInterpolation': 2,
         'ManualStartAndLoopArePreservedWithoutAnAdditionalStaticSnapshot': 1,
+        'OnlyTheFrameCountDecidesWhetherAMovingPoseFits': 1,
         'MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement': 1,
         'MovingHumanoidClipKeepsLoopPoseSettingsAndNonMatchingAuthoredEndpoints': 2,
         'MovingHumanoidRootChannelsMatchNativeBodyCoordinatesWithoutSceneRootMotion': 3,
@@ -876,6 +878,17 @@ BEHAVIOR_CASES = {
     },
 }
 INTEGRATION_CASES = {
+    'NdmfLostMorphFollowTests': {
+        'LenientExportFollowsShapesAfterAPassBeyondModularAvatar': 3,
+        'LenientExportDoesNotFollowAShapeIntoAnotherMeshWithTheSameName': 1,
+        'LenientExportFollowsLipSyncToTheRenamedOrMergedFace': 2,
+        'LenientExportKeepsTheOtherMouthShapesWhenAPassStripsOne': 1,
+        'StrictExportStillStopsWhenTheFaceIsMerged': 1,
+        'BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes': 1,
+        'AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport': 1,
+        'AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer': 1,
+        'ABoardWhoseBuildPassesFailIsMadeWithoutThem': 1,
+    },
     'NdmfSharedObjectTests': {
         'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
     },
