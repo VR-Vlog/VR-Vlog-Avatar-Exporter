@@ -112,9 +112,12 @@ namespace VRVlog.LilToonExporter
                 var group = ConvertColliders(component, copy, colliders, instance, warnings, fallbacks);
                 foreach (var chain in normalized)
                 {
+                    AddFollowingTail(chain);
                     var spring = new Vrm10InstanceSpringBone.Spring(component.name);
-                    // A head center would cancel the desired hair inertia.
-                    if (group != null) spring.ColliderGroups.Add(group);
+                    // A head center would cancel the desired hair inertia, so only
+                    // a spring that asks for it through Immobile gets one.
+                            if (group != null) spring.ColliderGroups.Add(group);
+                    var settled = Quaternion.identity;
                     for (var i = 0; i < chain.Count; i++)
                     {
                         var point = chain[i];
@@ -129,7 +132,10 @@ namespace VRVlog.LilToonExporter
                         {
                             // Curve coordinates always use the unsplit source PB.
                             var t = plan.MaximumDepth > 0 ? (float)plan.Depths[node] / plan.MaximumDepth : 0;
-                            ApplyForces(component, joint, t); result.Joints++;
+                            var bone = chain[i + 1].Position - node.position;
+                            if (chain[i + 1].Follows) ApplyFollow(joint, bone);
+                            else ApplyForces(component, joint, t, bone, ref settled);
+                            result.Joints++;
                         }
                         spring.Joints.Add(joint);
                     }
@@ -146,10 +152,15 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
+        // Short enough that the extra tail rarely meets a collider; only its
+        // direction matters.
+        const float FollowingTailLength = .25f;
+
         sealed class PlannedJoint
         {
             internal Transform Node, Parent;
             internal Vector3 Offset;
+            internal bool Follows;
             internal Vector3 Position => Node != null ? Node.position : Parent.TransformPoint(Offset);
         }
 
@@ -271,28 +282,62 @@ namespace VRVlog.LilToonExporter
             return output;
         }
 
-        static void ApplyForces(Component source, VRM10SpringBoneJoint joint, float depth)
+        // The solver only rotates joints that have a tail, and every other
+        // transform it tracks gets its pulled world rotation written back. A last
+        // bone therefore never turns with the chain above it, and neither does
+        // anything under it or skinned to it. PhysBone turns it with its parent,
+        // so give it a short tail that does nothing but follow.
+        static void AddFollowingTail(List<PlannedJoint> chain)
+        {
+            var last = chain[chain.Count - 1];
+            if (last.Node == null) return;
+            var incoming = last.Node.position - chain[chain.Count - 2].Position;
+            chain.Add(new PlannedJoint
+            {
+                Parent = last.Node,
+                Offset = last.Node.InverseTransformVector(incoming * FollowingTailLength),
+                Follows = true
+            });
+        }
+
+        // Holds the tail on its rest direction every frame, without momentum.
+        static void ApplyFollow(VRM10SpringBoneJoint joint, Vector3 bone)
+        {
+            var scale = joint.transform.lossyScale;
+            var largest = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+            joint.m_stiffnessForce = largest > 0 ? PhysBoneMotionMapping.HoldingForce(bone.magnitude / largest) : 0;
+            joint.m_dragForce = 1;
+            joint.m_gravityPower = 0;
+            joint.m_gravityDir = Vector3.down;
+            joint.m_jointRadius = 0;
+            joint.m_anglelimitType = AnglelimitTypes.None;
+        }
+
+        static void ApplyForces(Component source, VRM10SpringBoneJoint joint, float depth, Vector3 bone, ref Quaternion settled)
         {
             // A documented approximation, not SDK solver equivalence.
-            var pull = Mathf.Clamp01(Curve(source, "pull", depth, .2f));
-            var spring = Mathf.Clamp01(Curve(source, "spring", depth, .2f));
-            var gravity = Mathf.Clamp(Curve(source, "gravity", depth, 0), -1, 1);
-            var falloff = Mathf.Clamp01(Curve(source, "gravityFalloff", depth, 0));
-            var stiffness = 4f * pull;
-            var drag = .6f * (1f - spring);
-            // World Immobile is left to the app, which centres exported springs
-            // on the model root. All Motion has no VRM counterpart, so raise
-            // stiffness and drag to damp the motion instead.
-            if (EnumNumber(source, "immobileType", 0) == 0)
+            // The solver multiplies the force by this bone's world scale, so
+            // the force is written for the bone's length without that scale.
+            var scale = joint.transform.lossyScale;
+            var largest = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+            var length = largest > 0 ? bone.magnitude / largest : 0;
+            var rest = settled * bone.normalized;
+            var forces = PhysBoneMotionMapping.Map(new PhysBoneMotionMapping.Settings
             {
-                var immobile = Mathf.Clamp01(Curve(source, "immobile", depth, 0));
-                stiffness += .5f * immobile;
-                drag = Mathf.Clamp01(drag + .5f * immobile);
-            }
-            joint.m_stiffnessForce = stiffness;
-            joint.m_dragForce = drag;
-            joint.m_gravityPower = Mathf.Abs(gravity) * (1f - falloff) * (EnumNumber(source, "version", 1) >= 1 ? 4f * pull : 1f);
-            joint.m_gravityDir = gravity < 0 ? Vector3.up : Vector3.down;
+                Pull = Mathf.Clamp01(Curve(source, "pull", depth, .2f)),
+                Spring = Mathf.Clamp01(Curve(source, "spring", depth, .2f)),
+                Stiffness = Mathf.Clamp01(Curve(source, "stiffness", depth, 0)),
+                Gravity = Mathf.Clamp(Curve(source, "gravity", depth, 0), -1, 1),
+                Falloff = Mathf.Clamp01(Curve(source, "gravityFalloff", depth, 0)),
+                Immobile = EnumNumber(source, "immobileType", 0) == 0 ? Mathf.Clamp01(Curve(source, "immobile", depth, 0)) : 0,
+                Advanced = EnumNumber(source, "integrationType", 0) == 1,
+                GravityTurnsRest = EnumNumber(source, "version", 1) >= 1
+            }, length, rest);
+            joint.m_stiffnessForce = forces.Stiffness;
+            joint.m_dragForce = forces.Drag;
+            joint.m_gravityPower = forces.GravityPower;
+            joint.m_gravityDir = forces.GravityDirection;
+            settled = Quaternion.FromToRotation(rest, forces.Settled) * settled;
             joint.m_jointRadius = Mathf.Max(0, Curve(source, "radius", depth, 0));
             var limit = EnumNumber(source, "limitType", 0);
             if (limit < 0 || limit > 3) throw Unsupported(source, "Limit Type");
