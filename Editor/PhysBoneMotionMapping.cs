@@ -15,8 +15,8 @@ namespace VRVlog.LilToonExporter
     // synthetic chains; see Compatibility/Evidence/SpringFidelity.
     internal static class PhysBoneMotionMapping
     {
-        // VRM's drag and force are per frame and per second. The app steps
-        // springs at 60 Hz or faster, so the mapping is stated at that rate.
+        // VRM's drag is per frame, so the same file swings differently at other
+        // frame rates. The mapping is stated at 60 Hz, the app's lowest on Android.
         const float SolverRate = 60;
         // Above 98 % of the angle removed per step, the force only adds jitter.
         const float MinimumRetention = .02f;
@@ -88,10 +88,10 @@ namespace VRVlog.LilToonExporter
             // of the motion and raising the force by the same share lag equally.
             var unhidden = Mathf.Max(1 - settings.Immobile, 1e-3f);
             var holding = HoldingForce(length);
-            var force = Mathf.Min(length * SolverRate * (1 / retained - 1) / unhidden, holding);
+            var force = length * SolverRate * (1 / retained - 1) / unhidden;
             var result = new Forces
             {
-                Stiffness = force,
+                Stiffness = Mathf.Min(force, holding),
                 Drag = 1 - Mathf.Clamp01(keep),
                 GravityDirection = settings.Gravity < 0 ? Vector3.up : Vector3.down,
                 Settled = rest
@@ -159,7 +159,8 @@ namespace VRVlog.LilToonExporter
         static Vector3 Turn(Vector3 from, Vector3 toward, float angle)
         {
             var side = toward - Vector3.Dot(from, toward) * from;
-            if (side.sqrMagnitude <= 1e-12f) return from;
+            // Straight along gravity no side exists: it stays, or it has flipped over.
+            if (side.sqrMagnitude <= 1e-12f) return angle > Mathf.PI / 2 ? toward : from;
             return (Mathf.Cos(angle) * from + Mathf.Sin(angle) * side.normalized).normalized;
         }
     }

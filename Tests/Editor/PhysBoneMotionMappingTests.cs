@@ -121,6 +121,34 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(full.Stiffness, Is.EqualTo(PhysBoneMotionMapping.HoldingForce(.1f)).Within(1e-3));
         }
 
+        [TestCase(true, 13.31f)]
+        [TestCase(false, 45.56f)]
+        public void FalloffSettlesWhereGravityWeakenedByTheAngleMeetsThePull(bool turnsRest, float degrees)
+        {
+            var settings = new Settings { Pull = .3f, Spring = .2f, Gravity = .6f, Falloff = .7f, GravityTurnsRest = turnsRest };
+            var forces = PhysBoneMotionMapping.Map(settings, .1f, Vector3.forward);
+            Assert.That(Vector3.Angle(Vector3.forward, forces.Settled), Is.EqualTo(degrees).Within(.05f));
+        }
+
+        [TestCase(true, .7f)]
+        [TestCase(false, .7f)]
+        public void ABoneStraightAgainstStrongGravitySettlesHanging(bool turnsRest, float gravity)
+        {
+            var settings = new Settings { Pull = .3f, Spring = .2f, Gravity = gravity, GravityTurnsRest = turnsRest };
+            var forces = PhysBoneMotionMapping.Map(settings, .1f, Vector3.up);
+            Assert.That(Vector3.Distance(forces.Settled, Vector3.down), Is.LessThan(1e-5f));
+        }
+
+        [Test]
+        public void OldGravityKeepsItsAngleWhenTheForceHitsTheCeiling()
+        {
+            var settings = new Settings { Pull = .5f, Spring = 0, Gravity = .5f, Immobile = 1, GravityTurnsRest = false };
+            var forces = PhysBoneMotionMapping.Map(settings, .1f, Vector3.forward);
+            var holding = PhysBoneMotionMapping.HoldingForce(.1f);
+            Assert.That(Mathf.Max(forces.Stiffness, forces.GravityPower), Is.LessThanOrEqualTo(holding + 1e-3f));
+            Assert.That(Mathf.Atan2(forces.GravityPower, forces.Stiffness) * Mathf.Rad2Deg, Is.EqualTo(45).Within(.5f));
+        }
+
         [Test]
         public void ForceAtItsCeilingKeepsTheBalanceWithGravity()
         {

@@ -114,7 +114,7 @@ namespace VRVlog.LilToonExporter
                 {
                     AddFollowingTail(chain);
                     var spring = new Vrm10InstanceSpringBone.Spring(component.name);
-                            if (group != null) spring.ColliderGroups.Add(group);
+                    if (group != null) spring.ColliderGroups.Add(group);
                     var settled = Quaternion.identity;
                     for (var i = 0; i < chain.Count; i++)
                     {
@@ -290,12 +290,14 @@ namespace VRVlog.LilToonExporter
             var last = chain[chain.Count - 1];
             if (last.Node == null) return;
             var incoming = last.Node.position - chain[chain.Count - 2].Position;
-            chain.Add(new PlannedJoint
+            var tail = new PlannedJoint
             {
                 Parent = last.Node,
                 Offset = last.Node.InverseTransformVector(incoming * FollowingTailLength),
                 Follows = true
-            });
+            };
+            // A bone scaled to zero has no length to give a tail, and it is not visible to follow.
+            if (Finite(tail.Offset.x) && Finite(tail.Offset.y) && Finite(tail.Offset.z) && HasLength(last, tail)) chain.Add(tail);
         }
 
         // Holds the tail on its rest direction every frame, without momentum.

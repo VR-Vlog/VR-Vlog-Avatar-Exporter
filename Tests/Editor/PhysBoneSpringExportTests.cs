@@ -361,6 +361,29 @@ namespace VRVlog.LilToonExporter.Tests
         // The solver writes back the last joint's stored rotation, so without a
         // tail the last bone would not turn with the swing of its parent.
         [Test]
+        public void ALastBoneScaledToZeroGetsNoFollowingTail()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                var tip = Child(root, "HairTip", Vector3.down * .1f);
+                var end = Child(tip, "HairEnd", Vector3.down * .2f);
+                end.localScale = Vector3.zero;
+                PhysBone(root.gameObject);
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var joints = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints;
+                Assert.That(joints.Select(j => j.name), Is.EqualTo(new[] { "Hair", "HairTip", "HairEnd" }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                if (copy != null) Object.DestroyImmediate(copy);
+            }
+        }
+
+        [Test]
         public void ARealLastBoneGetsAShortTailThatFollowsItsParent()
         {
             var source = new GameObject("source"); GameObject copy = null;
