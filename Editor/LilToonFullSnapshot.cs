@@ -253,7 +253,7 @@ namespace VRVlog.LilToonExporter
             if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
             else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
+                warnings?.Add(ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
                 {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},
