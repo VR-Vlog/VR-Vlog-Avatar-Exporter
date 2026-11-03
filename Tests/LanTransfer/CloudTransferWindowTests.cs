@@ -6,7 +6,9 @@ using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.LanTransfer.Tests
@@ -55,6 +57,32 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(embedded.Name, Is.EqualTo("CreateEmbedded"));
                 Assert.That(embedded.GetParameters().Select(parameter => parameter.ParameterType),
                     Is.EqualTo(new[] { typeof(UnityEngine.GameObject), typeof(Action), typeof(Func<bool>) }));
+            }
+        }
+
+        // Opening a scene destroys the avatar. Its name must leave the avatar field with it.
+        [Test]
+        public void TheAvatarFieldStopsShowingADestroyedAvatar()
+        {
+            const string name = "vrvlog-app-transfer-gone";
+            var panel = new AppTransferPanel();
+            var root = new VisualElement();
+            var avatar = new UnityEngine.GameObject(name, typeof(UnityEngine.Animator));
+            try
+            {
+                panel.Build(root);
+                panel.Select(avatar, true);
+                var label = root.Q<ObjectField>("avatar-field").Q<Label>(null, "unity-object-field-display__label");
+                StringAssert.Contains(name, label.text);
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                Assert.That(avatar == null, "Opening the scene destroys the avatar.");
+                panel.Refresh();
+                StringAssert.DoesNotContain(name, label.text);
+            }
+            finally
+            {
+                panel.Disable();
+                if (avatar != null) UnityEngine.Object.DestroyImmediate(avatar);
             }
         }
 

@@ -111,6 +111,23 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(staging); }
         }
 
+        // Whether a moving pose fits is decided by its frames, not by how long
+        // the analysis takes, so a busy PC exports the same poses as an idle one.
+        // 80 seconds at 60 frames per second is 4,801 frames; 137 is 8,221, over the 8,192.
+        [Test]
+        public void OnlyTheFrameCountDecidesWhetherAMovingPoseFits()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var fits = Moving(fixture.Source, AnimationCurve.Linear(0, 0, 80, 90));
+            var over = Moving(fixture.Source, AnimationCurve.Linear(0, 0, 137, 90));
+            try
+            {
+                Assert.That(PoseSampling.SampleAnimation(fixture.Source, Candidate(fits)).Frames.Count, Is.EqualTo(4801));
+                Assert.Throws<PoseFrameLimitException>(() => PoseSampling.SampleAnimation(fixture.Source, Candidate(over)));
+            }
+            finally { Object.DestroyImmediate(fits); Object.DestroyImmediate(over); }
+        }
+
         [Test]
         public void MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement()
         {
