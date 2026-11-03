@@ -52,10 +52,10 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var skin = Skin("eye_close", "vrc.Blink", "eye_blink_1", "eye_blink_1_L", "eye_blink_1_R");
             var resolved = BlinkExportSession.Resolve(root);
-            Assert.That(resolved.Slots[0].Single().Shape, Is.EqualTo("vrc.Blink"));
+            Assert.That(resolved.Slots[0].Select(binding => binding.Shape), Is.EquivalentTo(new[] { "eye_blink_1_L", "eye_blink_1_R" }), "Blink closes both sides.");
             Assert.That(resolved.Slots[1].Single().Shape, Is.EqualTo("eye_blink_1_L"));
             Assert.That(resolved.Slots[2].Single().Shape, Is.EqualTo("eye_blink_1_R"));
-            Assert.That(resolved.Slots[0].Single().Renderer, Is.SameAs(skin));
+            Assert.That(resolved.Slots[0].Select(binding => binding.Renderer), Is.All.SameAs(skin));
         }
 
         [TestCase("eye_close")][TestCase("previewBlink")][TestCase("eye_close_left")]
@@ -100,7 +100,7 @@ namespace VRVlog.LilToonExporter.Tests
             Skin("vrc.blink_left", "vrc.blink_right", "eyelid_Blink", "eyelid_Blink.L", "eyelid_Blink.R");
             var resolved = BlinkExportSession.Resolve(root);
             Assert.That(resolved.Disabled, Is.False);
-            Assert.That(resolved.Slots[0].Single().Shape, Is.EqualTo("eyelid_Blink"));
+            Assert.That(resolved.Slots[0].Select(binding => binding.Shape), Is.EquivalentTo(new[] { "eyelid_Blink.L", "eyelid_Blink.R" }), "Blink closes both sides.");
             Assert.That(resolved.Slots[1].Single().Shape, Is.EqualTo("eyelid_Blink.L"));
             Assert.That(resolved.Slots[2].Single().Shape, Is.EqualTo("eyelid_Blink.R"));
             Object.DestroyImmediate(root.transform.GetChild(0).gameObject);
@@ -374,7 +374,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var resolved = BlinkExportSession.Resolve(root);
             var options = new BlinkExportOptions();
             options.SelectMode(BlinkExportMode.Manual, resolved);
-            Assert.That(options.Both.Count, Is.EqualTo(1));
+            Assert.That(options.Both.Select(binding => binding.Shape), Is.EquivalentTo(new[] { "Blink_L", "Blink_R" }), "Manual starts from what the automatic blink exports.");
             Assert.That(options.Left.Count, Is.EqualTo(1));
             Assert.That(options.Right.Count, Is.EqualTo(1));
             Assert.That(options.Both[0], Is.Not.SameAs(resolved.Slots[0][0]));

@@ -907,8 +907,10 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
-                Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
-                Assert.That(Session.BlinkPresets.Select(preset => suggested[preset].Shape), Is.EqualTo(new[] { "Blink", "Blink_L", "Blink_R" }));
+                // Blink closes Blink_L and Blink_R, two shapes, so like a
+                // blink on two meshes it offers no candidate of its own.
+                Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.blinkLeft, ExpressionPreset.blinkRight }));
+                Assert.That(new[] { ExpressionPreset.blinkLeft, ExpressionPreset.blinkRight }.Select(preset => suggested[preset].Shape), Is.EqualTo(new[] { "Blink_L", "Blink_R" }));
                 Assert.That(suggested.Values.All(value => value.Automatic && value.Path == "Front"), Is.True);
                 Assert.That(session.BlinkFallbackDescription(null), Is.EqualTo(ExporterLocalization.T("自動設定")));
 
@@ -933,7 +935,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
-                Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
+                Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.blinkLeft, ExpressionPreset.blinkRight }));
                 var before = session.Export("Test", "Tests", NoFaces);
                 var unconfirmed = session.Export("Test", "Tests", NoFaces, presets: suggested.Values);
                 Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))),
@@ -953,7 +955,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Vector3.Distance(Vertex(front, 0), baseFace[0]), Is.LessThan(.0001));
                 expression.SetWeight(ExpressionKey.BlinkRight, 0);
                 expression.SetWeight(ExpressionKey.Blink, 1); imported.Runtime.Process();
-                Assert.That(Vector3.Distance(Vertex(front, 0), baseFace[0] + BlinkDelta), Is.LessThan(.0001), "Both eyes keep their candidate.");
+                Assert.That(Vector3.Distance(Vertex(front, 0), baseFace[0] + LeftDelta), Is.LessThan(.0001), "Blink keeps the automatic Blink_L + Blink_R.");
             }
             finally
             {
@@ -1088,7 +1090,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
                 var automatic = session.Export("Test", "Tests", NoFaces);
-                Assert.That(BindCount(automatic, "blink"), Is.EqualTo(1), "Without a choice the automatic blink binds 'Blink'.");
+                Assert.That(BindCount(automatic, "blink"), Is.EqualTo(2), "Without a choice the automatic blink binds Blink_L and Blink_R.");
                 var none = session.Export("Test", "Tests", NoFaces, presets: Session.BlinkPresets.Select(Session.PresetAssignment.None).ToArray());
                 var noBlink = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 // No blink still writes a no-op binding so viewers do not fall back to raw names.
@@ -1115,7 +1117,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // shape named from its mesh, source shape and slot.
                 static string[] Meshes(IEnumerable<string> bound) => bound.Select(value => value.Substring(0, value.IndexOf('/'))).ToArray();
                 var automatic = session.Export("Test", "Tests", NoFaces);
-                Assert.That(Meshes(BoundShapes(automatic, "blink")), Is.EqualTo(new[] { "Back", "Front" }));
+                Assert.That(Meshes(BoundShapes(automatic, "blink")), Is.EquivalentTo(new[] { "Back", "Back", "Front", "Front" }), "Blink closes both sides on both meshes.");
                 var chosen = session.Export("Test", "Tests", NoFaces, presets: new[] {
                     Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Front", "Blink_L"),
                     Session.PresetAssignment.ForShape(ExpressionPreset.blinkRight, "Front", "Blink_R") });

@@ -150,7 +150,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("ウインク:S", "ウインク右:T")]   // a smile closes the eyes another way
-        [TestCase("blink_L:l", "blink_R:r")]       // only halfway
+        [TestCase("half_L:l", "half_R:r")]         // only halfway
         [TestCase("eye_close:B", "eye_close2:B")] // both eyes each
         [TestCase("brow_L:E", "brow_R:F")]         // brows, not eyes
         [TestCase("wink_L:LM", "wink_R:RM")]       // also opens the mouth
