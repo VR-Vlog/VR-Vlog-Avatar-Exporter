@@ -31,6 +31,8 @@ VRChat SDKが導入済みの場合、元モデルのPhysBoneを読み、MA / NDM
 - Cone / Hinge / Polarの角度と回転を、UniVRMのCone / Hinge / Sphericalへ写します。
   UniVRM既存のVRMC_springBone_limit・VRMC_springBone_extended_colliderを使用します。
   独自拡張は追加しません。これらを扱わないビューアーでは制限・特殊衝突は再現されません。
+- Inside Boundsの球とカプセルは、半径に親のスケールを掛けて書き出します。
+  UniVRMのソルバーは外側のコライダーの半径にだけスケールを掛けるためです。
 
 ## 近似と未対応
 

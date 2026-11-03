@@ -176,6 +176,7 @@ BEHAVIOR_CASES = {
         'GeneratedEndpointsDoNotTurnAnInertNestedPhysBoneIntoAnotherDriver': 1,
         'IgnoredSubtreesDisabledBonesAndOverlappingOwnersAreExplicit': 1,
         'InactiveExplicitRootsChildrenAndColliderRootsAreSkipped': 1,
+        'InsideCollidersKeepTheirWorldSizeUnderAScaledParent': 4,
         'MalformedPhysBoneDataStillStopsConversion': 3,
         'NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal': 2,
         'PreexistingVrmImplicitJointsAndTerminalsWinWhileDisjointSegmentsSurvive': 1,

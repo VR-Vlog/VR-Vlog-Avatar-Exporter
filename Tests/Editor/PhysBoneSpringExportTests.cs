@@ -270,6 +270,38 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
+        [TestCase(0, true, 1f)]
+        [TestCase(1, true, .95f)]
+        [TestCase(0, false, .1f)]
+        [TestCase(1, false, .1f)]
+        public void InsideCollidersKeepTheirWorldSizeUnderAScaledParent(int shape, bool inside, float expectedRadius)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                var scaled = Child(source.transform, "Scaled", Vector3.zero);
+                scaled.localScale = shape == 0 ? Vector3.one * 10 : new Vector3(9.5f, -2, 1);
+                var collider = scaled.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                Set(collider, "shapeType", shape); Set(collider, "insideBounds", inside);
+                Set(collider, "radius", .1f); Set(collider, "height", .4f);
+                using (var data = new SerializedObject(pb))
+                {
+                    var list = data.FindProperty("colliders"); list.arraySize = 1;
+                    list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var output = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(output.Radius, Is.EqualTo(expectedRadius).Within(.001));
+                // The capsule's ends stay in the collider's own units: the node's scale moves them.
+                if (shape == 1) Assert.That(Vector3.Distance(output.Offset, output.Tail), Is.EqualTo(.2f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
         [Test]
         public void CurvesCollidersAndLimitsUseRealSdkSerializedValues()
         {
