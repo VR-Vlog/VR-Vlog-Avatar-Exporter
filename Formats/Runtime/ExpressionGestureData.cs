@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VRVlog.AvatarFormats;
 
 // Shared by the exporter and player through VRVlog.AvatarFormats. No Unity/Editor dependency.
 namespace VRVlog.Expressions
@@ -32,7 +33,7 @@ namespace VRVlog.Expressions
 
         public static Dictionary<string, object> Write(ExpressionGestureData data)
         {
-            if (data == null) throw Bad();
+            if (data == null) throw Json.Bad();
             var result = new Dictionary<string, object>
             {
                 ["schemaVersion"] = (long)SchemaVersion,
@@ -49,45 +50,32 @@ namespace VRVlog.Expressions
 
         public static ExpressionGestureData Read(object value)
         {
-            var root = Obj(value, "schemaVersion", "cells");
-            if (Integer(root["schemaVersion"]) != SchemaVersion) throw Bad();
+            var root = Json.Obj(value, "schemaVersion", "cells");
+            if (Json.Integer(root["schemaVersion"]) != SchemaVersion) throw Json.Bad();
             var data = new ExpressionGestureData();
-            var cells = Arr(root["cells"], CellCount, CellCount);
+            var cells = Json.Arr(root["cells"], CellCount, CellCount);
             var any = false;
             for (var index = 0; index < CellCount; index++)
             {
                 if (cells[index] == null) continue;
                 var cell = new List<Reference>();
-                foreach (var raw in Arr(cells[index], 0, ReferenceLimit))
+                foreach (var raw in Json.Arr(cells[index], 0, ReferenceLimit))
                 {
-                    var r = raw is Dictionary<string, object> map && map.ContainsKey("drive") ? Obj(raw, "expression", "drive") : Obj(raw, "expression");
-                    var reference = new Reference { Expression = Text(r["expression"]) };
+                    var r = raw is Dictionary<string, object> map && map.ContainsKey("drive") ? Json.Obj(raw, "expression", "drive") : Json.Obj(raw, "expression");
+                    var reference = new Reference { Expression = Json.Text(r["expression"]) };
                     if (r.TryGetValue("drive", out var drive))
-                        reference.Drive = drive is string hand && (hand == DriveLeft || hand == DriveRight) ? hand : throw Bad();
-                    if (cell.Any(other => string.Equals(other.Expression, reference.Expression, StringComparison.Ordinal))) throw Bad();
+                        reference.Drive = drive is string hand && (hand == DriveLeft || hand == DriveRight) ? hand : throw Json.Bad();
+                    if (cell.Any(other => string.Equals(other.Expression, reference.Expression, StringComparison.Ordinal))) throw Json.Bad();
                     cell.Add(reference);
                 }
                 any |= cell.Count > 0;
                 data.Cells[index] = cell;
             }
             // A table without any expression is not written.
-            if (!any) throw Bad();
+            if (!any) throw Json.Bad();
             return data;
         }
 
-        // Objects carry exactly the listed keys.
-        static Dictionary<string, object> Obj(object value, params string[] keys) =>
-            value is Dictionary<string, object> obj && obj.Count == keys.Length && keys.All(obj.ContainsKey) ? obj : throw Bad();
-        static List<object> Arr(object value, int minimum, int maximum) =>
-            value is List<object> array && array.Count >= minimum && array.Count <= maximum ? array : throw Bad();
-        static string Text(object value) => value is string s && s.Length > 0 && s.Length <= 1024 ? s : throw Bad();
-        static int Integer(object value)
-        {
-            if (!(value is double) && !(value is float) && !(value is long) && !(value is int)) throw Bad();
-            var number = Convert.ToDouble(value);
-            if (double.IsNaN(number) || double.IsInfinity(number) || number != Math.Floor(number) || Math.Abs(number) > 1000000) throw Bad();
-            return (int)number;
-        }
-        static InvalidOperationException Bad() => new InvalidOperationException("Expression gesture data is invalid or exceeds the supported limits.");
+        static readonly ContractJson Json = new ContractJson("Expression gesture data is invalid or exceeds the supported limits.");
     }
 }
