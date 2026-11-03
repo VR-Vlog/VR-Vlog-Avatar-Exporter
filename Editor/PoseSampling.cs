@@ -200,7 +200,6 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("動くポーズの開始秒はクリップ末尾より前、長さは0秒より長く600秒以下である必要があります。");
             var data = new HumanoidAnimationData { Id = candidate.Id, Name = candidate.Name, Category = candidate.Category,
                 Source = candidate.Source, SourceStartTime = start, Duration = duration, Loop = layer.Clip.isLooping };
-            var deadline = System.Diagnostics.Stopwatch.StartNew();
             maximumFrames = Math.Min(maximumFrames, HumanoidAnimationData.MaximumFramesPerAnimation);
             void CheckBudget(int frames)
             {
@@ -208,8 +207,6 @@ namespace VRVlog.LilToonExporter
                     throw maximumFrames < HumanoidAnimationData.MaximumFramesPerAnimation
                         ? new InvalidOperationException("動くポーズの合計フレーム数が32768を超えました。不要な項目を除外してください。")
                         : new PoseFrameLimitException("動くポーズのフレーム数が8192を超えました。クリップの長さやカーブの密度を減らしてください。");
-                if (deadline.Elapsed.TotalSeconds > 30)
-                    throw new InvalidOperationException("動くポーズの解析が30秒を超えました。クリップの長さやカーブの密度を減らしてください。");
             }
             CheckBudget((int)Math.Ceiling(duration * 60) + 1);
             SampleOwned(avatar, candidate, true, (sample, copy, activeLayers) =>
