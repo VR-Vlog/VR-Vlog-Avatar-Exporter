@@ -381,7 +381,7 @@ namespace VRVlog.LilToonExporter
                     if (!ReferenceEquals(leftLimit, right)) Add(right);
                 }
             });
-            HumanoidAnimationData.Write(new[] { data });
+            HumanoidAnimationData.ValidateSampled(data);
             return data;
         }
 
