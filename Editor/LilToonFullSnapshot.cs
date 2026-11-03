@@ -57,7 +57,17 @@ namespace VRVlog.LilToonExporter
                 // indices. They cannot have a full binding to an output mesh.
                 // Keep their transforms/bones and every nonempty mesh intact.
                 if(!ExportRendererSelection.HasGeometry(mesh))continue;
-                selected.Add((renderer, renderer.sharedMaterials));
+                // An empty slot exports a primitive without a material, which no
+                // binding can name. That renderer keeps its standard VRM materials;
+                // the rest of the avatar keeps lilToon.
+                var slots = renderer.sharedMaterials;
+                if (slots.Any(material => material == null))
+                {
+                    if (slots.Any(material => material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)))
+                        warnings?.Add(renderer.name + ": マテリアルが空のスロットがあるため、この表示物のlilToonは標準VRMのマテリアルで書き出しました。");
+                    continue;
+                }
+                selected.Add((renderer, slots));
             }
             // Before any material registers a shared texture, so its size does
             // not depend on which material reads it first.
