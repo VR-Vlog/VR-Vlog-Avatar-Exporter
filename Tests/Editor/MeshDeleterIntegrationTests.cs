@@ -15,6 +15,9 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class MeshDeleterIntegrationTests
     {
+        // A morph the app drives: one nothing uses is left out of the VRM.
+        const string DrivenMorph = "JawOpen";
+
         // The tool remains optional: call its real public implementation only
         // when installed, without adding an assembly or package dependency.
         [TestCase(false, false)]
@@ -57,7 +60,7 @@ namespace VRVlog.LilToonExporter.Tests
                 original.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 6).ToArray();
                 original.bindposes = fixture.Mesh.bindposes;
                 var deltas = Enumerable.Range(0, 6).Select(i => new Vector3(.01f * (i + 1), .02f, 0)).ToArray();
-                original.AddBlendShapeFrame("Hair detail", 100, deltas, new Vector3[6], new Vector3[6]);
+                original.AddBlendShapeFrame(DrivenMorph, 100, deltas, new Vector3[6], new Vector3[6]);
                 AssetDatabase.CreateAsset(original, folder + "/Original.asset");
 
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
@@ -87,7 +90,7 @@ namespace VRVlog.LilToonExporter.Tests
                     deleted.normals = original.normals.Skip(3).ToArray();
                     deleted.boneWeights = original.boneWeights.Skip(3).ToArray();
                     deleted.bindposes = original.bindposes;
-                    deleted.AddBlendShapeFrame("Hair detail", 100, deltas.Skip(3).ToArray(), new Vector3[3], new Vector3[3]);
+                    deleted.AddBlendShapeFrame(DrivenMorph, 100, deltas.Skip(3).ToArray(), new Vector3[3], new Vector3[3]);
                 }
                 Assert.That(deleted, Is.Not.Null);
                 Assert.That(deleted.vertexCount, Is.EqualTo(3), "The externally deleted mesh must contain only the surviving triangle.");
@@ -124,7 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(importedFront.sharedMesh.vertexCount, Is.EqualTo(3));
                 Assert.That(importedFront.sharedMesh.triangles.Length, Is.EqualTo(3));
                 Assert.That(importedBack.sharedMesh.triangles.Length, Is.EqualTo(6), "The unaffected renderer retains both triangles.");
-                var morph = importedFront.sharedMesh.GetBlendShapeIndex("Hair detail");
+                var morph = importedFront.sharedMesh.GetBlendShapeIndex(DrivenMorph);
                 Assert.That(morph, Is.GreaterThanOrEqualTo(0));
                 var reloadedDeltas = new Vector3[importedFront.sharedMesh.vertexCount];
                 importedFront.sharedMesh.GetBlendShapeFrameVertices(morph, 0, reloadedDeltas, null, null);

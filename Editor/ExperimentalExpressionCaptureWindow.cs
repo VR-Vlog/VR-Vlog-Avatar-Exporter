@@ -2401,7 +2401,7 @@ namespace VRVlog.LilToonExporter
                 EditorGUILayout.EndHorizontal();
             }
             if (session.PoseOptions.Manual.Count > 0 && GUILayout.Button(ExporterLocalization.T("ポーズを確認"))) Queue(() => {
-                poseReview?.Close();
+                if (poseReview != null) poseReview.Close();
                 poseReview = PoseReviewWindow.Show(source, session.PoseOptions, Array.Empty<GameObject>(), new ExportGimmickOptions { AutoExclude = false }, manualOnly: true);
             });
             EditorGUILayout.LabelField(ExporterLocalization.T("ポーズと表情は別々に選べるデータとして同じVRMへ保存します。"), EditorStyles.wordWrappedMiniLabel);
@@ -2743,7 +2743,8 @@ namespace VRVlog.LilToonExporter
             if (session?.RetainPreviewForRecovery(preview) == true) preview = null;
             preview?.Cleanup(); preview = null;
             session?.Dispose(); session = null; board = null;
-            poseReview?.Close(); poseReview = null;
+            if (poseReview != null) poseReview.Close();
+            poseReview = null;
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null;

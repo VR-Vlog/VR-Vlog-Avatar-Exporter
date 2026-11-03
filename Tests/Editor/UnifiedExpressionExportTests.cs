@@ -6,6 +6,7 @@ using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using UnityEditor;
 using UnityEngine;
 using VRVlog.FaceTracking;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
@@ -1832,7 +1833,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Mesh.AddBlendShapeFrame("EyeClosedLeft", 100, Enumerable.Repeat(Vector3.up * .02f, fixture.Mesh.vertexCount).ToArray(), null, null);
                 fixture.Mesh.AddBlendShapeFrame("EyeClosedRight", 100, Enumerable.Repeat(Vector3.up * .02f, fixture.Mesh.vertexCount).ToArray(), null, null);
                 menuMesh = Object.Instantiate(fixture.Mesh);
-                const string target = "__VRVlog_Menu_JawOpenFixture";
+                const string target = "JawOpenMenuFixture";
                 menuMesh.AddBlendShapeFrame(target, 100, Enumerable.Repeat(Vector3.forward * .04f, menuMesh.vertexCount).ToArray(), null, null);
                 var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(); skins[0].sharedMesh = menuMesh;
                 foreach (var skin in skins) skin.sharedMaterial.shader = Shader.Find("lilToon");

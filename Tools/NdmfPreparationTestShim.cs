@@ -14,7 +14,9 @@ namespace UnityEngine
     public sealed class RequireComponent : System.Attribute { }
     public class Object
     {
+        internal static readonly List<Object> Loaded = new List<Object>();
         public string name; public HideFlags hideFlags; internal bool destroyed, persistent;
+        public Object() { Loaded.Add(this); }
         static bool Null(Object value) => ReferenceEquals(value, null) || value.destroyed;
         public static bool operator ==(Object a, Object b) => Null(a) ? Null(b) : !Null(b) && ReferenceEquals(a, b);
         public static bool operator !=(Object a, Object b) => !(a == b);
@@ -23,7 +25,7 @@ namespace UnityEngine
         public static T Instantiate<T>(T value) where T : Object
         {
             if (value is GameObject) throw new NotSupportedException("Unity hierarchy cloning requires installed-package tests.");
-            var copy = (T)value.MemberwiseClone(); copy.persistent = false; copy.destroyed = false; return copy;
+            var copy = (T)value.MemberwiseClone(); copy.persistent = false; copy.destroyed = false; Loaded.Add(copy); return copy;
         }
         public static void DestroyImmediate(Object value)
         {
@@ -34,6 +36,7 @@ namespace UnityEngine
                 foreach (var component in root.GetComponentsInChildren<Component>(true)) component.destroyed = true;
         }
     }
+    public static class Resources { public static T[] FindObjectsOfTypeAll<T>() where T : Object => Object.Loaded.OfType<T>().Where(x => x != null).ToArray(); }
     public class Component : Object
     {
         public GameObject gameObject;
@@ -91,7 +94,7 @@ namespace UnityEngine
         public int GetBlendShapeIndex(string name) => names.IndexOf(name);
         public void AddBlendShapeFrame(string name,float weight,Vector3[] vertices,Vector3[] normals,Vector3[] tangents) => names.Add(name);
     }
-    public class Renderer : Component { public bool enabled = true; }
+    public class Renderer : Component { public bool enabled = true; public Material[] sharedMaterials = new Material[0]; }
     public class SkinnedMeshRenderer : Renderer
     {
         public Mesh sharedMesh; public Transform[] bones; public Transform rootBone;
@@ -166,16 +169,28 @@ namespace UnityEditor
     }
     public sealed class SerializedProperty
     {
-        readonly Object target; readonly FieldInfo[] fields; int position = -1;
-        public SerializedProperty(Object target) { this.target = target; fields = EditorUtility.Fields(target.GetType()).Where(f => typeof(Object).IsAssignableFrom(f.FieldType)).ToArray(); }
-        public bool Next(bool children) => ++position < fields.Length;
+        sealed class Slot { public string path, type; public Func<Object> get; public Action<Object> set; }
+        readonly Slot[] slots; int position = -1;
+        public SerializedProperty(Object target) { slots = EditorUtility.Fields(target.GetType()).SelectMany(field => Slots(target, field)).ToArray(); }
+        static IEnumerable<Slot> Slots(Object target, FieldInfo field)
+        {
+            if (typeof(Object).IsAssignableFrom(field.FieldType))
+                yield return new Slot { path = field.Name, type = field.FieldType.Name, get = () => (Object)field.GetValue(target), set = value => field.SetValue(target, value) };
+            else if (field.FieldType.IsArray && typeof(Object).IsAssignableFrom(field.FieldType.GetElementType()) && field.GetValue(target) is Array items)
+                for (var index = 0; index < items.Length; index++)
+                {
+                    var item = index;
+                    yield return new Slot { path = field.Name + ".Array.data[" + item + "]", type = field.FieldType.GetElementType().Name, get = () => (Object)items.GetValue(item), set = value => items.SetValue(value, item) };
+                }
+        }
+        public bool Next(bool children) => ++position < slots.Length;
         public SerializedPropertyType propertyType => SerializedPropertyType.ObjectReference;
-        public string propertyPath => fields[position].Name;
-        public string type => fields[position].FieldType.Name;
+        public string propertyPath => slots[position].path;
+        public string type => slots[position].type;
         // Native MA reference-resolution cases run in Unity, not this adapter.
         public SerializedProperty FindPropertyRelative(string name) => null;
         public string stringValue => null;
-        public Object objectReferenceValue { get => (Object)fields[position].GetValue(target); set => fields[position].SetValue(target, value); }
+        public Object objectReferenceValue { get => slots[position].get(); set => slots[position].set(value); }
     }
     public static class AssetDatabase
     {
@@ -187,6 +202,8 @@ namespace UnityEditor
         public static bool IsValidFolder(string path) => path=="Assets" || folders.ContainsKey(path);
         public static string[] GetSubFolders(string path) => folders.Keys.Where(key => key.StartsWith(path+"/",StringComparison.Ordinal) && key.IndexOf('/',path.Length+1)<0).ToArray();
         public static void CreateAsset(Object value,string path) { value.persistent = true; assets.Add(path,value); }
+        public static string GetAssetPath(Object value) => assets.FirstOrDefault(item => ReferenceEquals(item.Value,value)).Key ?? "";
+        public static void RemoveObjectFromAsset(Object value) { assets.Remove(GetAssetPath(value)); value.persistent = false; }
         public static bool DeleteAsset(string path)
         {
             if (folders.Remove(path))

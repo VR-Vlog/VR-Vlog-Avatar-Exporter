@@ -113,6 +113,7 @@ namespace VRVlog.LilToonExporter
         }
         void OnGUI()
         {
+            if (source == null) { Close(); return; }
             ExporterWindowHeader.Layout(ExporterLocalization.T("ポーズを確認・調整"));
             if (options == null) return;
             if (manualOnly) { DrawSimple(); return; }

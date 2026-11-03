@@ -17,6 +17,9 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class MissingMeshAttributesTests
     {
+        // A morph the app drives: one nothing uses is left out of the VRM.
+        const string AuthoredMorph = "JawOpen";
+
         // Ascending source indices used by the pinned divided MeshWriter,
         // followed by UniVRM's concatenation of the two imported primitives.
         static readonly int[][] PrimitiveSources = { new[] { 0, 1, 3 }, new[] { 1, 2, 3 } };
