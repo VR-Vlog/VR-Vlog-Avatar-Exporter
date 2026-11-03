@@ -6,6 +6,7 @@ using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using UnityEditor;
 using UnityEngine;
 using VRVlog.FaceTracking;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
@@ -1361,7 +1362,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var metadata = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
                 var custom = (Dictionary<string, object>)((Dictionary<string, object>)metadata["expressions"])["custom"];
                 foreach (var key in custom.Keys.Where(key => key.StartsWith("UE/", StringComparison.Ordinal)).ToArray()) custom.Remove(key);
-                var morph = new Dictionary<string, object> { ["index"] = 2L, ["weight"] = .4 };
+                // Unused morphs are left out of the VRM, so look the index up by name.
+                var frontMesh = ((List<object>)glb.Json["meshes"]).Cast<Dictionary<string, object>>().ElementAt(Convert.ToInt32(nodes[frontIndex]["mesh"]));
+                var frontTargets = (List<object>)((Dictionary<string, object>)frontMesh["extras"])["targetNames"];
+                var morph = new Dictionary<string, object> { ["index"] = (long)frontTargets.IndexOf("LipFunnelUpperLeft"), ["weight"] = .4 };
+                Assert.That(morph["index"], Is.GreaterThanOrEqualTo(0L));
                 if (scope != "missing") morph["node"] = scope == "scoped" ? (long)frontIndex : (long)nodes.Length + 10;
                 const string authoredName = "UE/LipFunnelUpperLeft";
                 custom[authoredName] = new Dictionary<string, object> {
@@ -1820,6 +1825,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             Mesh menuMesh = null;
+            AnimationClip menuFace = null;
             Vrm10Instance imported = null;
             try
             {
@@ -1827,20 +1833,18 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Mesh.AddBlendShapeFrame("EyeClosedLeft", 100, Enumerable.Repeat(Vector3.up * .02f, fixture.Mesh.vertexCount).ToArray(), null, null);
                 fixture.Mesh.AddBlendShapeFrame("EyeClosedRight", 100, Enumerable.Repeat(Vector3.up * .02f, fixture.Mesh.vertexCount).ToArray(), null, null);
                 menuMesh = Object.Instantiate(fixture.Mesh);
-                const string target = "__VRVlog_Menu_JawOpenFixture";
+                const string target = "JawOpenMenuFixture";
                 menuMesh.AddBlendShapeFrame(target, 100, Enumerable.Repeat(Vector3.forward * .04f, menuMesh.vertexCount).ToArray(), null, null);
                 var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(); skins[0].sharedMesh = menuMesh;
                 foreach (var skin in skins) skin.sharedMaterial.shader = Shader.Find("lilToon");
+                menuFace = new AnimationClip { name = "JawOpen" };
+                AnimationUtility.SetEditorCurve(menuFace, EditorCurveBinding.FloatCurve(skins[0].name, typeof(SkinnedMeshRenderer), "blendShape." + target),
+                    AnimationCurve.Constant(0, 1, 100));
+                // The board's face goes through the production registrar and
+                // automatic UE injection, on real meshes without optional SDKs.
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Jaw menu namespace", "Tests",
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null);
-                var glb = GlbDocument.Read(bytes);
-                var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
-                var custom = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"];
-                foreach (var key in custom.Keys.Where(key => key.StartsWith("UE/", StringComparison.Ordinal)).ToArray()) custom.Remove(key);
-                // Exercise the production menu registrar before automatic UE
-                // injection, using real exported meshes without optional SDKs.
-                var entry = new VrmMenuExpressions.Expression { Name = "JawOpen" }; entry.Targets.Add(target);
-                bytes = VrmUnifiedExpressions.Add(VrmMenuExpressions.Add(glb.Write(), new List<VrmMenuExpressions.Expression> { entry }));
+                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
+                    listFaces: new[] { ("JawOpen", menuFace, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 // A menu face named after a tracking channel is numbered apart from it.
@@ -1874,6 +1878,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
                 if (menuMesh != null) Object.DestroyImmediate(menuMesh);
+                if (menuFace != null) Object.DestroyImmediate(menuFace);
             }
         }
     }
