@@ -165,7 +165,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void TheTextHasTheVersionsAndTheExportType()
         {
             var text = Text();
-            Assert.That(text, Does.Contain("Exporter " + LilToonExporterWindow.PackageVersion()));
+            Assert.That(text, Does.Contain("Exporter " + ExportEntry.PackageVersion()));
             Assert.That(text, Does.Contain("Unity " + Application.unityVersion));
             Assert.That(text, Does.Contain(" / lilToon "));
             Assert.That(text, Does.Contain("書き出し方法 かんたん転送"));

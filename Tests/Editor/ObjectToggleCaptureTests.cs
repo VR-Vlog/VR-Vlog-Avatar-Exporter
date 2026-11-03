@@ -18,7 +18,7 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ObjectToggleCaptureTests
     {
         [TearDown]
-        public void ResetFaultInjection() => ExportStageGuard.FaultInjection = null;
+        public void ResetFaultInjection() => ExportTestHooks.FaultInjection = null;
 
         static ObjectToggleData.State State(int value, params bool[] active)
         {
@@ -193,9 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void OnlyParametersOfLayersThatSwitchObjectsArePlayed()
         {
-            var folder = "__VRVlogObjectToggleLayers_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            var directory = "Assets/" + folder;
+            var directory = TempAssetFolder.Create("__VRVlogObjectToggleLayers_");
             try
             {
                 var fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
@@ -259,9 +257,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void SyncedLayersAndOverridesPlayEveryParameterWhenAnyOfTheirClipsSwitchesObjects()
         {
-            var folder = "__VRVlogObjectToggleSynced_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            var directory = "Assets/" + folder;
+            var directory = TempAssetFolder.Create("__VRVlogObjectToggleSynced_");
             try
             {
                 var serial = 0;
@@ -317,8 +313,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ExportWritesTheTogglesAndTheMeshesThatAreOffByDefault()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var avatar = new ToggleAvatar();
             var material = new Material(shader) { name = "Toggles" };
             try
@@ -349,15 +344,14 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFailedToggleStageLeavesTheDefaultOffMeshesOut()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var avatar = new ToggleAvatar();
             var material = new Material(shader) { name = "Toggles" };
             try
             {
                 foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
                 var calls = 0;
-                ExportStageGuard.FaultInjection = stage =>
+                ExportTestHooks.FaultInjection = stage =>
                 {
                     // The second call is the mapping after the export.
                     if (stage == ExportStage.ObjectToggles && ++calls == 2) throw new InvalidOperationException("injected toggles");
@@ -377,7 +371,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static byte[] Export(GameObject source, ICollection<string> warnings, ExportRecoveryReport report) =>
-            UniVrmOneClickExporter.Export(source, "Object toggles", "Tests", warnings,
+            UniVrmOneClickExporter.Export(source, "Object toggles", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                 gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
@@ -399,17 +393,15 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal ToggleAvatar()
             {
-                var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-                var parameterType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+                var parameterType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
                 if (descriptorType == null || menuType == null || parameterType == null)
                     Assert.Ignore("Install the real VRChat SDK to read Expression Menu toggles.");
                 Avatar = new AttachmentConnectionTests.Fixture();
                 try
                 {
-                    var folder = "__VRVlogObjectToggleTests_" + Guid.NewGuid().ToString("N");
-                    AssetDatabase.CreateFolder("Assets", folder);
-                    directory = "Assets/" + folder;
+                    directory = TempAssetFolder.Create("__VRVlogObjectToggleTests_");
                     var mesh = new Mesh { name = "Toggle part" };
                     mesh.vertices = new[] { new Vector3(-.1f, 1.6f, .1f), new Vector3(.1f, 1.6f, .1f), new Vector3(0, 1.8f, .1f) };
                     mesh.triangles = new[] { 0, 1, 2 };
@@ -453,9 +445,9 @@ namespace VRVlog.LilToonExporter.Tests
                     for (var i = 0; i < declared.Length; i++)
                     {
                         var row = Activator.CreateInstance(rowType);
-                        Set(row, "name", declared[i].Item1);
-                        Set(row, "valueType", declared[i].Item2);
-                        Set(row, "defaultValue", declared[i].Item3);
+                        VrcAvatar.Set(row, "name", declared[i].Item1);
+                        VrcAvatar.Set(row, "valueType", declared[i].Item2);
+                        VrcAvatar.Set(row, "defaultValue", declared[i].Item3);
                         rows.SetValue(row, i);
                     }
                     parameterField.SetValue(parameters, rows);
@@ -477,10 +469,10 @@ namespace VRVlog.LilToonExporter.Tests
                     fx.layers = layers;
 
                     var descriptor = Source.AddComponent(descriptorType);
-                    Set(descriptor, "customExpressions", true);
-                    Set(descriptor, "customizeAnimationLayers", true);
-                    Set(descriptor, "expressionsMenu", root);
-                    Set(descriptor, "expressionParameters", parameters);
+                    VrcAvatar.Set(descriptor, "customExpressions", true);
+                    VrcAvatar.Set(descriptor, "customizeAnimationLayers", true);
+                    VrcAvatar.Set(descriptor, "expressionsMenu", root);
+                    VrcAvatar.Set(descriptor, "expressionParameters", parameters);
                     Layers(descriptor, "baseAnimationLayers", new[] { "Base", "Additive", "Gesture", "Action", "FX" });
                     Layers(descriptor, "specialAnimationLayers", new[] { "Sitting", "TPose", "IKPose" });
                     foreach (var asset in owned.Where(EditorUtility.IsPersistent))
@@ -496,9 +488,6 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
 
-            static Type Find(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
-            static void Set(object target, string name, object value) => MenuImportSdkRecoveryTests.SdkFixture.Set(target, name, value);
-
             ScriptableObject Menu()
             {
                 var menu = ScriptableObject.CreateInstance(menuType);
@@ -512,15 +501,15 @@ namespace VRVlog.LilToonExporter.Tests
                 var controls = (IList)VrChatExpressionMenu.Member(menu, "controls");
                 var control = Activator.CreateInstance(controls.GetType().GetGenericArguments()[0]);
                 controls.Add(control);
-                Set(control, "name", name);
-                Set(control, "type", type);
-                Set(control, "value", value);
-                Set(control, "subMenu", subMenu);
+                VrcAvatar.Set(control, "name", name);
+                VrcAvatar.Set(control, "type", type);
+                VrcAvatar.Set(control, "value", value);
+                VrcAvatar.Set(control, "subMenu", subMenu);
                 if (parameterName != null)
                 {
                     var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType);
-                    Set(parameter, "name", parameterName);
-                    Set(control, "parameter", parameter);
+                    VrcAvatar.Set(parameter, "name", parameterName);
+                    VrcAvatar.Set(control, "parameter", parameter);
                 }
                 EditorUtility.SetDirty(menu);
             }
@@ -583,9 +572,9 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < types.Length; i++)
                 {
                     var row = Activator.CreateInstance(rowType);
-                    Set(row, "type", types[i]);
-                    Set(row, "isDefault", false);
-                    Set(row, "animatorController", fx);
+                    VrcAvatar.Set(row, "type", types[i]);
+                    VrcAvatar.Set(row, "isDefault", false);
+                    VrcAvatar.Set(row, "animatorController", fx);
                     rows.SetValue(row, i);
                 }
                 field.SetValue(descriptor, rows);

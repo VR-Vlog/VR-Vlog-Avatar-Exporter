@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
@@ -476,6 +478,236 @@ namespace VRVlog.LilToonExporter.Tests
                 var renderer = go.AddComponent<MeshRenderer>(); renderer.sharedMaterial = material; return renderer;
             }
             public void Dispose() { Object.DestroyImmediate(Source); Object.DestroyImmediate(Material); Object.DestroyImmediate(Mesh); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task ReloadedVrmIsFramedFromItsOwnBoundsWhenSourceHasAnOffsetParent(bool transformedParent)
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var parent = new GameObject("Offset preview parent");
+            var material = new Material(Shader.Find("lilToon"));
+            ExportRecoveryComparisonWindow window = null;
+            Texture2D image = null;
+            try
+            {
+                parent.transform.position = new Vector3(1.2f, .2f, -.3f);
+                if (transformedParent)
+                {
+                    parent.transform.rotation = Quaternion.Euler(0, 25, 0);
+                    parent.transform.localScale = Vector3.one * 1.1f;
+                }
+                f.Source.transform.SetParent(parent.transform, false);
+                var skins = f.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
+                foreach (var skin in skins) skin.sharedMaterial = material;
+                var sourceTransforms = f.Source.GetComponentsInChildren<Transform>(true);
+                var sourceMatrices = sourceTransforms.Select(t => t.localToWorldMatrix).ToArray();
+                var sourceVertices = f.Mesh.vertices;
+                var materialState = EditorJsonUtility.ToJson(material);
+                var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
+                    UniVrmOneClickExporter.Export(f.Source, "Framing regression", "Tests", warnings: warnings,
+                        exporterVersion: "0.11.5", lilToonVersion: "2.3.4",
+                        blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                        recoveryOptions: options, recoveryReport: report));
+                Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
+                window = ScriptableObject.CreateInstance<ExportRecoveryComparisonWindow>();
+                Set(window, "session", session);
+                await window.PrepareAsync();
+                Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
+                var loaded = Get<Vrm10Instance>(window, "imported");
+                var render = Get<PreviewRenderUtility>(window, "vrmRender");
+                var transforms = loaded.GetComponentsInChildren<Transform>(true);
+                var matrices = transforms.Select(t => t.localToWorldMatrix).ToArray();
+                var bounds = ExportRecoveryComparisonWindow.VisibleBounds(loaded.gameObject);
+                foreach (var yaw in new[] { 0f, 45f, 90f })
+                {
+                    Set(window, "yaw", yaw);
+                    window.RefreshPreviewFraming();
+                    image = window.CapturePreview(256, 256);
+                    var center = render.camera.WorldToViewportPoint(bounds.center);
+                    Assert.That(center.x, Is.EqualTo(.5f).Within(.001f), "yaw " + yaw);
+                    Assert.That(center.y, Is.EqualTo(.5f).Within(.001f), "yaw " + yaw);
+                    foreach (var corner in Corners(bounds))
+                    {
+                        var point = render.camera.WorldToViewportPoint(corner);
+                        Assert.That(point.z, Is.GreaterThan(render.camera.nearClipPlane).And.LessThan(render.camera.farClipPlane));
+                        Assert.That(point.x, Is.InRange(0f, 1f), "yaw " + yaw);
+                        Assert.That(point.y, Is.InRange(0f, 1f), "yaw " + yaw);
+                    }
+                    Object.DestroyImmediate(image); image = null;
+                }
+                Assert.That(transforms.Select(t => t.localToWorldMatrix), Is.EqualTo(matrices), "Camera framing must not move the loaded model to hide export offsets.");
+                Assert.That(sourceTransforms.Select(t => t.localToWorldMatrix), Is.EqualTo(sourceMatrices));
+                Assert.That(f.Source.transform.parent, Is.SameAs(parent.transform));
+                Assert.That(skins.All(s => s.sharedMesh == f.Mesh && s.sharedMaterial == material), Is.True);
+                Assert.That(f.Mesh.vertices, Is.EqualTo(sourceVertices));
+                Assert.That(EditorJsonUtility.ToJson(material), Is.EqualTo(materialState));
+            }
+            finally
+            {
+                if (image != null) Object.DestroyImmediate(image);
+                if (window != null) Object.DestroyImmediate(window);
+                f.Source.transform.SetParent(null, true);
+                Object.DestroyImmediate(parent);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        // Opening a scene destroys the editor objects no scene keeps. The reloaded VRM's
+        // avatar, settings and expressions belong to the window until it closes.
+        [Test]
+        public async Task ReloadedVrmKeepsItsObjectsWhenASceneOpens()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            ExportRecoveryComparisonWindow window = null;
+            try
+            {
+                foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
+                    UniVrmOneClickExporter.Export(f.Source, "Scene opening", "Tests", warnings: warnings,
+                        exporterVersion: "0.11.5", lilToonVersion: "2.3.4",
+                        blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                        recoveryOptions: options, recoveryReport: report));
+                Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
+                window = ScriptableObject.CreateInstance<ExportRecoveryComparisonWindow>();
+                Set(window, "session", session);
+                await window.PrepareAsync();
+                Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
+                var first = Get<Vrm10Instance>(window, "imported");
+                var firstResources = LoadedResources(first);
+
+                // Loading again releases the first load.
+                await window.PrepareAsync();
+                Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
+                Assert.That(first == null, Is.True);
+                Assert.That(Alive(firstResources), Is.Empty);
+                var loaded = Get<Vrm10Instance>(window, "imported");
+                var resources = LoadedResources(loaded);
+                Assert.That(resources.OfType<VRM10Object>(), Is.Not.Empty);
+
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+                Assert.That(resources.Where(value => value == null).Count(), Is.Zero, "objects destroyed by opening a scene");
+                Assert.That(loaded.Vrm != null && loaded.GetComponent<Animator>().avatar != null, Is.True);
+                Assert.That(window.HasVrmPreview, Is.True);
+
+                // DontSave keeps them only until the window closes.
+                Object.DestroyImmediate(window); window = null;
+                Assert.That(loaded == null, Is.True);
+                Assert.That(Alive(resources), Is.Empty);
+            }
+            finally
+            {
+                if (window != null) Object.DestroyImmediate(window);
+                if (material != null) Object.DestroyImmediate(material);
+            }
+        }
+
+        static Object[] LoadedResources(Vrm10Instance loaded) =>
+            loaded.GetComponent<RuntimeGltfInstance>().RuntimeResources.Select(value => value.Item2).ToArray();
+        static string[] Alive(Object[] objects) => objects.Where(value => value != null).Select(value => value.GetType().Name + " " + value.name).ToArray();
+
+        static Vector3[] Corners(Bounds bounds) => (from x in new[] { -1f, 1f }
+            from y in new[] { -1f, 1f }
+            from z in new[] { -1f, 1f }
+            select bounds.center + Vector3.Scale(bounds.extents, new Vector3(x, y, z))).ToArray();
+        static T Get<T>(object target, string name) => (T)target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(target);
+        static void Set(object target, string name, object value) => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(target, value);
+
+        [TestCase("existing")][TestCase("empty")]
+        public void OpeningRecoveryKeepsTheFirstRealFailureWithoutRepeatingTheExport(string reportKind)
+        {
+            using var fixture = new RecoveryFixture();
+            fixture.Material.SetFloat("_UseAudioLink", 1);
+            var failure = AudioLinkFailure(fixture.Material);
+            var report = reportKind == "missing" ? null : reportKind == "empty"
+                ? new ExportRecoveryReport { Stage = "材質保存" }
+                : ExportRecoveryReport.FromException(fixture.Source, failure, "材質保存");
+            var calls = 0;
+            var session = ExportRecoverySession.FromFailedExport(fixture.Source, "unused.vrm",
+                (options, nextReport, warnings) => { calls++; return new byte[] { 1 }; }, failure, report);
+            Assert.That(calls, Is.Zero, "Opening diagnostics must not repeat the failed normal export.");
+            Assert.That(session.Failure, Is.SameAs(failure));
+            if (reportKind == "existing") Assert.That(session.Report, Is.SameAs(report));
+            if (report != null) Assert.That(session.Report.Stage, Is.EqualTo("材質保存"));
+            Assert.That(session.Report.Succeeded, Is.False);
+            Assert.That(session.AvailableDiagnostics.Single().Action.Material, Is.SameAs(fixture.Material));
+            Assert.That(session.SelectedOptions.Actions, Is.Empty);
+            Assert.That(session.LastSuccess, Is.Null); Assert.That(session.HasPendingSave, Is.False); Assert.That(session.CanSave, Is.False);
+            Assert.That(session.CheckForChanges(), Is.False); Assert.That(session.WasCanceled, Is.False);
+        }
+
+        [Test]
+        public void ExplicitRecoveryRetryCreatesAFreshDraftAndOnlyConfirmedSaveReplacesTheDestination()
+        {
+            using var fixture = new RecoveryFixture();
+            fixture.Material.SetFloat("_UseAudioLink", 1);
+            var failure = AudioLinkFailure(fixture.Material);
+            var report = ExportRecoveryReport.FromException(fixture.Source, failure);
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
+            var directory = Path.Combine(Path.GetTempPath(), "vrvlog-seeded-recovery-" + Guid.NewGuid().ToString("N"));
+            var destination = Path.Combine(directory, "avatar.vrm");
+            var existing = new byte[] { 41, 42, 43 }; var calls = 0;
+            try
+            {
+                Directory.CreateDirectory(directory); File.WriteAllBytes(destination, existing);
+                var session = ExportRecoverySession.FromFailedExport(fixture.Source, destination, (options, nextReport, warnings) =>
+                {
+                    calls++;
+                    Assert.That(options.Actions.Single().Kind, Is.EqualTo(ExportRecoveryActionKind.DisableAudioLink));
+                    using var copy = ExportRecoveryPreview.Create(fixture.Source, options);
+                    Assert.That(copy.Copy.GetComponentInChildren<Renderer>().sharedMaterial.GetFloat("_UseAudioLink"), Is.Zero);
+                    return bytes;
+                }, failure, report);
+                var recipe = new ExportRecoveryOptions(); recipe.Actions.Add(session.AvailableDiagnostics.Single().Action);
+                Assert.That(calls, Is.Zero); Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
+                Assert.That(session.Attempt(recipe), Is.True); Assert.That(calls, Is.EqualTo(1));
+                Assert.That(session.CanSave, Is.True); Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
+                Assert.That(fixture.Material.GetFloat("_UseAudioLink"), Is.EqualTo(1), "Remedies only affect the fresh copy.");
+                session.SavePending();
+                Assert.That(File.ReadAllBytes(destination), Is.EqualTo(bytes)); Assert.That(Directory.GetFiles(directory), Is.EqualTo(new[] { destination }));
+                Assert.That(session.HasPendingSave, Is.False); Assert.That(session.CanSave, Is.False);
+            }
+            finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+        }
+
+        [TestCase("retry")][TestCase("save")]
+        public void SeedingARealFailureNeverWeakensLaterSourceChangeGuards(string operation)
+        {
+            using var fixture = new RecoveryFixture();
+            fixture.Material.SetFloat("_UseAudioLink", 1);
+            var failure = AudioLinkFailure(fixture.Material);
+            var destination = Path.Combine(Path.GetTempPath(), "vrvlog-seeded-stale-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var existing = new byte[] { 61, 62 }; var calls = 0;
+            try
+            {
+                File.WriteAllBytes(destination, existing);
+                var session = ExportRecoverySession.FromFailedExport(fixture.Source, destination,
+                    (options, report, warnings) => { calls++; return new byte[] { 1 }; }, failure,
+                    ExportRecoveryReport.FromException(fixture.Source, failure));
+                if (operation == "save") Assert.That(session.Attempt(null), Is.True);
+                var priorCalls = calls; var lastSuccess = session.LastSuccess;
+                fixture.Material.SetColor("_Color", Color.red);
+                if (operation == "retry") Assert.That(session.Attempt(null), Is.False);
+                else Assert.Throws<InvalidOperationException>(() => session.SavePending());
+                Assert.That(session.IsInvalidated, Is.True); Assert.That(session.CanSave, Is.False);
+                Assert.That(session.AvailableDiagnostics, Is.Empty); Assert.That(session.LastSuccess, Is.SameAs(lastSuccess));
+                Assert.That(calls, Is.EqualTo(priorCalls)); Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
+            }
+            finally { if (File.Exists(destination)) File.Delete(destination); }
+        }
+
+        [Test]
+        public void CancellationAndMissingFailureCannotStartRecovery()
+        {
+            using var fixture = new RecoveryFixture();
+            var calls = 0;
+            byte[] Create(ExportRecoveryOptions options, ExportRecoveryReport report, System.Collections.Generic.ICollection<string> warnings)
+            { calls++; return new byte[] { 1 }; }
+            Assert.Throws<ArgumentNullException>(() => ExportRecoverySession.FromFailedExport(fixture.Source, "unused.vrm", Create, null, null));
+            Assert.Throws<ArgumentException>(() => ExportRecoverySession.FromFailedExport(fixture.Source, "unused.vrm", Create, new OperationCanceledException(), null));
+            Assert.That(calls, Is.Zero);
         }
     }
 }

@@ -82,7 +82,6 @@ namespace VRVlog.LilToonExporter
 
         internal sealed class Source
         {
-            internal FacialProjectionScope.Session FacialProjectionSession;
             internal RuntimeAnimatorController Controller;
             internal readonly Dictionary<string, float> Defaults = new Dictionary<string, float>(StringComparer.Ordinal);
             internal readonly HashSet<string> ExpressionParameters = new HashSet<string>(StringComparer.Ordinal);
@@ -102,13 +101,7 @@ namespace VRVlog.LilToonExporter
             internal readonly List<string> Messages = new List<string>();
         }
 
-        internal static object Root(GameObject avatar)
-        {
-            var descriptor = Descriptor(avatar);
-            return descriptor != null && Member(descriptor, "customExpressions") is bool enabled && enabled
-                ? Member(descriptor, "expressionsMenu") : null;
-        }
-        static Component Descriptor(GameObject avatar) => avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
+        internal static Component Descriptor(GameObject avatar) => avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
             c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         internal static Source ReadMenu(object menu, VrChatMenuImportPolicy policy = null)
@@ -148,11 +141,11 @@ namespace VRVlog.LilToonExporter
             foreach (var component in avatar.GetComponentsInChildren<Component>(true))
             {
                 if (component == null) continue;
-                var name = component.GetType().Name;
+                var type = component.GetType().FullName;
                 var parameter = Member(component, "parameter") as string;
                 if (string.IsNullOrEmpty(parameter)) continue;
-                if (name == "VRCContactReceiver") result.ExternalParameters.Add(parameter);
-                if (name == "VRCPhysBone")
+                if (type == ExportGimmickRules.ContactReceiver) result.ExternalParameters.Add(parameter);
+                if (type == PhysBoneSpringExport.PhysBoneType)
                     foreach (var suffix in new[] { "_IsGrabbed", "_IsPosed", "_Angle", "_Stretch", "_Squish" })
                         result.ExternalParameters.Add(parameter + suffix);
             }

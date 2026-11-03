@@ -94,7 +94,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var error = Assert.Throws<System.InvalidOperationException>(() =>
-                UniVrmOneClickExporter.Export(fixture.Source, "License regression", author, licenseOptions: SelectedLicense(2)));
+                UniVrmOneClickExporter.Export(fixture.Source, "License regression", author, exporterVersion: null, licenseOptions: SelectedLicense(2)));
             Assert.That(error.Message, Does.Contain("作者名"));
         }
 

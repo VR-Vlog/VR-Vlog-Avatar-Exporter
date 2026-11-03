@@ -664,7 +664,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
                 foreach (var text in texts)
                 {
-                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
+                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + CloudTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
                     Assert.That(entry.Success, Is.True);
                     var translated = entry.Groups[1].Value;
                     Assert.That(Regex.IsMatch(translated, "[ぁ-んァ-ヶ]"), Is.False);
@@ -708,11 +708,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         }
 
         // The screen's own polling opens the result list once the phone has taken the avatar, and
-        // only once; while it waits, nothing opens. The exporter hands the list over through its binding.
+        // only once; while it waits, nothing opens.
         [Test]
         public async Task TheScreenOpensTheResultListWhenTheTransferHasEnded()
         {
-            Assert.That(AppTransferPanel.ExportEntry.Resolve()?.LastResult, Is.Not.Null, "The transfer screen reaches the exporter's result list.");
             const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
             var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
             var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);

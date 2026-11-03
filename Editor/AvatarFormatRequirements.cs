@@ -16,14 +16,13 @@ namespace VRVlog.LilToonExporter
             var glb = GlbDocument.Read(bytes);
             var json = glb.Json;
             var required = new Dictionary<string, object>();
-            if (json.TryGetValue("extensionsUsed", out var rawUsed) && rawUsed is List<object> used)
+            if (JsonAccess.List(json, "extensionsUsed") is List<object> used)
                 foreach (var name in used.OfType<string>().Where(name => name.StartsWith("VRVLOG_", StringComparison.Ordinal)).Distinct())
                     required[name] = AvatarFormatVersions.RequiredAppVersion(name, Version(json, name));
-            if (!(json.TryGetValue("asset", out var rawAsset) && rawAsset is Dictionary<string, object> asset))
-                throw new InvalidOperationException("glTF asset is missing.");
+            var asset = JsonAccess.Object(json, "asset") ?? throw new InvalidOperationException("glTF asset is missing.");
             var extras = asset.TryGetValue("extras", out var rawExtras) ? rawExtras as Dictionary<string, object> : null;
             if (rawExtras != null && extras == null) throw new InvalidOperationException("glTF asset.extras is not an object.");
-            var existing = extras != null && extras.TryGetValue(AvatarFormatVersions.RequiredAppVersionsKey, out var value) ? value as Dictionary<string, object> : null;
+            var existing = JsonAccess.Object(extras, AvatarFormatVersions.RequiredAppVersionsKey);
             // Unchanged requirements keep the bytes as they are.
             if (required.Count == 0 ? extras == null || !extras.ContainsKey(AvatarFormatVersions.RequiredAppVersionsKey) :
                 existing != null && existing.Count == required.Count && required.All(pair => existing.TryGetValue(pair.Key, out var version) && Equals(version, pair.Value)))
@@ -40,9 +39,8 @@ namespace VRVlog.LilToonExporter
         // VRVLOG_materials_liltoon carries schemaMajor; the others schemaVersion.
         static int Version(Dictionary<string, object> json, string name)
         {
-            if (!(json.TryGetValue("extensions", out var raw) && raw is Dictionary<string, object> extensions &&
-                extensions.TryGetValue(name, out var rawExtension) && rawExtension is Dictionary<string, object> extension))
-                throw new InvalidOperationException("Declared extension is missing: " + name);
+            var extension = JsonAccess.Object(JsonAccess.Object(json, "extensions"), name)
+                ?? throw new InvalidOperationException("Declared extension is missing: " + name);
             var key = name == LilToon.LilToonFullContract.ExtensionName ? "schemaMajor" : "schemaVersion";
             if (!extension.TryGetValue(key, out var number) || !(number is long || number is int || number is double))
                 throw new InvalidOperationException("Extension " + name + " has no " + key + ".");

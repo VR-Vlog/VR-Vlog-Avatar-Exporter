@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using VRVlog.AvatarFormats;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
@@ -84,8 +85,7 @@ namespace VRVlog.LilToonExporter
                 // AAO registers cloned expression assets with the build's
                 // public NDMF registry. Retain that provenance after Finish;
                 // clip names and CustomClips list positions are mutable.
-                var registryInterface = objectRegistry.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-                assetReference = registryInterface?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
+                assetReference = NdmfExportPreparation.RegistryGetReference(objectRegistry);
                 if (assetReference == null) throw new InvalidOperationException("最適化後の表情の移動情報を取得できませんでした。");
             }
             if (clone.GetComponent<ExportOptimizationMarker>() != null)
@@ -152,13 +152,8 @@ namespace VRVlog.LilToonExporter
             catch { Dispose(); throw; }
         }
 
-        static bool IsAvatarOptimizerAuthoring(Component component)
-        {
-            if (component == null) return false;
-            for (var type = component.GetType(); type != null; type = type.BaseType)
-                if (type.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
-            return false;
-        }
+        static bool IsAvatarOptimizerAuthoring(Component component) =>
+            component != null && ExportTypeNames.InheritsFrom(component.GetType(), ExportTypeNames.AaoAvatarTag);
 
         static bool Generated(string name) => name != null && (name.StartsWith("__VRVlog_Menu_", StringComparison.Ordinal) ||
             name.StartsWith("__VRVlog_Endpoint_", StringComparison.Ordinal) ||
@@ -588,19 +583,7 @@ namespace VRVlog.LilToonExporter
             // Validate authored declarations with the existing implementation,
             // but suppress raw-name inference: optimization can move two same-
             // named raw routes into one mesh or rename them beyond recognition.
-            var input = GlbDocument.Read(bytes);
-            var meshList = JsonArray(input.Json, "meshes");
-            var originalNames = new Dictionary<int, List<object>>();
-            for (var index = 0; index < meshList.Count; index++)
-            {
-                var extras = Obj(meshList[index] as Dictionary<string, object>, "extras", false);
-                if (extras == null || !extras.TryGetValue("targetNames", out var raw) || !(raw is List<object> names)) continue;
-                originalNames.Add(index, names);
-                extras["targetNames"] = names.Select((name, shape) => (object)("__VRVlog_Optimized_" + shape)).ToList();
-            }
-            var glb = GlbDocument.Read(VrmUnifiedExpressions.Add(input.Write(), warnings));
-            var outputMeshes = JsonArray(glb.Json, "meshes");
-            foreach (var pair in originalNames) Obj(outputMeshes[pair.Key] as Dictionary<string, object>, "extras", true)["targetNames"] = pair.Value;
+            var glb = GlbDocument.Read(VrmUnifiedExpressions.Add(bytes, warnings, inferRawNames: false));
             var custom = Custom(glb.Json);
             var added = 0;
             foreach (var group in unified.GroupBy(item => item.Canonical, StringComparer.Ordinal))
@@ -718,7 +701,7 @@ namespace VRVlog.LilToonExporter
             ["overrideBlink"] = "none", ["overrideMouth"] = "none", ["overrideLookAt"] = "none"
         };
         static bool HasBindings(Dictionary<string, object> expression) => expression != null && new[] { "morphTargetBinds", "materialColorBinds", "textureTransformBinds" }
-            .Any(key => expression.TryGetValue(key, out var value) && value is List<object> bindings && bindings.Count > 0);
+            .Any(key => JsonAccess.List(expression, key)?.Count > 0);
         static Dictionary<string, object> Custom(Dictionary<string, object> json) => Obj(Obj(Obj(Obj(json, "extensions", false), "VRMC_vrm", false), "expressions", true), "custom", true);
         static Dictionary<string, object> Obj(Dictionary<string, object> parent, string name, bool create)
         {
@@ -728,10 +711,10 @@ namespace VRVlog.LilToonExporter
                 if (!create) return null;
                 parent[name] = value = new Dictionary<string, object>();
             }
-            return value as Dictionary<string, object> ?? throw new InvalidOperationException("追跡表情のVRM情報が不正です: " + name);
+            return JsonAccess.Object(value, () => new InvalidOperationException("追跡表情のVRM情報が不正です: " + name));
         }
-        static List<object> JsonArray(Dictionary<string, object> parent, string name) => parent != null && parent.TryGetValue(name, out var value) && value is List<object> list
-            ? list : throw new InvalidOperationException("追跡表情のVRM配列がありません: " + name);
+        static List<object> JsonArray(Dictionary<string, object> parent, string name) =>
+            JsonAccess.List(JsonAccess.Get(parent, name), () => new InvalidOperationException("追跡表情のVRM配列がありません: " + name));
         void RequireAlive() { if (disposed) throw new ObjectDisposedException(nameof(ExportOptimizationBindings)); }
         void RequireApplied() { RequireAlive(); if (!applied) throw new InvalidOperationException("最適化後の表情参照が未確定です。"); }
         public void Dispose()

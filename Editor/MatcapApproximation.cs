@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.MobileMaterialMath;
 
 namespace VRVlog.LilToonExporter
 {
@@ -32,11 +33,10 @@ namespace VRVlog.LilToonExporter
             internal OverLimit() : base("The MatCap images exceed the mobile texture limit.") { }
         }
 
-        internal static bool Enabled(Material material) =>
-            material.HasProperty("_UseMatCap") && material.GetFloat("_UseMatCap") > 0.5f;
+        internal static bool Enabled(Material material) => MobileMaterialMath.Enabled(material, "_UseMatCap");
 
         internal static int Mode(Material material) =>
-            Mathf.RoundToInt(material.HasProperty("_MatCapBlendMode") ? material.GetFloat("_MatCapBlendMode") : Add);
+            Mathf.RoundToInt(Float(material, "_MatCapBlendMode", Add));
 
         // The MatCap has a blend mask, so MToon's MatCap over the whole mesh
         // would light parts lilToon leaves alone.
@@ -182,7 +182,6 @@ namespace VRVlog.LilToonExporter
             return mask == Texture2D.whiteTexture ? null : mask;
         }
 
-        private static float Float(Material material, string property, float fallback) => material.HasProperty(property) ? material.GetFloat(property) : fallback;
         private static Texture Texture(Material material, string property) => material.HasProperty(property) ? material.GetTexture(property) : null;
     }
 }

@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -23,8 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__MergedFixedNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__MergedFixedNeutral_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
             controller.AddParameter("Voice", AnimatorControllerParameterType.Float);
@@ -52,70 +49,40 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
 
-        private static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip, bool defaults = false)
-        {
-            var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = defaults; return state;
-        }
-
-        private AnimatorStateMachine Layer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers; layers[layers.Length - 1].defaultWeight = 1;
-            controller.layers = layers; return layers[layers.Length - 1].stateMachine;
-        }
-
         private void RelayAndPupil(bool defaults, bool timed)
         {
-            var relay = Layer("Equivalent parameter relay"); var clip = Clip("Shared relay");
+            var relay = FxGraph.Layer(controller, "Equivalent parameter relay"); var clip = Clip("Shared relay");
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Relay"), AnimationCurve.Constant(0, 1, 1));
-            var initial = State(relay, "Initial", clip, defaults); var next = State(relay, "Equivalent", clip, defaults);
+            var initial = FxGraph.State(relay, "Initial", clip, defaults); var next = FxGraph.State(relay, "Equivalent", clip, defaults);
             relay.defaultState = initial;
             var transition = initial.AddTransition(next); transition.hasExitTime = timed; transition.exitTime = .01f;
             transition.hasFixedDuration = true; transition.duration = 10;
             if (!timed) transition.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
-            var permanent = Layer("Permanent pupil"); permanent.defaultState = State(permanent, "Always", Clip("Pupil", "Pupil removal", 100));
+            var permanent = FxGraph.Layer(controller, "Permanent pupil"); permanent.defaultState = FxGraph.State(permanent, "Always", Clip("Pupil", "Pupil removal", 100));
         }
 
         private Dictionary<string, float> Native(bool select, bool requireRelay = true)
         {
-            var copy = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Merged neutral reference");
-            graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
+            using var native = new NativeFxPlayback(avatar, controller, defaultWeights: true);
+            var playable = native.Playable;
+            playable.SetInteger("Menu", 0); playable.SetFloat("Voice", 0); native.Start();
+            native.Run(120);
+            if (select)
             {
-                var animator = copy.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.applyRootMotion = false; animator.fireEvents = false;
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var layer = 0; layer < controller.layers.Length; layer++)
-                    playable.SetLayerWeight(layer, layer == 0 ? 1 : controller.layers[layer].defaultWeight);
-                AnimationPlayableOutput.Create(graph, "Face", animator).SetSourcePlayable(playable);
-                playable.SetInteger("Menu", 0); playable.SetFloat("Voice", 0); graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                if (select)
-                {
-                    playable.SetInteger("Menu", 1);
-                    for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                }
-                if (requireRelay)
-                    Assert.That(playable.IsInTransition(1), Is.True, "Exercise the equivalent-state proof during a real native transition.");
-                var skin = copy.GetComponentInChildren<SkinnedMeshRenderer>();
-                return Enumerable.Range(0, mesh.blendShapeCount).ToDictionary(mesh.GetBlendShapeName, skin.GetBlendShapeWeight);
+                playable.SetInteger("Menu", 1);
+                native.Run(120);
             }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            if (requireRelay)
+                Assert.That(playable.IsInTransition(1), Is.True, "Exercise the equivalent-state proof during a real native transition.");
+            var skin = native.Copy.GetComponentInChildren<SkinnedMeshRenderer>();
+            return Enumerable.Range(0, mesh.blendShapeCount).ToDictionary(mesh.GetBlendShapeName, skin.GetBlendShapeWeight);
         }
 
         private void SetDescriptorFx()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(candidate => candidate != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             var descriptor = avatar.AddComponent(type);
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
-            kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, controller);
         }
 
         [TestCase(false)]
@@ -123,8 +90,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void NeutralStartupWritesAndPermanentMorphSurviveEquivalentTimedRelay(bool defaults)
         {
             var machine = controller.layers[0].stateMachine;
-            var startup = State(machine, "Startup", Clip("Startup", "Face size", 75)); machine.defaultState = startup;
-            var held = State(machine, "Held", null);
+            var startup = FxGraph.State(machine, "Startup", Clip("Startup", "Face size", 75)); machine.defaultState = startup;
+            var held = FxGraph.State(machine, "Held", null);
             var transition = startup.AddTransition(held); transition.hasExitTime = true; transition.exitTime = .01f; transition.duration = 0;
             RelayAndPupil(defaults, true); SetDescriptorFx();
             var sourceJson = EditorJsonUtility.ToJson(controller); var expected = Native(false);
@@ -138,9 +105,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         private void FractionalPupil(bool defaults = false)
         {
-            var idle = Layer("Empty gesture"); idle.defaultState = State(idle, "Neutral", null);
-            var permanent = Layer("Fractional pupil");
-            permanent.defaultState = State(permanent, "Always", Clip("Pupil", "Pupil removal", 100), defaults);
+            var idle = FxGraph.Layer(controller, "Empty gesture"); idle.defaultState = FxGraph.State(idle, "Neutral", null);
+            var permanent = FxGraph.Layer(controller, "Fractional pupil");
+            permanent.defaultState = FxGraph.State(permanent, "Always", Clip("Pupil", "Pupil removal", 100), defaults);
             var layers = controller.layers; layers[layers.Length - 1].defaultWeight = .5f; controller.layers = layers;
             SetDescriptorFx();
         }
@@ -155,7 +122,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (automatic) AnimationUtility.SetEditorCurve(baseClip,
                 EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Linear(0, 0, 30, 100));
             var machine = controller.layers[0].stateMachine;
-            machine.defaultState = State(machine, "Base", baseClip);
+            machine.defaultState = FxGraph.State(machine, "Base", baseClip);
             FractionalPupil(defaults);
             var skin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
             skin.SetBlendShapeWeight(mesh.GetBlendShapeIndex("Pupil removal"), 20);
@@ -183,7 +150,7 @@ namespace VRVlog.LilToonExporter.Tests
             var baseClip = Clip("Automatic base", "Blink");
             AnimationUtility.SetEditorCurve(baseClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
                 AnimationCurve.Linear(0, 0, 30, 100));
-            var machine = controller.layers[0].stateMachine; machine.defaultState = State(machine, "Live blink", baseClip);
+            var machine = controller.layers[0].stateMachine; machine.defaultState = FxGraph.State(machine, "Live blink", baseClip);
             var unsafeClip = Clip("Unobserved callback or object", "Blink");
             if (animationEvent) AnimationUtility.SetAnimationEvents(unsafeClip,
                 new[] { new AnimationEvent { time = 30, functionName = "FutureCallback" } });
@@ -194,7 +161,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetObjectReferenceCurve(unsafeClip, EditorCurveBinding.PPtrCurve("Face", typeof(SkinnedMeshRenderer), "m_Mesh"),
                     new[] { new ObjectReferenceKeyframe { time = 0, value = replacement } });
             }
-            var alternative = State(machine, "Alternative unsupported motion", unsafeClip);
+            var alternative = FxGraph.State(machine, "Alternative unsupported motion", unsafeClip);
             if (reachable)
             {
                 var transition = machine.defaultState.AddTransition(alternative);
@@ -246,8 +213,8 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(baseClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
                 AnimationCurve.Linear(0, 0, 30, 100));
             var machine = controller.layers[0].stateMachine;
-            var initial = State(machine, "Live blink", baseClip); machine.defaultState = initial;
-            var held = State(machine, "Future empty base", null);
+            var initial = FxGraph.State(machine, "Live blink", baseClip); machine.defaultState = initial;
+            var held = FxGraph.State(machine, "Future empty base", null);
             var transition = initial.AddTransition(held); transition.hasExitTime = true; transition.exitTime = 30; transition.duration = 0;
             FractionalPupil();
             var sourceJson = EditorJsonUtility.ToJson(controller);

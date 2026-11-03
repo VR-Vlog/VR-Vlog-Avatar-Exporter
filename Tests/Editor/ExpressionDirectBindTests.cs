@@ -67,8 +67,11 @@ namespace VRVlog.LilToonExporter.Tests
             internal List<VrmMenuExpressions.Expression> Bake(params VrChatExpressionMenu.Entry[] entries)
             {
                 var menu = new VrChatExpressionMenu.Source(); menu.Entries.AddRange(entries);
+                // Bindings are captured before the rest pose is preserved, as the export does.
+                using var bindings = new PreparedExpressionBindings(Avatar.Copy, menu, Avatar.Source);
+                bindings.Capture(menu);
                 AvatarBaseShape.Preserve(Avatar.Source, Avatar.Copy, Owned, null);
-                return VrChatExpressionBaker.Bake(Avatar.Source, Avatar.Copy, menu, Owned, null);
+                return VrChatExpressionBaker.Bake(Avatar.Copy, menu, Owned, null, bindings);
             }
 
             // The authored source pose: rest weights with the entry values on
@@ -238,12 +241,14 @@ namespace VRVlog.LilToonExporter.Tests
             using var scene = new Scene();
             var mesh = Visemes(scene, "Mouth_rest", "Mouth_open");
             var slots = new[] { "Mouth_rest", "Mouth_open" };
+            var menu = new VrChatExpressionMenu.Source();
+            menu.Entries.Add(Entry("Open", ("Front", "Mouth_rest", 0), ("Front", "Mouth_open", 100)));
+            using var bindings = new PreparedExpressionBindings(scene.Avatar.Copy, menu, scene.Avatar.Source);
+            bindings.Capture(menu);
             AvatarBaseShape.Preserve(scene.Avatar.Source, scene.Avatar.Copy, scene.Owned, null,
                 visemeRenderer: scene.Avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>(), visemeShapes: slots);
             var copy = scene.Copy("Front");
-            var menu = new VrChatExpressionMenu.Source();
-            menu.Entries.Add(Entry("Open", ("Front", "Mouth_rest", 0), ("Front", "Mouth_open", 100)));
-            var expression = VrChatExpressionBaker.Bake(scene.Avatar.Source, scene.Avatar.Copy, menu, scene.Owned, null, null, copy, slots).Single();
+            var expression = VrChatExpressionBaker.Bake(scene.Avatar.Copy, menu, scene.Owned, null, bindings, copy, slots).Single();
             Assert.That(expression.Direct, Is.Empty);
             AssertVertices(Pose(mesh, new[] { 0f, 100f, 0f }), Exported(copy, expression), "Open");
         }
@@ -378,7 +383,7 @@ namespace VRVlog.LilToonExporter.Tests
             };
             var bytes = VrmMenuExpressions.Add(GlbDocument.Create(root, Array.Empty<byte>()).Write(), expressions);
             // Both entries are the rest face, so they are written once.
-            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
+            Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1));
             Assert.That(expressions[1].MergedInto, Is.EqualTo(expressions[0].RegisteredName));
         }
 

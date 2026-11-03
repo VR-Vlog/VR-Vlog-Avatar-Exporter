@@ -153,7 +153,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in skins) skin.sharedMaterial.shader = lilToon;
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
                 blink.Both.Add(new BlinkShapeBinding { Renderer = skins.Single(s => s.name == "Front"), Shape = "Blink" });
-                return UniVrmOneClickExporter.Export(fixture.Source, "App preview", "Tests", new List<string>(),
+                return UniVrmOneClickExporter.Export(fixture.Source, "App preview", "Tests", warnings: new List<string>(),
                     exporterVersion: "app-preview-test", lilToonVersion: "2.3.4", blinkOptions: blink);
             }
             finally

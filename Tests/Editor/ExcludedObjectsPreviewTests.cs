@@ -12,17 +12,14 @@ namespace VRVlog.LilToonExporter.Tests
     // once, from a copy made once for the page, and leaves nothing behind.
     public sealed class ExcludedObjectsPreviewTests
     {
-        const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        static readonly Type WindowType = typeof(ExperimentalExpressionCaptureWindow);
-
         static void Drain(ExperimentalExpressionCaptureWindow window)
         {
-            for (var step = 0; step < 10 && WindowType.GetField("pending", Flags).GetValue(window) != null; step++)
-                WindowType.GetMethod("Advance", Flags).Invoke(window, null);
-            Assert.That(WindowType.GetField("pending", Flags).GetValue(window), Is.Null);
+            for (var step = 0; step < 10 && window.Field("pending") != null; step++)
+                window.Call("Advance");
+            Assert.That(window.Field("pending"), Is.Null);
         }
 
-        static int OwnedCopies(string name) => Resources.FindObjectsOfTypeAll<GameObject>()
+        internal static int OwnedCopies(string name) => Resources.FindObjectsOfTypeAll<GameObject>()
             .Count(item => item != null && item.name == name && item.transform.parent == null && EditorSceneManager.IsPreviewScene(item.scene));
 
         [Test]
@@ -30,15 +27,14 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var scenePath = "Assets/ExcludedObjectsPreview-" + Guid.NewGuid().ToString("N") + ".unity";
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             var fixture = new AttachmentConnectionTests.Fixture();
             try
             {
-                WindowType.GetField("source", Flags).SetValue(window, fixture.Source);
-                WindowType.GetMethod("Prepare", Flags).Invoke(window, null);
+                window.Load(fixture.Source);
                 Assert.That(EditorSceneManager.SaveScene(scene, scenePath), Is.True);
                 window.GoTo(ExperimentalExpressionCaptureWindow.ObjectsPage); Drain(window);
-                var session = WindowType.GetField("session", Flags).GetValue(window);
+                var session = window.Field("session");
                 var copiesBefore = OwnedCopies(fixture.Source.name);
                 var undoBefore = Undo.GetCurrentGroup();
 
@@ -54,24 +50,24 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(preview.Shows(front) && preview.Shows(back), Is.True);
 
                 // 除外: gone from the preview, nothing rebuilt, the avatar as it was.
-                WindowType.GetField("excludedObjectEdits", Flags).SetValue(window, new System.Collections.Generic.List<GameObject> { front });
+                window.SetField("excludedObjectEdits", new System.Collections.Generic.List<GameObject> { front });
                 window.RefreshObjectsPreview();
                 Assert.That(preview.Shows(front), Is.False);
                 Assert.That(preview.Shows(back), Is.True);
                 Assert.That(window.ObjectsPreview, Is.SameAs(preview));
                 Assert.That(preview.Copy, Is.SameAs(copy));
-                Assert.That(WindowType.GetField("session", Flags).GetValue(window), Is.SameAs(session));
+                Assert.That(window.Field("session"), Is.SameAs(session));
                 Assert.That(front.activeSelf, Is.True);
                 Assert.That(front.GetComponent<SkinnedMeshRenderer>().enabled, Is.True);
 
                 // 解除 brings it back; an empty row hides nothing.
-                WindowType.GetField("excludedObjectEdits", Flags).SetValue(window, new System.Collections.Generic.List<GameObject> { null });
+                window.SetField("excludedObjectEdits", new System.Collections.Generic.List<GameObject> { null });
                 window.RefreshObjectsPreview();
                 Assert.That(preview.Shows(front) && preview.Shows(back), Is.True);
 
                 Assert.That(scene.isDirty, Is.False);
                 Assert.That(Undo.GetCurrentGroup(), Is.EqualTo(undoBefore));
-                WindowType.GetField("excludedObjectEdits", Flags).SetValue(window, null);
+                window.SetField("excludedObjectEdits", null);
 
                 // Leaving the page drops the copy.
                 window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage); Drain(window);
@@ -91,12 +87,11 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ClosingTheWindowLeavesNoPreviewCopy()
         {
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             var fixture = new AttachmentConnectionTests.Fixture();
             try
             {
-                WindowType.GetField("source", Flags).SetValue(window, fixture.Source);
-                WindowType.GetMethod("Prepare", Flags).Invoke(window, null);
+                window.Load(fixture.Source);
                 window.GoTo(ExperimentalExpressionCaptureWindow.ObjectsPage); Drain(window);
                 window.RefreshObjectsPreview();
                 var copy = window.ObjectsPreview.Copy;
