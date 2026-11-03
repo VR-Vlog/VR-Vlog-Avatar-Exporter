@@ -24,7 +24,7 @@ Formats の契約型 4 つ（表情のアニメーション・リップシンク
 
 - Formats の固定のコミットを、この変更を含むコミットへ上げる。
 - `tests/unity/AnimatedExpressionBehaviorTests.cs` の `ExpressionAnimationData.Write(new[] { animation })`（2 か所）を、`AnimatedExpressionFixture.SchemaOne` と同じ辞書を組み立てる関数に置き換える。拒否を確かめる箇所は `ExpressionAnimationData.Read(SchemaOne(animation))` が例外になることを確かめる形にする。
-- アプリが持つ `ObjectToggleData.cs` の写しは、`ContractJson` を使うようになったので単独ではコンパイルできない。写しを消して Formats のものを使い、写しを単独でコンパイルしているスクリプトには Formats の `ExpressionAnimationData.cs` も渡す。写しの SHA256 を確かめるスクリプトの基準のコミットも合わせて直す。
+- アプリが持つ `ObjectToggleData.cs` の写しは exporter の 65028d12 時点のもので、SHA256 で固定されている。この写しは単独でコンパイルでき、固定を上げても変えなくてよい。写しを新しくするときは `ContractJson` を含む `ExpressionAnimationData.cs` も要る。
 
 ## 確かめたこと
 

@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using VRVlog.AvatarFormats;
 
-// Identical source in the exporter (Formats/Runtime) and the application (UniVrmRuntime). Keep both copies the same.
+// The application (UniVrmRuntime) keeps a copy of this file as of exporter commit 65028d12, checked by SHA256.
+// This version reads through ContractJson in ExpressionAnimationData.cs, so a new copy needs that file too.
 // No Unity/Editor dependency.
 namespace VRVlog.ObjectToggles
 {
