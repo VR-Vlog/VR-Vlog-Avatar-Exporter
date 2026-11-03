@@ -32,6 +32,8 @@ namespace VRVlog.LilToonExporter
             // Same selection as LilToonFullSnapshot.Capture.
             foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(avatar))
             {
+                // Capture leaves a renderer with an empty slot on standard VRM materials.
+                if (renderer.sharedMaterials.Any(material => material == null)) continue;
                 foreach (var material in renderer.sharedMaterials)
                 {
                     // A substitute can carry the source's brightness into
