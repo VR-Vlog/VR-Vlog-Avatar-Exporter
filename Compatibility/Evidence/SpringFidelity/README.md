@@ -95,57 +95,73 @@ balance on the source, so a small difference decides which way the chain falls.
 
 ## Results on the whole list
 
-300 models that could be assembled in one Unity project, 8558 chains. The same
-timeline and the same four bodies as above. This run was made before the last
-review fixes. Those fixes only touch a force at its ceiling, a bone pointing
-straight up and a last bone scaled to zero. On the four models above they moved
-the means by less than 0.01 degrees.
+429 models, 13179 chains, out of the 465 combinations on the test list. The
+same timeline and the same four bodies as above. The first 300 models were measured
+before the last review fixes and the other 129 after them. Those fixes only touch a
+force at its ceiling, a bone pointing straight up and a last bone scaled to zero. On
+the four models above they moved the means by less than 0.01 degrees.
 
 | | old_raw | new_raw | old_app | new_app |
 |---|---|---|---|---|
-| Direction error, mean (degrees) | 11.01 | 4.87 | 9.11 | 6.47 |
-| Direction error, median model | 9.92 | 5.61 | 7.78 | 6.16 |
-| Direction error, 90th percentile model | 13.10 | 7.89 | 14.44 | 9.91 |
+| Direction error, mean (degrees) | 10.55 | 5.09 | 9.07 | 6.45 |
+| Direction error, median model | 9.72 | 5.69 | 9.01 | 6.10 |
+| Direction error, 90th percentile model | 12.97 | 7.68 | 13.38 | 9.38 |
 | Direction error, worst model | 47.70 | 47.52 | 51.00 | 47.65 |
-| Tip distance RMS (% of chain length) | 11.41 | 6.15 | 9.36 | 7.89 |
-| Last bone rotation error (degrees) | 24.17 | 9.59 | 21.63 | 12.46 |
-| Swing size against the source | 3.49 | 1.07 | 3.66 | 1.16 |
-| Settling time difference (s) | 0.21 | 0.09 | 0.23 | 0.13 |
+| Tip distance RMS (% of chain length) | 10.82 | 6.05 | 9.22 | 7.58 |
+| Last bone rotation error (degrees) | 22.78 | 10.51 | 20.73 | 12.66 |
+| Swing size against the source | 2.75 | 1.08 | 2.91 | 1.15 |
+| Settling time difference (s) | 0.22 | 0.11 | 0.23 | 0.13 |
 
 | Section | old_raw | new_raw | old_app | new_app |
 |---|---|---|---|---|
-| idle | 2.09 | 1.42 | 2.10 | 1.44 |
-| walk | 15.52 | 5.49 | 11.63 | 7.54 |
-| turn | 16.28 | 6.17 | 13.69 | 9.12 |
-| head | 12.61 | 6.61 | 11.19 | 8.56 |
-| jump | 19.05 | 8.49 | 14.33 | 10.67 |
-| rest | 4.36 | 2.44 | 4.35 | 3.29 |
+| idle | 2.03 | 1.43 | 2.04 | 1.45 |
+| walk | 14.99 | 5.84 | 11.98 | 7.78 |
+| turn | 15.78 | 6.50 | 13.74 | 9.16 |
+| head | 11.87 | 6.90 | 10.81 | 8.42 |
+| jump | 18.09 | 8.88 | 14.26 | 10.61 |
+| rest | 4.23 | 2.43 | 4.26 | 3.10 |
 
 | Part | chains | old_raw | new_raw | old_app | new_app |
 |---|---|---|---|---|---|
-| hair | 3388 | 12.60 | 4.69 | 9.11 | 6.71 |
-| skirt | 1474 | 5.52 | 5.22 | 5.93 | 5.75 |
-| tail | 434 | 11.23 | 2.92 | 5.97 | 6.59 |
-| ear | 652 | 8.51 | 2.70 | 5.36 | 4.34 |
-| breast | 148 | 0.55 | 0.48 | 0.56 | 2.01 |
-| sleeve | 182 | 17.86 | 4.99 | 16.83 | 6.07 |
-| other | 2280 | 11.35 | 4.41 | 9.71 | 5.70 |
+| hair | 5331 | 10.91 | 4.93 | 8.35 | 6.57 |
+| skirt | 2228 | 5.67 | 5.11 | 5.73 | 5.55 |
+| tail | 670 | 11.25 | 4.66 | 7.82 | 7.46 |
+| ear | 850 | 9.12 | 4.16 | 6.69 | 5.59 |
+| breast | 272 | 0.72 | 0.56 | 0.83 | 1.64 |
+| sleeve | 198 | 17.19 | 4.87 | 16.25 | 5.90 |
+| other | 3630 | 10.78 | 4.07 | 9.31 | 5.15 |
 
-Against the previous conversion, the plain VRM improved on 299 models, stayed the
-same on 1 and got worse on none. With the app's load settings, 261 models improved,
-3 stayed the same and 36 got worse, by 1.27 degrees at most.
+change {"raw": {"improved": 427, "same": 2, "worse": 0, "medianChange": -4.337257653179041, "worstIncrease": 0.23852893307358336}, "app": {"improved": 371, "same": 19, "worse": 39, "medianChange": -2.030707606274648, "worstIncrease": 9.824483602076128}}
 
-22 more models gave no comparison. 18 have no PhysBone, and on 4 the only PhysBones
-are on a camera gadget with no chain to compare.
+Against the previous conversion, the plain VRM improved on 427 models, stayed the
+same on 2 and got worse on none. The largest rise that still counts as the same
+is 0.24 degrees. With the app's load settings, 371 models improved, 19
+stayed the same and 39 got worse. The largest rise is 9.82 degrees, on a model
+with 3 chains that measures 5.74 degrees on the plain VRM; the next two are 1.97 and
+1.92 degrees.
+
+The other 36 combinations gave no comparison:
+
+| Reason | Combinations |
+|---|---|
+| No PhysBone on the model | 25 |
+| PhysBones only on a camera gadget, so no chain to compare | 4 |
+| Assets for the base or an outfit were not found | 3 |
+| The model is not Humanoid, so the motion cannot play | 2 |
+| Assembly left no prefab | 2 |
 
 The worst model stays at 47 degrees in both versions. A PhysBone rooted at Hips
 covers its whole body, arms, legs and fingers included, and follows the animation
 through Is Animated. A VRM chain has no animated rest pose, which is the likely
 cause, though it was not isolated by a separate run. Going by bone names, it is the
-only model among the 300 with chains starting on body bones.
+only model among the 429 with chains starting on body bones.
 
-Models that could not be measured here: those whose assets are not in this project
-or need another Unity project.
+High Stiffness is where this conversion gains least. On Advanced chains with
+Stiffness 0.5 or more, the two most common settings stay near where they were: 10.94
+to 11.81 degrees at Stiffness 0.85 (288 chains) and 13.15 to 11.86 at Stiffness 0.7
+(192 chains). One model with long chains stays at 30 degrees, because 20 of its
+chains (Stiffness 0.7) differ by 75 degrees in both versions. Its cause was not
+isolated.
 
 ## Exported files
 
