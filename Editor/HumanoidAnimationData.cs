@@ -24,10 +24,6 @@ namespace VRVlog.Poses
             internal double[][] Rotations;
         }
 
-        // Checks the values of one sampled pose. Its size is not checked here:
-        // PoseLimitPlan shows a pose over the limit and leaves it out.
-        internal static void ValidateSampled(HumanoidAnimationData animation) => Validate(new[] { animation });
-
         internal static Dictionary<string, object> Write(IList<HumanoidAnimationData> animations)
         {
             Validate(animations);
@@ -128,7 +124,7 @@ namespace VRVlog.Poses
             amount = (time - from.Time) / (to.Time - from.Time);
         }
 
-        static void Validate(IList<HumanoidAnimationData> animations)
+        internal static void Validate(IList<HumanoidAnimationData> animations)
         {
             if (animations == null || animations.Count == 0 || animations.Count > MaximumAnimations) Bad();
             var ids = new HashSet<string>(StringComparer.Ordinal); var totalFrames = 0;
