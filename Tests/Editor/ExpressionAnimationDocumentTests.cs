@@ -106,7 +106,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var animation = Animation("Smile", Channel((0, null), (1, null)));
             animation.Channels[0].Points[1].Target = ExpressionAnimationData.TargetPrefix + "Smile_1";
-            var json = JsonDom.Parse(JsonDom.Serialize(ExpressionAnimationData.Write(new[] { animation })));
+            var json = JsonDom.Parse(JsonDom.Serialize(AnimatedExpressionFixture.SchemaOne(animation)));
 
             var document = ExpressionAnimationData.ReadDocument(json);
             Assert.That(document.SchemaVersion, Is.EqualTo(1));
@@ -186,17 +186,6 @@ namespace VRVlog.LilToonExporter.Tests
             var versionOne = Document();
             versionOne.SchemaVersion = 1;
             Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.WriteDocument(versionOne));
-        }
-
-        [Test]
-        public void SchemaOneWriteRejectsMorphReferences()
-        {
-            // The first point equals the curve at t=0, so writing it as null would pass Read.
-            var animation = Animation("Smile", Channel((0, Morph(4, 0)), (1, null)));
-            animation.Channels[0].Points[1].Target = ExpressionAnimationData.TargetPrefix + "Smile_1";
-            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.Write(new[] { animation }));
-            animation.Channels[0].Points[0].Morph = null;
-            Assert.That(ExpressionAnimationData.Write(new[] { animation }), Is.Not.Null);
         }
 
         private static ExpressionAnimationData.Curve Linear(double from, double to)

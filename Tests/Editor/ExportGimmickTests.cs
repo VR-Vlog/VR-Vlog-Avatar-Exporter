@@ -493,6 +493,35 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(list.NoticeCount, Is.Zero);
         }
 
+        // The board's warnings join the export's, so the board does not repeat
+        // the export's line about an omitted or kept gimmick.
+        [Test] public void BoardSessionLeavesGimmickLinesToTheExport()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            var finding = Matched().Single();
+            var warnings = new List<string>();
+            using (var session = ExperimentalExpressionCaptureSession.Create(avatar))
+            {
+                Assert.That(session.Copy.transform.Find("gimmick"), Is.Null);
+                warnings.AddRange(session.Warnings);
+            }
+            Assert.That(warnings.Where(GimmickLine), Is.Empty);
+            var report = new ExportRecoveryReport();
+            UniVrmOneClickExporter.RecordOmittedGimmick(avatar, finding, warnings, report);
+            var list = ExportResultList.Build(report.Fallbacks, warnings);
+            Assert.That(list.Rows.Count(row => row.Outcome == ExportOutcome.Omitted), Is.EqualTo(1));
+            Assert.That(list.Rows.Where(row => row.Outcome == null && GimmickLine(row.Content)), Is.Empty);
+
+            var skin = Skin("body", normal); skin.bones = new[] { gimmick.transform.Find("prop") };
+            Assert.That(Matched().Single().Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            using (var session = ExperimentalExpressionCaptureSession.Create(avatar))
+            {
+                Assert.That(session.Copy.transform.Find("gimmick"), Is.Not.Null);
+                Assert.That(session.Warnings.Where(GimmickLine), Is.Empty);
+            }
+        }
+        static bool GimmickLine(string line) => line.StartsWith("補助ギミックを省略", StringComparison.Ordinal) || line.StartsWith("自動除外せず保持", StringComparison.Ordinal);
+
         [Test] public void MeshReferencePruningKeepsBoneSpringAndOriginalVrmSettings()
         {
             var renderer = Skin("effect", hidden);
