@@ -259,7 +259,7 @@ namespace VRVlog.LilToonExporter.Tests
             var humanoid = Enumerable.Range(0, (int)HumanBodyBones.LastBone)
                 .Select(bone => animator.GetBoneTransform((HumanBodyBones)bone)).Where(bone => bone != null);
             Assert.That(joints.Intersect(humanoid), Is.Empty);
-            Assert.That(joints, Does.Contain(strap).And.Contain(strapTip));
+            Assert.That(joints, Has.Member(strap).And.Member(strapTip));
             Assert.That(warnings, Has.Some.Contains("Humanoidのボーン"));
         }
 
