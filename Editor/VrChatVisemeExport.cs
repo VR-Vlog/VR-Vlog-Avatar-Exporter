@@ -94,16 +94,15 @@ namespace VRVlog.LilToonExporter
         internal static Captured Read(GameObject avatar)
         {
             if (avatar == null) return null;
-            var descriptor = avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(avatar);
             if (VrChatExpressionMenu.Member(descriptor, "lipSync")?.ToString() != "VisemeBlendShape") return null;
             var renderer = VrChatExpressionMenu.Member(descriptor, "VisemeSkinnedMesh") as SkinnedMeshRenderer;
             if (renderer == null || !renderer.transform.IsChildOf(avatar.transform)) return null;
             var names = VrChatExpressionMenu.Member(descriptor, "VisemeBlendShapes") as string[];
             var result = new Captured { Renderer = renderer };
-            foreach (var (slot, preset) in VrmExpressionBindings.DescriptorVisemes.Slots)
+            foreach (var (slot, preset) in ExpressionPresetGroups.VisemeSlots)
                 if (names != null && slot < names.Length && !string.IsNullOrEmpty(names[slot]))
-                    result.Shapes[preset] = names[slot];
+                    result.Shapes[preset.ToString()] = names[slot];
             if (names != null) result.Exclusive.AddRange(names.Where(name => !string.IsNullOrEmpty(name)).Distinct(StringComparer.Ordinal));
             return result;
         }

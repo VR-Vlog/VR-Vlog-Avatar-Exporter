@@ -30,7 +30,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Kinds the user opened, kept while the editor runs.
         private static readonly Dictionary<string, bool> OpenKinds = new Dictionary<string, bool>();
 
-        // The board's "別のアバターを選ぶ": its own avatar change. Resolved by name, as CreateEmbedded is.
+        // The board's "別のアバターを選ぶ": its own avatar change.
         // The board calls it before the panel is attached, so the panel is found from the element.
         public static void SetEmbeddedChangeAvatar(VisualElement element, Action change)
         {
@@ -118,8 +118,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private TransferNotes ExportedNotes()
         {
             var notes = TransferNotes.Build(Exporter?.LastNotes());
-            notes.Diagnostics = Exporter?.LastDiagnostics?.Invoke();
-            notes.NamedDiagnostics = Exporter?.LastNamedDiagnostics?.Invoke();
+            notes.Diagnostics = Exporter?.LastDiagnostics();
+            notes.NamedDiagnostics = Exporter?.LastNamedDiagnostics();
             return notes;
         }
 

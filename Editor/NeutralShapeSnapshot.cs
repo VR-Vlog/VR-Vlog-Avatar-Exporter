@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 using MorphValue = VRVlog.LilToonExporter.VrChatExpressionMenu.MorphValue;
 
 namespace VRVlog.LilToonExporter
@@ -102,8 +103,5 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in blink ?? Array.Empty<BlinkShapeBinding>()) result.Remove((binding.Renderer, binding.Shape));
             return result;
         }
-
-        // Kept for the many callers that name it through this class.
-        internal static bool Finite(float value) => NumericChecks.Finite(value);
     }
 }

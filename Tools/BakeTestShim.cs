@@ -317,7 +317,7 @@ namespace VRVlog.LilToonExporter
         internal static bool IsSuppressed(UnityEngine.Material material, bool enabled) => false;
         internal static bool HasHdrTextureEmission(UnityEngine.Material material) => false;
     }
-    // Alpha compositing is verified by AlphaMaskTests in a real Unity GPU run.
+    // Alpha compositing is verified by EmissionMaskBakeTests in a real Unity GPU run.
     internal static class AlphaMaskBaker
     {
         internal static void CheckUvRange(UnityEngine.Renderer renderer, int slot, UnityEngine.Material material, ICollection<string> warnings) { }
@@ -327,7 +327,6 @@ namespace VRVlog.LilToonExporter
                 UnityEngine.GpuForbidden.Fail("AlphaMaskBaker");
         }
     }
-    internal static class LilToonMobileProfile { internal const int MaximumTextureSize = 2048; internal const int DefaultMaximumTextureSize = 1024; }
     // The locale tables need AssetDatabase; the harness keeps the Japanese source.
     public static class ExporterLocalization
     {

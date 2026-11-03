@@ -67,8 +67,7 @@ namespace VRVlog.LilToonExporter
             SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
             var reading = new Reading();
             var root = avatar.transform;
-            var paths = avatar.GetComponentsInChildren<Transform>(true).GroupBy(transform => AnimationUtility.CalculateTransformPath(transform, root))
-                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+            var paths = SelectedExpressionAppearance.TransformsByPath(avatar);
             var humanoid = HumanoidBones(avatar);
             var bindings = AnimationUtility.GetCurveBindings(clip).Where(binding => !binding.isPPtrCurve && excludedPath?.Invoke(binding.path) != true).ToArray();
             var parts = bindings.Where(binding => binding.type == typeof(Transform)).Select(binding =>

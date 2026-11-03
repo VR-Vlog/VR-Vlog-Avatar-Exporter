@@ -24,12 +24,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         Material Substitute(Material source, out bool colorSkipped, out IReadOnlyList<string> dropped)
         {
-            var textures = new List<Texture2D>();
-            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped, out var toon, out dropped, textures);
-            owned.AddRange(textures);
-            Assert.That(output, Is.Not.Null);
+            var output = TestObjects.Substitute(owned, source, null, out colorSkipped, out var route, out dropped, new List<Texture2D>());
+            var toon = route != UnsupportedShaderSubstitution.Route.Generic;
             Assert.That(toon, Is.True, "The sections are mapped one by one.");
-            return Own(output);
+            return output;
         }
 
         Material Substitute(Material source) => Substitute(source, out _, out _);

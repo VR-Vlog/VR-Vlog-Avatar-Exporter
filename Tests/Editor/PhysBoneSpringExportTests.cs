@@ -14,11 +14,9 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class PhysBoneSpringExportTests
     {
-        static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static Component PhysBone(GameObject target)
         {
-            var type = Sdk(PhysBoneSpringExport.PhysBoneType);
-            if (type == null) Assert.Ignore("Real VRChat SDK integration test; SDK-free export is covered separately.");
+            var type = OptionalTools.Require(PhysBoneSpringExport.PhysBoneType, "Real VRChat SDK integration test; SDK-free export is covered separately.");
             return target.AddComponent(type);
         }
         static Transform Child(Transform root, string name, Vector3 position)
@@ -54,34 +52,6 @@ namespace VRVlog.LilToonExporter.Tests
         // Real VRChat avatars select NDMF's VRChat platform. Fill the playable
         // layers as the SDK inspector does for a new avatar (all default), so
         // AAO 1.7 reads its default controllers instead of a null layer.
-        internal static Component AddVrChatAvatarDescriptor(GameObject root)
-        {
-            var type = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (type == null) Assert.Ignore("Install the real VRChat SDK.");
-            var layerType = type.GetNestedType("AnimLayerType");
-            Assert.That(layerType, Is.Not.Null, "The installed VRChat SDK must expose its playable layer types.");
-            var descriptor = root.AddComponent(type);
-            using var data = new SerializedObject(descriptor);
-            void Layers(string name, params string[] types)
-            {
-                var list = data.FindProperty(name); Assert.That(list, Is.Not.Null, name);
-                list.arraySize = types.Length;
-                for (var i = 0; i < types.Length; i++)
-                {
-                    var layer = list.GetArrayElementAtIndex(i);
-                    layer.FindPropertyRelative("type").intValue = Convert.ToInt32(Enum.Parse(layerType, types[i]));
-                    layer.FindPropertyRelative("isDefault").boolValue = true;
-                    layer.FindPropertyRelative("isEnabled").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = null;
-                    layer.FindPropertyRelative("mask").objectReferenceValue = null;
-                }
-            }
-            data.FindProperty("customizeAnimationLayers").boolValue = false;
-            Layers("baseAnimationLayers", "Base", "Additive", "Gesture", "Action", "FX");
-            Layers("specialAnimationLayers", "Sitting", "TPose", "IKPose");
-            data.ApplyModifiedPropertiesWithoutUndo();
-            return descriptor;
-        }
 
         // A real avatar body is skinned to its humanoid bones. Weight one
         // triangle to each mapped bone so the body, not the test, owns them.
@@ -312,7 +282,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Set(pb, "endpointPosition", Vector3.down * .1f);
                 Set(pb, "pull", .4f); Set(pb, "pullCurve", AnimationCurve.Linear(0, 1, 1, .5f));
                 Set(pb, "radius", .02f); Set(pb, "limitType", 1); Set(pb, "maxAngleX", 30f);
-                var collider = source.AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                var collider = source.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
                 Set(collider, "shapeType", 1); Set(collider, "height", .3f); Set(collider, "radius", .05f);
                 using (var data = new SerializedObject(pb))
                 {
@@ -399,7 +369,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var pb = PhysBone(root.gameObject);
                 Set(pb, "endpointPosition", Vector3.down * .1f);
                 var holder = Child(source.transform, "Collider_plane", Vector3.zero);
-                var collider = holder.gameObject.AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                var collider = holder.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
                 Set(collider, "shapeType", shape); Set(collider, "insideBounds", inside);
                 References(pb, "colliders", collider);
                 copy = Object.Instantiate(source);
@@ -526,7 +496,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Set(parent, "pull", .4f); Set(parent, "pullCurve", AnimationCurve.Linear(0, 1, 1, .5f));
                 Set(parent, "limitType", 1); Set(parent, "maxAngleX", 30f);
                 Set(child, "pull", .8f); Set(child, "limitType", 1); Set(child, "maxAngleX", 65f);
-                var colliderType = Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider");
+                var colliderType = OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider");
                 var a = Child(source.transform, "parentCollider", Vector3.left).gameObject.AddComponent(colliderType);
                 var b = Child(source.transform, "childCollider", Vector3.right).gameObject.AddComponent(colliderType);
                 Set(a, "radius", .025f); Set(b, "radius", .045f);
@@ -766,7 +736,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var active = Child(source.transform, "active", Vector3.zero);
                 var pb = PhysBone(active.gameObject); Set(pb, "endpointPosition", Vector3.down * .1f);
                 var hiddenChild = Child(active, "hiddenChild", Vector3.down); hiddenChild.gameObject.SetActive(false);
-                var collider = source.AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                var collider = source.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
                 Set(collider, "rootTransform", hidden);
                 using (var data = new SerializedObject(pb))
                 {
@@ -839,7 +809,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored spring", "Tests",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored spring", "Tests", exporterVersion: null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var restored = imported.SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
@@ -867,12 +837,11 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(bool full)
         {
-            if (!UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(package =>
-                package.name == "com.anatawa12.avatar-optimizer"))
+            if (OptionalTools.Package("com.anatawa12.avatar-optimizer") == null)
                 Assert.Ignore("Optional AAO integration requires the real registered Avatar Optimizer package.");
-            var optimizer = Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize");
+            var optimizer = OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize");
             Assert.That(optimizer, Is.Not.Null, "The installed AAO package must load its real component assembly.");
-            Assert.That(Sdk("nadena.dev.ndmf.BuildContext"), Is.Not.Null, "Installed AAO requires its NDMF dependency.");
+            Assert.That(OptionalTools.Find("nadena.dev.ndmf.BuildContext"), Is.Not.Null, "Installed AAO requires its NDMF dependency.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
                 "The installed AAO compatibility adapter must compile and register.");
             // UTF 1.4.6 cannot handle a synchronously thrown IgnoreException in
@@ -884,15 +853,14 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid()
         {
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
-                value.name == "com.anatawa12.avatar-optimizer");
+            var package = OptionalTools.Package("com.anatawa12.avatar-optimizer");
             // Keep the async wrapper for the UTF 1.4.6 IgnoreException caveat above.
             if (package == null) Assert.Ignore("Optional AAO integration requires the real registered Avatar Optimizer package.");
-            Assert.That(Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize"), Is.Not.Null, "The installed AAO package must load its real component assembly.");
-            Assert.That(Sdk("nadena.dev.ndmf.BuildContext"), Is.Not.Null, "Installed AAO requires its NDMF dependency.");
+            Assert.That(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"), Is.Not.Null, "The installed AAO package must load its real component assembly.");
+            Assert.That(OptionalTools.Find("nadena.dev.ndmf.BuildContext"), Is.Not.Null, "Installed AAO requires its NDMF dependency.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
                 "The installed AAO compatibility adapter must compile and register.");
-            Assert.That(Version.TryParse(package.version.Split('-', '+')[0], out var version), Is.True, "AAO must report a numeric package version.");
+            Assert.That(OptionalTools.TryVersion(package, out var version), Is.True, "AAO must report a numeric package version.");
             // Without a descriptor NDMF selects its generic platform. AAO 1.9+
             // runs there and removes the root Animator; older AAO skips its
             // passes, so the optimized expression mapping is never applied.
@@ -909,8 +877,8 @@ namespace VRVlog.LilToonExporter.Tests
             var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
             if (modularAvatar)
             {
-                var proxyType = Sdk("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
-                var markerType = Sdk("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+                var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+                var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
                 if (proxyType == null || markerType == null) Assert.Ignore("Optional MA integration requires MA/NDMF.");
                 fixture.Source.AddComponent(markerType);
                 var proxy = hair.parent.gameObject.AddComponent(proxyType);
@@ -932,7 +900,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Set(nested, "endpointPosition", Vector3.down * .1f);
                 Set(nested, "pull", .35f); Set(nested, "spring", .5f); Set(nested, "gravity", 0f);
             }
-            var collider = (rootCollider ? fixture.Source : head.gameObject).AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+            var collider = (rootCollider ? fixture.Source : head.gameObject).AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
             Set(collider, "radius", .025f); Set(collider, "position", Vector3.left);
             Component duplicateCollider = null;
             SkinnedMeshRenderer body = null;
@@ -941,10 +909,10 @@ namespace VRVlog.LilToonExporter.Tests
                 // Real VRChat avatars select NDMF's VRChat platform. On the
                 // generic platform AAO < 1.9 skips its passes and 1.9 can
                 // remove the root Animator before UniVRM reads the humanoid.
-                if (expectedFailure == null) AddVrChatAvatarDescriptor(fixture.Source);
+                if (expectedFailure == null) VrcAvatar.AddDescriptor(fixture.Source);
                 duplicateCollider = head.gameObject.AddComponent(collider.GetType());
                 Set(duplicateCollider, "radius", .025f); Set(duplicateCollider, "position", Vector3.left);
-                fixture.Source.AddComponent(Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+                fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
                 Assert.That(NdmfExportPreparation.NeedsProcessing(fixture.Source), Is.True,
                     "AAO authoring alone must start the NDMF build.");
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(skin =>
@@ -990,7 +958,7 @@ namespace VRVlog.LilToonExporter.Tests
                     .Where(path => path.StartsWith("Assets/VRVlogExportTemp-", StringComparison.Ordinal)).ToArray();
                 var temporaryFolders = ExportFolders();
                 byte[] failed = null;
-                var error = Assert.Throws<InvalidOperationException>(() => failed = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
+                var error = Assert.Throws<InvalidOperationException>(() => failed = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings: warnings,
                     exporterVersion: full ? "test" : null, lilToonVersion: full ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
                 Assert.That(failed, Is.Null, "An optimization that loses the humanoid must never produce an apparently usable VRM.");
@@ -1003,7 +971,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             try
             {
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings: warnings,
                     exporterVersion: full ? "test" : null, lilToonVersion: full ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var motionSolver = new Vrm10FastSpringboneRuntimeStandalone();

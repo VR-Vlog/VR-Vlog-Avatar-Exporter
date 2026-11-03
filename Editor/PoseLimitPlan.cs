@@ -61,7 +61,6 @@ namespace VRVlog.LilToonExporter
 
         internal IEnumerable<Row> Kept => Rows.Where(row => row.Keep);
         internal int KeptCount => Kept.Count();
-        internal int SelectableCount => Rows.Count(row => row.Selectable);
         internal int AnimationFrames => Kept.Where(row => row.Animated).Sum(row => row.Frames);
         internal long AnimationBytes => Kept.Any(row => row.Animated) ? AnimationEnvelope + Kept.Where(row => row.Animated).Sum(row => row.Size) : 0;
         internal long PoseBytes => Kept.Any(row => !row.Animated) ? PoseEnvelope + Kept.Where(row => !row.Animated).Sum(row => row.Size) : 0;

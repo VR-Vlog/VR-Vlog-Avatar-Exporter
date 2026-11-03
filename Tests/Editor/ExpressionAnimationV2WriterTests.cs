@@ -48,8 +48,11 @@ namespace VRVlog.LilToonExporter.Tests
             internal List<VrmMenuExpressions.Expression> Bake(params VrChatExpressionMenu.Entry[] entries)
             {
                 var menu = new VrChatExpressionMenu.Source(); menu.Entries.AddRange(entries);
+                // Bindings are captured before the rest pose is preserved, as the export does.
+                using var bindings = new PreparedExpressionBindings(Avatar.Copy, menu, Avatar.Source);
+                bindings.Capture(menu);
                 AvatarBaseShape.Preserve(Avatar.Source, Avatar.Copy, Owned, null);
-                return VrChatExpressionBaker.Bake(Avatar.Source, Avatar.Copy, menu, Owned, null);
+                return VrChatExpressionBaker.Bake(Avatar.Copy, menu, Owned, null, bindings);
             }
 
             internal byte[] Export(IList<VrmMenuExpressions.Expression> expressions, ICollection<string> warnings = null) =>
@@ -350,7 +353,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(marker, Is.GreaterThanOrEqualTo(0));
 
             var bytes = scene.Export(expressions);
-            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
+            Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(2));
             var json = GlbDocument.Read(bytes).Json;
             var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
             Assert.That(document.Animations.Select(animation => animation.Expression), Is.EquivalentTo(new[] { "Loop", "Moving" }));
@@ -394,7 +397,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(expression.Targets, Is.Empty, "The final binds keep it selectable without the zero marker.");
 
             var bytes = scene.Export(new[] { expression });
-            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
+            Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(1));
             var json = GlbDocument.Read(bytes).Json;
             var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
@@ -474,7 +477,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(expressions.Select(value => value.RegisteredName), Is.EqualTo(new[] { "Smile", null, "Smile (2)", "Wave", null, null, null }));
                 Assert.That(expressions.Select(value => value.MergedInto), Is.EqualTo(new[] { null, "Smile", null, null, "Wave", "Smile", "Smile" }));
                 Assert.That(document.Animations.Select(value => value.Expression), Is.EqualTo(new[] { "Wave" }));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(3));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(3));
                 // Each face here has the label of the face it joined, so the
                 // result lists none; the copied clip is played by no written face.
                 var report = new ExportRecoveryReport();

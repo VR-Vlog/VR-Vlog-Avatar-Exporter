@@ -206,8 +206,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void DescriptorClosureGainsItsOwnSides()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the descriptor integration test.");
             var skin = Face("closed_eyes", "look_up", "look_down", "closed_eyes_L:L", "closed_eyes_R:R");
             var descriptor = root.AddComponent(descriptorType);
             descriptorType.GetField("enableEyeLook").SetValue(descriptor, true);

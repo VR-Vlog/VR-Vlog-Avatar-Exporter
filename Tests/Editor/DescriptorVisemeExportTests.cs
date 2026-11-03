@@ -26,9 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static Type DescriptorType()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("VRChat SDK is required for the descriptor viseme test.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the descriptor viseme test.");
             return type;
         }
 
@@ -65,8 +63,7 @@ namespace VRVlog.LilToonExporter.Tests
         // its shared mesh, and a Lip Sync descriptor on its Front renderer.
         AttachmentConnectionTests.Fixture ExportAvatar(IEnumerable<string> shapes, string[] visemes)
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the full exporter entry point.");
             var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader); owned.Add(material);
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
@@ -147,11 +144,11 @@ namespace VRVlog.LilToonExporter.Tests
             DescriptorType();
             using var fixture = ExportAvatar(names, names);
             var warnings = new List<string>();
-            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Descriptor visemes", "Tests", warnings,
+            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Descriptor visemes", "Tests", exporterVersion: null, warnings: warnings,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             for (var i = 0; i < names.Length; i++)
-                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset]),
+                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[ExpressionPresetGroups.VisemeSlots[i].Preset.ToString()]),
                     Is.EqualTo(names[i]));
             Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnboundVisemeWarning));
         }
@@ -164,7 +161,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = ScriptableObject.CreateInstance<VRM10Expression>(); owned.Add(clip);
             clip.MorphTargetBindings = Array.Empty<MorphTargetBinding>();
             vrm.Expression.Aa = clip; fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
-            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Authored mouth", "Tests",
+            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Authored mouth", "Tests", exporterVersion: null,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             var aa = (Dictionary<string, object>)presets["aa"];
@@ -177,7 +174,7 @@ namespace VRVlog.LilToonExporter.Tests
             DescriptorType();
             using var fixture = ExportAvatar(LipNames.Take(4), LipNames);
             var warnings = new List<string>();
-            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Missing viseme", "Tests", warnings,
+            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Missing viseme", "Tests", exporterVersion: null, warnings: warnings,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             Assert.That(presets.ContainsKey("aa") && !presets.ContainsKey("ou"), Is.True);
@@ -191,13 +188,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             DescriptorType();
             using var fixture = ExportAvatar(LipNames.Take(present), LipNames);
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var warnings = new List<string>();
             var glb = GlbDocument.Read(session.Export("Board visemes", "Tests", Array.Empty<(string, AnimationClip, float)>(), warnings,
                 new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             for (var i = 0; i < present; i++)
-                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset]),
+                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[ExpressionPresetGroups.VisemeSlots[i].Preset.ToString()]),
                     Is.EqualTo(LipNames[i]));
             if (present == LipNames.Length)
                 Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnboundVisemeWarning));
@@ -232,9 +229,7 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.GetBlendShapeFrameVertices(mesh.GetBlendShapeIndex(shape), 0, moves, null, null);
                 return moves[vertex];
             }
-            var folderName = "__DescriptorVisemeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__DescriptorVisemeExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -260,7 +255,7 @@ namespace VRVlog.LilToonExporter.Tests
                     layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
                     data.ApplyModifiedPropertiesWithoutUndo();
                 }
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vowel default mouth", "Tests", new List<string>(),
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vowel default mouth", "Tests", exporterVersion: null, warnings: new List<string>(),
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var front = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == "Front");

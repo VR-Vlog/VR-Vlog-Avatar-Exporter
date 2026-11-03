@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace VRVlog.LilToonExporter
 {
@@ -57,18 +56,8 @@ namespace VRVlog.LilToonExporter
         internal ExportStageFailure(ExportStage stage, Exception cause) : base(cause.Message, cause) { Stage = stage; }
 
         // NDMF wraps callback failures in its own summary; look through it.
-        internal static ExportStageFailure Find(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error is ExportStageFailure failure) return failure;
-                if (error is AggregateException aggregate)
-                    foreach (var inner in aggregate.InnerExceptions)
-                        if (Find(inner) is ExportStageFailure nested) return nested;
-                error = error.InnerException;
-            }
-            return null;
-        }
+        internal static ExportStageFailure Find(Exception error) =>
+            (ExportStageFailure)ExceptionChain.Find(error, value => value is ExportStageFailure);
     }
 
     // One guard per export call. In strict mode every stage behaves as before:
@@ -76,13 +65,12 @@ namespace VRVlog.LilToonExporter
     // recorded in the fallback report, and the export continues.
     internal sealed class ExportStageGuard
     {
-        // Tests throw here to prove that each stage can fail without stopping.
-        internal static Action<ExportStage> FaultInjection;
-
         // The user-facing exports (window, app transfer) continue past failing
-        // stages unless this is turned off. Off restores the old behaviour.
+        // stages. Tests turn this off to check the old behaviour of stopping.
+        // Exports continue past a failed stage unless the editor preference
+        // turns that off (see Documentation~/decisions/2026-10-22-quick-equals-default-normal.md).
         internal const string ContinuePreference = "VRVlog.LilToonExporter.ContinueOnStageFailure";
-        internal static bool ContinueByDefault => UnityEditor.EditorPrefs.GetBool(ContinuePreference, true);
+        internal static bool ContinueByDefault => ExportTestHooks.ContinueByDefault ?? UnityEditor.EditorPrefs.GetBool(ContinuePreference, true);
 
         internal readonly bool ContinueOnFailure;
         // Called once per left-out stage, before the export copy is destroyed.
@@ -102,7 +90,7 @@ namespace VRVlog.LilToonExporter
             if (omitted.Contains(stage)) return fallback();
             try
             {
-                FaultInjection?.Invoke(stage);
+                ExportTestHooks.FaultInjection?.Invoke(stage);
                 return body();
             }
             catch (Exception error) when (CanOmit(error) && ExportStageFailure.Find(error) == null)
@@ -122,7 +110,7 @@ namespace VRVlog.LilToonExporter
             if (omitted.Contains(stage)) return fallback();
             try
             {
-                FaultInjection?.Invoke(stage);
+                ExportTestHooks.FaultInjection?.Invoke(stage);
                 return body();
             }
             catch (Exception error) when (CanOmit(error) && ExportStageFailure.Find(error) == null)
@@ -144,16 +132,7 @@ namespace VRVlog.LilToonExporter
         bool CanOmit(Exception error) => ContinueOnFailure && !IsCancellation(error);
 
         // A cancellation wrapped by a build tool still cancels the export.
-        internal static bool IsCancellation(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error is OperationCanceledException) return true;
-                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(IsCancellation)) return true;
-                error = error.InnerException;
-            }
-            return false;
-        }
+        internal static bool IsCancellation(Exception error) => ExceptionChain.Any(error, value => value is OperationCanceledException);
 
         void Omit(ExportStage stage, Exception error)
         {
@@ -188,86 +167,50 @@ namespace VRVlog.LilToonExporter
             return failure?.InnerException ?? error;
         }
 
-        internal static string Label(ExportStage stage)
-        {
-            switch (stage)
+        // The name, the phase it is shown under and what leaving it out means for
+        // the file, per stage. The phase only groups stages for display; it does
+        // not decide when they run. Stages that only check something are
+        // approximations; the rest drop their feature.
+        static readonly Dictionary<ExportStage, (string Label, ExportPhase Phase, ExportOutcome Outcome)> Stages =
+            new Dictionary<ExportStage, (string, ExportPhase, ExportOutcome)>
             {
-                case ExportStage.GimmickDetection: return "補助ギミックの自動除外";
-                case ExportStage.SourceValidation: return "アバターの参照の検査";
-                case ExportStage.ExpressionMenu: return "VRChatメニューの表情・ポーズ";
-                case ExportStage.BlinkCapture: return "瞬き";
-                case ExportStage.PoseCapture: return "同梱ポーズ";
-                case ExportStage.CopyValidation: return "書き出し用コピーの参照の検査";
-                case ExportStage.MaAppearance: return "Modular Avatarの表示状態の固定";
-                case ExportStage.FaceEmo: return "FaceEmoの表情";
-                case ExportStage.BuildProcess: return "Modular Avatar / NDMFの処理";
-                case ExportStage.Optimizing: return "最適化ツールの処理";
-                case ExportStage.Expressions: return "メニュー由来の表情";
-                case ExportStage.OptimizerEvidence: return "最適化ツールの材質の照合";
-                case ExportStage.LilToonSnapshot: return "lilToonの材質情報";
-                case ExportStage.TextureBake: return "標準VRM表示用の画像の焼き込み";
-                case ExportStage.Attachments: return "独立したパーツの接続の確認";
-                case ExportStage.PhysBone: return "揺れ物";
-                case ExportStage.Constraints: return "コンストレイントの変換";
-                case ExportStage.LookAt: return "視線";
-                case ExportStage.SkinRepair: return "スキンの修復";
-                case ExportStage.ExpressionOutput: return "VRM表情の追加";
-                case ExportStage.BlinkOutput: return "瞬きの表情の追加";
-                case ExportStage.TrackingOutput: return "フェイストラッキング";
-                case ExportStage.LilToonExtension: return "lilToonの表現";
-                case ExportStage.PhysBoneVerify: return "揺れ物の出力の照合";
-                case ExportStage.PoseOutput: return "同梱ポーズの追加";
-                case ExportStage.UnusedMorphs: return "使われないBlendShapeの削除";
-                case ExportStage.ObjectToggles: return "メニューの表示切り替え";
-                case ExportStage.ExpressionGestures: return "ハンドジェスチャーの表情";
-                case ExportStage.FxRest: return "FXの通常時の顔・体形";
-                default: return stage.ToString();
-            }
-        }
+                [ExportStage.GimmickDetection] = ("補助ギミックの自動除外", ExportPhase.Precheck, ExportOutcome.Omitted),
+                [ExportStage.SourceValidation] = ("アバターの参照の検査", ExportPhase.Precheck, ExportOutcome.Approximated),
+                [ExportStage.ExpressionMenu] = ("VRChatメニューの表情・ポーズ", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.BlinkCapture] = ("瞬き", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.PoseCapture] = ("同梱ポーズ", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.CopyValidation] = ("書き出し用コピーの参照の検査", ExportPhase.Precheck, ExportOutcome.Approximated),
+                [ExportStage.MaAppearance] = ("Modular Avatarの表示状態の固定", ExportPhase.Precheck, ExportOutcome.Approximated),
+                [ExportStage.FaceEmo] = ("FaceEmoの表情", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.BuildProcess] = ("Modular Avatar / NDMFの処理", ExportPhase.Skeleton, ExportOutcome.Approximated),
+                [ExportStage.Optimizing] = ("最適化ツールの処理", ExportPhase.Skeleton, ExportOutcome.Approximated),
+                [ExportStage.Expressions] = ("メニュー由来の表情", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.OptimizerEvidence] = ("最適化ツールの材質の照合", ExportPhase.Materials, ExportOutcome.Approximated),
+                [ExportStage.LilToonSnapshot] = ("lilToonの材質情報", ExportPhase.Materials, ExportOutcome.Approximated),
+                [ExportStage.TextureBake] = ("標準VRM表示用の画像の焼き込み", ExportPhase.Materials, ExportOutcome.Approximated),
+                [ExportStage.Attachments] = ("独立したパーツの接続の確認", ExportPhase.Skeleton, ExportOutcome.Approximated),
+                [ExportStage.PhysBone] = ("揺れ物", ExportPhase.Springs, ExportOutcome.Omitted),
+                [ExportStage.Constraints] = ("コンストレイントの変換", ExportPhase.Skeleton, ExportOutcome.Omitted),
+                [ExportStage.LookAt] = ("視線", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.SkinRepair] = ("スキンの修復", ExportPhase.Skeleton, ExportOutcome.Approximated),
+                [ExportStage.ExpressionOutput] = ("VRM表情の追加", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.BlinkOutput] = ("瞬きの表情の追加", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.TrackingOutput] = ("フェイストラッキング", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.LilToonExtension] = ("lilToonの表現", ExportPhase.Materials, ExportOutcome.Approximated),
+                [ExportStage.PhysBoneVerify] = ("揺れ物の出力の照合", ExportPhase.Springs, ExportOutcome.Approximated),
+                [ExportStage.PoseOutput] = ("同梱ポーズの追加", ExportPhase.Expressions, ExportOutcome.Omitted),
+                // Left out, the file only keeps every BlendShape.
+                [ExportStage.UnusedMorphs] = ("使われないBlendShapeの削除", ExportPhase.Expressions, ExportOutcome.Approximated),
+                [ExportStage.ObjectToggles] = ("メニューの表示切り替え", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.ExpressionGestures] = ("ハンドジェスチャーの表情", ExportPhase.Expressions, ExportOutcome.Omitted),
+                // Left out, the face and body keep the export copy's values.
+                [ExportStage.FxRest] = ("FXの通常時の顔・体形", ExportPhase.Expressions, ExportOutcome.Approximated),
+            };
 
-        // The phase only groups stages for display; it does not decide when they run.
-        internal static ExportPhase Phase(ExportStage stage)
-        {
-            switch (stage)
-            {
-                case ExportStage.GimmickDetection:
-                case ExportStage.SourceValidation:
-                case ExportStage.CopyValidation:
-                case ExportStage.MaAppearance:
-                    return ExportPhase.Precheck;
-                case ExportStage.BuildProcess:
-                case ExportStage.Optimizing:
-                case ExportStage.Attachments:
-                case ExportStage.SkinRepair:
-                case ExportStage.Constraints:
-                    return ExportPhase.Skeleton;
-                case ExportStage.ExpressionMenu:
-                case ExportStage.BlinkCapture:
-                case ExportStage.PoseCapture:
-                case ExportStage.FaceEmo:
-                case ExportStage.Expressions:
-                case ExportStage.ExpressionOutput:
-                case ExportStage.BlinkOutput:
-                case ExportStage.TrackingOutput:
-                case ExportStage.UnusedMorphs:
-                case ExportStage.LookAt:
-                case ExportStage.PoseOutput:
-                case ExportStage.ObjectToggles:
-                case ExportStage.ExpressionGestures:
-                case ExportStage.FxRest:
-                    return ExportPhase.Expressions;
-                case ExportStage.LilToonSnapshot:
-                case ExportStage.TextureBake:
-                case ExportStage.OptimizerEvidence:
-                case ExportStage.LilToonExtension:
-                    return ExportPhase.Materials;
-                case ExportStage.PhysBone:
-                case ExportStage.PhysBoneVerify:
-                    return ExportPhase.Springs;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
-            }
-        }
+        internal static string Label(ExportStage stage) => Stages.TryGetValue(stage, out var row) ? row.Label : stage.ToString();
+
+        internal static ExportPhase Phase(ExportStage stage) =>
+            Stages.TryGetValue(stage, out var row) ? row.Phase : throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
 
         internal static string PhaseLabel(ExportPhase phase)
         {
@@ -293,32 +236,6 @@ namespace VRVlog.LilToonExporter
             return label == phase ? ExporterLocalization.T(label) : ExporterLocalization.T(phase) + ": " + ExporterLocalization.T(label);
         }
 
-        // What leaving the stage out means for the file. Stages that only check
-        // something are approximations; the rest drop their feature.
-        internal static ExportOutcome Outcome(ExportStage stage)
-        {
-            switch (stage)
-            {
-                case ExportStage.SourceValidation:
-                case ExportStage.CopyValidation:
-                case ExportStage.OptimizerEvidence:
-                case ExportStage.TextureBake:
-                case ExportStage.Attachments:
-                case ExportStage.SkinRepair:
-                case ExportStage.LilToonSnapshot:
-                case ExportStage.LilToonExtension:
-                case ExportStage.PhysBoneVerify:
-                case ExportStage.MaAppearance:
-                case ExportStage.BuildProcess:
-                case ExportStage.Optimizing:
-                // Left out, the file only keeps every BlendShape.
-                case ExportStage.UnusedMorphs:
-                // Left out, the face and body keep the export copy's values.
-                case ExportStage.FxRest:
-                    return ExportOutcome.Approximated;
-                default:
-                    return ExportOutcome.Omitted;
-            }
-        }
+        internal static ExportOutcome Outcome(ExportStage stage) => Stages.TryGetValue(stage, out var row) ? row.Outcome : ExportOutcome.Omitted;
     }
 }

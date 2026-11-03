@@ -754,16 +754,10 @@ namespace VRVlog.LilToonExporter.Tests
                         weight.boneIndex2 == index && weight.weight2 > 0 || weight.boneIndex3 == index && weight.weight3 > 0);
                 }).ToArray();
                 Assert.That(headSkins.Length, Is.GreaterThan(0), "The imported fixture must contain vertices weighted to its real humanoid head.");
-                Vector3[] WorldVertices(SkinnedMeshRenderer skin)
-                {
-                    var baked = new Mesh();
-                    try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-                    finally { Object.DestroyImmediate(baked); }
-                }
-                var beforeSkin = headSkins.Select(WorldVertices).ToArray(); var headRest = importedHead.rotation;
+                var beforeSkin = headSkins.Select(TestObjects.WorldVertices).ToArray(); var headRest = importedHead.rotation;
                 importedHead.rotation = PoseSampling.Reflect(At(headAnimation, "head", .5)) * headRest;
                 for (var skin = 0; skin < headSkins.Length; skin++)
-                    Assert.That(beforeSkin[skin].Zip(WorldVertices(headSkins[skin]), Vector3.Distance).Max(), Is.GreaterThan(.005f),
+                    Assert.That(beforeSkin[skin].Zip(TestObjects.WorldVertices(headSkins[skin]), Vector3.Distance).Max(), Is.GreaterThan(.005f),
                         "The saved head animation must visibly deform the reimported fixture mesh.");
                 importedHead.rotation = headRest;
                 var fixturePath = Environment.GetEnvironmentVariable("VRVLOG_ANIMATION_FIXTURE");

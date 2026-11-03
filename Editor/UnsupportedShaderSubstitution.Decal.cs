@@ -280,7 +280,7 @@ namespace VRVlog.LilToonExporter
                     var gamma = new Color(Mathf.Clamp01(color.x), Mathf.Clamp01(color.y), Mathf.Clamp01(color.z)).gamma;
                     pixels[i] = new Color(gamma.r, gamma.g, gamma.b, p.a);
                 }
-            var baked = NewImage(main, "__VRVlog_Decal", size, pixels, textures);
+            var baked = NewImage(main, "__VRVlog_Decal", size, size, pixels, textures, false);
             if (baked == null) return false;
             SetTexture(material, "_MainTex", baked, Vector2.one, Vector2.zero);
             material.SetColor("_Color", new Color(1, 1, 1, tint.a));

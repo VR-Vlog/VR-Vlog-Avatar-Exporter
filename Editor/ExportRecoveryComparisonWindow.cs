@@ -141,15 +141,7 @@ namespace VRVlog.LilToonExporter
         {
             var preview = new PreviewRenderUtility();
             preview.AddSingleGO(copy);
-            preview.camera.fieldOfView = 30;
-            preview.camera.nearClipPlane = .01f;
-            preview.camera.farClipPlane = 100;
-            preview.camera.clearFlags = CameraClearFlags.SolidColor;
-            preview.camera.backgroundColor = new Color(.18f, .18f, .2f);
-            preview.lights[0].intensity = 1;
-            preview.lights[0].transform.rotation = Quaternion.Euler(30, 150, 0);
-            preview.lights[1].intensity = .5f;
-            preview.ambientColor = Color.gray;
+            PreviewRendering.Apply(preview);
             return preview;
         }
 

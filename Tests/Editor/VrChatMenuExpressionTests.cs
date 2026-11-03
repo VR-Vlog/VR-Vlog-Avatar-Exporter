@@ -23,9 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var folder = "__VRVlogMenuTests_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            directory = "Assets/" + folder;
+            directory = TempAssetFolder.Create("__VRVlogMenuTests_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var face = new GameObject("Face", typeof(SkinnedMeshRenderer));
@@ -328,7 +326,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 PlayerSettings.legacyClampBlendShapeWeights = false;
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(expressions.Count, Is.EqualTo(2));
                 Assert.That(BasisTarget(expressions[0]) == BasisTarget(expressions[1]), Is.EqualTo(kind == "alias"));
                 var original = avatar.GetComponentInChildren<SkinnedMeshRenderer>(); var copy = clone.GetComponentInChildren<SkinnedMeshRenderer>();
@@ -384,7 +382,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 PlayerSettings.legacyClampBlendShapeWeights = true;
-                var expression = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null).Single();
+                var expression = BakeCopy(clone, menu, owned).Single();
                 var targets = expression.Animation.Channels.SelectMany(channel => channel.Points).Where(point => point.Target != null).Select(point => point.Target).ToArray();
                 Assert.That(targets.Length, Is.EqualTo(2)); Assert.That(targets.Distinct().Count(), Is.EqualTo(2));
                 expression.Animation.Expression = expression.Name;
@@ -406,7 +404,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>(); var native = new Mesh();
             try
             {
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(expressions.SelectMany(expression => expression.Targets).Distinct().Count(), Is.EqualTo(2));
                 var skin = clone.GetComponentInChildren<SkinnedMeshRenderer>();
                 foreach (var target in expressions.SelectMany(expression => expression.Targets)) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(target), 100);
@@ -433,7 +431,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 PlayerSettings.legacyClampBlendShapeWeights = clamp;
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(expressions.Count, Is.EqualTo(4));
                 Assert.That(expressions[0].Targets.Single(), Is.EqualTo(expressions[1].Targets.Single()));
                 Assert.That(expressions[2].Targets.Single(), Is.Not.EqualTo(expressions[3].Targets.Single()));
@@ -472,7 +470,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = VrmMenuExpressions.Add(GlbDocument.Create(root, Array.Empty<byte>()).Write(), expressions);
                 // The two zero rows bind the same marker at the same weight,
                 // so they are one face and are written once.
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(3));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(3));
                 Assert.That(expressions[1].MergedInto, Is.EqualTo(expressions[0].RegisteredName));
                 var document = GlbDocument.Read(bytes).Json;
                 custom = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)document["extensions"])["VRMC_vrm"])["expressions"])["custom"];
@@ -523,7 +521,7 @@ namespace VRVlog.LilToonExporter.Tests
                     reference.AddBlendShapeFrame("Independent scalar reference", 100, expected, expectedN, expectedT);
                     reference.GetBlendShapeFrameVertices(reference.blendShapeCount - 1, 0, expected, expectedN, expectedT);
                 }
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(expressions.SelectMany(expression => expression.Targets).Distinct().Count(), Is.EqualTo(3),
                     "Neither approximate Vector3 equality nor position-only equality can authorize sharing.");
                 var target = clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
@@ -548,7 +546,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>();
             try
             {
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(expressions[0].Targets.Single(), Is.Not.EqualTo(expressions[1].Targets.Single()));
                 foreach (var target in expressions.SelectMany(expression => expression.Targets))
                     Assert.That(clone.GetComponentsInChildren<SkinnedMeshRenderer>().Count(skin => skin.sharedMesh.GetBlendShapeIndex(target) >= 0), Is.EqualTo(1));
@@ -568,10 +566,10 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(rows * (long)vertices * 36, Is.GreaterThan(128L * 1024 * 1024));
                 if (!zero)
-                    Assert.That(Assert.Throws<InvalidOperationException>(() => VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null)).Message, Does.Contain("128 MiB"));
+                    Assert.That(Assert.Throws<InvalidOperationException>(() => BakeCopy(clone, menu, owned)).Message, Does.Contain("128 MiB"));
                 else
                 {
-                    var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                    var expressions = BakeCopy(clone, menu, owned);
                     Assert.That(expressions.Count, Is.EqualTo(rows)); Assert.That(expressions.All(expression => expression.Animation == null), Is.True);
                     Assert.That(expressions.SelectMany(expression => expression.Targets).Distinct().Count(), Is.EqualTo(1));
                     Assert.That(clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh.blendShapeCount, Is.EqualTo(mesh.blendShapeCount + 1));
@@ -590,7 +588,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>();
             try
             {
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(BasisTarget(expressions[0]), Is.Not.EqualTo(BasisTarget(expressions[1])));
                 foreach (var target in expressions.Select(BasisTarget))
                     Assert.That(clone.GetComponentsInChildren<SkinnedMeshRenderer>().Count(skin => skin.sharedMesh.GetBlendShapeIndex(target) >= 0), Is.EqualTo(1));
@@ -624,10 +622,10 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(rows * 2L * vertices * 36, Is.GreaterThan(128L * 1024 * 1024), "Unpooled animation frames exceed the unchanged cap.");
                 if (!duplicate)
-                    Assert.That(Assert.Throws<InvalidOperationException>(() => VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null)).Message, Does.Contain("128 MiB"));
+                    Assert.That(Assert.Throws<InvalidOperationException>(() => BakeCopy(clone, menu, owned)).Message, Does.Contain("128 MiB"));
                 else
                 {
-                    var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                    var expressions = BakeCopy(clone, menu, owned);
                     Assert.That(expressions.Count, Is.EqualTo(rows));
                     // The animated channel stays out of the static shape.
                     Assert.That(expressions.All(expression => expression.Targets.Count == 0 && expression.Direct.Count == 0), Is.True);
@@ -657,7 +655,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>(); var original = new Mesh(); var actual = new Mesh();
             try
             {
-                var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
+                var expressions = BakeCopy(clone, menu, owned);
                 Assert.That(expressions.Select(BasisTarget).Distinct().Count(), Is.EqualTo(1));
                 var skin = avatar.GetComponentInChildren<SkinnedMeshRenderer>(); var copy = clone.GetComponentInChildren<SkinnedMeshRenderer>();
                 foreach (var expression in expressions)
@@ -764,7 +762,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 PlayerSettings.legacyClampBlendShapeWeights = kind != "signed unbounded";
-                var expression = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null).Single();
+                var expression = BakeCopy(clone, menu, owned).Single();
                 var channel = expression.Animation.Channels.Single(); var copy = clone.GetComponentInChildren<SkinnedMeshRenderer>();
                 var wantedPoints = signed ? new[] { -100d, 0d, 50d, 100d } : kind == "multiple frames" ? new[] { 0d, 50d, 100d } :
                     kind == "extrapolation" ? new[] { -50d, 0d, 100d, 150d } : kind == "large authored endpoint" ? new[] { 0d, 70d } : new[] { 0d, 100d };
@@ -833,7 +831,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>(); var expected = new Mesh(); var actual = new Mesh();
             try
             {
-                var expression = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null).Single();
+                var expression = BakeCopy(clone, menu, owned).Single();
                 var targets = expression.Animation.Channels.SelectMany(channel => channel.Points).Where(point => point.Target != null).Select(point => point.Target).ToArray();
                 Assert.That(targets.Length, Is.EqualTo(2)); Assert.That(targets.Distinct().Count(), Is.EqualTo(2));
                 foreach (var channel in expression.Animation.Channels) Assert.That(channel.Points.Select(point => point.Value), Is.EqualTo(new[] { 0d, 100d }));
@@ -848,6 +846,15 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(new[] { expression.Animation })).Count, Is.EqualTo(1));
             }
             finally { UnityEngine.Object.DestroyImmediate(expected); UnityEngine.Object.DestroyImmediate(actual); UnityEngine.Object.DestroyImmediate(clone); foreach (var item in owned) UnityEngine.Object.DestroyImmediate(item); }
+        }
+
+        // The export captures the copy's bindings before baking; these copies
+        // are unchanged instantiations, so the source supplies the originals.
+        private List<VrmMenuExpressions.Expression> BakeCopy(GameObject clone, VrChatExpressionMenu.Source menu, ICollection<Mesh> owned)
+        {
+            using var bindings = new PreparedExpressionBindings(clone, menu, avatar);
+            bindings.Capture(menu);
+            return VrChatExpressionBaker.Bake(clone, menu, owned, null, bindings);
         }
 
         private void DiscreteController()

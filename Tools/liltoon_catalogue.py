@@ -313,9 +313,15 @@ def render_catalogue(catalogue):
     split = '.Split(new[]{\',\'}, StringSplitOptions.RemoveEmptyEntries)},'
     section("string[]", "RequiredProperties",
             ['{"%s", "%s"%s' % (s["name"], ",".join(s["required"]), split) for s in catalogue["shaders"]])
-    section("string[]", "Passes",
-            ['{"%s", "%s"%s' % (s["name"], ",".join(sorted({p for p, _ in s["passes"]})), split)
-             for s in catalogue["shaders"]])
+    w("        // Named passes in declaration order, a repeated name once. Passes sorts the names")
+    w("        // ordinally and PassLightModes keeps this order.")
+    w("        static readonly (string Shader, (string Name, string LightMode)[] Passes)[] PassDeclarations =")
+    w("        {")
+    o.extend('            ("%s", new (string, string)[] {%s}),'
+             % (s["name"], ", ".join('("%s", "%s")' % p for p in _unique(s["passes"])))
+             for s in catalogue["shaders"])
+    w("        };")
+    w("        public static readonly Dictionary<string, string[]> Passes = PassNames();")
     faces = []
     for name, kind, dimension, role in catalogue["properties"]:
         if kind == "texture" and role == "runtime":
@@ -323,13 +329,35 @@ def render_catalogue(catalogue):
                 raise CatalogueError("Runtime texture %s has unsupported dimension %s" % (name, dimension))
             faces.append('{"%s", %d},' % (name, TEXTURE_FACES[dimension]))
     section("int", "TextureFaces", faces)
-    inner = "new Dictionary<string, string>(StringComparer.Ordinal)"
-    section("Dictionary<string, string>", "PassLightModes",
-            ['{"%s", %s {%s}},' % (s["name"], inner, ", ".join('{"%s", "%s"}' % p for p in _unique(s["passes"])))
-             for s in catalogue["shaders"]])
+    w("        public static readonly Dictionary<string, Dictionary<string, string>> PassLightModes = LightModes();")
+    o.extend(_PASS_BUILDERS)
     w("    }")
     w("}")
     return "\n".join(o) + "\n"
+
+
+_PASS_BUILDERS = """        static Dictionary<string, string[]> PassNames()
+        {
+            var result = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            foreach (var shader in PassDeclarations)
+            {
+                var names = Array.ConvertAll(shader.Passes, pass => pass.Name);
+                Array.Sort(names, StringComparer.Ordinal);
+                result.Add(shader.Shader, names);
+            }
+            return result;
+        }
+        static Dictionary<string, Dictionary<string, string>> LightModes()
+        {
+            var result = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+            foreach (var shader in PassDeclarations)
+            {
+                var modes = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var pass in shader.Passes) modes.Add(pass.Name, pass.LightMode);
+                result.Add(shader.Shader, modes);
+            }
+            return result;
+        }""".split("\n")
 
 
 def _unique(pairs):
@@ -344,7 +372,10 @@ _CS_HEADER = re.compile(r'^// Generated from the official lilToon (?P<version>\S
 _CS_SECTION = re.compile(
     r'public static readonly Dictionary<string, [^=]+> (?P<title>\w+) = new [^\n]+\n\s*\{\n(?P<rows>.*?)\n\s*\};',
     re.DOTALL)
-_CS_PAIR = re.compile(r'\{"([^"]*)", "([^"]*)"\}')
+_CS_PASSES = re.compile(
+    r'static readonly \(string Shader, \(string Name, string LightMode\)\[\] Passes\)\[\] PassDeclarations =\n'
+    r'\s*\{\n(?P<rows>.*?)\n\s*\};', re.DOTALL)
+_CS_PAIR = re.compile(r'\("([^"]*)", "([^"]*)"\)')
 
 
 def parse_catalogue(text):
@@ -355,9 +386,13 @@ def parse_catalogue(text):
     if not header or not commit or not version or header.group("version") != version.group(1):
         raise CatalogueError("Catalogue header, Commit or Version is missing or inconsistent")
     sections = {m.group("title"): m.group("rows").split("\n") for m in _CS_SECTION.finditer(text)}
-    expected = ["Shaders", "Properties", "RequiredProperties", "Passes", "TextureFaces", "PassLightModes"]
+    expected = ["Shaders", "Properties", "RequiredProperties", "TextureFaces"]
     if list(sections) != expected:
         raise CatalogueError("Catalogue sections are %s, expected %s" % (list(sections), expected))
+    declarations = list(_CS_PASSES.finditer(text))
+    if len(declarations) != 1:
+        raise CatalogueError("Catalogue must have one PassDeclarations list")
+    sections["PassDeclarations"] = declarations[0].group("rows").split("\n")
 
     def rows(title, pattern):
         result = []
@@ -380,10 +415,9 @@ def parse_catalogue(text):
     unique("Shaders", shaders)
     unique("Properties", properties)
     required = unique("RequiredProperties", rows("RequiredProperties", r'\{"([^"]+)", "([^"]*)"' + split))
-    pass_sets = unique("Passes", rows("Passes", r'\{"([^"]+)", "([^"]*)"' + split))
     faces = unique("TextureFaces", rows("TextureFaces", r'\{"([^"]+)", (\d+)\},'))
-    modes = unique("PassLightModes", rows(
-        "PassLightModes", r'\{"([^"]+)", new Dictionary<string, string>\(StringComparer\.Ordinal\) \{(.*)\}\},'))
+    modes = unique("PassDeclarations", rows(
+        "PassDeclarations", r'\("([^"]+)", new \(string, string\)\[\] \{(.*)\}\),'))
     dimension_of_faces = {v: k for k, v in TEXTURE_FACES.items()}
     model_properties = []
     for name, kind, role in properties:
@@ -399,14 +433,14 @@ def parse_catalogue(text):
         raise CatalogueError("TextureFaces lists an undeclared property")
     model_shaders = []
     for name, file in shaders:
-        if name not in required or name not in pass_sets or name not in modes:
+        if name not in required or name not in modes:
             raise CatalogueError("Shader %s is missing from a per-shader section" % name)
         passes = _CS_PAIR.findall(modes[name])
-        if sorted(p for p, _ in passes) != sorted(x for x in pass_sets[name].split(",") if x):
-            raise CatalogueError("Passes and PassLightModes disagree for " + name)
+        if len({p for p, _ in passes}) != len(passes):
+            raise CatalogueError("PassDeclarations lists a pass twice for " + name)
         model_shaders.append({"name": name, "file": file,
                               "required": [x for x in required[name].split(",") if x], "passes": passes})
-    for title, table in (("RequiredProperties", required), ("Passes", pass_sets), ("PassLightModes", modes)):
+    for title, table in (("RequiredProperties", required), ("PassDeclarations", modes)):
         if len(table) != len(shaders):
             raise CatalogueError(title + " lists a shader that is not in Shaders")
     return {"version": version.group(1), "commit": commit.group(1),
