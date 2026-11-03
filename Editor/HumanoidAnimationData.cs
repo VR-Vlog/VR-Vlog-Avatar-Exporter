@@ -124,7 +124,7 @@ namespace VRVlog.Poses
             amount = (time - from.Time) / (to.Time - from.Time);
         }
 
-        static void Validate(IList<HumanoidAnimationData> animations)
+        internal static void Validate(IList<HumanoidAnimationData> animations)
         {
             if (animations == null || animations.Count == 0 || animations.Count > MaximumAnimations) Bad();
             var ids = new HashSet<string>(StringComparer.Ordinal); var totalFrames = 0;
