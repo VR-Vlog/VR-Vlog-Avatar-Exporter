@@ -360,7 +360,7 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     expressions[row].Animation.Expression = expressions[row].Name;
                 }
-                Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(expressions.Select(value => value.Animation).ToArray())).Count, Is.EqualTo(2));
+                Assert.That(ExpressionAnimationData.Read(AnimatedExpressionFixture.SchemaOne(expressions.Select(value => value.Animation).ToArray())).Count, Is.EqualTo(2));
                 original.SetBlendShapeWeight(0, 0); original.SetBlendShapeWeight(1, 0);
                 Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before)); Assert.That(mesh.blendShapeCount, Is.EqualTo(2));
             }
@@ -386,7 +386,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var targets = expression.Animation.Channels.SelectMany(channel => channel.Points).Where(point => point.Target != null).Select(point => point.Target).ToArray();
                 Assert.That(targets.Length, Is.EqualTo(2)); Assert.That(targets.Distinct().Count(), Is.EqualTo(2));
                 expression.Animation.Expression = expression.Name;
-                Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(new[] { expression.Animation })).Count, Is.EqualTo(1));
+                Assert.That(ExpressionAnimationData.Read(AnimatedExpressionFixture.SchemaOne(expression.Animation)).Count, Is.EqualTo(1));
                 var target = clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
                 var first = new Vector3[3]; var second = new Vector3[3]; var n = new Vector3[3]; var t = new Vector3[3];
                 target.GetBlendShapeFrameVertices(target.GetBlendShapeIndex(targets[0]), 0, first, n, t);
@@ -843,7 +843,7 @@ namespace VRVlog.LilToonExporter.Tests
                     original.BakeMesh(expected); ApplyBasis(copy, expression, time); copy.BakeMesh(actual); AssertNativePnt(expected, actual);
                 }
                 expression.Animation.Expression = expression.Name;
-                Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(new[] { expression.Animation })).Count, Is.EqualTo(1));
+                Assert.That(ExpressionAnimationData.Read(AnimatedExpressionFixture.SchemaOne(expression.Animation)).Count, Is.EqualTo(1));
             }
             finally { UnityEngine.Object.DestroyImmediate(expected); UnityEngine.Object.DestroyImmediate(actual); UnityEngine.Object.DestroyImmediate(clone); foreach (var item in owned) UnityEngine.Object.DestroyImmediate(item); }
         }
