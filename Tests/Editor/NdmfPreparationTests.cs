@@ -603,6 +603,53 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ToolKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild()
+        {
+            var kept = new Material(Shader.Find("Unlit/Color"));
+            Material made = null;
+            try
+            {
+                FakeProcessor.Action = root =>
+                {
+                    made = new Material(Shader.Find("Unlit/Color"));
+                    root.GetComponent<SkinnedMeshRenderer>().sharedMaterials = new[] { kept, made };
+                };
+                using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => { }))
+                    Assert.IsTrue(made != null);
+                Assert.IsTrue(made == null);
+                Assert.IsTrue(kept != null);
+            }
+            finally { Object.DestroyImmediate(kept); }
+        }
+
+        [Test]
+        public void VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild()
+        {
+            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            foreach (var root in new[] { source, clone })
+            {
+                root.AddComponent(descriptor);
+                root.AddComponent<VF.Component.VRCFuryComponent>();
+            }
+            var kept = new Material(Shader.Find("Unlit/Color"));
+            Material made = null;
+            try
+            {
+                NdmfExportPreparation.VrcFuryOverride = root =>
+                {
+                    made = new Material(Shader.Find("Unlit/Color"));
+                    root.GetComponent<SkinnedMeshRenderer>().sharedMaterials = new[] { kept, made };
+                    return true;
+                };
+                using (NdmfExportPreparation.Prepare(source, clone)) Assert.IsTrue(made != null);
+                Assert.IsTrue(made == null);
+                Assert.IsTrue(kept != null);
+            }
+            finally { Object.DestroyImmediate(kept); }
+        }
+
+        [Test]
         public void VrcFuryRunsAfterTransformingAndBeforeTheExportCallback()
         {
             var descriptor = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the VRChat SDK to test VRCFury's avatar requirement.");

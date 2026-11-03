@@ -62,7 +62,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(ExportEntry).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.5.1";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.5.3";
         }
 
         // Stops only without lilToon, or when lilToon's baker that the avatar

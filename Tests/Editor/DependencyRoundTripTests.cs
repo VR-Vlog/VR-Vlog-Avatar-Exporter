@@ -17,6 +17,9 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport(bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
+            // A morph the app drives: one nothing uses is left out of the VRM.
+            const string drivenMorph = "JawOpen";
+            fixture.Mesh.AddBlendShapeFrame(drivenMorph, 100, Enumerable.Repeat(Vector3.right * .03f, fixture.Mesh.vertexCount).ToArray(), null, null);
             var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
             var shader = Shader.Find("lilToon");
             Assert.That(shader, Is.Not.Null, "The real lilToon package is required.");
@@ -42,7 +45,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var skin = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(s => s.name == name);
                     Assert.That(skin.sharedMesh.vertexCount, Is.EqualTo(3));
-                    Assert.That(skin.sharedMesh.blendShapeCount, Is.GreaterThanOrEqualTo(1));
+                    Assert.That(skin.sharedMesh.GetBlendShapeIndex(drivenMorph), Is.GreaterThanOrEqualTo(0));
                     Assert.That(skin.sharedMaterials.Length, Is.EqualTo(skin.sharedMesh.subMeshCount));
                     Assert.That(skin.sharedMaterials.All(m => m != null && m.shader != null), Is.True);
                     Assert.That(skin.bones.All(b => b != null), Is.True);
