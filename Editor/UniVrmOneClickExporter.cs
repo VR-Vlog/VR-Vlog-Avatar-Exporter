@@ -598,6 +598,9 @@ namespace VRVlog.LilToonExporter
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", "", reason);
                         }
                     }
+                    // After the build passes, which match clothing to the bones as
+                    // authored, and before anything below reads the rest pose.
+                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>());
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     // The faces are the board's list: its clips are read as the

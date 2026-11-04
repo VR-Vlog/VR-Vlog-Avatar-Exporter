@@ -429,6 +429,9 @@ namespace VRVlog.LilToonExporter
                 var animator = copy.GetComponent<Animator>();
                 if (animator == null || !animator.isHuman || animator.avatar == null || !animator.avatar.isValid)
                     throw new InvalidOperationException("有効なHumanoid Animatorが必要です。");
+                // The VRM is written from the same T-pose, and the app applies the
+                // captured differences to it. An authored clip samples the source.
+                AvatarRestPose.AlignArms(animator);
                 var allBones = AnimationBoneNames.Select(name => (name, bone: HumanoidBones.Resolve(animator, HumanBone(name))))
                     .Where(b => b.bone != null).ToArray();
                 var bones = allBones.Where(b => HumanoidPoseData.BoneNames.Contains(b.name) || includeHead &&
