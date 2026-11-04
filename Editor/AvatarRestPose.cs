@@ -27,15 +27,23 @@ namespace VRVlog.LilToonExporter
             var lowerBone = HumanoidBones.Resolve(animator, lower);
             var handBone = HumanoidBones.Resolve(animator, hand);
             if (upperBone == null || lowerBone == null || handBone == null) return;
-            // Parent first: raising the upper arm carries the forearm with it.
+            if (!IsPast(upperBone, lowerBone, outward) && !IsPast(lowerBone, handBone, outward)) return;
+            // Parent first: raising the upper arm carries the forearm with it. The upper
+            // arm goes even when only the forearm is past, or the elbow would bend backwards.
             AlignBone(upperBone, lowerBone, outward);
-            AlignBone(lowerBone, handBone, outward);
+            if (IsPast(lowerBone, handBone, outward)) AlignBone(lowerBone, handBone, outward);
+        }
+
+        static bool IsPast(Transform bone, Transform child, Vector3 outward)
+        {
+            var direction = child.position - bone.position;
+            return direction.sqrMagnitude >= 1e-10f && Vector3.Angle(direction, outward) > MaximumArmAngle;
         }
 
         static void AlignBone(Transform bone, Transform child, Vector3 outward)
         {
             var direction = child.position - bone.position;
-            if (direction.sqrMagnitude < 1e-10f || Vector3.Angle(direction, outward) <= MaximumArmAngle) return;
+            if (direction.sqrMagnitude < 1e-10f) return;
             bone.rotation = Quaternion.FromToRotation(direction, outward) * bone.rotation;
         }
     }
