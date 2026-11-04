@@ -1013,7 +1013,8 @@ def required_regressions(profile):
     if profile == 'exporter-behavior':
         required.update(BEHAVIOR_CASES)
     if profile == 'exporter-integration':
-        required.update(table_cases())
+        for suite, methods in table_cases().items():
+            required[suite] = {**required.get(suite, {}), **methods}
     return required
 
 

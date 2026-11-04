@@ -389,6 +389,17 @@ class CaseTableCheckTests(unittest.TestCase):
                          ['Suite.Generated: a changed generator requires a new explicit native count audit'])
         self.assertEqual(check((template % one).replace('private static', 'static')),
                          ['Suite.Generated: the native matrix generator must remain checked in'])
+        self.assertEqual(check(template % (one + ' yield return new TestCaseData(0, 0);')),
+                         ['Suite.Generated: a changed generator requires a new explicit native count audit'])
+        self.assertEqual(check((template % one).replace('[TestCaseSource(nameof(Cases))]',
+                                                        '[TestCaseSource(nameof(Cases))] [TestCaseSource(nameof(Cases))]')),
+                         ['Suite.Generated: a source case must have one auditable generator'])
+
+    def test_the_integration_profile_adds_to_the_suites_every_profile_requires(self):
+        suite = 'DependencyStartupTests'
+        with mock.patch.object(unity_runner, 'INTEGRATION_CASES', {suite: {'Extra': 1}}):
+            required = unity_runner.required_regressions('exporter-integration')[suite]
+        self.assertEqual(required, {'MenuResolvesBackendWithoutInitializationRegistration': 1, 'Extra': 1})
 
     def test_pinned_parameter_combinations_must_be_real_test_attributes(self):
         with mock.patch.object(unity_runner, 'INTEGRATION_VARIANTS', {'Suite': {'Two': ('1', '3')}}):
