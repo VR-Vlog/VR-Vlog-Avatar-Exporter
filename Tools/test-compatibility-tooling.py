@@ -295,9 +295,10 @@ class UnityProfilePolicyTests(unittest.TestCase):
             declarations = dict((method, attributes) for attributes, method in re.findall(
                 r'((?:^[ \t]*\[(?:Test|UnityTest|TestCase\([^\r\n]*\)|TestCaseSource\([^\r\n]*\))\][ \t]*(?:\r?\n)?)+)'
                 r'[ \t]*public[ \t]+(?:async[ \t]+)?(?:void|Task|IEnumerator)[ \t]+(\w+)\(', source, re.MULTILINE))
-            if suite not in unity_runner.INTEGRATION_CASES:
-                self.assertEqual(set(methods), set(declarations),
-                                 'Whole-class filters must pin every checked-in regression, not only a required minimum')
+            # Shared suites count too: exporter-behavior selects them by method name,
+            # so a method in neither table would never run there.
+            self.assertEqual(set(methods), set(declarations),
+                             'Every checked-in regression must be pinned, not only a required minimum')
             for method, count in methods.items():
                 with self.subTest(suite=suite, method=method):
                     self.assertIn(method, declarations, 'Required regression must remain a real checked-in test')
