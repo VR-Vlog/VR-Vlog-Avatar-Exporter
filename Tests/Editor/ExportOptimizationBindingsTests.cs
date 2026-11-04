@@ -916,9 +916,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Blink", "A", true)]
         [TestCase("Blink", "eye_up", true)]
         [TestCase("Blink", "Blink", false)]
-        // Meshes with different camera gaze sets merge into one mesh that has both. The
-        // app sees two valid sets on the mesh and stays on the bone gaze, as it does for
-        // a mesh authored with two sets. A set on both meshes cannot be named twice.
+        // Different camera gaze names on two meshes both get their names back after the
+        // merge. The same name on both meshes cannot be named twice. Which set the app
+        // then picks is not checked here.
         [TestCase("eye_up", "look_up", true)]
         [TestCase("eye_up", "eye_up", false)]
         public void InstalledAvatarOptimizerMergeGivesAppDrivenShapesTheirNamesBack(string firstShape, string secondShape, bool restored)
