@@ -19,7 +19,15 @@ namespace VRVlog.LilToonExporter.Tests
 
         T Own<T>(T value) where T : Object { owned.Add(value); return value; }
 
-        Texture2D Image(string name) => Own(new Texture2D(4, 4) { name = name });
+        Texture2D Image(string name, float alpha = 1)
+        {
+            var image = Own(new Texture2D(4, 4) { name = name });
+            var pixels = new Color[16];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = new Color(.2f, .4f, .6f, alpha);
+            image.SetPixels(pixels);
+            image.Apply();
+            return image;
+        }
 
         Material Source()
         {
@@ -126,16 +134,67 @@ namespace VRVlog.LilToonExporter.Tests
             AssertLinearGray(Substitute(source), "_ShadowColor", .25f);
         }
 
-        // Without a graphics device the shift is reported instead of baked.
-        [Test] public void PlanBShiftBakesTheBaseOrIsReported()
+        // Strength .5 and indirect .25 give the shade .78 of the source's light
+        // at full mix; lilToon's lerp(1, level, strength) over that level is .8125.
+        [Test] public void PlanBMixAtHalfStrengthStaysNearTheSource()
         {
             var source = Source();
             source.SetFloat("_ShadowPlanBUsePlanB", 1);
-            source.SetFloat("_ShadowPlanBHueShiftFromBase", .25f);
+            source.SetFloat("_ShadowPlanBDefaultShadowMix", 1);
+            source.SetFloat("_ShadowStrength", .5f); source.SetFloat("_ShadowIndirectIntensity", .25f);
+            AssertLinearGray(Substitute(source), "_ShadowColor", .625f);
+        }
+
+        // Without a graphics device the shift is reported instead of baked. Red
+        // moved a third of the way around the hue circle is green.
+        [Test] public void PlanBShiftBakesTheBaseOrIsReported()
+        {
+            var source = Source();
+            var red = Own(new Texture2D(4, 4) { name = "red" });
+            var pixels = new Color[16];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = Color.red;
+            red.SetPixels(pixels);
+            red.Apply();
+            source.SetTexture("_MainTex", red);
+            source.SetColor("_Color", Color.white);
+            source.SetFloat("_ShadowPlanBUsePlanB", 1);
+            source.SetFloat("_ShadowPlanBHueShiftFromBase", 1f / 3);
             var output = Substitute(source, out var dropped);
             var baked = output.GetTexture("_ShadowColorTex");
-            if (baked == null) Assert.That(dropped, Does.Contain("Plan B Color Shift"));
-            else Assert.That(baked, Is.Not.SameAs(source.GetTexture("_MainTex")));
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            {
+                Assert.That(baked, Is.Null);
+                Assert.That(dropped, Does.Contain("Plan B Color Shift"));
+                return;
+            }
+            var pixel = ((Texture2D)baked).GetPixel(0, 0);
+            Assert.That(pixel.r, Is.EqualTo(0).Within(.02f));
+            Assert.That(pixel.g, Is.EqualTo(1).Within(.02f));
+            Assert.That(pixel.b, Is.EqualTo(0).Within(.02f));
+            Assert.That(pixel.a, Is.EqualTo(1));
+            Assert.That(dropped, Does.Not.Contain("Plan B Color Shift"));
+        }
+
+        [Test] public void ACustomShadeImageIsReadWithoutItsAlpha()
+        {
+            var source = Source();
+            source.SetFloat("_ShadowPlanBUsePlanB", 1);
+            source.SetFloat("_ShadowPlanBUseCustomShadowTexture", 1);
+            var image = Image("custom", .5f);
+            source.SetTexture("_ShadowPlanBCustomShadowTexture", image);
+            source.SetTextureScale("_ShadowPlanBCustomShadowTexture", new Vector2(2, 2));
+            var output = Substitute(source, out var dropped);
+            Assert.That(dropped, Does.Contain("Shade Map Tiling"));
+            var drawn = output.GetTexture("_ShadowColorTex");
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) { Assert.That(drawn, Is.SameAs(image)); return; }
+            Assert.That(((Texture2D)drawn).GetPixel(0, 0).a, Is.EqualTo(1).Within(1e-3f));
+        }
+
+        [Test] public void TheSecondShadeUsesTheSameLightSettings()
+        {
+            var output = Substitute(Source());
+            Assert.That(output.GetFloat("_Shadow2ndNormalStrength"), Is.EqualTo(1));
+            Assert.That(output.GetFloat("_Shadow2ndReceive"), Is.EqualTo(1));
         }
 
         // Its border is relative to the first one.
@@ -243,6 +302,27 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(source);
             Assert.That(output.GetTexture("_OutlineTex"), Is.SameAs(source.GetTexture("_MainTex")));
             Assert.That(output.GetColor("_OutlineColor").b, Is.EqualTo(.6f).Within(1e-3f));
+        }
+
+        // A rate near zero is the outline's own image, tinted by that little.
+        [TestCase(.01f, false)]
+        [TestCase(.49f, false)]
+        [TestCase(.5f, true)]
+        public void TheOutlineRateChoosesTheImage(float rate, bool takesTheBase)
+        {
+            var source = Source();
+            source.SetFloat("_UseOutline", 1);
+            source.SetFloat("_OutlineWidth", .1f);
+            source.SetFloat("_OutlineTextureColorRate", rate);
+            source.SetColor("_Color", new Color(.2f, .4f, .6f));
+            source.SetColor("_OutlineColor", Color.black);
+            var image = Image("outline");
+            source.SetTexture("_OutlineTexture", image);
+            var output = Substitute(source, out var dropped);
+            Assert.That(output.GetTexture("_OutlineTex"), Is.SameAs(takesTheBase ? source.GetTexture("_MainTex") : image));
+            Assert.That(output.GetColor("_OutlineColor").b, Is.EqualTo(.6f * rate).Within(1e-3f));
+            if (takesTheBase) Assert.That(dropped, Does.Contain("Outline Image"));
+            else Assert.That(dropped, Does.Not.Contain("Outline Image"));
         }
 
         [Test] public void WhatLilToonCannotShowIsReported()
