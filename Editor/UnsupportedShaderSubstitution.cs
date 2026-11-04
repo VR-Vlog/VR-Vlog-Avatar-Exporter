@@ -860,7 +860,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Every slot the generic mapping fills is a 2D slot.
-        static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
+        internal static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
 
         internal static void Set(Material material, string name, float value)
@@ -1046,7 +1046,8 @@ namespace VRVlog.LilToonExporter
             // The keyword space also holds the fallback's keywords, so a toon
             // shader that falls back to Standard lists _ALPHABLEND_ON; only a
             // keyword a pass of the subshader that draws uses counts. The
-            // fallback's subshaders are not valid pass identifiers.
+            // fallback's subshaders are not valid pass identifiers. A GrabPass
+            // has no program, and asking it logs an error.
             static bool OwnKeyword(Shader shader, string name)
             {
                 var keyword = shader.keywordSpace.FindKeyword(name);
@@ -1055,7 +1056,7 @@ namespace VRVlog.LilToonExporter
                 var active = data?.ActiveSubshaderIndex ?? -1;
                 if (active < 0 || data.ActiveSubshader == null) return true;
                 for (var pass = 0; pass < data.ActiveSubshader.PassCount; pass++)
-                    if (ShaderUtil.PassHasKeyword(shader, new PassIdentifier((uint)active, (uint)pass), keyword)) return true;
+                    if (!data.ActiveSubshader.GetPass(pass).IsGrabPass && ShaderUtil.PassHasKeyword(shader, new PassIdentifier((uint)active, (uint)pass), keyword)) return true;
                 return false;
             }
         }

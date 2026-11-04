@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter
             ("_GlobalMaskTexturesEnable", "Global Masks"), ("_GlitterEnable", "Glitter"), ("_MainVertexColoringEnabled", "Vertex Colors"),
         };
 
-        static void Drop(List<string> effects, string label)
+        internal static void Drop(ICollection<string> effects, string label)
         {
             if (!effects.Contains(label)) effects.Add(label);
         }
@@ -387,8 +387,8 @@ namespace VRVlog.LilToonExporter
         // the value the source reads, owned by textures. When that cannot be
         // done the effect is turned off and reported: unmasked, it would cover
         // the whole material.
-        static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
-            string toggle, List<Texture2D> textures, List<string> effects, string label, int defaultChannel = 0)
+        internal static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
+            string toggle, List<Texture2D> textures, ICollection<string> effects, string label, int defaultChannel = 0)
         {
             if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return;
             var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, defaultChannel)), 0, 3);
@@ -407,7 +407,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // channel 0-3 is R, G, B, A and 4 the BT.709 luminance of RGB.
-        static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures)
+        internal static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures, float scale = 1)
         {
             if (textures == null) return null;
             var fit = Mathf.Min(1, 2048f / Mathf.Max(mask.width, mask.height));
@@ -420,7 +420,7 @@ namespace VRVlog.LilToonExporter
             for (var i = 0; i < pixels.Length; i++)
             {
                 var p = pixels[i];
-                var v = Mathf.Clamp01(channel == 4 ? p.r * .2126f + p.g * .7152f + p.b * .0722f : p[channel]);
+                var v = Mathf.Clamp01((channel == 4 ? p.r * .2126f + p.g * .7152f + p.b * .0722f : p[channel]) * scale);
                 if (inverted) v = 1 - v;
                 pixels[i] = new Color(v, v, v, 1);
             }
@@ -595,7 +595,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Puts back the shader's own defaults.
-        static void Reset(Material material, params string[] names)
+        internal static void Reset(Material material, params string[] names)
         {
             var shader = material.shader;
             foreach (var name in names)
@@ -636,7 +636,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static void SetTexture(Material material, string name, Texture texture, Vector2 scale, Vector2 offset)
+        internal static void SetTexture(Material material, string name, Texture texture, Vector2 scale, Vector2 offset)
         {
             if (!material.HasProperty(name)) return;
             material.SetTexture(name, texture);
