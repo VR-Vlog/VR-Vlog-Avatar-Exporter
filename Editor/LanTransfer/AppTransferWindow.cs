@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // window opens for it only when the exporter cannot run, to say why.
     public sealed class AppTransferWindow : EditorWindow
     {
-        internal const string QuickMenu = "アプリに転送（かんたん）...", DetailedMenu = "アプリに転送（通常）...";
+        internal const string QuickMenu = "アプリに転送（かんたん）｜Send to App (Quick)...", DetailedMenu = "アプリに転送（通常）｜Send to App...";
         internal const string QuickMenuPath = ExporterMenu.Hierarchy + QuickMenu, DetailedMenuPath = ExporterMenu.Hierarchy + DetailedMenu;
         internal const string QuickMenuBarPath = ExporterMenu.MenuBar + QuickMenu, DetailedMenuBarPath = ExporterMenu.MenuBar + DetailedMenu;
         internal const string QuickAssetsPath = ExporterMenu.Assets + QuickMenu, DetailedAssetsPath = ExporterMenu.Assets + DetailedMenu;
