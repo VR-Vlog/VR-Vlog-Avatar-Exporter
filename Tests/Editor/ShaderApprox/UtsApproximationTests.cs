@@ -19,7 +19,15 @@ namespace VRVlog.LilToonExporter.Tests
 
         T Own<T>(T value) where T : Object { owned.Add(value); return value; }
 
-        Texture2D Image(string name) => Own(new Texture2D(4, 4) { name = name });
+        Texture2D Image(string name, float alpha = 1)
+        {
+            var image = Own(new Texture2D(4, 4) { name = name });
+            var pixels = new Color[16];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = new Color(.2f, .4f, .6f, alpha);
+            image.SetPixels(pixels);
+            image.Apply();
+            return image;
+        }
 
         Material Source()
         {
@@ -43,6 +51,66 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(color.r, Is.EqualTo(expected.r).Within(1e-4f), name);
             Assert.That(color.g, Is.EqualTo(expected.g).Within(1e-4f), name);
             Assert.That(color.b, Is.EqualTo(expected.b).Within(1e-4f), name);
+        }
+
+        // lilToon would mix the base color in by the alpha; the source reads RGB.
+        [Test] public void AShadeImageWithAlphaIsRedrawnOpaque()
+        {
+            var source = Source();
+            var first = Image("first", .5f);
+            source.SetTexture("_1st_ShadeMap", first);
+            var output = Substitute(source).GetTexture("_ShadowColorTex");
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) { Assert.That(output, Is.SameAs(first)); return; }
+            Assert.That(output, Is.Not.SameAs(first));
+            var pixel = ((Texture2D)output).GetPixel(0, 0);
+            Assert.That(pixel.a, Is.EqualTo(1).Within(1e-3f));
+            Assert.That(pixel.r, Is.EqualTo(.2f).Within(.01f));
+            Assert.That(pixel.b, Is.EqualTo(.6f).Within(.01f));
+        }
+
+        [Test] public void TheSecondShadeTakesTheFirstOnesLightSettings()
+        {
+            var source = Source();
+            source.SetFloat("_ShadeColor_Step", .3f);
+            source.SetFloat("_Is_NormalMapToBase", 1);
+            source.SetFloat("_Set_SystemShadowsToBase", 1);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_Shadow2ndNormalStrength"), Is.EqualTo(1));
+            Assert.That(output.GetFloat("_Shadow2ndReceive"), Is.EqualTo(1));
+            source.SetFloat("_Is_NormalMapToBase", 0);
+            source.SetFloat("_Set_SystemShadowsToBase", 0);
+            output = Substitute(source);
+            Assert.That(output.GetFloat("_Shadow2ndNormalStrength"), Is.EqualTo(0));
+            Assert.That(output.GetFloat("_Shadow2ndReceive"), Is.EqualTo(0));
+        }
+
+        // lilToon reads them in the main image's UV.
+        [Test] public void TilingOfAShadeImageIsReported()
+        {
+            var source = Source();
+            source.SetTexture("_1st_ShadeMap", Image("first"));
+            source.SetTextureScale("_1st_ShadeMap", new Vector2(2, 2));
+            Substitute(source, out var dropped);
+            Assert.That(dropped, Does.Contain("Shade Map Tiling"));
+            source.SetTextureScale("_1st_ShadeMap", Vector2.one);
+            Substitute(source, out dropped);
+            Assert.That(dropped, Does.Not.Contain("Shade Map Tiling"));
+        }
+
+        // The direction mask follows the light, not the shadow.
+        [Test] public void TheRimsDirectionMaskFollowsTheLight()
+        {
+            var source = Source();
+            source.SetFloat("_RimLight", 1);
+            source.SetFloat("_LightDirection_MaskOn", 1);
+            source.SetFloat("_Tweak_LightDirection_MaskLevel", .2f);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_RimShadowMask"), Is.EqualTo(0));
+            Assert.That(output.GetFloat("_RimDirStrength"), Is.EqualTo(1));
+            Assert.That(output.GetFloat("_RimDirRange"), Is.EqualTo(-.2f).Within(1e-4f));
+            Assert.That(output.GetColor("_RimIndirColor").a, Is.EqualTo(0));
+            source.SetFloat("_LightDirection_MaskOn", 0);
+            Assert.That(Substitute(source).GetFloat("_RimDirStrength"), Is.EqualTo(0));
         }
 
         [Test] public void TheVariantsAreFoundByTheirNames()
