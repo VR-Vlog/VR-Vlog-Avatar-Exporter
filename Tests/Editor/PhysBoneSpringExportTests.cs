@@ -271,6 +271,101 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public async Task InsideColliderRadiusComesBackFromTheFileUnchanged()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var hair = Child(head, "Hair", Vector3.forward * .1f);
+            Child(hair, "Hair tip", Vector3.down * .1f);
+            var pb = PhysBone(hair.gameObject);
+            var scaled = Child(head, "Scaled", Vector3.zero);
+            scaled.localScale = Vector3.one * 10;
+            var collider = scaled.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+            Set(collider, "shapeType", 0); Set(collider, "insideBounds", true); Set(collider, "radius", .1f);
+            using (var data = new SerializedObject(pb))
+            {
+                var list = data.FindProperty("colliders"); list.arraySize = 1;
+                list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+            }
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            Vrm10Instance imported = null;
+            try
+            {
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Inside collider", "Tests", exporterVersion: null,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                var restored = imported.SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(restored.Radius, Is.EqualTo(1f).Within(.00001));
+                Assert.That(restored.transform.lossyScale.x, Is.EqualTo(10f).Within(.001));
+            }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
+        }
+
+        [Test]
+        public void InsideCollidersUseTheScaleOfTheirRootTransform()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                var holder = Child(source.transform, "Holder", Vector3.zero);
+                holder.localScale = Vector3.one * 3;
+                var scaled = Child(source.transform, "Scaled", Vector3.zero);
+                scaled.localScale = Vector3.one * 10;
+                var collider = holder.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                Set(collider, "shapeType", 0); Set(collider, "insideBounds", true); Set(collider, "radius", .1f);
+                using (var data = new SerializedObject(collider))
+                {
+                    data.FindProperty("rootTransform").objectReferenceValue = scaled; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                using (var data = new SerializedObject(pb))
+                {
+                    var list = data.FindProperty("colliders"); list.arraySize = 1;
+                    list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var output = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(output.Radius, Is.EqualTo(1f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(source); if (copy != null) Object.DestroyImmediate(copy); }
+        }
+
+        [TestCase(0, true, 1f)]
+        [TestCase(1, true, .95f)]
+        [TestCase(0, false, .1f)]
+        [TestCase(1, false, .1f)]
+        public void InsideCollidersKeepTheirWorldSizeOnAScaledRootTransform(int shape, bool inside, float expectedRadius)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                var scaled = Child(source.transform, "Scaled", Vector3.zero);
+                scaled.localScale = shape == 0 ? Vector3.one * 10 : new Vector3(-9.5f, 2, 1);
+                var collider = scaled.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                Set(collider, "shapeType", shape); Set(collider, "insideBounds", inside);
+                Set(collider, "radius", .1f); Set(collider, "height", .4f);
+                using (var data = new SerializedObject(pb))
+                {
+                    var list = data.FindProperty("colliders"); list.arraySize = 1;
+                    list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var output = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(output.Radius, Is.EqualTo(expectedRadius).Within(.001));
+                // The capsule's ends stay in the collider's own units: the node's scale moves them.
+                if (shape == 1) Assert.That(Vector3.Distance(output.Offset, output.Tail), Is.EqualTo(.2f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        [Test]
         public void CurvesCollidersAndLimitsUseRealSdkSerializedValues()
         {
             var source = new GameObject("source"); GameObject copy = null;
