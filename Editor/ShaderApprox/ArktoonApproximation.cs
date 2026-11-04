@@ -63,7 +63,9 @@ namespace VRVlog.LilToonExporter
             Set(material, "_ShadowBorder", border);
             Set(material, "_ShadowBlur", Mathf.Clamp(values.Float("_ShadowborderBlur", .05f), .001f, 1));
             Set(material, "_ShadowNormalStrength", 1);
+            Set(material, "_Shadow2ndNormalStrength", 1);
             Set(material, "_ShadowReceive", 1);
+            Set(material, "_Shadow2ndReceive", 1);
             material.SetTexture("_ShadowColorTex", null);
             CopyMask(values, material, "_ShadowStrengthMask", "", "", "_ShadowStrengthMask", "", textures, dropped, "Shadow Strength Mask");
             CopyMask(values, material, "_ShadowborderBlurMask", "", "", "_ShadowBlurMask", "", textures, dropped, "Shadow Blur Mask");
@@ -95,7 +97,11 @@ namespace VRVlog.LilToonExporter
             {
                 var tint = Opaque(values, image + "RGB", Color.white).linear * mix;
                 // The empty slot is black.
-                if (values.Texture(image, out var map, out var scale, out var offset) && Flat(map) && map != null) SetTexture(material, textureName, map, scale, offset);
+                if (values.Texture(image, out var map, out var scale, out var offset) && Flat(map) && map != null)
+                {
+                    ShadeLayers.ReportOwnUv(material, scale, offset, dropped, "Shade Map Tiling");
+                    SetTexture(material, textureName, ShadeLayers.WithoutAlpha(map, textures), scale, offset);
+                }
                 else tint = Color.black;
                 tint.a = 1;
                 material.SetColor(colorName, tint.gamma);
@@ -201,8 +207,9 @@ namespace VRVlog.LilToonExporter
             CopyMask(values, material, "_ShadowCapBlendMask", "", "", "_MatCap2ndBlendMask", "_UseMatCap2nd", textures, dropped, "Shadow Cap Blend Mask");
         }
 
-        // The width is in centimeters in both. The source blends its color and
-        // image with the base color by the rate.
+        // The width is in centimeters in both. The source draws
+        // base × rate + color × image × (1 - rate). lilToon draws one image, so
+        // the larger side of the rate gives it, and the color follows the rate.
         static void ApplyOutline(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (!material.HasProperty("_OutlineWidth")) { Drop(dropped, "Outline"); return; }
@@ -212,15 +219,15 @@ namespace VRVlog.LilToonExporter
             var color = Opaque(values, "_OutlineColor", Color.black);
             var rate = Mathf.Clamp01(values.Float("_OutlineTextureColorRate", 0));
             material.SetTexture("_OutlineTex", null);
-            if (rate > 0)
+            var hasImage = values.Texture("_OutlineTexture", out var image, out var scale, out var offset) && Flat(image) && image != null;
+            if (rate >= .5f)
             {
                 SetTexture(material, "_OutlineTex", material.GetTexture("_MainTex"), material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"));
-                color = Color.Lerp(color, material.GetColor("_Color"), rate);
-                color.a = 1;
-                if (values.Texture("_OutlineTexture", out var unused, out _, out _) && unused != null) Drop(dropped, "Outline Image");
+                if (hasImage) Drop(dropped, "Outline Image");
             }
-            else if (values.Texture("_OutlineTexture", out var image, out var scale, out var offset) && Flat(image) && image != null)
-                SetTexture(material, "_OutlineTex", image, scale, offset);
+            else if (hasImage) SetTexture(material, "_OutlineTex", image, scale, offset);
+            color = Color.Lerp(color, material.GetColor("_Color"), rate);
+            color.a = 1;
             material.SetColor("_OutlineColor", color);
             CopyMask(values, material, "_OutlineWidthMask", "", "", "_OutlineWidthMask", "", textures, dropped, "Outline Width Mask");
             if (values.Float("_OutlineUseColorShift", 0) > .5f) Drop(dropped, "Outline Color Shift");
