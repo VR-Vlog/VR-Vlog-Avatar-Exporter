@@ -128,8 +128,17 @@ namespace VRVlog.LilToonExporter.Tests
         // The board starts from the blink saved for the avatar, as the old quick
         // transfer took it from the export settings.
         // The mode goes in as an int because the enum is internal and the test is public.
+        [Test]
+        public void TheBlinkRowNamesEachSetting()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.BlinkSettingLabel(BlinkExportMode.Auto), Does.Contain("自動"));
+            Assert.That(ExperimentalExpressionCaptureWindow.BlinkSettingLabel(BlinkExportMode.Manual), Does.Contain("手動"));
+            Assert.That(ExperimentalExpressionCaptureWindow.BlinkSettingLabel(BlinkExportMode.None), Does.Contain("瞬きなし"));
+        }
+
         [TestCase((int)BlinkExportMode.Auto)]
         [TestCase((int)BlinkExportMode.Manual)]
+        [TestCase((int)BlinkExportMode.None)]
         public void TheHiddenBoardUsesTheSavedBlink(int modeValue)
         {
             var mode = (BlinkExportMode)modeValue;
@@ -303,9 +312,9 @@ namespace VRVlog.LilToonExporter.Tests
             var window = BoardHarness.Create();
             try
             {
-                window.SetField("automaticBlink", false);
+                window.SetField("configuredBlink", new BlinkExportOptions { Mode = BlinkExportMode.None });
                 window.Call("ChangeAvatar");
-                Assert.That(window.Field("automaticBlink"), Is.True);
+                Assert.That(window.Field("configuredBlink"), Is.Null);
             }
             finally { Object.DestroyImmediate(window); }
         }
@@ -395,8 +404,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var transfer = Transfer(fixture.Source);
                 var stamp = transfer.SourceStamp(fixture.Source, true);
                 Assert.That(transfer.ChoicesUnchanged(stamp), Is.True);
-                var blink = typeof(ExperimentalExpressionCaptureWindow).GetField("automaticBlink", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                blink.SetValue(board, !(bool)blink.GetValue(board));
+                board.SetField("configuredBlink", new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(transfer.ChoicesUnchanged(stamp), Is.False, "Another blink on the board changes the file.");
                 Assert.That(transfer.ChoicesUnchanged(transfer.SourceStamp(fixture.Source, false)), Is.True, "The quick transfer starts from the stores.");
             }

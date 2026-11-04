@@ -43,7 +43,6 @@ namespace VRVlog.LilToonExporter
         Vector2 pageScroll;
         Vector3 center;
         float distance = 1, yaw, zoom = 1;
-        bool automaticBlink = true;
         BlinkExportOptions configuredBlink;
         BlinkConfigurationWindow blinkConfiguration;
         readonly System.Collections.Generic.Dictionary<AnimationClip, string> clipErrors = new System.Collections.Generic.Dictionary<AnimationClip, string>();
@@ -589,7 +588,7 @@ namespace VRVlog.LilToonExporter
             var inputs = clipInputs.ToArray(); var excluded = board?.Excluded.ToArray() ?? Array.Empty<AnimationClip>();
             // Names are saved per avatar asset; one in an unsaved scene keeps them only here.
             var names = board?.Names.ToArray() ?? Array.Empty<System.Collections.Generic.KeyValuePair<AnimationClip, string>>();
-            var poses = session.PoseOptions; var blink = configuredBlink?.Copy(); var automatic = automaticBlink; var previousSaved = saved;
+            var poses = session.PoseOptions; var blink = configuredBlink?.Copy(); var previousSaved = saved;
             var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
             var edits = excludedObjectEdits; var editError = excludedObjectError;
             string problem = null;
@@ -610,7 +609,7 @@ namespace VRVlog.LilToonExporter
             foreach (var pair in names) board.Names[pair.Key] = pair.Value;
             session.Presets.Clear();
             foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
-            configuredBlink = blink; automaticBlink = automatic; saved = previousSaved;
+            configuredBlink = blink; saved = previousSaved;
             return problem;
         }
 
@@ -815,11 +814,8 @@ namespace VRVlog.LilToonExporter
                 // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
                 // So does the blink, as the blink settings window would set it.
-                // Automatic (also what an avatar without saved settings reads)
-                // leaves the board's own blink toggle as it is.
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
-                if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
-                else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
+                if (storedBlink.Mode != BlinkExportMode.Auto) configuredBlink = storedBlink.Copy();
                 session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
                 if (keptPoses == null)
@@ -2179,16 +2175,24 @@ namespace VRVlog.LilToonExporter
             using (new EditorGUILayout.HorizontalScope())
             {
                 const float buttonWidth = 100;
-                var label = ExporterLocalization.T(configuredBlink?.Mode == BlinkExportMode.Manual ? "瞬きを書き出す" : "空いている瞬きの枠は閉じた目を自動で探す");
+                var label = ExporterLocalization.T(BlinkSettingLabel(configuredBlink?.Mode ?? BlinkExportMode.Auto));
                 var width = Mathf.Max(0, position.width - 32 - buttonWidth - 30);
-                var blinkOn = EditorGUILayout.ToggleLeft(new GUIContent(Fit(label, EditorStyles.label, width), label), automaticBlink);
-                // Blink candidates follow the blink setting the export receives.
-                if (blinkOn != automaticBlink) { automaticBlink = blinkOn; Queue(ApplyAutomaticPresets); }
+                EditorGUILayout.LabelField(new GUIContent(Fit(label, EditorStyles.label, width), label), EditorStyles.label);
                 if (GUILayout.Button(ExporterLocalization.T("確認・調整"), GUILayout.Width(buttonWidth))) Queue(ShowBlinkConfiguration);
             }
             var note = ExporterLocalization.T("枠に入れた表情が優先されます");
             var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+        }
+
+        internal static string BlinkSettingLabel(BlinkExportMode mode)
+        {
+            switch (mode)
+            {
+                case BlinkExportMode.Manual: return "空いている瞬きの枠は手動設定を使う";
+                case BlinkExportMode.None: return "空いている瞬きの枠は瞬きなしで書き出す";
+                default: return "空いている瞬きの枠は閉じた目を自動で探す";
+            }
         }
 
         void ShowFace(string name) { previewName = name; previewClip = null; Repaint(); }
@@ -2717,16 +2721,16 @@ namespace VRVlog.LilToonExporter
         void ShowBlinkConfiguration()
         {
             blinkConfiguration?.Close();
-            var options = automaticBlink ? configuredBlink?.Copy() ?? new BlinkExportOptions() : new BlinkExportOptions { Mode = BlinkExportMode.None };
+            var options = configuredBlink?.Copy() ?? new BlinkExportOptions();
             blinkConfiguration = BlinkConfigurationWindow.Show(source, options, selected => {
-                configuredBlink = selected.Mode == BlinkExportMode.Manual ? selected.Copy() : null;
-                automaticBlink = selected.Mode != BlinkExportMode.None;
+                configuredBlink = selected.Mode == BlinkExportMode.Auto ? null : selected.Copy();
+                // Blink candidates follow the blink setting the export receives.
                 Queue(ApplyAutomaticPresets);
             });
         }
 
         // The blink setting the export receives (null is automatic).
-        BlinkExportOptions ExportBlinkOptions() => automaticBlink ? configuredBlink?.Copy() : new BlinkExportOptions { Mode = BlinkExportMode.None };
+        BlinkExportOptions ExportBlinkOptions() => configuredBlink?.Copy();
 
         string AvatarName() => source != null && !string.IsNullOrWhiteSpace(source.name) ? source.name.Trim() : "avatar";
 
@@ -2741,8 +2745,6 @@ namespace VRVlog.LilToonExporter
         void ChangeAvatar()
         {
             Cleanup(); CloseChildWindows();
-            // Another avatar starts from blink on, as a new board does; its saved blink applies on preparing.
-            automaticBlink = true;
             licenseOptions = new AvatarLicenseOptions();
             status = null;
             page = ExpressionsPage;
