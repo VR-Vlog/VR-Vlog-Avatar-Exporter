@@ -103,7 +103,11 @@ namespace VRVlog.LilToonExporter.Tests
             Face("まばたき", "ウィンク:L", "ウィンク右:R");
             var animator = Root.GetComponent<Animator>();
             Avatar avatar = null;
-            if (generic) { avatar = AvatarBuilder.BuildGenericAvatar(Root, ""); owned.Add(avatar); }
+            if (generic)
+            {
+                avatar = AvatarBuilder.BuildGenericAvatar(Root, ""); owned.Add(avatar);
+                Assert.That(avatar.isValid && !avatar.isHuman, "The case needs a valid Generic Avatar.");
+            }
             animator.avatar = avatar;
             Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.Hips), Is.Null);
             AssertBilateralOnly(BlinkExportSession.Resolve(Root), "まばたき");
