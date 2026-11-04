@@ -245,6 +245,23 @@ namespace VRVlog.LilToonExporter.Tests
             check(removed.SequenceEqual(unused.Select(name => "Face/" + name)), "Menu names and other names go");
         }
 
+        // CameraEyeGaze.Families in the app: it uses a family only when all four
+        // directions are there, so losing one turns the gaze back to the bones.
+        public static void KeepsTheShapesOfTheCameraGaze(Action<bool, string> check)
+        {
+            var driven = new[] { "look", "eye", "eyes", "pupil", "eyepupil", "iris", "eyeiris", "eyelook" }
+                .SelectMany(family => new[] { "up", "down", "left", "right" }.Select(direction => family + direction))
+                .Concat(new[] { "eye_up", "eye_down", "eye_left", "eye_right", "Eye Up", "EYE-DOWN", "lookLeft", "eyeLook_Right", "Iris.Up" }).ToArray();
+            // The whole name has to match; a mesh prefix or a menu is another name.
+            var unused = new[] { "Face.eye_up", "Body/eye_up", "VRChat/eye_up", "eye_up2", "eye_close", "eyebrow_up", "look" };
+            foreach (var name in driven) check(UnusedMorphTargets.AppDrives(name), "The camera gaze drives " + name);
+            foreach (var name in unused) check(!UnusedMorphTargets.AppDrives(name), "The camera gaze does not drive " + name);
+            var builder = new Builder();
+            var face = builder.Mesh("Face", new[] { "eye_up", "eye_down", "eye_left", "eye_right" }.Concat(unused).ToArray());
+            var doc = Valid(UnusedMorphTargets.Strip(builder.Build(), new List<string>()), check);
+            check(Names(doc, face).SequenceEqual(new[] { "eye_up", "eye_down", "eye_left", "eye_right" }), "All four directions stay with nothing binding them");
+        }
+
         public static void KeepsTargetsWithAWeight(Action<bool, string> check)
         {
             var builder = new Builder();
@@ -408,6 +425,7 @@ namespace VRVlog.LilToonExporter.Tests
             KeepsTargetsBoundByVrmExpressions(check);
             KeepsTargetsOfExpressionAnimations(check);
             KeepsNamesTheAppDrives(check);
+            KeepsTheShapesOfTheCameraGaze(check);
             KeepsTargetsWithAWeight(check);
             RemovesUnusedAccessorsAndViews(check);
             RemovesTheListsOfAMeshLeftWithoutTargets(check);
