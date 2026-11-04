@@ -327,6 +327,40 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
+        [TestCase(true, .2f, VRM10SpringBoneColliderTypes.SphereInside)]
+        [TestCase(true, .19f, VRM10SpringBoneColliderTypes.SphereInside)]
+        [TestCase(true, 0f, VRM10SpringBoneColliderTypes.SphereInside)]
+        [TestCase(true, .21f, VRM10SpringBoneColliderTypes.CapsuleInside)]
+        [TestCase(false, .2f, VRM10SpringBoneColliderTypes.Capsule)]
+        public void AnInsideCapsuleWithoutLengthGoesOutAsASphere(bool inside, float height, VRM10SpringBoneColliderTypes expected)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                var scaled = Child(source.transform, "Scaled", new Vector3(.1f, .2f, .3f));
+                scaled.localScale = Vector3.one * 2;
+                var collider = scaled.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                Set(collider, "shapeType", 1); Set(collider, "insideBounds", inside);
+                Set(collider, "radius", .1f); Set(collider, "height", height); Set(collider, "position", new Vector3(.4f, .5f, .6f));
+                using (var data = new SerializedObject(pb))
+                {
+                    var list = data.FindProperty("colliders"); list.arraySize = 1;
+                    list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var output = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(output.ColliderType, Is.EqualTo(expected));
+                Assert.That(output.Radius, Is.EqualTo(inside ? .2f : .1f).Within(.0001));
+                if (expected == VRM10SpringBoneColliderTypes.SphereInside)
+                    Assert.That(Vector3.Distance(output.Offset, new Vector3(.4f, .5f, .6f)), Is.LessThan(.0001f));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
         [Test]
         public async Task InsideColliderRadiusComesBackFromTheFileUnchanged()
         {
