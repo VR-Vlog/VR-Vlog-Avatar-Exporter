@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
 using static VRVlog.LilToonExporter.NumericChecks;
@@ -33,7 +34,7 @@ namespace VRVlog.LilToonExporter
             colorSkipped = false;
             ToonColorAdjust(values, material, effects);
             ToonRenderMode(values, material, GenericMode(source, values), effects);
-            ToonShade(values, material, color, effects);
+            ToonShade(values, material, color, textures, effects);
             Set(material, "_LightMaxLimit", values.Float("_LightingCapEnabled", 1) > .5f ? Mathf.Max(0, values.Float("_LightingCap", 1)) : 10);
             Set(material, "_LightMinLimit", Mathf.Clamp01(values.Float("_LightingMinLightBrightness", 0)));
             Set(material, "_MonochromeLighting", Mathf.Clamp01(values.Float("_LightingMonochromatic", 0)));
@@ -188,7 +189,7 @@ namespace VRVlog.LilToonExporter
 
         // Borders are on lilToon's half-Lambert axis (N·L × 0.5 + 0.5), which
         // the source's light map follows. A blur is the full width of the edge.
-        static void ToonShade(SourceValues values, Material material, Color mainColor, List<string> effects)
+        static void ToonShade(SourceValues values, Material material, Color mainColor, List<Texture2D> textures, List<string> effects)
         {
             Reset(material, "_UseShadow", "_ShadowColor", "_ShadowColorTex", "_ShadowBorder", "_ShadowBlur");
             var mode = ToonLightingMode(values);
@@ -244,7 +245,7 @@ namespace VRVlog.LilToonExporter
                     break;
                 }
                 case 4:
-                    ToonShadeMap(values, material, mainColor, effects);
+                    ToonShadeMap(values, material, mainColor, textures, effects);
                     break;
                 default:
                     // Lambert N·L from 0 to 1 is 0.5 to 1 on the half-Lambert axis.
@@ -263,7 +264,7 @@ namespace VRVlog.LilToonExporter
         // Shade map: the shadow lies below step - feather and the lit side
         // above step. Replace uses the shade color as is; Multiply multiplies
         // it by the base color.
-        static void ToonShadeMap(SourceValues values, Material material, Color mainColor, List<string> effects)
+        static void ToonShadeMap(SourceValues values, Material material, Color mainColor, List<Texture2D> textures, List<string> effects)
         {
             var step = values.Float("_BaseColor_Step", .5f);
             var feather = Mathf.Max(.001f, values.Float("_BaseShade_Feather", .0001f));
@@ -272,6 +273,15 @@ namespace VRVlog.LilToonExporter
             var multiply = values.Float("_ShadingShadeMapBlendType", 0) > .5f;
             var useBase = values.Float("_Use_BaseAs1st", 0) > .5f;
             if (!values.Texture("_1st_ShadeMap", out var map, out _, out _) || !Flat(map)) map = null;
+            // Replace paints the shade color alone. Over a main image no ratio can do that,
+            // so a white image makes lilToon take the color instead of the albedo. lilToon
+            // still keeps a shade from getting brighter than the lit color.
+            var origin = material.GetTexture("_MainTex");
+            Texture white = null;
+            Texture Absolute() => useBase || multiply || origin == null ? null
+                : white != null ? white
+                : white = NewImage(origin, "__VRVlog_Shade", 4, 4, Enumerable.Repeat(Color.white, 16).ToArray(), textures, false);
+            if (map == null) map = Absolute();
             var main = ToonShadeLayer(material, "_ShadowColor", "_ShadowColorTex", map,
                 values.TryVector("_1st_ShadeColor", out var color) ? color : Vector4.one, useBase, multiply, mainColor);
             var step2 = values.Float("_ShadeColor_Step", 0);
@@ -281,7 +291,7 @@ namespace VRVlog.LilToonExporter
                 Set(material, "_Shadow2ndBorder", Mathf.Clamp01(step2 - feather2 / 2));
                 Set(material, "_Shadow2ndBlur", Mathf.Clamp(feather2, .001f, 1));
                 var second = values.Float("_Use_1stAs2nd", 0) > .5f;
-                if (!second && (!values.Texture("_2nd_ShadeMap", out map, out _, out _) || !Flat(map))) map = null;
+                if (!second && (!values.Texture("_2nd_ShadeMap", out map, out _, out _) || !Flat(map))) map = Absolute();
                 var main2 = ToonShadeLayer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map,
                     values.TryVector("_2nd_ShadeColor", out color) ? color : Vector4.one, second && useBase, multiply, mainColor);
                 // One _ShadowMainStrength serves both layers, so a layer that

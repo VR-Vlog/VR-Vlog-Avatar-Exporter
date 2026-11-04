@@ -72,6 +72,33 @@ namespace VRVlog.LilToonExporter.Tests
             AssertColor(output, "_ShadowBorderColor", new Color(0, 0, 0, 1));
         }
 
+        [Test] public void AReplacingShadeColorOverAMainImagePaintsTheColorInsteadOfTheImage()
+        {
+            var source = Probe();
+            source.SetTexture("_MainTex", Texture2D.grayTexture);
+            source.SetFloat("_LightingMode", 4);
+            source.SetColor("_1st_ShadeColor", new Color(.6f, .5f, .7f, 1));
+            source.SetFloat("_ShadeColor_Step", .2f);
+            source.SetColor("_2nd_ShadeColor", new Color(.3f, .2f, .4f, 1));
+
+            var output = Substitute(source);
+            var shade = (Texture2D)output.GetTexture("_ShadowColorTex");
+            Assert.That(shade.GetPixel(0, 0), Is.EqualTo(Color.white), "lilToon takes the color where the image is opaque.");
+            Assert.That(shade, Is.Not.SameAs(Texture2D.whiteTexture), "The built-in image is not saved with the material.");
+            Assert.That(output.GetTexture("_Shadow2ndColorTex"), Is.SameAs(shade));
+            AssertColor(output, "_ShadowColor", new Color(.6f, .5f, .7f, 1));
+            AssertColor(output, "_Shadow2ndColor", new Color(.3f, .2f, .4f, 1));
+            Assert.That(output.GetFloat("_ShadowMainStrength"), Is.EqualTo(0f));
+        }
+
+        [Test] public void AShadeTakenFromTheMainImageLeavesTheShadeImageEmpty()
+        {
+            var source = Probe();
+            source.SetTexture("_MainTex", Texture2D.grayTexture);
+            source.SetFloat("_LightingMode", 4); source.SetFloat("_Use_BaseAs1st", 1);
+            Assert.That(Substitute(source).GetTexture("_ShadowColorTex"), Is.Null);
+        }
+
         [Test] public void AMultiplyingShadeMapKeepsItsColorAndMultipliesTheBase()
         {
             var source = Probe();
