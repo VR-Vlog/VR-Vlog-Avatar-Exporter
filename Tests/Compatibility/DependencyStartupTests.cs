@@ -26,7 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
             // Only the two app transfers (each with its validate method). They come from
             // the transfer module, which only some packages carry.
             Assert.That(entries, Has.None.EqualTo("VR Vlog/VRMを書き出す..."));
-            Assert.That(entries.Distinct(), Is.SubsetOf(new[] { "VR Vlog/アプリに転送（かんたん）...", "VR Vlog/アプリに転送（通常）..." }));
+            Assert.That(entries.Distinct(), Is.SubsetOf(new[] { "VR Vlog/アプリに転送（かんたん）｜Send to App (Quick)...", "VR Vlog/アプリに転送（通常）｜Send to App..." }));
             var expected = Environment.GetEnvironmentVariable("VRVLOG_TEST_UNIVRM");
             if (string.IsNullOrEmpty(expected)) Assert.Ignore("Requires an explicit compatibility environment.");
             var deadline = EditorApplication.timeSinceStartup + 300;
