@@ -29,6 +29,14 @@ namespace VRVlog.LilToonExporter.Tests
         public static void SetField(this ExperimentalExpressionCaptureWindow window, string name, object value) =>
             Type.GetField(name, Flags).SetValue(window, value);
 
+        // Prepares the board and sets "瞬きなし" as the blink settings window would.
+        public static void PrepareWithoutBlink(this ExperimentalExpressionCaptureWindow window)
+        {
+            window.Call("Prepare");
+            window.SetField("configuredBlink", new BlinkExportOptions { Mode = BlinkExportMode.None });
+            window.Call("ApplyAutomaticPresets");
+        }
+
         // One overload per argument count: a single array or null is one argument.
         public static object Call(this ExperimentalExpressionCaptureWindow window, string method) =>
             Type.GetMethod(method, Flags).Invoke(window, null);
