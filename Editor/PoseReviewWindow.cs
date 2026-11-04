@@ -100,6 +100,8 @@ namespace VRVlog.LilToonExporter
                     renderer.forceMatrixRecalculationPerRender = true;
                 }
                 var animator = copy.GetComponent<Animator>();
+                // The poses are differences from the T-pose the VRM is written in.
+                AvatarRestPose.AlignArms(animator);
                 foreach (var name in VRVlog.Poses.HumanoidAnimationData.BoneNames)
                 { var bone = animator.GetBoneTransform(PoseSampling.HumanBone(name)); if (bone != null) rest[bone] = bone.rotation; }
                 hipsRest = animator.GetBoneTransform(HumanBodyBones.Hips).position;
