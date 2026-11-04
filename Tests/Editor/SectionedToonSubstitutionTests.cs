@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssertColor(output, "_ShadowBorderColor", new Color(0, 0, 0, 1));
         }
 
-        [Test] public void AReplacingShadeColorOverAMainImagePaintsTheColorInsteadOfTheImage()
+        [Test] public void AReplacingShadeColorOverAMainImageTakesAWhiteShadeImage()
         {
             var source = Probe();
             source.SetTexture("_MainTex", Texture2D.grayTexture);
@@ -97,6 +97,44 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_MainTex", Texture2D.grayTexture);
             source.SetFloat("_LightingMode", 4); source.SetFloat("_Use_BaseAs1st", 1);
             Assert.That(Substitute(source).GetTexture("_ShadowColorTex"), Is.Null);
+        }
+
+        [Test] public void ASecondShadeOfItsOwnTakesAWhiteImageWhenTheFirstUsesTheMainImage()
+        {
+            var source = Probe();
+            source.SetTexture("_MainTex", Texture2D.grayTexture);
+            source.SetFloat("_LightingMode", 4); source.SetFloat("_Use_BaseAs1st", 1);
+            source.SetFloat("_ShadeColor_Step", .2f);
+            source.SetColor("_2nd_ShadeColor", new Color(.3f, .2f, .4f, 1));
+
+            var output = Substitute(source);
+            Assert.That(output.GetTexture("_ShadowColorTex"), Is.Null);
+            Assert.That(((Texture2D)output.GetTexture("_Shadow2ndColorTex")).GetPixel(0, 0), Is.EqualTo(Color.white));
+            AssertColor(output, "_Shadow2ndColor", new Color(.3f, .2f, .4f, 1));
+        }
+
+        [Test] public void ASecondShadeFollowingTheMainImageLeavesBothShadeImagesEmpty()
+        {
+            var source = Probe();
+            source.SetTexture("_MainTex", Texture2D.grayTexture);
+            source.SetFloat("_LightingMode", 4); source.SetFloat("_Use_BaseAs1st", 1); source.SetFloat("_Use_1stAs2nd", 1);
+            source.SetFloat("_ShadeColor_Step", .2f);
+
+            var output = Substitute(source);
+            Assert.That(output.GetTexture("_ShadowColorTex"), Is.Null);
+            Assert.That(output.GetTexture("_Shadow2ndColorTex"), Is.Null);
+        }
+
+        [Test] public void AMultiplyingShadeOrAMissingMainImageNeedsNoWhiteImage()
+        {
+            var multiplying = Probe();
+            multiplying.SetTexture("_MainTex", Texture2D.grayTexture);
+            multiplying.SetFloat("_LightingMode", 4); multiplying.SetFloat("_ShadingShadeMapBlendType", 1);
+            Assert.That(Substitute(multiplying).GetTexture("_ShadowColorTex"), Is.Null);
+
+            var noImage = Probe();
+            noImage.SetFloat("_LightingMode", 4);
+            Assert.That(Substitute(noImage).GetTexture("_ShadowColorTex"), Is.Null);
         }
 
         [Test] public void AMultiplyingShadeMapKeepsItsColorAndMultipliesTheBase()
