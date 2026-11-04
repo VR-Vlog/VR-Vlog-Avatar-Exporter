@@ -261,10 +261,11 @@ namespace VRVlog.LilToonExporter
         {
             var bones = new HashSet<Transform>();
             var animator = copy.GetComponent<Animator>();
-            if (animator == null || animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman) return bones;
             for (var index = 0; index < (int)HumanBodyBones.LastBone; index++)
             {
-                var bone = animator.GetBoneTransform((HumanBodyBones)index);
+                // An Animator that is not bound yet still knows its bones by name. Without
+                // them the body would swing and constraints would drive it, with no warning.
+                var bone = VRVlog.LilToonExporter.HumanoidBones.Resolve(animator, (HumanBodyBones)index);
                 if (bone != null) bones.Add(bone);
             }
             return bones;
