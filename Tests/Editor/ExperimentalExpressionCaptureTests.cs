@@ -687,8 +687,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var stamp = ExportSourceFingerprint.Compute(fixture.Source);
                 window.SetField("source", fixture.Source); window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 if (recordFace)
                 {
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65));
@@ -770,8 +769,7 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 window.SetField("source", fixture.Source);
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 var failure = window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved++, interactive);
                 if (continueOnFailure)
                 {
@@ -1115,11 +1113,10 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(disabledBaked.Mesh.vertices.Zip(rest, (a,b) => (a-b).sqrMagnitude).Max(), Is.LessThan(1e-8f));
                 }
                 Object.DestroyImmediate(imported.gameObject); imported = null;
-                // The primary IMGUI checkbox writes this same bool directly.
-                window.SetField("automaticBlink", true);
                 window.Call("ShowBlinkConfiguration");
                 dialog = Resources.FindObjectsOfTypeAll<BlinkConfigurationWindow>().Single();
-                Assert.That(dialog.Options.Mode, Is.EqualTo(BlinkExportMode.Auto)); dialog.Close();
+                Assert.That(dialog.Options.Mode, Is.EqualTo(BlinkExportMode.None));
+                dialog.Options.SelectMode(BlinkExportMode.Auto); dialog.ApplySettings();
                 window.SaveVrm(path);
                 imported = await Vrm10.LoadBytesAsync(File.ReadAllBytes(path), canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.Vrm.Expression.Blink?.MorphTargetBindings, Is.Not.Empty);
@@ -1152,8 +1149,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 window.SetField("source", first.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 var selected = new AvatarLicenseOptions {
                     AvatarPermission = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.AvatarPermissionType.everyone,
                     CommercialUsage = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.CommercialUsageType.corporation,
@@ -1209,8 +1205,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 if (recordFace)
                 {
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65));
@@ -1241,8 +1236,7 @@ namespace VRVlog.LilToonExporter.Tests
                     EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65 + index * 10));
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", clips.Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 window.SaveVrm(path);
@@ -1320,8 +1314,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", clips.Take(listed).Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 window.Call("RebuildBoard");
@@ -1414,8 +1407,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", clips.Append(listOnly).Append(moving).Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 window.Call("RebuildBoard");
@@ -1462,8 +1454,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetAnimationClipSettings(moving, settings);
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", new[] { still, moving }.Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 window.Call("RebuildBoard");
@@ -1510,8 +1501,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
                     { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = radial, Source = "Fixture" } });
                 window.Call("RebuildBoard");
@@ -1548,8 +1538,7 @@ namespace VRVlog.LilToonExporter.Tests
                     AnimationCurve.Linear(0, 0, 2, 80));
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
                     { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = moving, Source = "Fixture" } });
                 window.Call("RebuildBoard");
@@ -1610,8 +1599,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.SaveAssets();
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
                     { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = nagomi, Source = "Fixture" } });
                 window.Call("RebuildBoard");
@@ -1655,8 +1643,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(moving, binding, AnimationCurve.Linear(0, 0, 2, 80));
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", new[] { still, moving }.Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 window.Call("RebuildBoard");
@@ -1691,8 +1678,7 @@ namespace VRVlog.LilToonExporter.Tests
                     EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65 + index * 10));
                 window.SetField("source", fixture.Source);
                 window.SetField("author", "Tests");
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 window.SetField("recommendations", clips.Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 window.Call("RebuildBoard");
@@ -3179,8 +3165,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 window.SetField("source", fixture.Source);
-                window.SetField("automaticBlink", false);
-                window.Call("Prepare");
+                window.PrepareWithoutBlink();
                 var session = window.Session();
                 session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
                 session.SetPreset(ExpressionPreset.sad, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
@@ -3210,8 +3195,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
                 Fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
                 Set("source", Fixture.Source);
-                Set("automaticBlink", false);
-                Delegate<Action>("Prepare")();
+                Window.PrepareWithoutBlink();
                 Session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
             }
 

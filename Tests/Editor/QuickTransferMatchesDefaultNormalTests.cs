@@ -196,7 +196,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var other = new AttachmentConnectionTests.Fixture();
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
-            Board.GetField("automaticBlink", Flags).SetValue(window, false);
+            Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
             Assert.That(OpenNormal(fixture.Source), Is.SameAs(window));
@@ -355,7 +355,6 @@ namespace VRVlog.LilToonExporter.Tests
             return new[]
             {
                 "page " + window.Page,
-                "automaticBlink " + Board.GetField("automaticBlink", Flags).GetValue(window),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),
                 "blink " + (blink == null ? "(automatic)" : blink.Mode.ToString()),
