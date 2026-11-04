@@ -899,6 +899,7 @@ namespace VRVlog.LilToonExporter.Tests
         // finds Blink and the visemes by name, so the output gives a renamed
         // one its name back unless another shape of that mesh has or takes it.
         [TestCase("A", true)]
+        [TestCase("eye_up", true)]
         [TestCase("Blink", false)]
         public void InstalledAvatarOptimizerMergeGivesAppDrivenShapesTheirNamesBack(string secondShape, bool restored)
         {
@@ -936,7 +937,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var names = (List<object>)((Dictionary<string, object>)((Dictionary<string, object>)((List<object>)GlbDocument.Read(bytes).Json["meshes"])[0])["extras"])["targetNames"];
                 if (restored)
                 {
-                    Assert.That(names, Is.EquivalentTo(new object[] { "Blink", "A" }));
+                    Assert.That(names, Is.EquivalentTo(new object[] { "Blink", secondShape }));
                     Assert.That(kept, Is.Empty);
                     Assert.That(bindings.MapMorph(oldFirst, "Blink").Shape, Is.EqualTo("Blink"), "Later stages look the shape up by the name in the file.");
                 }
