@@ -13,6 +13,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 {
     public sealed partial class CloudTransferTests
     {
+        // The session's wait before it retries, without the real seconds. It
+        // still ends with the caller's cancellation as the real wait does. The
+        // tests that use it check the attempts and the outcome, not the time.
+        static readonly Func<TimeSpan, CancellationToken, Task> NoWait = (duration, token) => Task.Delay(TimeSpan.Zero, token);
+
         [Test]
         public void CloudDevelopmentAvailabilityRequiresBothEditorAndExplicitDevelopmentDefine()
         {
@@ -367,7 +372,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public async Task UploadFailuresNeverExposeQrAndCleanCreatedTransfer(string failure)
         {
             using (var fixture = new Fixture(17))
-            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, delay: NoWait))
             {
                 fixture.Transport.Failure = failure;
                 try { await session.UploadAsync(); Assert.That(false, Is.True); }
@@ -675,7 +680,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public async Task SafeFailureMessagesIdentifyCauseAndStageWithoutPrivateDetails(string kind, string reason, string stage)
         {
             using (var fixture = new Fixture(17))
-            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, delay: NoWait))
             {
                 fixture.Transport.Failure = kind;
                 try { await session.UploadAsync(); Assert.That(false, Is.True, "Must fail"); }
@@ -709,7 +714,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
                 using (var fixture = new Fixture(17))
-                using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+                using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, delay: NoWait))
                 {
                     fixture.Transport.Failure = kind;
                     try { await session.UploadAsync(); Assert.That(false, Is.True, "Must fail"); }
@@ -877,7 +882,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             using (var fixture = new Fixture(29))
             {
                 var transport = new InterruptedTransport(fixture.Transport, publish, failure, false);
-                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, delay: NoWait))
                 {
                     await session.UploadAsync();
                     Assert.That(session.State, Is.EqualTo(CloudTransferState.Ready));
@@ -897,7 +902,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             using (var fixture = new Fixture(29))
             {
                 var transport = new InterruptedTransport(fixture.Transport, false, failure, true);
-                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, delay: NoWait))
                 {
                     try { await session.UploadAsync(); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
                     Assert.That(session.State, Is.EqualTo(CloudTransferState.Failed));
@@ -1105,7 +1110,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), start = current;
             using (var fixture = new Fixture(29))
-            using (var session = new CloudVrmTransferSession(fixture.Source, loseResponse ? (ICloudTransferTransport)new InterruptedTransport(fixture.Transport, true, "lost-response", false) : fixture.Transport, () => current))
+            using (var session = new CloudVrmTransferSession(fixture.Source, loseResponse ? (ICloudTransferTransport)new InterruptedTransport(fixture.Transport, true, "lost-response", false) : fixture.Transport, () => current, NoWait))
             {
                 fixture.Transport.ExtendedUploads = true;
                 fixture.Transport.Now = () => current;

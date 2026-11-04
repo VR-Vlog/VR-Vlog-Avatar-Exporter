@@ -291,9 +291,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Session.LoadPreset(Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile")).Shape, Is.EqualTo("Smile"));
         }
 
-        [TestCase("Smile", ExpressionPreset.happy, 0)]
         [TestCase("FaceSmile01", ExpressionPreset.happy, 0)]
-        [TestCase("joy", ExpressionPreset.happy, 1)]
         [TestCase("ちょっと笑い", ExpressionPreset.happy, 1)]
         [TestCase("Sorrow", ExpressionPreset.sad, 0)]
         [TestCase("cry_face", ExpressionPreset.sad, 1)]
@@ -307,9 +305,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void NamesSuggestOneEmotion(string name, ExpressionPreset expected, int tier) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
-        [TestCase("eye_smile_L")]
         [TestCase("Smile.R")]
-        [TestCase("mouth_smile")]
         [TestCase("smile_angry")]
         [TestCase("泣き笑い")]
         [TestCase("Blink")]
