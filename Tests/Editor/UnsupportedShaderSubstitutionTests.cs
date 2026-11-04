@@ -259,6 +259,59 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_Cull"), Is.EqualTo(0f));
         }
 
+        Material Marked(string name) => Own(new Material(Shader.Find("Hidden/VRVlogTests/MarkedMainProbe")) { name = name });
+
+        [Test] public void TheMarkedMainTextureAndColorComeBeforeTheCommonNames()
+        {
+            var main = Texture("main"); var other = Texture("other"); var normal = Texture("normal");
+            var source = Marked("Marked");
+            source.SetTexture("_BaseTexture", main);
+            source.SetTextureScale("_BaseTexture", new Vector2(2, 1)); source.SetTextureOffset("_BaseTexture", new Vector2(.25f, 0));
+            source.SetTexture("_MainTex", other); source.SetColor("_Tint", Color.red);
+            source.SetTexture("_NormalMap", normal); source.SetFloat("_NormalScale", .5f);
+            source.SetInt("_Cull", 0);
+
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo("lilToon"));
+            Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
+            Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(new Vector2(2, 1)));
+            Assert.That(output.GetTextureOffset("_MainTex"), Is.EqualTo(new Vector2(.25f, 0)));
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.red));
+            Assert.That(output.GetTexture("_BumpMap"), Is.SameAs(normal));
+            Assert.That(output.GetFloat("_BumpScale"), Is.EqualTo(.5f));
+            Assert.That(output.GetFloat("_Cull"), Is.EqualTo(0f));
+        }
+
+        // Opaque, cutout and transparent as a shader that keeps its mode in
+        // blend factors and the queue sets them; transparent stays below 2500.
+        [TestCase(-1, BlendMode.One, BlendMode.Zero, "lilToon")]
+        [TestCase(2450, BlendMode.One, BlendMode.Zero, "Hidden/lilToonCutout")]
+        [TestCase(2460, BlendMode.SrcAlpha, BlendMode.OneMinusSrcAlpha, "Hidden/lilToonTransparent")]
+        [TestCase(3000, BlendMode.SrcAlpha, BlendMode.OneMinusSrcAlpha, "Hidden/lilToonTransparent")]
+        public void BlendFactorsAndTheQueueChooseTheRenderingMode(int queue, BlendMode source, BlendMode destination, string expected)
+        {
+            var material = Marked("Mode");
+            material.SetTexture("_BaseTexture", Texture("main")); material.SetFloat("_Cutoff", .3f);
+            material.SetInt("_SrcBlend", (int)source); material.SetInt("_DstBlend", (int)destination);
+            material.renderQueue = queue;
+            var output = Substitute(material);
+            Assert.That(output.shader.name, Is.EqualTo(expected));
+            Assert.That(output.GetTexture("_MainTex"), Is.Not.Null);
+            if (expected == "Hidden/lilToonCutout") Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.3f).Within(1e-6));
+        }
+
+        [Test] public void TheMToonDefaultReadsTheMarkedMainTextureAndColor()
+        {
+            var main = Texture("main");
+            var source = Marked("Marked");
+            source.SetTexture("_BaseTexture", main); source.SetTexture("_MainTex", Texture("other")); source.SetColor("_Tint", Color.red);
+            var created = new List<Material>();
+            var output = UniVrmOneClickExporter.CreateMToonDefault(source, created);
+            owned.AddRange(created);
+            Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.red));
+        }
+
         [Test] public void EmissionStrengthScalesTheLinearColor()
         {
             var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionStrengthProbe")) { name = "Glow" });
@@ -422,6 +475,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.shader.name, Is.EqualTo("lilToon"));
             Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
             Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.yellow));
+        }
+
+        [Test] public void AMissingShaderWithABaseTextureKeepsItsMainImage()
+        {
+            var main = Texture("main");
+            var source = Marked("Missing");
+            source.SetTexture("_BaseTexture", main);
+            source.shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(source.HasProperty("_BaseTexture"), Is.False);
+            Assert.That(Substitute(source).GetTexture("_MainTex"), Is.SameAs(main));
         }
 
         Material MissingDerived(int declared)
