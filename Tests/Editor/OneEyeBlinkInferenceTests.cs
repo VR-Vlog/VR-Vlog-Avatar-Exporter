@@ -94,6 +94,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(resolved.Inferences, Is.Empty);
         }
 
+        // Sides are measured across the humanoid. Without one there is nothing
+        // to measure, and the blink itself is still found.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AnAvatarWithoutAHumanoidKeepsItsBlink(bool generic)
+        {
+            Face("まばたき", "ウィンク:L", "ウィンク右:R");
+            var animator = Root.GetComponent<Animator>();
+            Avatar avatar = null;
+            if (generic)
+            {
+                avatar = AvatarBuilder.BuildGenericAvatar(Root, ""); owned.Add(avatar);
+                Assert.That(avatar.isValid && !avatar.isHuman, "The case needs a valid Generic Avatar.");
+            }
+            animator.avatar = avatar;
+            Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.Hips), Is.Null);
+            AssertBilateralOnly(BlinkExportSession.Resolve(Root), "まばたき");
+        }
+
         // Side markers found on the local avatars, and names that are not
         // forms of the bilateral name, all read from where the shape moves.
         [TestCase("ウィンク", "ウィンク右")]

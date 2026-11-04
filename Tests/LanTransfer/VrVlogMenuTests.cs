@@ -18,7 +18,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         private const string MenuBar = "VR Vlog/", Hierarchy = "GameObject/VR Vlog/", Assets = "Assets/VR Vlog/";
         // The check of a .vrm file in the Assets menu does not act on an avatar.
         private const string ValidateVrm = Assets + "Validate lilToon VRM";
-        private static readonly string[] Entries = { "アプリに転送（かんたん）...", "アプリに転送（通常）..." };
+        private static readonly string[] Entries = { "アプリに転送（かんたん）｜Send to App (Quick)...", "アプリに転送（通常）｜Send to App..." };
 
         private static (MethodInfo Method, MenuItem Item)[] Registered(string prefix) => TypeCache.GetMethodsWithAttribute<MenuItem>()
             .SelectMany(method => method.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().Select(item => (method, item)))

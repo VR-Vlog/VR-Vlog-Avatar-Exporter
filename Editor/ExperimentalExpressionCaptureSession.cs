@@ -154,9 +154,6 @@ namespace VRVlog.LilToonExporter
                 gimmicks = new ExportGimmickSession(source, Copy, this.gimmickOptions, findings);
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 authoredBindings = new PreparedExpressionBindings(Copy, null, source, ExcludedBinding);
-                foreach (var finding in findings.Where(value => value.Renderer == null))
-                    if (automaticRoots.Contains(finding.Target)) Warnings.Add("補助ギミックを省略: " + finding.Target.name + " — " + finding.Reason);
-                    else if (finding.Unit == GimmickExclusionUnit.Review) Warnings.Add("自動除外せず保持: " + finding.Target.name + " — " + finding.Reason);
                 steps.Next("maAppearance");
                 MaAppearanceSnapshot.Apply(source, Copy, ownedMeshes, exclusions, Warnings);
                 PoseExportSession.RemoveAplFromCopy(source, Copy);

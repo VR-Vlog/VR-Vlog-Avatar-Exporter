@@ -25,8 +25,15 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            folder = TempAssetFolder.Create("__MergedFxDefaults_");
-            controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+            // One import for the folder and the controller instead of two. The
+            // controller is the same persisted asset at the same path.
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                folder = TempAssetFolder.Create("__MergedFxDefaults_");
+                controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+            }
+            finally { AssetDatabase.StopAssetEditing(); }
             controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
             avatar = new GameObject("Avatar", typeof(Animator));
             var face = new GameObject("Face", typeof(SkinnedMeshRenderer)); face.transform.SetParent(avatar.transform, false);

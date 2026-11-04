@@ -79,6 +79,7 @@ namespace VRVlog.LilToonExporter
             var children = copy.GetComponentsInChildren<Transform>(true)
                 .ToDictionary(t => t, t => t.Cast<Transform>().Where(c => c.gameObject.activeInHierarchy).ToArray());
             var roots = components.Where(Active).ToDictionary(c => c, c => Root(c));
+            var body = BodyBones(copy);
             var plans = new List<SpringPlan>();
             foreach (var component in components)
             {
@@ -86,7 +87,7 @@ namespace VRVlog.LilToonExporter
                 var root = roots[component];
                 RequireLocal(copy, root);
                 if (!root.gameObject.activeInHierarchy) { Skip(result, warnings, component, "Root Transformが非表示"); continue; }
-                plans.Add(Plan(component, root, roots, children, warnings));
+                plans.Add(Plan(component, root, roots, children, body, warnings));
             }
             // A more local root owns an overlapping moving joint. For the same
             // root, prefer its attached component, then stable hierarchy/component
@@ -112,9 +113,10 @@ namespace VRVlog.LilToonExporter
                 var group = ConvertColliders(component, copy, colliders, instance, warnings, fallbacks);
                 foreach (var chain in normalized)
                 {
+                    AddFollowingTail(chain);
                     var spring = new Vrm10InstanceSpringBone.Spring(component.name);
-                    // A head center would cancel the desired hair inertia.
                     if (group != null) spring.ColliderGroups.Add(group);
+                    var settled = Quaternion.identity;
                     for (var i = 0; i < chain.Count; i++)
                     {
                         var point = chain[i];
@@ -129,7 +131,10 @@ namespace VRVlog.LilToonExporter
                         {
                             // Curve coordinates always use the unsplit source PB.
                             var t = plan.MaximumDepth > 0 ? (float)plan.Depths[node] / plan.MaximumDepth : 0;
-                            ApplyForces(component, joint, t); result.Joints++;
+                            var bone = chain[i + 1].Position - node.position;
+                            if (chain[i + 1].Follows) ApplyFollow(joint, bone);
+                            else ApplyForces(component, joint, t, bone, ref settled);
+                            result.Joints++;
                         }
                         spring.Joints.Add(joint);
                     }
@@ -146,10 +151,15 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
+        // Short enough that the extra tail rarely meets a collider; only its
+        // direction matters.
+        const float FollowingTailLength = .25f;
+
         sealed class PlannedJoint
         {
             internal Transform Node, Parent;
             internal Vector3 Offset;
+            internal bool Follows;
             internal Vector3 Position => Node != null ? Node.position : Parent.TransformPoint(Offset);
         }
 
@@ -162,8 +172,18 @@ namespace VRVlog.LilToonExporter
             internal readonly Dictionary<Transform, int> Depths = new Dictionary<Transform, int>();
         }
 
+        // Everything from a humanoid bone up to the root is the body: a bone left
+        // unmapped between two humanoid bones still carries the limbs under it.
+        static HashSet<Transform> BodyBones(GameObject copy)
+        {
+            var body = new HashSet<Transform>();
+            foreach (var bone in ConstraintExport.HumanoidBones(copy))
+                for (var node = bone; node != null && body.Add(node); node = node.parent) { }
+            return body;
+        }
+
         static SpringPlan Plan(Component source, Transform root, Dictionary<Component, Transform> roots,
-            Dictionary<Transform, Transform[]> hierarchy, ICollection<string> warnings)
+            Dictionary<Transform, Transform[]> hierarchy, HashSet<Transform> body, ICollection<string> warnings)
         {
             var plan = new SpringPlan { Source = source, Root = root };
             for (var parent = root.parent; parent != null; parent = parent.parent) plan.RootDepth++;
@@ -173,11 +193,24 @@ namespace VRVlog.LilToonExporter
             var endpoint = Vector(source, "endpointPosition", Vector3.zero);
             var multi = EnumNumber(source, "multiChildType", 0);
             if (multi < 0 || multi > 2) throw Unsupported(source, "Multi-Child Type");
+            var leftHumanoid = false;
             void Add(List<PlannedJoint> chain) { if (chain.Count >= 2) plan.Chains.Add(chain); }
             void Walk(Transform node, List<PlannedJoint> path, int depth)
             {
                 if (depth > 256) throw Unsupported(source, "256段を超えるボーン階層");
                 plan.Depths[node] = depth; plan.MaximumDepth = Math.Max(plan.MaximumDepth, depth);
+                // The solver overwrites a joint's rotation every frame, so a body bone
+                // in a chain would stop following the animation. Keep the bone out and
+                // let what hangs from it swing as chains of its own. Nothing above a
+                // body bone can be in a chain, so the path is always empty here.
+                if (body.Contains(node))
+                {
+                    var next = hierarchy[node].Where(t => !ignored.Contains(t)).ToArray();
+                    // A bone with several children and Multi-Child Ignore never moved.
+                    leftHumanoid |= next.Length == 1 || (next.Length > 1 ? multi != 0 : endpoint.sqrMagnitude > 1e-12f);
+                    foreach (var child in next) Walk(child, new List<PlannedJoint>(), depth + 1);
+                    return;
+                }
                 path.Add(new PlannedJoint { Node = node });
                 var children = hierarchy[node].Where(t => !ignored.Contains(t)).ToArray();
                 if (children.Length == 0)
@@ -208,6 +241,7 @@ namespace VRVlog.LilToonExporter
                 }
             }
             if (!ignored.Contains(root)) Walk(root, new List<PlannedJoint>(), 0);
+            if (leftHumanoid) warnings?.Add(source.name + ": Humanoidのボーンはアニメーションに従うよう揺れものから外しました。");
             foreach (var point in plan.Chains.SelectMany(c => c))
                 if (!Finite(point.Position.x) || !Finite(point.Position.y) || !Finite(point.Position.z))
                     throw Unsupported(source, "ボーン位置が非有限値");
@@ -271,28 +305,64 @@ namespace VRVlog.LilToonExporter
             return output;
         }
 
-        static void ApplyForces(Component source, VRM10SpringBoneJoint joint, float depth)
+        // The solver only rotates joints that have a tail, and every other
+        // transform it tracks gets its pulled world rotation written back. A last
+        // bone therefore never turns with the chain above it, and neither does
+        // anything under it or skinned to it. PhysBone turns it with its parent,
+        // so give it a short tail that does nothing but follow.
+        static void AddFollowingTail(List<PlannedJoint> chain)
+        {
+            var last = chain[chain.Count - 1];
+            if (last.Node == null) return;
+            var incoming = last.Node.position - chain[chain.Count - 2].Position;
+            var tail = new PlannedJoint
+            {
+                Parent = last.Node,
+                Offset = last.Node.InverseTransformVector(incoming * FollowingTailLength),
+                Follows = true
+            };
+            // A bone scaled to zero has no length to give a tail, and it is not visible to follow.
+            if (Finite(tail.Offset.x) && Finite(tail.Offset.y) && Finite(tail.Offset.z) && HasLength(last, tail)) chain.Add(tail);
+        }
+
+        // Holds the tail on its rest direction every frame, without momentum.
+        static void ApplyFollow(VRM10SpringBoneJoint joint, Vector3 bone)
+        {
+            var scale = joint.transform.lossyScale;
+            var largest = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+            joint.m_stiffnessForce = largest > 0 ? PhysBoneMotionMapping.HoldingForce(bone.magnitude / largest) : 0;
+            joint.m_dragForce = 1;
+            joint.m_gravityPower = 0;
+            joint.m_gravityDir = Vector3.down;
+            joint.m_jointRadius = 0;
+            joint.m_anglelimitType = AnglelimitTypes.None;
+        }
+
+        static void ApplyForces(Component source, VRM10SpringBoneJoint joint, float depth, Vector3 bone, ref Quaternion settled)
         {
             // A documented approximation, not SDK solver equivalence.
-            var pull = Mathf.Clamp01(Curve(source, "pull", depth, .2f));
-            var spring = Mathf.Clamp01(Curve(source, "spring", depth, .2f));
-            var gravity = Mathf.Clamp(Curve(source, "gravity", depth, 0), -1, 1);
-            var falloff = Mathf.Clamp01(Curve(source, "gravityFalloff", depth, 0));
-            var stiffness = 4f * pull;
-            var drag = .6f * (1f - spring);
-            // World Immobile is left to the app, which centres exported springs
-            // on the model root. All Motion has no VRM counterpart, so raise
-            // stiffness and drag to damp the motion instead.
-            if (EnumNumber(source, "immobileType", 0) == 0)
+            // The solver multiplies the force by this bone's world scale, so
+            // the force is written for the bone's length without that scale.
+            var scale = joint.transform.lossyScale;
+            var largest = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+            var length = largest > 0 ? bone.magnitude / largest : 0;
+            var rest = settled * bone.normalized;
+            var forces = PhysBoneMotionMapping.Map(new PhysBoneMotionMapping.Settings
             {
-                var immobile = Mathf.Clamp01(Curve(source, "immobile", depth, 0));
-                stiffness += .5f * immobile;
-                drag = Mathf.Clamp01(drag + .5f * immobile);
-            }
-            joint.m_stiffnessForce = stiffness;
-            joint.m_dragForce = drag;
-            joint.m_gravityPower = Mathf.Abs(gravity) * (1f - falloff) * (EnumNumber(source, "version", 1) >= 1 ? 4f * pull : 1f);
-            joint.m_gravityDir = gravity < 0 ? Vector3.up : Vector3.down;
+                Pull = Mathf.Clamp01(Curve(source, "pull", depth, .2f)),
+                Spring = Mathf.Clamp01(Curve(source, "spring", depth, .2f)),
+                Stiffness = Mathf.Clamp01(Curve(source, "stiffness", depth, 0)),
+                Gravity = Mathf.Clamp(Curve(source, "gravity", depth, 0), -1, 1),
+                Falloff = Mathf.Clamp01(Curve(source, "gravityFalloff", depth, 0)),
+                Immobile = EnumNumber(source, "immobileType", 0) == 0 ? Mathf.Clamp01(Curve(source, "immobile", depth, 0)) : 0,
+                Advanced = EnumNumber(source, "integrationType", 0) == 1,
+                GravityTurnsRest = EnumNumber(source, "version", 1) >= 1
+            }, length, rest);
+            joint.m_stiffnessForce = forces.Stiffness;
+            joint.m_dragForce = forces.Drag;
+            joint.m_gravityPower = forces.GravityPower;
+            joint.m_gravityDir = forces.GravityDirection;
+            settled = Quaternion.FromToRotation(rest, forces.Settled) * settled;
             joint.m_jointRadius = Mathf.Max(0, Curve(source, "radius", depth, 0));
             var limit = EnumNumber(source, "limitType", 0);
             if (limit < 0 || limit > 3) throw Unsupported(source, "Limit Type");
@@ -356,6 +426,14 @@ namespace VRVlog.LilToonExporter
                         converted.Tail = converted.Offset + offset; converted.Offset -= offset;
                     }
                     if (shape == 2) converted.Normal = rotation * Vector3.up;
+                    // The solver multiplies an outer collider's radius by the node's world
+                    // scale but reads an inside one as it is, so a scaled inside collider
+                    // would shrink and pull the bones into it.
+                    if (inside)
+                    {
+                        var scale = root.lossyScale;
+                        converted.Radius *= Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+                    }
                     cache.Add(collider, converted);
                 }
                 if (!list.Contains(converted)) list.Add(converted);
@@ -370,7 +448,7 @@ namespace VRVlog.LilToonExporter
         {
             void Note(string sentence) => warnings?.Add(ExportNoteText.Spring(source.name, sentence));
             Note(ExportNoteText.SpringForces);
-            if (EnumNumber(source, "integrationType", 0) != 0 || Number(source, "stiffness", 0) != 0) Note(ExportNoteText.SpringAdvanced);
+            if (EnumNumber(source, "integrationType", 0) != 0) Note(ExportNoteText.SpringAdvanced);
             if (Number(source, "immobile", 0) != 0)
                 Note(EnumNumber(source, "immobileType", 0) == 0 ? ExportNoteText.SpringImmobileAllMotion : ExportNoteText.SpringImmobileWorld);
             if (Number(source, "gravityFalloff", 0) != 0) Note(ExportNoteText.SpringGravityFalloff);

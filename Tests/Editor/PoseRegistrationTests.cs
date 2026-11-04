@@ -23,6 +23,14 @@ namespace VRVlog.LilToonExporter.Tests
         {
             foreach (var part in new[] { "trackingLeftHand", "trackingRightHand", "trackingHip", "trackingLeftFoot", "trackingRightFoot", "trackingLeftFingers", "trackingRightFingers" }) VrcAvatar.Set(tracking, part, "Animation");
         }
+        // Imports the assets the action creates once when it ends, instead of
+        // once per asset. The assets, their paths and sub-assets are the same.
+        static void InOneImport(Action action)
+        {
+            AssetDatabase.StartAssetEditing();
+            try { action(); }
+            finally { AssetDatabase.StopAssetEditing(); }
+        }
         static Component Descriptor(GameObject root)
         {
             var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install VRChat SDK for registration tests.");
@@ -268,16 +276,19 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 var before = EditorJsonUtility.ToJson(controller); var beforeMenu = EditorJsonUtility.ToJson(menu);
                 var assets = new Object[] { controller, menu, sub, parameters, effective }.Concat(owned).Distinct().ToArray();
-                var counter = 0;
-                foreach (var asset in assets)
-                    if (!EditorUtility.IsPersistent(asset)) AssetDatabase.CreateAsset(asset, folderPath + "/asset" + counter++ + ".asset");
-                foreach (var dependency in EditorUtility.CollectDependencies(assets.OfType<RuntimeAnimatorController>().Cast<Object>().ToArray()))
-                    if (dependency != null && !EditorUtility.IsPersistent(dependency)) AssetDatabase.AddObjectToAsset(dependency, controller);
-                AssetDatabase.SaveAssets();
-                foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { f.Source }))
-                    if (dependency != null && !(dependency is GameObject) && !(dependency is Component) && !EditorUtility.IsPersistent(dependency))
-                        AssetDatabase.CreateAsset(dependency, folderPath + "/source" + counter++ + ".asset");
-                AssetDatabase.SaveAssets();
+                InOneImport(() =>
+                {
+                    var counter = 0;
+                    foreach (var asset in assets)
+                        if (!EditorUtility.IsPersistent(asset)) AssetDatabase.CreateAsset(asset, folderPath + "/asset" + counter++ + ".asset");
+                    foreach (var dependency in EditorUtility.CollectDependencies(assets.OfType<RuntimeAnimatorController>().Cast<Object>().ToArray()))
+                        if (dependency != null && !EditorUtility.IsPersistent(dependency)) AssetDatabase.AddObjectToAsset(dependency, controller);
+                    AssetDatabase.SaveAssets();
+                    foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { f.Source }))
+                        if (dependency != null && !(dependency is GameObject) && !(dependency is Component) && !EditorUtility.IsPersistent(dependency))
+                            AssetDatabase.CreateAsset(dependency, folderPath + "/source" + counter++ + ".asset");
+                    AssetDatabase.SaveAssets();
+                });
                 before = EditorJsonUtility.ToJson(controller); beforeMenu = EditorJsonUtility.ToJson(menu);
                 if (overrideClip) Assert.That(ExpressionDependencies.Overrides(effective)[clip], Is.SameAs(unrelated));
                 clone = Object.Instantiate(f.Source);
@@ -485,15 +496,18 @@ namespace VRVlog.LilToonExporter.Tests
                 { var layer = array.GetValue(index); VrcAvatar.Set(layer, "isDefault", false); VrcAvatar.Set(layer, "animatorController", controller); array.SetValue(layer, index); }
                 field.SetValue(descriptor, array);
                 var assets = new Object[] { gesture, fx, menu, parameters };
-                var counter = 0;
-                foreach (var asset in assets) AssetDatabase.CreateAsset(asset, folderPath + "/asset" + counter++ + ".asset");
-                foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { gesture, fx }))
-                    if (dependency != null && !EditorUtility.IsPersistent(dependency)) AssetDatabase.AddObjectToAsset(dependency, gesture);
-                AssetDatabase.SaveAssets();
-                foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { f.Source }))
-                    if (dependency != null && !(dependency is GameObject) && !(dependency is Component) && !EditorUtility.IsPersistent(dependency))
-                        AssetDatabase.CreateAsset(dependency, folderPath + "/source" + counter++ + ".asset");
-                AssetDatabase.SaveAssets();
+                InOneImport(() =>
+                {
+                    var counter = 0;
+                    foreach (var asset in assets) AssetDatabase.CreateAsset(asset, folderPath + "/asset" + counter++ + ".asset");
+                    foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { gesture, fx }))
+                        if (dependency != null && !EditorUtility.IsPersistent(dependency)) AssetDatabase.AddObjectToAsset(dependency, gesture);
+                    AssetDatabase.SaveAssets();
+                    foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { f.Source }))
+                        if (dependency != null && !(dependency is GameObject) && !(dependency is Component) && !EditorUtility.IsPersistent(dependency))
+                            AssetDatabase.CreateAsset(dependency, folderPath + "/source" + counter++ + ".asset");
+                    AssetDatabase.SaveAssets();
+                });
                 clone = Object.Instantiate(f.Source);
                 using var preparation = NdmfExportPreparation.Prepare(f.Source, clone);
                 var result = PoseMenuResolver.Read(clone);
