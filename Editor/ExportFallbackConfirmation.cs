@@ -169,7 +169,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.ColliderSkipped: return "PhysBoneコライダーを変換できませんでした";
                 case ExportFallbackKind.StageOmitted: return "書き出しの一部を省略しました";
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた分を省略しました";
-                case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
+                case ExportFallbackKind.MaterialApproximated: return "一部のマテリアルを簡易表示にしました";
                 case ExportFallbackKind.ShaderSubstituted: return "非対応のシェーダーを公式lilToonで近似しました";
                 case ExportFallbackKind.ExpressionEndsNeutral: return ExpressionEndsNeutralText;
                 case ExportFallbackKind.MissingShader: return MissingShaderReason;
