@@ -125,9 +125,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The board starts from the blink saved for the avatar, as the old quick
-        // transfer took it from the export settings.
-        // The mode goes in as an int because the enum is internal and the test is public.
         [Test]
         public void TheBlinkRowNamesEachSetting()
         {
@@ -136,6 +133,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExperimentalExpressionCaptureWindow.BlinkSettingLabel(BlinkExportMode.None), Does.Contain("瞬きなし"));
         }
 
+        // The board starts from the blink saved for the avatar, as the old quick
+        // transfer took it from the export settings.
+        // The mode goes in as an int because the enum is internal and the test is public.
         [TestCase((int)BlinkExportMode.Auto)]
         [TestCase((int)BlinkExportMode.Manual)]
         [TestCase((int)BlinkExportMode.None)]
@@ -304,7 +304,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // A board switched to another avatar starts with blink on, as a new board
+        // A board switched to another avatar starts from the automatic blink, as a new board
         // (the quick transfer) does, before that avatar's saved blink applies.
         [Test]
         public void ChangingTheAvatarTurnsTheBlinkBackOn()
