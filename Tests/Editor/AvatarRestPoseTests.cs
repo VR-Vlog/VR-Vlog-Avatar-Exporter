@@ -2,6 +2,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using VRVlog.Poses;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
