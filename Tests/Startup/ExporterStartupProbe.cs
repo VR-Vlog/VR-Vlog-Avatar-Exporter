@@ -16,7 +16,7 @@ public static class ExporterStartupProbe
             .SelectMany(m=>m.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>())
             .Where(m=>m.menuItem.StartsWith("VR Vlog/", StringComparison.Ordinal)).Select(m=>m.menuItem).ToArray();
         // No export entry; a package with the transfer module lists its two transfers.
-        var transfers=new[]{"VR Vlog/アプリに転送（かんたん）...","VR Vlog/アプリに転送（通常）..."};
+        var transfers=new[]{"VR Vlog/アプリに転送（かんたん）｜Send to App (Quick)...","VR Vlog/アプリに転送（通常）｜Send to App..."};
         if(menuEntries.Any(m=>!transfers.Contains(m)))
             throw new Exception("Exporter menu must contain nothing but the app transfers");
         Debug.Log("PROBE startup registered=" + DependencyDiagnostics.BackendReady + " errors=" + EditorUtility.scriptCompilationFailed);
