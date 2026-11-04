@@ -27,6 +27,54 @@ spec.loader.exec_module(version_projects)
 REVIEWED_LILTOON_SHA256 = dict(version_projects.RELEASE_SHA256)
 
 
+def suite_source(suite):
+    return (ROOT / 'Tests/Editor' / (suite + '.cs')).read_text(encoding='utf-8-sig')
+
+
+def case_table_problems(suite, methods, source):
+    # Line-bounded attributes avoid ambiguous nested whitespace repeats
+    # when scanning a long class for a later method.
+    declarations = dict((method, attributes) for attributes, method in re.findall(
+        r'((?:^[ \t]*\[(?:Test|UnityTest|TestCase\([^\r\n]*\)|TestCaseSource\([^\r\n]*\))\][ \t]*(?:\r?\n)?)+)'
+        r'[ \t]*public[ \t]+(?:async[ \t]+)?(?:void|Task|IEnumerator)[ \t]+(\w+)\(', source, re.MULTILINE))
+    # Every checked-in test must be pinned, not only a required minimum. Shared
+    # suites count too: exporter-behavior selects them by method name.
+    problems = [suite + '.' + method + ': in no case table, so a method filter never runs it'
+                for method in sorted(set(declarations) - set(methods))]
+    for method, count in methods.items():
+        label = suite + '.' + method + ': '
+        if method not in declarations:
+            problems.append(label + 'in a case table but not a checked-in test')
+            continue
+        sources = re.findall(r'\[TestCaseSource\(nameof\((\w+)\)\)\]', declarations[method])
+        if sources:
+            if len(sources) != 1:
+                problems.append(label + 'a source case must have one auditable generator')
+                continue
+            generator = re.search(r'private static IEnumerable<TestCaseData> ' + re.escape(sources[0]) +
+                                  r'\(\)\s*\{(.*?)^        \}', source, re.MULTILINE | re.DOTALL)
+            if generator is None:
+                problems.append(label + 'the native matrix generator must remain checked in')
+                continue
+            dimensions = re.findall(r'foreach\s*\(var \w+ in new\[\]\s*\{([^}]*)\}\)', generator[1])
+            if not dimensions or len(re.findall(r'yield return new TestCaseData\(', generator[1])) != 1:
+                problems.append(label + 'a changed generator requires a new explicit native count audit')
+                continue
+            found = math.prod(len(dimension.split(',')) for dimension in dimensions)
+        else:
+            found = len(re.findall(r'\[(?:Test|UnityTest|TestCase\()', declarations[method]))
+        if found != count:
+            problems.append(label + str(found) + ' cases, but the table says ' + str(count))
+        variants = unity_runner.INTEGRATION_VARIANTS.get(suite, {}).get(method)
+        if variants is not None:
+            arguments = re.findall(r'\[TestCase\(([^\r\n]*)\)\]', declarations[method])
+            normalized = {','.join(part.strip().replace('false', 'False').replace('true', 'True')
+                                   for part in args.split(',')) for args in arguments}
+            if normalized != set(variants):
+                problems.append(label + 'pinned integration combinations must remain real test attributes')
+    return problems
+
+
 class UnityResultTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -79,10 +127,7 @@ class ExporterProfileResultTests(unittest.TestCase):
     def setUp(self):
         UnityResultTests.setUp(self)
         self.profile = 'exporter-integration'
-        methods_by_suite = {suite: dict(methods) for suite, methods in unity_runner.BEHAVIOR_CASES.items()}
-        for suite, methods in unity_runner.INTEGRATION_CASES.items():
-            methods_by_suite.setdefault(suite, {}).update(methods)
-        for suite, methods in methods_by_suite.items():
+        for suite, methods in unity_runner.table_cases().items():
             name = unity_runner.NAMESPACE + suite
             for method, count in methods.items():
                 variants = unity_runner.INTEGRATION_VARIANTS.get(suite, {}).get(method)
@@ -285,41 +330,51 @@ class UnityProfilePolicyTests(unittest.TestCase):
             'MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry': 4})
 
     def test_required_case_names_and_counts_match_checked_in_fixtures(self):
-        methods_by_suite = {suite: dict(methods) for suite, methods in unity_runner.BEHAVIOR_CASES.items()}
-        for suite, methods in unity_runner.INTEGRATION_CASES.items():
-            methods_by_suite.setdefault(suite, {}).update(methods)
-        for suite, methods in methods_by_suite.items():
-            source = (ROOT / 'Tests/Editor' / (suite + '.cs')).read_text(encoding='utf-8-sig')
-            # Line-bounded attributes avoid ambiguous nested whitespace repeats
-            # when scanning a long class for a later method.
-            declarations = dict((method, attributes) for attributes, method in re.findall(
-                r'((?:^[ \t]*\[(?:Test|UnityTest|TestCase\([^\r\n]*\)|TestCaseSource\([^\r\n]*\))\][ \t]*(?:\r?\n)?)+)'
-                r'[ \t]*public[ \t]+(?:async[ \t]+)?(?:void|Task|IEnumerator)[ \t]+(\w+)\(', source, re.MULTILINE))
-            # Shared suites count too: exporter-behavior selects them by method name,
-            # so a method in neither table would never run there.
-            self.assertEqual(set(methods), set(declarations),
-                             'Every checked-in regression must be pinned, not only a required minimum')
-            for method, count in methods.items():
-                with self.subTest(suite=suite, method=method):
-                    self.assertIn(method, declarations, 'Required regression must remain a real checked-in test')
-                    sources = re.findall(r'\[TestCaseSource\(nameof\((\w+)\)\)\]', declarations[method])
-                    if sources:
-                        self.assertEqual(len(sources), 1, 'A source case must have one auditable generator')
-                        generator = re.search(r'private static IEnumerable<TestCaseData> ' + re.escape(sources[0]) +
-                                              r'\(\)\s*\{(.*?)^        \}', source, re.MULTILINE | re.DOTALL)
-                        self.assertIsNotNone(generator, 'The native matrix generator must remain checked in')
-                        dimensions = re.findall(r'foreach\s*\(var \w+ in new\[\]\s*\{([^}]*)\}\)', generator[1])
-                        self.assertTrue(dimensions, 'A changed generator requires a new explicit native count audit')
-                        self.assertEqual(len(re.findall(r'yield return new TestCaseData\(', generator[1])), 1)
-                        self.assertEqual(math.prod(len(dimension.split(',')) for dimension in dimensions), count)
-                    else:
-                        self.assertEqual(len(re.findall(r'\[(?:Test|UnityTest|TestCase\()', declarations[method])), count)
-                    variants = unity_runner.INTEGRATION_VARIANTS.get(suite, {}).get(method)
-                    if variants is not None:
-                        arguments = re.findall(r'\[TestCase\(([^\r\n]*)\)\]', declarations[method])
-                        normalized = {','.join(part.strip().replace('false', 'False').replace('true', 'True')
-                                               for part in args.split(',')) for args in arguments}
-                        self.assertEqual(normalized, set(variants), 'Pinned integration combinations must remain real test attributes')
+        for suite, methods in unity_runner.table_cases().items():
+            with self.subTest(suite=suite):
+                self.assertEqual(case_table_problems(suite, methods, suite_source(suite)), [])
+
+
+class CaseTableCheckTests(unittest.TestCase):
+    # These hold the checks above in place: each one must still find what it exists to find.
+    SOURCE = """
+        [Test]
+        public void One() { }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public async Task Two(int value) { }
+    """
+
+    def problems(self, methods):
+        return case_table_problems('Suite', methods, self.SOURCE)
+
+    def test_a_table_that_matches_has_no_problems(self):
+        self.assertEqual(self.problems({'One': 1, 'Two': 2}), [])
+
+    def test_a_method_in_no_table_is_found(self):
+        self.assertEqual(self.problems({'One': 1}), ['Suite.Two: in no case table, so a method filter never runs it'])
+
+    def test_a_table_entry_without_a_test_is_found(self):
+        self.assertEqual(self.problems({'One': 1, 'Two': 2, 'Gone': 1}), ['Suite.Gone: in a case table but not a checked-in test'])
+
+    def test_a_wrong_case_count_is_found(self):
+        self.assertEqual(self.problems({'One': 1, 'Two': 3}), ['Suite.Two: 2 cases, but the table says 3'])
+        self.assertEqual(self.problems({'One': 1, 'Two': 1}), ['Suite.Two: 2 cases, but the table says 1'])
+
+    def test_a_method_left_out_of_a_shared_suite_is_found(self):
+        suite = 'PhysBoneSpringExportTests'
+        self.assertIn(suite, unity_runner.INTEGRATION_CASES)
+        methods = unity_runner.table_cases()[suite]
+        method = next(iter(methods))
+        problems = case_table_problems(suite, {k: v for k, v in methods.items() if k != method}, suite_source(suite))
+        self.assertEqual(problems, [suite + '.' + method + ': in no case table, so a method filter never runs it'])
+
+    def test_a_method_in_both_tables_stops_instead_of_keeping_one_count(self):
+        with mock.patch.object(unity_runner, 'BEHAVIOR_CASES', {'Suite': {'One': 1}}), \
+                mock.patch.object(unity_runner, 'INTEGRATION_CASES', {'Suite': {'One': 2}}):
+            with self.assertRaisesRegex(SystemExit, r'Suite\.One'):
+                unity_runner.required_regressions('exporter-integration')
 
 
 class RunnerSourceIdentityTests(unittest.TestCase):

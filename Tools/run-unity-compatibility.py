@@ -990,6 +990,18 @@ def compatibility_counts():
             'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
+def table_cases():
+    # A method in both tables would keep only one of its two counts, so the
+    # other could never be compared with the result.
+    cases = {suite: dict(methods) for suite, methods in BEHAVIOR_CASES.items()}
+    for suite, methods in INTEGRATION_CASES.items():
+        repeated = sorted(set(cases.get(suite, {})) & set(methods))
+        if repeated:
+            raise SystemExit('A test method is in both case tables: ' + suite + '.' + ', '.join(repeated))
+        cases.setdefault(suite, {}).update(methods)
+    return cases
+
+
 def required_regressions(profile):
     if profile not in PROFILES:
         raise SystemExit('Unknown Unity validation profile: ' + profile)
@@ -998,11 +1010,10 @@ def required_regressions(profile):
         'DependencyStartupTests': {'MenuResolvesBackendWithoutInitializationRegistration': 1},
         'DependencyRoundTripTests': {'SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport': 2},
     }
-    if profile != 'compatibility':
+    if profile == 'exporter-behavior':
         required.update(BEHAVIOR_CASES)
     if profile == 'exporter-integration':
-        for suite, methods in INTEGRATION_CASES.items():
-            required[suite] = {**required.get(suite, {}), **methods}
+        required.update(table_cases())
     return required
 
 
