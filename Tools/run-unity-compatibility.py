@@ -199,6 +199,7 @@ BEHAVIOR_CASES = {
         'HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings': 1,
         'IgnoredSubtreesDisabledBonesAndOverlappingOwnersAreExplicit': 1,
         'InactiveExplicitRootsChildrenAndColliderRootsAreSkipped': 1,
+        'AnInsideCapsuleWithoutLengthGoesOutAsASphere': 5,
         'InsideColliderRadiusComesBackFromTheFileUnchanged': 1,
         'InsideCollidersKeepTheirWorldSizeOnAScaledRootTransform': 4,
         'InsideCollidersUseTheScaleOfTheirRootTransform': 1,
