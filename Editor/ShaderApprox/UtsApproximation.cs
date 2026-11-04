@@ -51,12 +51,15 @@ namespace VRVlog.LilToonExporter
             Set(material, "_ShadowBorder", Mathf.Clamp01(step - feather / 2));
             Set(material, "_ShadowBlur", Mathf.Clamp(feather, .001f, 1));
             Set(material, "_ShadowNormalStrength", values.Float("_Is_NormalMapToBase", 0) > .5f ? 1 : 0);
+            Set(material, "_Shadow2ndNormalStrength", values.Float("_Is_NormalMapToBase", 0) > .5f ? 1 : 0);
             Set(material, "_ShadowReceive", values.Float("_Set_SystemShadowsToBase", 1) > .5f ? 1 : 0);
+            Set(material, "_Shadow2ndReceive", values.Float("_Set_SystemShadowsToBase", 1) > .5f ? 1 : 0);
             material.SetTexture("_ShadowColorTex", null);
 
             var mainColor = material.GetColor("_Color");
             var useMain = values.Float("_Use_BaseAs1st", 0) > .5f;
-            if (!values.Texture("_1st_ShadeMap", out var map, out _, out _) || !Flat(map)) map = null;
+            if (!values.Texture("_1st_ShadeMap", out var map, out var mapScale, out var mapOffset) || !Flat(map)) map = null;
+            if (map != null && !useMain) ShadeLayers.ReportOwnUv(material, mapScale, mapOffset, dropped, "Shade Map Tiling");
             Texture white = null;
             Layer(material, "_ShadowColor", "_ShadowColorTex", Opaque(values, "_1st_ShadeColor", Color.white), map, useMain, mainColor, textures, ref white);
 
@@ -67,7 +70,8 @@ namespace VRVlog.LilToonExporter
                 Set(material, "_Shadow2ndBorder", Mathf.Clamp01(step2 - feather2 / 2));
                 Set(material, "_Shadow2ndBlur", Mathf.Clamp(feather2, .001f, 1));
                 var useFirst = values.Float("_Use_1stAs2nd", 0) > .5f;
-                if (!useFirst && (!values.Texture("_2nd_ShadeMap", out map, out _, out _) || !Flat(map))) map = null;
+                if (!useFirst && (!values.Texture("_2nd_ShadeMap", out map, out mapScale, out mapOffset) || !Flat(map))) map = null;
+                if (map != null && !(useFirst && useMain)) ShadeLayers.ReportOwnUv(material, mapScale, mapOffset, dropped, "Shade Map Tiling");
                 Layer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", Opaque(values, "_2nd_ShadeColor", Color.white), map, useFirst && useMain, mainColor, textures, ref white);
             }
             else material.SetColor("_Shadow2ndColor", Color.clear);
@@ -79,6 +83,7 @@ namespace VRVlog.LilToonExporter
                 var level = values.Float("_Tweak_ShadingGradeMapLevel", 0);
                 if (values.Texture("_ShadingGradeMap", out var grade, out var scale, out var offset) && Flat(grade))
                 {
+                    ShadeLayers.ReportOwnUv(material, scale, offset, dropped, "Shading Grade Map Tiling");
                     SetTexture(material, "_ShadowBorderMask", grade, scale, offset);
                     material.SetVector("_ShadowAOShift", new Vector4(1, level, 1, level));
                 }
@@ -88,6 +93,7 @@ namespace VRVlog.LilToonExporter
                 // Black in the position map always takes the shade.
                 if (values.Texture("_Set_1st_ShadePosition", out var position, out var scale, out var offset) && Flat(position))
                 {
+                    ShadeLayers.ReportOwnUv(material, scale, offset, dropped, "Shade Position Tiling");
                     SetTexture(material, "_ShadowBorderMask", position, scale, offset);
                     material.SetVector("_ShadowAOShift", new Vector4(1, 0, 0, 1));
                 }
@@ -118,8 +124,15 @@ namespace VRVlog.LilToonExporter
             Set(material, "_RimMainStrength", 0);
             Set(material, "_RimEnableLighting", values.Float("_Is_LightColor_RimLight", 1) > .5f ? 1 : 0);
             Set(material, "_RimNormalStrength", values.Float("_Is_NormalMapToRimLight", 0) > .5f ? 1 : 0);
-            // The direction mask keeps the rim on the lit side.
-            Set(material, "_RimShadowMask", values.Float("_LightDirection_MaskOn", 0) > .5f ? 1 : 0);
+            // The source subtracts (1 - half-Lambert) + level from the rim, which
+            // keeps it on the side facing the light whether or not it is in
+            // shade. lilToon scales the rim by half-Lambert moved by the range.
+            if (values.Float("_LightDirection_MaskOn", 0) > .5f)
+            {
+                Set(material, "_RimDirStrength", 1);
+                Set(material, "_RimDirRange", Mathf.Clamp(-values.Float("_Tweak_LightDirection_MaskLevel", 0), -.9f, 1));
+                material.SetColor("_RimIndirColor", Color.clear);
+            }
             // The mask's green is read.
             CopyMask(values, material, "_Set_RimLightMask", "", "", "_RimColorTex", "_UseRim", textures, dropped, "Rim Light Mask", 1);
             if (values.Float("_Tweak_RimLightMaskLevel", 0) != 0) Drop(dropped, "Rim Light Mask Level");
@@ -129,8 +142,8 @@ namespace VRVlog.LilToonExporter
         static void Matcap(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (values.Float("_MatCap", 0) < .5f) return;
-            // Without an image the shader's slot is black, which adds nothing
-            // and would need no matcap in lilToon either.
+            // Without an image the shader's slot is black. Added, that is nothing.
+            // Multiplied, it would blacken the part, which no one sets on purpose.
             if (!values.Texture("_MatCap_Sampler", out var image, out var scale, out var offset) || !Flat(image)) return;
             Set(material, "_UseMatCap", 1);
             SetTexture(material, "_MatCapTex", image, scale, offset);
