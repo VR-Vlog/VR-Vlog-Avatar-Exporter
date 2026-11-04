@@ -28,10 +28,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal static readonly string[] SpringLabels =
         {
             "揺れの力・減衰・重力は近似",
-            "Advanced積分とStiffnessをPull・Springで近似",
-            "Immobile（All Motion）を揺れの強さと減衰で近似",
+            "Advanced積分をPull・Spring・Stiffnessから換算",
+            "Immobile（All Motion）を硬さで近似",
             "Immobile（World）はアプリの安定化で代用",
-            "Gravity Falloffを重力の減衰で近似",
+            "Gravity Falloffを重力と硬さに換算",
             "伸縮は保存せず元のボーン長を保持",
             "Is Animatedは書き出し時の姿勢を基準に使用",
             "角度制限をUniVRMの制限で近似",

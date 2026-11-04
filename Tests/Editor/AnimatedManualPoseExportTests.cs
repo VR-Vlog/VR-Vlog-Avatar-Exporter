@@ -128,6 +128,31 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(fits); Object.DestroyImmediate(over); }
         }
 
+        // A pose under 8,192 frames can still be over the 16MB data limit. It has
+        // to reach the limit check, which names the reason, not fail while sampling.
+        [Test]
+        public void AMovingPoseOverTheDataLimitIsLeftOutWithItsReason()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var clip = Moving(fixture.Source, AnimationCurve.Linear(0, 0, 136, 90));
+            try
+            {
+                var options = new PoseExportOptions(); options.Manual.Add(new ManualPose { Clip = clip });
+                using var session = new PoseExportSession(fixture.Source, options);
+                var warnings = new List<string>(); session.CollectPrepared(fixture.Copy, warnings);
+                var row = session.Entries.Single();
+                Assert.That(row.Error, Is.Null);
+                Assert.That(row.Animation.Frames.Count, Is.LessThan(HumanoidAnimationData.MaximumFramesPerAnimation));
+                Assert.Throws<InvalidOperationException>(() => HumanoidAnimationData.Write(new[] { row.Animation }));
+                using (new PoseLimitChooser.Scope(fixture.Source, false))
+                    PoseLimitChooser.Apply(session, warnings, null);
+                Assert.That(session.SelectedAnimations(), Is.Empty);
+                Assert.That(warnings, Does.Contain(ExporterLocalization.T(PoseLimitChooser.TooLargeReason)));
+                Assert.That(warnings, Has.None.Contains("Animation extension is invalid"));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         [Test]
         public void MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement()
         {
