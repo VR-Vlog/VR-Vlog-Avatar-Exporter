@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter
             ("_GlobalMaskTexturesEnable", "Global Masks"), ("_GlitterEnable", "Glitter"), ("_MainVertexColoringEnabled", "Vertex Colors"),
         };
 
-        static void Drop(List<string> effects, string label)
+        internal static void Drop(ICollection<string> effects, string label)
         {
             if (!effects.Contains(label)) effects.Add(label);
         }
@@ -307,7 +307,7 @@ namespace VRVlog.LilToonExporter
             return multiply && (useBase || map != null);
         }
 
-        static Color Ratio(Color value, Color basis)
+        internal static Color Ratio(Color value, Color basis)
         {
             float Channel(float v, float b) => Mathf.Clamp01(b > .0001f ? v / b : v);
             return new Color(Channel(value.r, basis.r), Channel(value.g, basis.g), Channel(value.b, basis.b), value.a);
@@ -357,7 +357,7 @@ namespace VRVlog.LilToonExporter
         // to 1. lilToon's single edge is placed where the brightness is halfway
         // between the dark and the lit end, with the blur from its 10% and 90%
         // points. Returns false when the samples do not change.
-        static bool FitShadowEdge(float[] brightness, Material material)
+        internal static bool FitShadowEdge(float[] brightness, Material material)
         {
             var steps = brightness.Length - 1;
             var dark = brightness[0];
@@ -387,8 +387,8 @@ namespace VRVlog.LilToonExporter
         // the value the source reads, owned by textures. When that cannot be
         // done the effect is turned off and reported: unmasked, it would cover
         // the whole material.
-        static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
-            string toggle, List<Texture2D> textures, List<string> effects, string label, int defaultChannel = 0)
+        internal static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
+            string toggle, List<Texture2D> textures, ICollection<string> effects, string label, int defaultChannel = 0)
         {
             if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return;
             var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, defaultChannel)), 0, 3);
@@ -636,7 +636,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static void SetTexture(Material material, string name, Texture texture, Vector2 scale, Vector2 offset)
+        internal static void SetTexture(Material material, string name, Texture texture, Vector2 scale, Vector2 offset)
         {
             if (!material.HasProperty(name)) return;
             material.SetTexture(name, texture);
