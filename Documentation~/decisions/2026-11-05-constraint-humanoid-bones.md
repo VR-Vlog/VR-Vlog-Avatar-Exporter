@@ -5,7 +5,7 @@
 
 ## 背景
 
-`ConstraintExport.HumanoidBones` は人型のボーンの一覧を返し、PhysBone の変換と拘束の変換がこれを除外に使う。ここだけ `Animator.GetBoneTransform` を直接呼んでいた。一度も表示していない Animator は `GetBoneTransform` が null を返すことがあるとされ、[非表示のまま書き出す決定](2026-10-18-inactive-root-export.md)で `HumanoidBones.Resolve` を作って他の呼び出しは移したが、ここは残っていた。null だと一覧が空になり、体が揺れものの鎖に入って、警告なしで以前の動きに戻る。
+`ConstraintExport.HumanoidBones` は人型のボーンの一覧を返し、PhysBone の変換と拘束の変換がこれを除外に使う。ここは `Animator.GetBoneTransform` を直接呼んでいた。一度も表示していない Animator は `GetBoneTransform` が null を返すことがあるとされ、[非表示のまま書き出す決定](2026-10-18-inactive-root-export.md)のあとで作った `HumanoidBones.Resolve` に、シーン側を読む処理を移している。null だと一覧からそのボーンが抜け、体が揺れものの鎖に入って、警告なしで以前の動きに戻る。
 
 ## 決定
 
@@ -17,7 +17,9 @@
 
 足した assert は、未表示の Animator から全部のボーンが返ることだけを確かめる。修正の前後どちらでも通るので、呼び出しを戻しても気づけるテストではない。
 
-書き出しの本線では、PhysBone の変換より前に `ValidatePreparedHumanoid` が必須のボーンを `GetBoneTransform` で確かめて、取れなければ止める。ここは警告なしで進むのではなくエラーになるので、変えていない。
+書き出しの本線では、PhysBone の変換より前に `ValidatePreparedHumanoid` が必須の 15 ボーンを同じコピーの `GetBoneTransform` で確かめて、取れなければ止める。ここは警告なしで進むのではなくエラーになるので、変えていない。全部のボーンが null なら先にここで止まるので、この変更で結果が変わるのは必須でないボーンだけが null になる場合か、この検査を通らない経路に限られる。
+
+書き出しのコピーを `GetBoneTransform` で直接読む処理は、ほかにも `VrmLookAtExport` などに残っている。この変更の対象にしていない。
 
 ## 確認
 
