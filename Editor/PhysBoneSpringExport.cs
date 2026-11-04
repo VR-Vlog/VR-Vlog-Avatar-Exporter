@@ -401,6 +401,14 @@ namespace VRVlog.LilToonExporter
                         converted.Tail = converted.Offset + offset; converted.Offset -= offset;
                     }
                     if (shape == 2) converted.Normal = rotation * Vector3.up;
+                    // The solver multiplies an outer collider's radius by the node's world
+                    // scale but reads an inside one as it is, so a scaled inside collider
+                    // would shrink and pull the bones into it.
+                    if (inside)
+                    {
+                        var scale = root.lossyScale;
+                        converted.Radius *= Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+                    }
                     cache.Add(collider, converted);
                 }
                 if (!list.Contains(converted)) list.Add(converted);
