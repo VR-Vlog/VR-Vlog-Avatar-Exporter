@@ -26,6 +26,7 @@ VRChat SDKが導入済みの場合、元モデルのPhysBoneを読み、MA / NDM
   長さのある残りの連鎖を保持します。仮想末端は他のPhysBoneの対象に混入しません。
 - Sphere / Capsule / Planeと内側判定、位置・回転・半径を変換します。
   Capsuleの長さは半径を含む全高から両端の中心を求めます。
+  高さが直径以下の内側判定のCapsuleは、長さが無いのでSphereの内側判定で書き出します。
   アバター最上位のコライダーは、出力用コピーの子オブジェクトへ移して保持します。
   UniVRMが最上位を省略する際のコライダー欠落と衝突参照のずれを防ぎます。
 - Cone / Hinge / Polarの角度と回転を、UniVRMのCone / Hinge / Sphericalへ写します。
