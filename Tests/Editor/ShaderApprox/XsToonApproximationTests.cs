@@ -20,7 +20,15 @@ namespace VRVlog.LilToonExporter.Tests
 
         T Own<T>(T value) where T : Object { owned.Add(value); return value; }
 
-        Texture2D Image(string name) => Own(new Texture2D(4, 4) { name = name });
+        Texture2D Image(string name, float alpha = 1)
+        {
+            var image = Own(new Texture2D(4, 4) { name = name });
+            var pixels = new Color[16];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = new Color(.2f, .4f, .6f, alpha);
+            image.SetPixels(pixels);
+            image.Apply();
+            return image;
+        }
 
         Material Source(int shadowType = 2)
         {
@@ -131,6 +139,82 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(hsvg.z, Is.EqualTo(.5f).Within(1e-4f));
         }
 
+        // The source adjusts image × color; lilToon adjusts the image and then
+        // multiplies by the color. Value would count twice, so only hue and
+        // saturation move the color.
+        [Test] public void TheColorAdjustmentAlsoMovesTheBaseColor()
+        {
+            var source = Source();
+            source.SetColor("_Color", new Color(1, 0, 0, .5f));
+            source.SetFloat("_Hue", 1f / 3);
+            source.SetFloat("_Value", .5f);
+            var color = Substitute(source).GetColor("_Color");
+            Assert.That(color.r, Is.EqualTo(0).Within(1e-3f));
+            Assert.That(color.g, Is.EqualTo(1).Within(1e-3f));
+            Assert.That(color.b, Is.EqualTo(0).Within(1e-3f));
+            Assert.That(color.a, Is.EqualTo(.5f).Within(1e-3f));
+        }
+
+        [Test] public void AMaskedColorAdjustmentLeavesTheBaseColor()
+        {
+            var source = Source();
+            source.SetColor("_Color", new Color(1, 0, 0));
+            source.SetFloat("_Hue", 1f / 3);
+            source.SetTexture("_HSVMask", Image("mask"));
+            Assert.That(Substitute(source).GetColor("_Color").r, Is.EqualTo(1).Within(1e-3f));
+        }
+
+        [Test] public void AShadeMapWithAlphaOrTilingIsHandled()
+        {
+            var source = Source();
+            source.SetFloat("_ShadowType", 1);
+            var image = Image("shade", .5f);
+            source.SetTexture("_ShadeMap", image);
+            source.SetTextureScale("_ShadeMap", new Vector2(2, 2));
+            var output = Substitute(source, out var dropped);
+            Assert.That(dropped, Does.Contain("Shade Map Tiling"));
+            var drawn = output.GetTexture("_ShadowColorTex");
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) { Assert.That(drawn, Is.SameAs(image)); return; }
+            Assert.That(((Texture2D)drawn).GetPixel(0, 0).a, Is.EqualTo(1).Within(1e-3f));
+        }
+
+        [Test] public void ARampSelectionMaskIsReported()
+        {
+            var source = Source();
+            source.SetFloat("_ShadowType", 0);
+            source.SetTexture("_RampSelectionMask", Image("selection"));
+            Substitute(source, out var dropped);
+            Assert.That(dropped, Does.Contain("Ramp Selection"));
+        }
+
+        [Test] public void TheSecondShadeUsesTheSameLightSettings()
+        {
+            var output = Substitute(Source());
+            Assert.That(output.GetFloat("_Shadow2ndNormalStrength"), Is.EqualTo(1));
+            Assert.That(output.GetFloat("_Shadow2ndReceive"), Is.EqualTo(1));
+        }
+
+        [TestCase(1f, -.5f)]
+        [TestCase(.1f, 1f)]
+        [TestCase(2f, -.6f)]
+        public void TheRimsDirectionMatchesTheThreshold(float threshold, float range)
+        {
+            var source = Source();
+            source.SetFloat("_RimIntensity", 1);
+            source.SetFloat("_RimThreshold", threshold);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_RimDirStrength"), Is.EqualTo(1));
+            Assert.That(output.GetFloat("_RimDirRange"), Is.EqualTo(range).Within(1e-3f));
+        }
+
+        [Test] public void ARimThresholdOfZeroHasNoDirection()
+        {
+            var source = Source();
+            source.SetFloat("_RimIntensity", 1);
+            source.SetFloat("_RimThreshold", 0);
+            Assert.That(Substitute(source).GetFloat("_RimDirStrength"), Is.EqualTo(0));
+        }
+
         [Test] public void TheRimIsOffAtZeroIntensity()
         {
             Assert.That(Substitute(Source()).GetFloat("_UseRim"), Is.EqualTo(0));
@@ -143,6 +227,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_RimRange", .6f);
             source.SetFloat("_RimSharpness", .2f);
             source.SetFloat("_RimAlbedoTint", .5f);
+            source.SetFloat("_RimThreshold", 1);
             var output = Substitute(source);
             Assert.That(output.GetFloat("_UseRim"), Is.EqualTo(1));
             Assert.That(output.GetFloat("_RimBorder"), Is.EqualTo(.6f).Within(1e-4f));
@@ -200,8 +285,10 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_OutlineWidth", 1);
             source.SetColor("_OutlineColor", new Color(.2f, .3f, .4f));
             source.SetFloat("_OutlineAlbedoTint", 1);
+            source.SetColor("_Color", new Color(.5f, .5f, .5f));
             var output = Substitute(source, Outlined, out _, out _);
-            Assert.That(output.GetColor("_OutlineColor").g, Is.EqualTo(.3f).Within(1e-4f));
+            Assert.That(output.GetColor("_OutlineColor").g, Is.EqualTo(.15f).Within(1e-4f));
+            Assert.That(output.GetColor("_OutlineColor").a, Is.EqualTo(1));
             Assert.That(output.GetTexture("_OutlineTex"), Is.SameAs(source.GetTexture("_MainTex")));
         }
 

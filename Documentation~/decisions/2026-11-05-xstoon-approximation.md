@@ -13,13 +13,13 @@ XSToon のマテリアルは主画像・色・カットオフは汎用の読み�
 
 - 描画モード: `_BlendMode` の 0 を不透明、1〜3 をカットアウト、4〜6 を半透明にする。加算（6）は `Additive Blend` として警告に出す。
 - 影: `_ShadowType` を読む。
-  - Ramp（0）: ランプの横 1 列を読んで明るさが変わる範囲を影の境界とぼかしにし、暗い端の色を影の色にする。白いランプは影を描かない。
+  - Ramp（0）: ランプの横 1 列を読んで明るさが変わる範囲を影の境界とぼかしにし、暗い端の色を影の色にする。白いランプは影を描かない。`_RampSelectionMask` で別の行を選んでいるときは写せないので `Ramp Selection` として警告に出す。
   - Shade Map（1）: 影で主画像の代わりに描くので、「画像 × `_ShadowColor`」をそのまま影の色にする。
   - Solid（2）: `_ShadowColor` を主画像に掛ける色にする。
   - Shade Map と Solid の境界は `_ShadowRange`、ぼかしは `_ShadowSharpness` から求める（幅は range ± (1 - sharpness)）。
 - 裏面: XSToon は裏面の法線を反転するので `_FlipNormal` を有効にする。カリングは汎用の読み方が `_Culling` を読む。
-- 色調補正: `_Hue`・`_Saturation`・`_Value` を `_MainTexHSVG` に写す。
-- リム: XSToon のリムは (1 - N·V) × N·L^threshold で、`_RimRange` ± `_RimSharpness` でぼける。`_RimDirStrength` を 1、`_RimDirRange` を -0.5 にすると lilToon の half-Lambert が N·L になるので、これで光の側だけに出す。影側のリムは描かない。
+- 色調補正: `_Hue`・`_Saturation`・`_Value` を `_MainTexHSVG` に写す。元は主画像 × `_Color` を補正し、lilToon は画像だけを補正してから色を掛けるので、`_HSVMask` が無いときは `_Color` にも色相と彩度を掛ける。明度は二重にしないよう掛けない。
+- リム: XSToon のリムは (1 - N·V) × N·L^threshold で、`_RimRange` ± `_RimSharpness` でぼける。`_RimDirStrength` を 1 にし、`_RimDirRange` を N·L = .25 で元の N·L^threshold と同じ値になるように決める（threshold が 1 なら -0.5 で N·L そのもの）。光の側だけに出す。影側のリムは描かない。
 - マットキャップ: `_ReflectionMode` が Matcap のときだけ写す。加算は環境光と直接光の半分で照らされるので、lilToon では `_MatCapBlend` を半分にして照明を有効にする。乗算は照明を受けないので照明を切る。減算は `Matcap (Subtractive)` として警告に出す。PBR とベイクしたキューブマップは `Reflection` として警告に出す。
 - 輪郭線: 輪郭線付きのシェーダーで `_OutlineWidth` が 0 より大きいときに輪郭線付きの lilToon にし、幅・色・`_OutlineAlbedoTint`・`_OutlineLighting` を写す。
 - lilToon に無いもの（スペキュラー、サブサーフェス、ハーフトーン、ディゾルブなど）は名前を警告に出す。
@@ -32,7 +32,8 @@ XSToon のマテリアルは主画像・色・カットオフは汎用の読み�
 ## 残る差
 
 - MToon のリムは光の向きを見ないので、XSToon のリムは MToon では全周に出る。アプリは lilToon の情報で描くので光の側に出る。
-- `_RimThreshold` は 1 のときと同じ形で描く。元より光の側の範囲が狭くなることがある。
+- `_RimThreshold` は 1 点で合わせているので、N·L が 0 の近くでは元と形が違う。裏側は影のマスクで隠す。
+- 加算のマットキャップは環境光の分まで半分にするので、元より少し暗い。
 
 ## 検討した代替案と不採用理由
 
