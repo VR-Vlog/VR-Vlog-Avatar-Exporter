@@ -328,6 +328,101 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public async Task InsideColliderRadiusComesBackFromTheFileUnchanged()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var hair = Child(head, "Hair", Vector3.forward * .1f);
+            Child(hair, "Hair tip", Vector3.down * .1f);
+            var pb = PhysBone(hair.gameObject);
+            var scaled = Child(head, "Scaled", Vector3.zero);
+            scaled.localScale = Vector3.one * 10;
+            var collider = scaled.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+            Set(collider, "shapeType", 0); Set(collider, "insideBounds", true); Set(collider, "radius", .1f);
+            using (var data = new SerializedObject(pb))
+            {
+                var list = data.FindProperty("colliders"); list.arraySize = 1;
+                list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+            }
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            Vrm10Instance imported = null;
+            try
+            {
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Inside collider", "Tests", exporterVersion: null,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                var restored = imported.SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(restored.Radius, Is.EqualTo(1f).Within(.00001));
+                Assert.That(restored.transform.lossyScale.x, Is.EqualTo(10f).Within(.001));
+            }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
+        }
+
+        [Test]
+        public void InsideCollidersUseTheScaleOfTheirRootTransform()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                var holder = Child(source.transform, "Holder", Vector3.zero);
+                holder.localScale = Vector3.one * 3;
+                var scaled = Child(source.transform, "Scaled", Vector3.zero);
+                scaled.localScale = Vector3.one * 10;
+                var collider = holder.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                Set(collider, "shapeType", 0); Set(collider, "insideBounds", true); Set(collider, "radius", .1f);
+                using (var data = new SerializedObject(collider))
+                {
+                    data.FindProperty("rootTransform").objectReferenceValue = scaled; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                using (var data = new SerializedObject(pb))
+                {
+                    var list = data.FindProperty("colliders"); list.arraySize = 1;
+                    list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var output = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(output.Radius, Is.EqualTo(1f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(source); if (copy != null) Object.DestroyImmediate(copy); }
+        }
+
+        [TestCase(0, true, 1f)]
+        [TestCase(1, true, .95f)]
+        [TestCase(0, false, .1f)]
+        [TestCase(1, false, .1f)]
+        public void InsideCollidersKeepTheirWorldSizeOnAScaledRootTransform(int shape, bool inside, float expectedRadius)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                var scaled = Child(source.transform, "Scaled", Vector3.zero);
+                scaled.localScale = shape == 0 ? Vector3.one * 10 : new Vector3(-9.5f, 2, 1);
+                var collider = scaled.gameObject.AddComponent(OptionalTools.Find("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                Set(collider, "shapeType", shape); Set(collider, "insideBounds", inside);
+                Set(collider, "radius", .1f); Set(collider, "height", .4f);
+                using (var data = new SerializedObject(pb))
+                {
+                    var list = data.FindProperty("colliders"); list.arraySize = 1;
+                    list.GetArrayElementAtIndex(0).objectReferenceValue = collider; data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var output = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().ColliderGroups.Single().Colliders.Single();
+                Assert.That(output.Radius, Is.EqualTo(expectedRadius).Within(.001));
+                // The capsule's ends stay in the collider's own units: the node's scale moves them.
+                if (shape == 1) Assert.That(Vector3.Distance(output.Offset, output.Tail), Is.EqualTo(.2f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        [Test]
         public void CurvesCollidersAndLimitsUseRealSdkSerializedValues()
         {
             var source = new GameObject("source"); GameObject copy = null;
@@ -350,7 +445,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var report = PhysBoneSpringExport.Convert(source, copy, new List<string>());
                 Assert.That(report.Colliders, Is.EqualTo(1));
                 var spring = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single();
-                Assert.That(spring.Joints[0].m_stiffnessForce, Is.EqualTo(1.6f).Within(.001));
+                Assert.That(spring.Joints[0].m_stiffnessForce, Is.EqualTo(2.8235f).Within(.001));
                 Assert.That(spring.Joints[1].m_stiffnessForce, Is.LessThan(spring.Joints[0].m_stiffnessForce));
                 Assert.That(spring.Joints[0].m_pitch, Is.EqualTo(30 * Mathf.Deg2Rad).Within(.001));
                 var output = spring.ColliderGroups.Single().Colliders.Single();
@@ -363,14 +458,14 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
-        const string AllMotionImmobileWarning = ": Immobile（All Motion）は揺れの強さと減衰を上げて近似しました。";
+        const string AllMotionImmobileWarning = ": Immobile（All Motion）は割合に応じて硬さを上げて近似しました。";
         const string WorldImmobileWarning = ": Immobile（World）はアプリの安定化（揺れの基準をモデルのルートにする）に委ねました。";
 
         // World is left to the app, which centres exported springs on the
-        // model root; only All Motion raises the exported stiffness and drag.
-        [TestCase(0, 1.9f, .78f)]
-        [TestCase(1, 1.6f, .48f)]
-        public void AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp(int immobileType, float stiffness, float drag)
+        // model root; only All Motion raises the exported stiffness.
+        [TestCase(0, 7.0588f)]
+        [TestCase(1, 2.8235f)]
+        public void AllMotionImmobileRaisesStiffnessWhileWorldIsLeftToTheApp(int immobileType, float stiffness)
         {
             var source = new GameObject("source"); GameObject copy = null;
             try
@@ -386,16 +481,16 @@ namespace VRVlog.LilToonExporter.Tests
                 PhysBoneSpringExport.Convert(source, copy, warnings);
                 var joint = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
                 Assert.That(joint.m_stiffnessForce, Is.EqualTo(stiffness).Within(.001));
-                Assert.That(joint.m_dragForce, Is.EqualTo(drag).Within(.001));
+                Assert.That(joint.m_dragForce, Is.EqualTo(.7059f).Within(.001));
                 Assert.That(warnings.Contains("Hair" + AllMotionImmobileWarning), Is.EqualTo(immobileType == 0));
                 Assert.That(warnings.Contains("Hair" + WorldImmobileWarning), Is.EqualTo(immobileType != 0));
-                Assert.That(warnings.Contains("Hair: Gravity Falloffは重力の減衰として近似しました。"), Is.True);
+                Assert.That(warnings.Contains("Hair: Gravity Falloffは書き出し時の角度と揺れの大きさから重力と硬さに換算しました。"), Is.True);
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
         [Test]
-        public void AllMotionImmobileDragNeverExceedsOne()
+        public void FullAllMotionImmobileStopsAtTheHoldingForce()
         {
             var source = new GameObject("source"); GameObject copy = null;
             try
@@ -409,8 +504,60 @@ namespace VRVlog.LilToonExporter.Tests
                 copy = Object.Instantiate(source);
                 PhysBoneSpringExport.Convert(source, copy, new List<string>());
                 var joint = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
-                Assert.That(joint.m_stiffnessForce, Is.EqualTo(2.1f).Within(.001));
+                Assert.That(joint.m_stiffnessForce, Is.EqualTo(PhysBoneMotionMapping.HoldingForce(.1f)).Within(.001));
                 Assert.That(joint.m_dragForce, Is.EqualTo(1f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        // The solver writes back the last joint's stored rotation, so without a
+        // tail the last bone would not turn with the swing of its parent.
+        [Test]
+        public void ALastBoneScaledToZeroGetsNoFollowingTail()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                var tip = Child(root, "HairTip", Vector3.down * .1f);
+                var end = Child(tip, "HairEnd", Vector3.down * .2f);
+                end.localScale = Vector3.zero;
+                PhysBone(root.gameObject);
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var joints = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints;
+                Assert.That(joints.Select(j => j.name), Is.EqualTo(new[] { "Hair", "HairTip", "HairEnd" }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                if (copy != null) Object.DestroyImmediate(copy);
+            }
+        }
+
+        [Test]
+        public void ARealLastBoneGetsAShortTailThatFollowsItsParent()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                var tip = Child(root, "HairTip", Vector3.down * .1f);
+                Child(tip, "HairEnd", Vector3.down * .2f);
+                var pb = PhysBone(root.gameObject);
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var joints = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints;
+                Assert.That(joints.Take(3).Select(j => j.name), Is.EqualTo(new[] { "Hair", "HairTip", "HairEnd" }));
+                Assert.That(joints.Count, Is.EqualTo(4));
+                var end = joints[2];
+                var tail = joints[3].transform;
+                Assert.That(tail.parent, Is.SameAs(end.transform));
+                Assert.That(Vector3.Distance(tail.localPosition, Vector3.down * .05f), Is.LessThan(1e-6));
+                Assert.That(end.m_stiffnessForce, Is.EqualTo(PhysBoneMotionMapping.HoldingForce(.05f)).Within(1e-3));
+                Assert.That(end.m_dragForce, Is.EqualTo(1));
+                Assert.That(end.m_gravityPower, Is.EqualTo(0));
+                Assert.That(joints[1].m_dragForce, Is.LessThan(1), "The bones before the tail keep their own motion.");
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
@@ -577,8 +724,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Vector3.Distance(parentTail.position, copiedChild.position), Is.LessThan(1e-6));
                 Assert.That(Vector3.Distance(parentTail.position, parentTail.parent.position),
                     Is.EqualTo(Vector3.Distance(childRoot.position, middle.position)).Within(1e-6));
-                Assert.That(parentSpring.Joints[1].m_stiffnessForce, Is.EqualTo(1.4f).Within(1e-5), "Keep original depth 1/4 after splitting.");
-                Assert.That(childSpring.Joints[0].m_stiffnessForce, Is.EqualTo(3.2f).Within(1e-5));
+                Assert.That(parentSpring.Joints[1].m_stiffnessForce, Is.EqualTo(2.6444f).Within(1e-3), "Keep original depth 1/4 after splitting.");
+                Assert.That(childSpring.Joints[0].m_stiffnessForce, Is.EqualTo(14.9333f).Within(1e-3));
                 Assert.That(parentSpring.Joints[0].m_pitch, Is.EqualTo(30 * Mathf.Deg2Rad).Within(1e-5));
                 Assert.That(childSpring.Joints[0].m_pitch, Is.EqualTo(65 * Mathf.Deg2Rad).Within(1e-5));
                 Assert.That(parentSpring.ColliderGroups.Single().Colliders.Single().Radius, Is.EqualTo(.025f));
@@ -611,7 +758,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var result = PhysBoneSpringExport.Convert(source, copy, warnings);
                 Assert.That(result.Converted, Is.EqualTo(1)); Assert.That(result.Skipped, Is.EqualTo(1));
                 Assert.That(copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0].m_stiffnessForce,
-                    Is.EqualTo(bothAttached ? .8f : 2.8f).Within(1e-5));
+                    Is.EqualTo(bothAttached ? 1.1429f : 7.6364f).Within(1e-3));
                 AssertUniqueJoints(copy);
                 Assert.That(warnings.Any(w => w.Contains("同じRoot")), Is.True);
             }
@@ -741,7 +888,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(copy.transform.Find("root").GetComponent<VRM10SpringBoneJoint>(), Is.Null);
                 var first = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
                 Assert.That(first.name, Is.EqualTo("coincident"));
-                Assert.That(first.m_stiffnessForce, Is.EqualTo(1.6f).Within(1e-5), "Original curve coordinate remains 1/3.");
+                Assert.That(first.m_stiffnessForce, Is.EqualTo(2.8235f).Within(1e-3), "Original curve coordinate remains 1/3.");
                 Assert.That(copy.transform.Find("root/coincident").localPosition, Is.EqualTo(Vector3.zero));
                 Assert.That(warnings.Any(w => w.Contains("長さゼロ")), Is.True);
             }

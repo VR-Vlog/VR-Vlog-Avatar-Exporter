@@ -31,6 +31,9 @@ VRChat SDKが導入済みの場合、元モデルのPhysBoneを読み、MA / NDM
 - Cone / Hinge / Polarの角度と回転を、UniVRMのCone / Hinge / Sphericalへ写します。
   UniVRM既存のVRMC_springBone_limit・VRMC_springBone_extended_colliderを使用します。
   独自拡張は追加しません。これらを扱わないビューアーでは制限・特殊衝突は再現されません。
+- Inside Boundsの球とカプセルは、半径にRoot Transformのワールドスケールを掛けて書き出します。
+  同梱のUniVRM 0.131のソルバーは外側のコライダーの半径にだけスケールを掛けるためです。
+  Insideの半径にもスケールを掛けるビューアーでは、拘束の範囲が変わります。
 
 ## 近似と未対応
 
@@ -38,16 +41,39 @@ PhysBoneとSpringBoneは別のソルバーです。見た目が一致する保�
 重複の整理は静止姿勢、ボーンの配置、メッシュ、マテリアルを変更しません。
 同じ関節を重ねて動かす挙動は再現できないため、揺れ方は上記の優先順位による
 近似になります。警告に対象と方針を残します。
-カーブ評価後のPullをp、Spring / Momentumをs、Gravityをg、
-Gravity Falloffをfとすると、stiffness = 4p、dragForce = 0.6(1-s)、
-gravityPower = |g|(1-f)です。PhysBone 1.1ではgravityPowerに4pを掛けます。
-Immobile TypeがAll Motionのときは、カーブ評価後のImmobileをiとして
-stiffnessに0.5i、dragForceに0.5iを足します（dragForceは1が上限）。
-gravityPowerに掛ける4pは変えません。Worldのときは足さず、アプリの安定化
-（揺れの基準をモデルのルートにする）に委ねます。
-重力の符号は上下方向に反映します。半径は元値を使います。
+カーブ評価後のPullをp、Spring / Momentumをs、ボーンの長さをL（ワールドの長さを
+そのボーンのスケールで割った値）とします。VRMのソルバーはスケールを掛けて使うので、
+元のスケールが変わっても同じ揺れになります。
 
-Advancedの独立したStiffness、伸縮、動的なIs Animated追従、
+- Simplified: r = max(1 - p(1 - s'), 0.02) として、stiffness = 60L(1/r - 1)、
+  dragForce = 1 - s'/r です。s'はsをpに応じた上限で抑えた値です。pが小さくsが
+  大きいとVRM側だけ揺れ続けるため、実測に合わせて抑えています。
+- Advanced: r = max(1 - p, 0.02) として、stiffnessは同じ式、
+  dragForce = 1 - s(1 - Stiffness)です。
+
+重力gはPhysBoneの版で意味が違います。
+
+- 1.1: 静止方向を(1-g)・元の方向 + g・下向きへ変えます。
+  stiffness = K(1-g)、gravityPower = Kgです（Kは上のstiffness）。
+- 1.0: Pullと競合し、tanθ = g/pの角度で釣り合います。stiffness = Kのまま、
+  gravityPower = 60Lg(1-s')/r（Advancedは60Lg/r）です。
+
+Gravity Falloffをfとすると、重力は元の姿勢からの角度θでg(1 - f cosθ)に変わります。
+VRMの重力は一定なので、釣り合う角度で解いた値を書き出します。揺れている間に重力が
+変わる分は、静止点を保ったままstiffnessとgravityPowerへ同じ倍率を掛けて補います。
+倍率は釣り合いから45度振れた位置の復元力の比です。
+
+Immobile TypeがAll Motionのときは、カーブ評価後のImmobileをiとして、力を1/(1-i)倍に
+します。親の動きを割合だけ隠すことと、力を同じ割合だけ強めることで、遅れの大きさが
+そろうためです。dragForceは変えません。Worldのときは足さず、アプリの安定化
+（揺れの基準をモデルのルートにする）に委ねます。
+
+VRMのソルバーは最後のジョイントを動かさず、取得済みの回転を書き戻します。そのままだと
+最後のボーンが親の揺れに付いてこないので、実在するボーンで終わる連鎖には長さが1/4の
+短い末端を足し、硬さを上限にして元の向きへ追従させます。
+stiffnessの上限は60L(1/0.02 - 1)です。半径は元値を使います。
+
+伸縮、動的なIs Animated追従、
 Grab / Pose、他アバターとの衝突、PhysBoneパラメーターの連動は保存しません。
 Is Animatedは出力時の姿勢を基準とします。
 PolarのZ角度はUniVRMの対応範囲0〜90度に制限します。
