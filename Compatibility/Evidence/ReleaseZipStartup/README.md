@@ -48,8 +48,8 @@ assemblies, no `testables`, no `VR Vlog/` entry but the two app transfers, the
 backend is ready, refresh and reload keep the backend, the report says
 `Status: Ready`). It then builds a Humanoid skeleton in code with one skinned box
 using `new Material(Shader.Find("lilToon"))`, and calls the same internal methods
-as the export window through reflection: `LilToonExporterWindow.PackageVersion`,
-`LilToonExporterWindow.RequireLilToon` (lilToon present and shader
+as the export window through reflection: `ExportEntry.PackageVersion`,
+`ExportEntry.RequireLilToon` (lilToon present and shader
 structure check) and `UniVrmOneClickExporter.Export`. Options the window can
 set (gimmicks, blink, poses, recovery, license) keep their defaults. It reads
 the GLB JSON chunk of the result.
