@@ -841,6 +841,7 @@ BEHAVIOR_CASES = {
         'ExplicitMovingHeadAndNeckMusclesMatchNativeHumanoidInterpolation': 2,
         'ManualStartAndLoopArePreservedWithoutAnAdditionalStaticSnapshot': 1,
         'OnlyTheFrameCountDecidesWhetherAMovingPoseFits': 1,
+        'AMovingPoseOverTheDataLimitIsLeftOutWithItsReason': 1,
         'MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement': 1,
         'MovingHumanoidClipKeepsLoopPoseSettingsAndNonMatchingAuthoredEndpoints': 2,
         'MovingHumanoidRootChannelsMatchNativeBodyCoordinatesWithoutSceneRootMotion': 3,

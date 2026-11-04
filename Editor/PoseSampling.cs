@@ -381,7 +381,7 @@ namespace VRVlog.LilToonExporter
                     if (!ReferenceEquals(leftLimit, right)) Add(right);
                 }
             });
-            HumanoidAnimationData.Write(new[] { data });
+            HumanoidAnimationData.Validate(new[] { data }); // The size is left to PoseLimitPlan, which shows a pose over the limit and leaves it out.
             return data;
         }
 
