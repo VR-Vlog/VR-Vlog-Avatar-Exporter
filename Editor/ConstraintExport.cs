@@ -257,7 +257,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static HashSet<Transform> HumanoidBones(GameObject copy)
+        internal static HashSet<Transform> HumanoidBones(GameObject copy)
         {
             var bones = new HashSet<Transform>();
             var animator = copy.GetComponent<Animator>();

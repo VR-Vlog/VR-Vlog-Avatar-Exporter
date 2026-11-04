@@ -243,6 +243,63 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var animator = fixture.Copy.GetComponent<Animator>();
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var strap = Child(animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg), "Strap", new Vector3(-.2f, .8f, 0));
+            var strapTip = Child(strap, "Strap tip", new Vector3(-.2f, .6f, 0));
+            PhysBone(hips.gameObject);
+            var warnings = new List<string>();
+            PhysBoneSpringExport.Convert(fixture.Source, fixture.Copy, warnings);
+            var joints = fixture.Copy.GetComponent<Vrm10Instance>().SpringBone.Springs
+                .SelectMany(spring => spring.Joints).Select(joint => joint.transform).ToArray();
+            var humanoid = Enumerable.Range(0, (int)HumanBodyBones.LastBone)
+                .Select(bone => animator.GetBoneTransform((HumanBodyBones)bone)).Where(bone => bone != null);
+            Assert.That(joints.Intersect(humanoid), Is.Empty);
+            Assert.That(joints, Has.Member(strap).And.Member(strapTip));
+            Assert.That(warnings, Has.Some.Contains("Humanoidのボーン"));
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public void BonesBetweenHumanoidBonesStayOutOfChains(int multi)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var animator = fixture.Copy.GetComponent<Animator>();
+            var neck = animator.GetBoneTransform(HumanBodyBones.Neck);
+            var between = Child(animator.GetBoneTransform(HumanBodyBones.Chest), "Between", neck.localPosition);
+            neck.SetParent(between, true);
+            var cape = Child(between, "Cape", Vector3.back * .1f);
+            cape.SetAsFirstSibling();
+            Child(cape, "Cape tip", Vector3.down * .1f);
+            var pb = PhysBone(animator.GetBoneTransform(HumanBodyBones.Hips).gameObject);
+            Set(pb, "multiChildType", multi);
+            PhysBoneSpringExport.Convert(fixture.Source, fixture.Copy, new List<string>());
+            var joints = fixture.Copy.GetComponent<Vrm10Instance>().SpringBone.Springs
+                .SelectMany(spring => spring.Joints).Select(joint => joint.transform).ToArray();
+            Assert.That(joints, Has.No.Member(between));
+            Assert.That(joints, Has.Member(cape));
+        }
+
+        [Test]
+        public void AHumanoidRootThatNeverMovedDoesNotWarn()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var head = fixture.Copy.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var left = Child(head, "Hair left", Vector3.left * .1f);
+            Child(left, "Hair left tip", Vector3.down * .1f);
+            var right = Child(head, "Hair right", Vector3.right * .1f);
+            Child(right, "Hair right tip", Vector3.down * .1f);
+            PhysBone(head.gameObject);
+            var warnings = new List<string>();
+            PhysBoneSpringExport.Convert(fixture.Source, fixture.Copy, warnings);
+            Assert.That(fixture.Copy.GetComponent<Vrm10Instance>().SpringBone.Springs, Has.Count.EqualTo(2));
+            Assert.That(warnings, Has.None.Contains("Humanoidのボーン"));
+        }
+
         [TestCase(0, 2)]
         [TestCase(1, 2)]
         [TestCase(2, 3)]
