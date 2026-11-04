@@ -364,11 +364,49 @@ class CaseTableCheckTests(unittest.TestCase):
 
     def test_a_method_left_out_of_a_shared_suite_is_found(self):
         suite = 'PhysBoneSpringExportTests'
+        self.assertIn(suite, unity_runner.BEHAVIOR_CASES)
         self.assertIn(suite, unity_runner.INTEGRATION_CASES)
         methods = unity_runner.table_cases()[suite]
         method = next(iter(methods))
         problems = case_table_problems(suite, {k: v for k, v in methods.items() if k != method}, suite_source(suite))
         self.assertEqual(problems, [suite + '.' + method + ': in no case table, so a method filter never runs it'])
+
+    def test_a_source_case_needs_one_generator_it_can_count(self):
+        template = """
+        private static IEnumerable<TestCaseData> Cases()
+        {
+%s
+        }
+
+        [TestCaseSource(nameof(Cases))]
+        public void Generated(int value) { }
+    """
+        one = 'foreach (var a in new[] { 1, 2 }) foreach (var b in new[] { 1, 2, 3 }) yield return new TestCaseData(a, b);'
+        check = lambda source, count=6: case_table_problems('Suite', {'Generated': count}, source)
+        self.assertEqual(check(template % one), [])
+        self.assertEqual(check(template % one, 5), ['Suite.Generated: 6 cases, but the table says 5'])
+        self.assertEqual(check(template % 'yield return new TestCaseData(1);'),
+                         ['Suite.Generated: a changed generator requires a new explicit native count audit'])
+        self.assertEqual(check((template % one).replace('private static', 'static')),
+                         ['Suite.Generated: the native matrix generator must remain checked in'])
+
+    def test_pinned_parameter_combinations_must_be_real_test_attributes(self):
+        with mock.patch.object(unity_runner, 'INTEGRATION_VARIANTS', {'Suite': {'Two': ('1', '3')}}):
+            self.assertEqual(self.problems({'One': 1, 'Two': 2}),
+                             ['Suite.Two: pinned integration combinations must remain real test attributes'])
+        with mock.patch.object(unity_runner, 'INTEGRATION_VARIANTS', {'Suite': {'Two': ('1', '2')}}):
+            self.assertEqual(self.problems({'One': 1, 'Two': 2}), [])
+
+    def test_the_check_of_the_real_tables_fails_when_a_table_changes(self):
+        suite = 'PhysBoneSpringExportTests'
+        methods = dict(unity_runner.table_cases()[suite])
+        methods.pop(next(iter(methods)))
+        check = UnityProfilePolicyTests('test_required_case_names_and_counts_match_checked_in_fixtures')
+        result = unittest.TestResult()
+        with mock.patch.object(unity_runner, 'table_cases', return_value={suite: methods}):
+            check.run(result)
+        self.assertEqual(result.testsRun, 1)
+        self.assertEqual(len(result.failures), 1)
 
     def test_a_method_in_both_tables_stops_instead_of_keeping_one_count(self):
         with mock.patch.object(unity_runner, 'BEHAVIOR_CASES', {'Suite': {'One': 1}}), \
