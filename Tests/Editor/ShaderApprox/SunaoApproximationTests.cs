@@ -383,7 +383,6 @@ namespace VRVlog.LilToonExporter.Tests
         // decal on the second layer is gone in the shade.
         [Test] public void ADecalOverABakedShadeIsReported()
         {
-            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Baking the shade needs a graphics device.");
             var source = Source();
             source.SetFloat("_DecalEnable", 1);
             source.SetTexture("_DecalTex", Image("decal", Color.white));
@@ -392,6 +391,13 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(dropped, Does.Not.Contain("Layers In Shade"), "Without a main image the shade is one color over the layers.");
             source.SetTexture("_MainTex", Image("main", new Color(1, .1f, 1, 1)));
             var baked = Substitute(source, Opaque, out dropped);
+            // Without a graphics device nothing is baked, and the layers stay in the shade.
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            {
+                Assert.That(baked.GetTexture("_ShadowColorTex"), Is.Null);
+                Assert.That(dropped, Does.Not.Contain("Layers In Shade"));
+                return;
+            }
             Assert.That(baked.GetTexture("_ShadowColorTex"), Is.Not.Null);
             Assert.That(dropped, Does.Contain("Layers In Shade"));
             source.SetFloat("_DecalEnable", 0);
