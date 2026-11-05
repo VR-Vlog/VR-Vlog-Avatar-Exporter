@@ -15,7 +15,7 @@ UnlitWF の近似は、影・マットキャップ・輪郭線の画像を GPU �
 - 中間の色を引くマットキャップ: 焼けないので写さず `Matcap` を警告に出す。
 - 輪郭線の画像: 入らず `Outline Color Image` を警告に出す。
 
-CI は GPU ありで回すので CI の結果は変わらない。あわせて、`-nographics` の分岐を入れることと、EditMode の全件で Android の `TargetScanWorker` の例外のログに当たったテストの読み方を `CLAUDE.md` に書いた。
+CI は GPU ありで回すので CI の結果は変わらない。あわせて、`-nographics` の分岐を入れることと、EditMode の全件で Android の `TargetScanWorker` の例外のログに当たったテストの読み方を `CLAUDE.md` に書いた。後者は 2026-11-05 の全件の実行で、`PhysBoneSpringExportTests` の 1 件がこの例外で失敗し、単独で回し直すと通ったことによる（同じ日の別の検証でも 1 件同じことがあった）。
 
 ## 確かめたこと
 
