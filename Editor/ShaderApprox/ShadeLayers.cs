@@ -14,16 +14,24 @@ namespace VRVlog.LilToonExporter
         internal static void Absolute(Material material, string colorName, string textureName, Color color, Texture map, List<Texture2D> textures, ref Texture white)
         {
             var main = material.GetTexture("_MainTex");
-            if (map == null && main != null && white == null && textures != null)
-            {
-                var pixels = new Color[16];
-                for (var i = 0; i < pixels.Length; i++) pixels[i] = Color.white;
-                white = NewImage(main, "__VRVlog_WhiteShade", 4, 4, pixels, textures, false);
-            }
-            var image = map != null ? WithoutAlpha(map, textures) : main != null ? white : null;
+            var image = map != null ? WithoutAlpha(map, textures) : main != null ? White(main, textures, ref white) : null;
             if (image == null) { material.SetColor(colorName, Ratio(color, material.GetColor("_Color"))); return; }
             material.SetTexture(textureName, image);
             material.SetColor(colorName, color);
+        }
+
+        // A white shade image, so lilToon takes the shade color instead of the
+        // albedo. It is made once and kept in white for the material's other
+        // layers; null when the export keeps no images.
+        internal static Texture White(Texture origin, List<Texture2D> textures, ref Texture white)
+        {
+            if (white == null && textures != null)
+            {
+                var pixels = new Color[16];
+                for (var i = 0; i < pixels.Length; i++) pixels[i] = Color.white;
+                white = NewImage(origin, "__VRVlog_WhiteShade", 4, 4, pixels, textures, false);
+            }
+            return white;
         }
 
         // lilToon blends its shade image over the base color by the image's

@@ -174,7 +174,8 @@ namespace VRVlog.LilToonExporter
             var map0 = Map(values, "_1st_ShadeMap");
             var color0 = Shade(values, "_1st_ShadeColor") * (separate ? tint : Color.white);
             Edge(material, "_ShadowBorder", "_ShadowBlur", values.Float("_1st_ShadeColor_Step", .5f), values.Float("_1st_ShadeColor_Feather", .01f));
-            var multiply = Layer(material, "_ShadowColor", "_ShadowColorTex", map0, color0, separate, tint, textures);
+            Texture white = null;
+            var multiply = Layer(material, "_ShadowColor", "_ShadowColorTex", map0, color0, separate, tint, textures, ref white);
 
             var step2 = values.Float("_2nd_ShadeColor_Step", 0);
             if (step2 > 0)
@@ -188,7 +189,7 @@ namespace VRVlog.LilToonExporter
                     map1 = map1 ?? map0;
                 }
                 Edge(material, "_Shadow2ndBorder", "_Shadow2ndBlur", step2, values.Float("_2nd_ShadeColor_Feather", .01f));
-                if (Layer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map1, color1, separate, tint, textures) != multiply)
+                if (Layer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map1, color1, separate, tint, textures, ref white) != multiply)
                     S.Drop(dropped, "Multiplied Shadow Layers");
             }
             if (multiply) S.Set(material, "_ShadowMainStrength", 1);
@@ -223,7 +224,8 @@ namespace VRVlog.LilToonExporter
 
         // Returns true when the layer needs lilToon to multiply by the albedo
         // again (an image multiplied by the albedo).
-        static bool Layer(Material material, string colorName, string textureName, Texture map, Color color, bool separate, Color tint, List<Texture2D> textures)
+        static bool Layer(Material material, string colorName, string textureName, Texture map, Color color, bool separate, Color tint, List<Texture2D> textures,
+            ref Texture white)
         {
             color.a = 1;
             if (map != null) S.SetTexture(material, textureName, map, Vector2.one, Vector2.zero);
@@ -233,8 +235,7 @@ namespace VRVlog.LilToonExporter
                 // image, so the main image's pattern does not show through. When
                 // none can be made it becomes a ratio to the main color, which
                 // lilToon multiplies back.
-                var white = S.NewImage(null, "__VRVlog_Shade", 4, 4, Enumerable.Repeat(Color.white, 16).ToArray(), textures, false);
-                if (white != null) S.SetTexture(material, textureName, white, Vector2.one, Vector2.zero);
+                if (ShadeLayers.White(null, textures, ref white) != null) S.SetTexture(material, textureName, white, Vector2.one, Vector2.zero);
                 else color = S.Ratio(color, tint);
             }
             material.SetColor(colorName, color);
