@@ -39,5 +39,41 @@ namespace VRVlog.LilToonExporter.Tests
                 messagesField.SetValue(null, previousMessages);
             }
         }
+
+        // The notes of a left-out stage, lost BlendShapes and a substituted shader are written in the
+        // language of the Editor too, and an English summary used to drop them.
+        [TestCase("ja")]
+        [TestCase("en")]
+        [TestCase("ko")]
+        [TestCase("zh-Hans")]
+        [TestCase("zh-Hant")]
+        public void OmissionAndApproximationNotesInTheEditorLanguageAreAppearanceChanges(string locale)
+        {
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var localeField = typeof(ExporterLocalization).GetField("_locale", flags);
+            var messagesField = typeof(ExporterLocalization).GetField("_messages", flags);
+            var previousLocale = localeField.GetValue(null);
+            var previousMessages = messagesField.GetValue(null);
+            try
+            {
+                localeField.SetValue(null, locale);
+                messagesField.SetValue(null, null);
+                // As UniVrmOneClickExporter.RecordOmissions, NdmfExportPreparation and UnsupportedShaderSubstitution write them.
+                var notes = new[]
+                {
+                    ExporterLocalization.T("書き出しの一部を省略しました") + ": Expressions — reason",
+                    ExporterLocalization.T(NdmfExportPreparation.LostGeneratedMorphs) + "Body/Smile",
+                    ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Hair",
+                    ExporterLocalization.T(UnsupportedShaderSubstitution.Failed) + "Skirt",
+                };
+                var other = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + "Face";
+                Assert.That(ExportAppearanceReport.Changes(notes.Append(other)), Is.EqualTo(notes), locale);
+            }
+            finally
+            {
+                localeField.SetValue(null, previousLocale);
+                messagesField.SetValue(null, previousMessages);
+            }
+        }
     }
 }

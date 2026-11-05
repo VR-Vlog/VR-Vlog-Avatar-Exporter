@@ -6,11 +6,22 @@ namespace VRVlog.LilToonExporter
 {
     internal static class ExportAppearanceReport
     {
-        // The downscale notes are written in the language of the Editor (ExporterLocalization.Format), so
-        // "縮小" is also looked for in that language.
+        // Most notes are written in Japanese whatever the language of the Editor, and these words find them.
+        static readonly string[] Words = { "省略", "近似", "縮小", "調整して", "自動除外せず保持" };
+
+        // The notes that contain one of the words but are written in the language of the Editor, so in
+        // English, Korean or Chinese the words above do not find them. "縮小" is how the four downscale
+        // notes (ExportNoteText.*Resized) read in every language; the others are the fixed sentence the
+        // note starts with.
+        static readonly string[] Translated =
+        {
+            "縮小", "書き出しの一部を省略しました", NdmfExportPreparation.LostGeneratedMorphs,
+            UnsupportedShaderSubstitution.Warning, UnsupportedShaderSubstitution.Failed,
+        };
+
         internal static string[] Changes(IEnumerable<string> messages) => (messages ?? Array.Empty<string>())
             .Where(message => !string.IsNullOrEmpty(message) &&
-                (message.Contains("省略") || message.Contains("近似") || message.Contains("縮小") || message.Contains(ExporterLocalization.T("縮小")) || message.Contains("調整して") || message.Contains("自動除外せず保持")))
+                (Words.Any(word => message.Contains(word)) || Translated.Any(text => message.Contains(ExporterLocalization.T(text)))))
             .Distinct().ToArray();
 
         internal static string Summary(IEnumerable<string> changes)
