@@ -83,14 +83,49 @@ namespace VRVlog.LilToonExporter.Tests
                 };
                 Assert.That(ExportAppearanceReport.Changes(notes.Concat(others)), Is.EqualTo(notes), locale);
                 // Chinese shares 省略 and 近似 with Japanese; in English and Korean only the translated
-                // sentence can find a note, and only where the note starts.
+                // sentence can find a note.
                 if (locale == "en" || locale == "ko")
                 {
                     var words = new[] { "省略", "近似", "縮小", "調整して", "自動除外せず保持" };
                     foreach (var note in notes) Assert.That(words.Any(word => note.Contains(word)), Is.False, locale + ": " + note);
-                    var quoting = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + ExporterLocalization.T(UnsupportedShaderSubstitution.Warning);
-                    Assert.That(ExportAppearanceReport.Changes(new[] { quoting }), Is.Empty, locale);
                 }
+                // A note that holds such a sentence after another one is listed in every language,
+                // as the word in it lists it in Japanese.
+                var quoting = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + ExporterLocalization.T(UnsupportedShaderSubstitution.Warning);
+                Assert.That(ExportAppearanceReport.Changes(new[] { quoting }), Is.EqualTo(new[] { quoting }), locale);
+            }
+            finally
+            {
+                localeField.SetValue(null, previousLocale);
+                messagesField.SetValue(null, previousMessages);
+            }
+        }
+
+        // Any note of the locale table is found the same way, not only the ones listed by hand
+        // before: of the lilToon structure notes, written in the language of the Editor, the one
+        // that writes a material with MToon is listed and the one that leaves a property out is not.
+        [TestCase("ja")]
+        [TestCase("en")]
+        [TestCase("ko")]
+        [TestCase("zh-Hans")]
+        [TestCase("zh-Hant")]
+        public void StructureNotesInTheEditorLanguageAreListedByWhatTheyChange(string locale)
+        {
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var localeField = typeof(ExporterLocalization).GetField("_locale", flags);
+            var messagesField = typeof(ExporterLocalization).GetField("_messages", flags);
+            var previousLocale = localeField.GetValue(null);
+            var previousMessages = messagesField.GetValue(null);
+            try
+            {
+                localeField.SetValue(null, locale);
+                messagesField.SetValue(null, null);
+                string Note(LilToonStructureCheck.Kind kind) => LilToonStructureCheck.Warnings(
+                    new[] { new LilToonStructureCheck.Difference(kind, "Body", "_Example") }, ExporterLocalization.T).First();
+                var approximated = Note(LilToonStructureCheck.Kind.MissingProperty);
+                var leftOut = Note(LilToonStructureCheck.Kind.UnknownProperty);
+                if (locale == "en" || locale == "ko") Assert.That(approximated, Does.Not.Contain("近似"), "The note is translated.");
+                Assert.That(ExportAppearanceReport.Changes(new[] { approximated, leftOut }), Is.EqualTo(new[] { approximated }), locale);
             }
             finally
             {
