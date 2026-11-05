@@ -1041,8 +1041,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
         static void ConfigureRegisteredMenuPose(GameObject source, AnimationClip clip, System.Collections.Generic.List<Object> assets)
         {
-            var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
-            var descriptor = (Component)typeof(PoseRegistrationTests).GetMethod("Descriptor", flags).Invoke(null, new object[] { source });
+            var descriptor = PoseRegistrationTests.Descriptor(source);
             var controller = new AnimatorController(); assets.Add(controller);
             controller.AddParameter("Pose", AnimatorControllerParameterType.Int);
             var machine = new AnimatorStateMachine(); assets.Add(machine);
@@ -1077,7 +1076,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var sourceSkin = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>(); sourceSkin.SetBlendShapeWeight(0, 0);
-            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             var descriptor = fixture.Source.AddComponent(descriptorType);
             descriptorType.GetField("enableEyeLook").SetValue(descriptor, true);
             var eyeField = descriptorType.GetField("customEyeLookSettings"); var eye = eyeField.GetValue(descriptor);
@@ -1945,9 +1944,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void MoveFrontWithInstalledMa(GameObject source)
         {
-            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var proxyType = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy", "Install Modular Avatar.");
             var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            Assert.That(proxyType, Is.Not.Null);
             if (markerType == null) Assert.Ignore("NDMF before 1.8.0 has no NDMFAvatarRoot, and this fixture has no VRChat descriptor to identify the avatar.");
             if (source.GetComponent(markerType) == null) source.AddComponent(markerType);
             var proxy = source.transform.Find("Front").gameObject.AddComponent(proxyType);
@@ -2406,12 +2404,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var clip = new AnimationClip { name = "An arbitrary user name" };
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70));
                 AssetDatabase.AddObjectToAsset(clip, controller); controller.layers[0].stateMachine.AddState("Face").motion = clip;
-                var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-                Assert.That(mergeType, Is.Not.Null, "This experiment uses the real Modular Avatar integration.");
+                var mergeType = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator", "This experiment uses the real Modular Avatar integration.");
                 // NDMF before 1.8.0 has no generic platform and builds the FX
                 // that Merge Animator merges into from a VRChat descriptor.
                 if (OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
-                    typeof(PoseRegistrationTests).GetMethod("Descriptor", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, new object[] { fixture.Source });
+                    PoseRegistrationTests.Descriptor(fixture.Source);
                 var merge = fixture.Source.AddComponent(mergeType);
                 using (var data = new SerializedObject(merge))
                 {
