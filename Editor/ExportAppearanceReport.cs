@@ -7,38 +7,38 @@ namespace VRVlog.LilToonExporter
 {
     internal static class ExportAppearanceReport
     {
-        // Most notes are written in Japanese whatever the language of the Editor, and these words find them.
+        // A note that changes how the avatar looks says one of these words in Japanese.
         static readonly string[] Words = { "省略", "近似", "縮小", "調整して", "自動除外せず保持" };
 
-        // The four downscale notes (ExportNoteText.*Resized) are written in the language of the Editor,
-        // and "縮小" is how they read in every language.
-        const string Downscaled = "縮小";
+        static string patternsLocale;
+        static Regex[] patterns;
 
-        // The other notes that contain one of the words but are written in the language of the Editor,
-        // so in English, Korean or Chinese the words above do not find them. Each starts with one of
-        // these sentences, where {0}, {1} stand for the names written into it.
-        static readonly string[] TranslatedStarts =
+        // A note is listed when it holds one of the words, as the many notes still written in
+        // Japanese do, or contains, in the language of the Editor, a sentence of the locale table
+        // whose Japanese holds one; in Japanese the table adds nothing. A word alone is not
+        // translated: Korean and Chinese render it as a shorter word that other notes use too.
+        // {0} or {name} stand for what is written into the sentence.
+        static Regex[] Patterns()
         {
-            UniVrmOneClickExporter.StageOmittedWarning, NdmfExportPreparation.LostGeneratedMorphs,
-            UnsupportedShaderSubstitution.Warning, UnsupportedShaderSubstitution.Failed,
-            UniVrmOneClickExporter.LostMorphOmittedWarning, UniVrmOneClickExporter.LostExpressionOmittedWarning,
-            UniVrmOneClickExporter.LostTrackingWarning, VrmExpressionBindings.DuplicateExpressionFormat,
-        };
-
-        // Reasons written after " — " at the end of a note whose own sentence holds none of the words.
-        static readonly string[] TranslatedReasons = { UniVrmOneClickExporter.ApproximatedLilToonReason };
+            var locale = ExporterLocalization.Locale;
+            if (patterns != null && patternsLocale == locale) return patterns;
+            var sentences = Words.Concat(ExporterLocalization.Sources()
+                    .Where(source => !Words.Contains(source) && Words.Any(source.Contains))
+                    .Select(ExporterLocalization.T))
+                .Distinct(StringComparer.Ordinal);
+            patterns = sentences.Select(text => Regex.Split(text, @"\{[^{}]*\}"))
+                .Where(parts => parts.Any(part => part.Trim().Length > 0))
+                .Select(parts => new Regex(string.Join(".*?", parts.Select(Regex.Escape)), RegexOptions.Singleline))
+                .ToArray();
+            patternsLocale = locale;
+            return patterns;
+        }
 
         internal static string[] Changes(IEnumerable<string> messages)
         {
-            var downscaled = ExporterLocalization.T(Downscaled);
-            var starts = TranslatedStarts.Select(text => new Regex("^" + string.Join(".*?",
-                Regex.Split(ExporterLocalization.T(text), @"\{\d+\}").Select(Regex.Escape)), RegexOptions.Singleline)).ToArray();
-            var reasons = TranslatedReasons.Select(text => " — " + ExporterLocalization.T(text)).ToArray();
+            var found = Patterns();
             return (messages ?? Array.Empty<string>())
-                .Where(message => !string.IsNullOrEmpty(message) &&
-                    (Words.Any(word => message.Contains(word)) || message.Contains(downscaled) ||
-                     starts.Any(start => start.IsMatch(message)) ||
-                     reasons.Any(reason => message.EndsWith(reason, StringComparison.Ordinal))))
+                .Where(message => !string.IsNullOrEmpty(message) && found.Any(pattern => pattern.IsMatch(message)))
                 .Distinct().ToArray();
         }
 

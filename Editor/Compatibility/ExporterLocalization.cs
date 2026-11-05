@@ -58,7 +58,7 @@ namespace VRVlog.LilToonExporter
         static string _locale;
         static Dictionary<string, string> _messages;
 
-        internal static string Locale => _locale ?? (_locale = ResolveLocale(CultureInfo.CurrentUICulture.Name));
+        public static string Locale => _locale ?? (_locale = ResolveLocale(CultureInfo.CurrentUICulture.Name));
 
         internal static string ResolveLocale(string languageTag)
         {
@@ -85,6 +85,14 @@ namespace VRVlog.LilToonExporter
                 if (source.StartsWith(prefix, StringComparison.Ordinal) && _messages.TryGetValue(prefix, out translated))
                     return translated + source.Substring(prefix.Length);
             return source;
+        }
+
+        // The Japanese sentences the table of the Editor's language translates; none in Japanese.
+        public static IEnumerable<string> Sources()
+        {
+            if (Locale == "ja") return Array.Empty<string>();
+            if (_messages == null) LoadMessages();
+            return new List<string>(_messages.Keys);
         }
 
         // A note of the export written in the language of the Editor (the downscale notes of ExportNoteText).
