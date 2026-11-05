@@ -293,6 +293,18 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetTexture("_OutlineTex"), Is.SameAs(source.GetTexture("_MainTex")));
         }
 
+        [TestCase(1, null)]
+        [TestCase(2, "Dithered Blend")]
+        [TestCase(3, "Alpha To Coverage")]
+        public void APartlyCoveringBlendIsReported(int blend, string expected)
+        {
+            var source = Source();
+            source.SetFloat("_BlendMode", blend);
+            Substitute(source, out var dropped);
+            if (expected != null) Assert.That(dropped, Does.Contain(expected));
+            else Assert.That(dropped, Does.Not.Contain("Dithered Blend").And.Not.Contain("Alpha To Coverage"));
+        }
+
         [Test] public void WhatLilToonCannotShowIsReported()
         {
             var source = Source();

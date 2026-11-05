@@ -44,7 +44,11 @@ namespace VRVlog.LilToonExporter
             Rim(values, material, textures, dropped);
             Reflection(values, material, textures, dropped);
             if (Outline(values)) ApplyOutline(values, material, textures, dropped);
-            if (Mathf.RoundToInt(values.Float("_BlendMode", 0)) == 6) Drop(dropped, "Additive Blend");
+            var blend = Mathf.RoundToInt(values.Float("_BlendMode", 0));
+            // These cover a pixel partly; a cutout shows it or not.
+            if (blend == 2) Drop(dropped, "Dithered Blend");
+            if (blend == 3) Drop(dropped, "Alpha To Coverage");
+            if (blend == 6) Drop(dropped, "Additive Blend");
             var shadowRim = Opaque(values, "_ShadowRim", Color.white);
             if (Mathf.Min(shadowRim.r, shadowRim.g, shadowRim.b) < 1) Drop(dropped, "Shadow Rim");
             if (values.Float("_SpecularIntensity", 0) > 0) Drop(dropped, "Specular");
