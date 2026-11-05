@@ -59,6 +59,8 @@ Shader "Hidden/VRVlogTests/UtsProbe"
         _OutlineTex ("Outline Image", 2D) = "white" {}
         _Outline_Sampler ("Outline Mask", 2D) = "white" {}
         _HighColor ("High Color", Color) = (0,0,0,1)
+        _HighColor_Power ("High Color Power", Float) = 0
+        _Is_SpecularToHighColor ("Specular To High Color", Float) = 0
         _AngelRing ("Angel Ring", Float) = 0
     }
     SubShader

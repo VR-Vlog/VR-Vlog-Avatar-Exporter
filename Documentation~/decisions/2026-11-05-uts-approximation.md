@@ -14,6 +14,7 @@ UTS のマテリアルは透過（2026-10-18 の決定）と主画像だけが�
 - 影: `_BaseColor_Step` と `_BaseShade_Feather` を 1 段目、`_ShadeColor_Step` と `_1st2nd_Shades_Feather` を 2 段目の境界とぼかしに写す（ShadingGradeMap の版は `_1st_ShadeColor_Step` などの同じ役割の名前）。UTS も lilToon も half-Lambert で判定する。UTS のぼかしは step の手前から始まり、lilToon は境界を中心にするので、ぼかしの半分だけ境界をずらす。
 - 影の色: `_Use_BaseAs1st`・`_Use_1stAs2nd` が有効なら主画像に掛ける色として、無効なら「画像 × 色」をそのまま影の色として写す。
 - 影の画像のアルファ: lilToon は影の画像のアルファで主色と混ぜ、UTS は RGB だけを読む。アルファのある画像は不透明に描き直す。
+- `_Use_BaseAs1st` の影: 主色との比にすれば画像は要らない。影の色が主色より明るいときは比が 1 で止まるので、主画像を影の画像にして色をそのまま写す。
 - 影の位置: `_Set_1st_ShadePosition` と `_ShadingGradeMap` は `_ShadowBorderMask` に写す。黒と白は元と一致し、中間の値は lilToon の掛け算になるので近似になる。
 - 影の画像と位置マスクのタイリング: lilToon は主画像の UV で読むので写せない。主画像と違うときは名前を警告に出す。
 - リム: `_RimLight_Power` を lilToon のフレネルの指数に変換する。マスクは `_RimColorTex` に写す。`_LightDirection_MaskOn` は half-Lambert を引く処理で影とは関係ないので、`_RimDirStrength` と `_RimDirRange` に写す。
@@ -34,7 +35,7 @@ UTS のマテリアルは透過（2026-10-18 の決定）と主画像だけが�
 - UTS2 の TransClipping は不透明な輪郭線のパスで裏面も描くので、背景が透けにくい。書き出し後はアルファのとおりに背景が透ける。主画像の透過を優先した。
 - UTS3 は輪郭線のパスの有効・無効をマテリアルの値から読めないので、幅だけで判定する。
 - `_Is_BlendBaseColor` の輪郭線は元が主画像を 2 回掛ける。lilToon の画像は 1 枚なので、2 回目は色だけ掛ける。濃い部分は元より明るい。
-- 影の色が主色より明るい設定は、主色に掛ける色が 1 で止まるので元より暗い（`_Use_BaseAs1st` のとき）。
+- 2 段目の影に画像があるとき、MToon は画像を読まずに色だけを畳むので、2 段目の帯が元より明るくなる。lilToon のマテリアルでも同じで、アプリは lilToon の情報で描くので、共有の処理は変えない。
 
 ## 検討した代替案と不採用理由
 
