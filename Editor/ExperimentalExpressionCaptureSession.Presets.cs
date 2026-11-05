@@ -10,37 +10,21 @@ namespace VRVlog.LilToonExporter
 {
     internal sealed partial class ExperimentalExpressionCaptureSession
     {
-        // Every VRM preset except custom can be assigned. A preset without an
-        // assignment keeps the existing automatic configuration.
-        internal static readonly ExpressionPreset[] EmotionPresets =
-            { ExpressionPreset.happy, ExpressionPreset.angry, ExpressionPreset.sad, ExpressionPreset.relaxed, ExpressionPreset.surprised };
-        internal static readonly ExpressionPreset[] BlinkPresets =
-            { ExpressionPreset.blink, ExpressionPreset.blinkLeft, ExpressionPreset.blinkRight };
-        internal static readonly ExpressionPreset[] MouthPresets =
-            { ExpressionPreset.aa, ExpressionPreset.ih, ExpressionPreset.ou, ExpressionPreset.ee, ExpressionPreset.oh };
-        internal static readonly ExpressionPreset[] LookAtPresets =
-            { ExpressionPreset.lookUp, ExpressionPreset.lookDown, ExpressionPreset.lookLeft, ExpressionPreset.lookRight };
-
         // Gaze and neutral the board leaves open are filled from names at
         // export, as in the quick export; only the user's own "none" keeps one
         // empty. So the board vacates these slots instead of writing "none".
         internal static bool FilledFromNames(ExpressionPreset preset) =>
-            LookAtPresets.Contains(preset) || preset == ExpressionPreset.neutral;
+            ExpressionPresetGroups.LookAts.Contains(preset) || preset == ExpressionPreset.neutral;
 
         // Display groups, in display order. Labels are localization sources.
+        // Every VRM preset except custom can be assigned. A preset without an
+        // assignment keeps the existing automatic configuration.
         internal static readonly (string Label, ExpressionPreset[] Presets)[] PresetGroups =
         {
-            ("感情", EmotionPresets), ("まばたき", BlinkPresets), ("口の形", MouthPresets),
-            ("視線", LookAtPresets), ("基準の顔", new[] { ExpressionPreset.neutral }),
+            ("感情", ExpressionPresetGroups.Emotions), ("まばたき", ExpressionPresetGroups.Blinks), ("口の形", ExpressionPresetGroups.Mouths),
+            ("視線", ExpressionPresetGroups.LookAts), ("基準の顔", new[] { ExpressionPreset.neutral }),
         };
         internal static readonly ExpressionPreset[] AssignablePresets = PresetGroups.SelectMany(group => group.Presets).ToArray();
-
-        // VRChat Lip Sync viseme slots (sil, PP, FF, TH, DD, kk, CH, SS, nn,
-        // RR, aa, E, I, O, U) that name a VRM mouth preset.
-        static readonly (int Slot, ExpressionPreset Preset)[] VisemeSlots =
-        {
-            (10, ExpressionPreset.aa), (11, ExpressionPreset.ee), (12, ExpressionPreset.ih), (13, ExpressionPreset.oh), (14, ExpressionPreset.ou),
-        };
 
         // One assignment per preset: an AnimationClip face (recorded,
         // FaceEmo or controller clip), one BlendShape at 100, or explicitly none.
@@ -131,7 +115,7 @@ namespace VRVlog.LilToonExporter
         internal static string PresetFullLabel(ExpressionPreset preset)
         {
             var label = ExporterLocalization.T(PresetLabel(preset));
-            if (EmotionPresets.Contains(preset) || preset == ExpressionPreset.neutral) return label;
+            if (ExpressionPresetGroups.Emotions.Contains(preset) || preset == ExpressionPreset.neutral) return label;
             return ExporterLocalization.T(PresetGroups.First(group => group.Presets.Contains(preset)).Label) + " " + label;
         }
 
@@ -190,12 +174,13 @@ namespace VRVlog.LilToonExporter
             if (assignment.IsShape) return new List<(string, string, float)> { (assignment.Path ?? "", assignment.Shape, 100f) };
             var clip = assignment.ResolveClip();
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("表情の元クリップが見つかりません。もう一度選んでください。"));
-            BuildClipPoseUnchecked(clip, clip.length, "プレビュー", presetFace: true); // The same file checks as the added faces.
+            var time = FaceTime(clip);
+            BuildClipPoseUnchecked(clip, time, "プレビュー", presetFace: true); // The same file checks as the added faces.
             var root = ClipRoot(clip);
             return AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Select(binding => (
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
                 binding.propertyName.Substring("blendShape.".Length),
-                AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length)))
+                AnimationUtility.GetEditorCurve(clip, binding).Evaluate(time)))
                 .Where(morph => !skippedPaths.Contains(morph.Item1)) // As the recorded face drops them.
                 .Where(morph => ShapeOnEitherMesh(morph.Item1, morph.Item2)).ToList();
         }
@@ -264,7 +249,7 @@ namespace VRVlog.LilToonExporter
                     pose = ClonePose(Baseline); pose.Name = PresetLabel(preset);
                     Set(pose, channel.Path, assignment.Shape, 100f);
                 }
-                else pose = BuildClipPoseUnchecked(assignment.ResolveClip(), assignment.ResolveClip().length, PresetLabel(preset), presetFace: true);
+                else pose = BuildClipPoseUnchecked(assignment.ResolveClip(), FaceTime(assignment.ResolveClip()), PresetLabel(preset), presetFace: true);
                 ValidatePose(pose);
                 if (!HasGeometryChange(pose)) throw new InvalidOperationException(ExporterLocalization.T("基準の顔と形状が同じです。"));
                 return pose;
@@ -325,7 +310,7 @@ namespace VRVlog.LilToonExporter
         // "none" as keepEmptyPresets so the name based filling leaves it empty;
         // an open gaze or neutral slot is filled from names instead.
         bool ChosenNone(ExpressionPreset preset, PresetAssignment assignment) =>
-            assignment.IsNone && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset)) && !HasAuthoredPreset(preset);
+            assignment.IsNone && (ExpressionPresetGroups.Mouths.Contains(preset) || ExpressionPresetGroups.Blinks.Contains(preset)) && !HasAuthoredPreset(preset);
 
         static VRM10Expression CreatePresetExpression(ExpressionPreset preset)
         {
@@ -335,7 +320,7 @@ namespace VRVlog.LilToonExporter
             // blend override suppresses blink/mouth/gaze like a recorded face;
             // blink, mouth, gaze and neutral are themselves those channels.
             expression.IsBinary = false;
-            expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = EmotionPresets.Contains(preset)
+            expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = ExpressionPresetGroups.Emotions.Contains(preset)
                 ? VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.blend : VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.none;
             return expression;
         }
@@ -449,7 +434,7 @@ namespace VRVlog.LilToonExporter
             for (var slot = 0; slot < slots.Length; slot++) slots[slot].AddRange(inherited[slot]);
             foreach (var face in chosen)
             {
-                var slot = slots[Array.IndexOf(BlinkPresets, face.Preset)];
+                var slot = slots[Array.IndexOf(ExpressionPresetGroups.Blinks, face.Preset)];
                 slot.Clear();
                 slot.AddRange(face.Morphs.Where(morph => morph.Weight > 0).Select(morph =>
                     new BlinkShapeBinding { Renderer = VrChatExpressionSampler.FindRenderer(Source, morph.Path), Shape = morph.Shape, Weight = morph.Weight }));
@@ -505,7 +490,7 @@ namespace VRVlog.LilToonExporter
         // amounts. What it cannot decide, it does not guess: no blink there.
         List<BlinkShapeBinding>[] InheritedBlinkSlots(BlinkExportOptions given)
         {
-            var result = BlinkPresets.Select(_ => new List<BlinkShapeBinding>()).ToArray();
+            var result = ExpressionPresetGroups.Blinks.Select(_ => new List<BlinkShapeBinding>()).ToArray();
             switch (given?.Mode ?? BlinkExportMode.Auto)
             {
                 case BlinkExportMode.None: return result;
@@ -529,34 +514,19 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        List<PresetAssignment> SavePresets() => AssignablePresets.Where(Presets.ContainsKey).Select(preset => Presets[preset])
-            .Where(assignment => !assignment.Automatic).Select(assignment => assignment.ForSaving() ??
-                throw new InvalidOperationException(ExporterLocalization.T("標準の表情の元クリップをUnityのProjectへ保存してから設定を保存してください。"))).ToList();
-
-        static List<PresetAssignment> LoadPresets(IEnumerable<PresetAssignment> stored)
+        // One stored assignment from ExpressionPresetStore; the store skips
+        // duplicates itself.
+        internal static PresetAssignment LoadPreset(PresetAssignment value)
         {
-            var result = new List<PresetAssignment>();
-            var seen = new HashSet<ExpressionPreset>();
-            foreach (var value in stored ?? Array.Empty<PresetAssignment>())
-            {
-                if (value == null) throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
-                var preset = ParsePreset(value.Preset);
-                if (!seen.Add(preset)) throw new InvalidOperationException(ExporterLocalization.T("同じ標準の表情が2回指定されています: ") + PresetFullLabel(preset));
-                var copy = value.Copy(); copy.Clip = null; copy.Automatic = false;
-                if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.IsShape || string.IsNullOrEmpty(copy.ClipGuid) && copy.ClipLocalId != 0)
-                    throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
-                if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.ResolveClip() == null)
-                    throw new InvalidOperationException(ExporterLocalization.T("標準の表情の元クリップが見つかりません: ") + PresetFullLabel(preset));
-                result.Add(copy);
-            }
-            return result;
+            if (value == null) throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
+            var preset = ParsePreset(value.Preset);
+            var copy = value.Copy(); copy.Clip = null; copy.Automatic = false;
+            if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.IsShape || string.IsNullOrEmpty(copy.ClipGuid) && copy.ClipLocalId != 0)
+                throw new InvalidOperationException(ExporterLocalization.T("標準の表情の設定が不正です。"));
+            if (!string.IsNullOrEmpty(copy.ClipGuid) && copy.ResolveClip() == null)
+                throw new InvalidOperationException(ExporterLocalization.T("標準の表情の元クリップが見つかりません: ") + PresetFullLabel(preset));
+            return copy;
         }
-
-        internal static PresetAssignment LoadPresetsForStore(PresetAssignment stored) => LoadPresets(new[] { stored }).Single();
-
-        // Suggest initial values from clip and BlendShape names; the vocabulary
-        // and matching rules live in ExpressionNameInference.
-        internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
 
         Dictionary<AnimationClip, List<string>> sourceMenuPaths;
         List<string> sourceMenuOutside;
@@ -660,8 +630,7 @@ namespace VRVlog.LilToonExporter
         // VisemeBlendShape mode on a renderer of this avatar.
         internal static (SkinnedMeshRenderer Renderer, string[] Shapes) DescriptorVisemes(GameObject source)
         {
-            var descriptor = source.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(source);
             if (VrChatExpressionMenu.Member(descriptor, "lipSync")?.ToString() != "VisemeBlendShape") return (null, null);
             var renderer = VrChatExpressionMenu.Member(descriptor, "VisemeSkinnedMesh") as SkinnedMeshRenderer;
             if (renderer == null || !renderer.transform.IsChildOf(source.transform)) return (null, null);
@@ -678,11 +647,11 @@ namespace VRVlog.LilToonExporter
             var visemePath = visemeRenderer != null && visemeRenderer.transform.IsChildOf(Source.transform)
                 ? AnimationUtility.CalculateTransformPath(visemeRenderer.transform, Source.transform) : null;
             var result = new Dictionary<ExpressionPreset, PresetAssignment>();
-            foreach (var preset in MouthPresets)
+            foreach (var preset in ExpressionPresetGroups.Mouths)
             {
                 if (HasAuthoredPreset(preset)) continue;
                 PresetAssignment candidate = null;
-                var slot = VisemeSlots.First(item => item.Preset == preset).Slot;
+                var slot = ExpressionPresetGroups.VisemeSlots.First(item => item.Preset == preset).Slot;
                 if (visemePath != null && visemeShapes != null && slot < visemeShapes.Length && !string.IsNullOrEmpty(visemeShapes[slot]) &&
                     options.Contains((visemePath, visemeShapes[slot])))
                     candidate = PresetAssignment.ForShape(preset, visemePath, visemeShapes[slot]);
@@ -721,7 +690,7 @@ namespace VRVlog.LilToonExporter
         // the ordinary export binds by name on its mesh is left to that
         // export: it binds the same name on every mesh, so the output stays.
         bool LeftToNameBinding(ExpressionPreset preset, bool automatic, List<(string Path, string Shape, float Weight)> morphs) =>
-            automatic && MouthPresets.Contains(preset) && morphs.Count == 1 && morphs[0].Weight == 100f &&
+            automatic && ExpressionPresetGroups.Mouths.Contains(preset) && morphs.Count == 1 && morphs[0].Weight == 100f &&
             PresetShapeOptions().Contains((morphs[0].Path, morphs[0].Shape)) &&
             string.Equals(NamedMouthShapeOn(preset, morphs[0].Path), morphs[0].Shape, StringComparison.Ordinal);
 
@@ -756,13 +725,13 @@ namespace VRVlog.LilToonExporter
             {
                 if (resolved.PreserveAuthored || resolved.Disabled) return result.ToArray();
                 var options = new HashSet<(string Path, string Shape)>(PresetShapeOptions());
-                for (var slot = 0; slot < BlinkPresets.Length; slot++)
+                for (var slot = 0; slot < ExpressionPresetGroups.Blinks.Length; slot++)
                 {
                     if (resolved.Slots[slot].Count != 1) continue;
                     var binding = resolved.Slots[slot][0];
                     if (binding.Renderer == null || !binding.Renderer.transform.IsChildOf(Source.transform)) continue;
                     var path = AnimationUtility.CalculateTransformPath(binding.Renderer.transform, Source.transform);
-                    if (options.Contains((path, binding.Shape))) result.Add((BlinkPresets[slot], path, binding.Shape));
+                    if (options.Contains((path, binding.Shape))) result.Add((ExpressionPresetGroups.Blinks[slot], path, binding.Shape));
                 }
             }
             return result.ToArray();
@@ -800,7 +769,7 @@ namespace VRVlog.LilToonExporter
         // one; an emotion has to move something.
         internal bool HasAuthoredPreset(ExpressionPreset preset)
         {
-            if (AuthoredClip(preset) != null && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset))) return true;
+            if (AuthoredClip(preset) != null && (ExpressionPresetGroups.Mouths.Contains(preset) || ExpressionPresetGroups.Blinks.Contains(preset))) return true;
             return HasAuthoredBindings(preset);
         }
 

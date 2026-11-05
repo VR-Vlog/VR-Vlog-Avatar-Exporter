@@ -11,6 +11,7 @@
   ],
   "noEngineReferences": false,
   "references": [
-    "VRVlog.LilToonExporter.Compatibility"
+    "VRVlog.LilToonExporter.Compatibility",
+    "VRVlog.LilToonExporter.Editor"
   ]
 }

@@ -45,12 +45,12 @@ namespace VRVlog.LilToonExporter
             {
                 for (var i = 0; i < (int)HumanBodyBones.LastBone; i++)
                 {
-                    var bone = animator.GetBoneTransform((HumanBodyBones)i);
+                    var bone = HumanoidBones.Resolve(animator, (HumanBodyBones)i);
                     if (Inside(bone, copy.transform)) humanoid.Add(bone);
                 }
                 foreach (var kind in new[] { HumanBodyBones.Head, HumanBodyBones.Neck, HumanBodyBones.Chest, HumanBodyBones.Spine, HumanBodyBones.Hips })
                 {
-                    var bone = animator.GetBoneTransform(kind);
+                    var bone = HumanoidBones.Resolve(animator, kind);
                     if (humanoid.Contains(bone) && !Targets.Contains(bone)) Targets.Add(bone);
                 }
             }

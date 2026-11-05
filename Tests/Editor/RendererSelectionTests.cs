@@ -33,7 +33,7 @@ namespace VRVlog.LilToonExporter.Tests
                 byte[] bytes;
                 try
                 {
-                    bytes = UniVrmOneClickExporter.Export(fixture.Source, "Empty mesh regression", "Tests", warnings,
+                    bytes = UniVrmOneClickExporter.Export(fixture.Source, "Empty mesh regression", "Tests", warnings: warnings,
                         exporterVersion: fullLilToon ? "0.11.9" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 }
@@ -75,7 +75,7 @@ namespace VRVlog.LilToonExporter.Tests
                 split.sharedMesh = mesh;
                 split.sharedMaterials = materials;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Empty submesh regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Empty submesh regression", "Tests", warnings: warnings,
                     exporterVersion: "0.11.9", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
 
                 // The empty submesh stopped UniVRM with "Index was out of range".

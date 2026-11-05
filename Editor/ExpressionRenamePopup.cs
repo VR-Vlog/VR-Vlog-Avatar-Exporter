@@ -35,7 +35,7 @@ namespace VRVlog.LilToonExporter
             if (error == null)
             {
                 error = new GUIStyle(EditorStyles.miniLabel) { clipping = TextClipping.Clip, wordWrap = false };
-                error.normal.textColor = EditorGUIUtility.isProSkin ? new Color32(0xe0, 0x67, 0x5f, 0xff) : new Color32(0xb3, 0x26, 0x1e, 0xff);
+                error.normal.textColor = ExporterColors.Error;
             }
             var current = Event.current;
             // Enter and Esc are read before the text field takes the key. While a

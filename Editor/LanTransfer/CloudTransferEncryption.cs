@@ -89,7 +89,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                             encrypted.Write(buffer, 0, count);
                         }
                         plainHash.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                        if (consumed != source.Size || LanTransferProtocol.Hex(plainHash.Hash) != source.FileHash) throw CloudTransferProtocol.Invalid();
+                        if (consumed != source.Size || CloudTransferProtocol.Hex(plainHash.Hash) != source.FileHash) throw CloudTransferProtocol.Invalid();
                         cancellation.ThrowIfCancellationRequested(); encrypted.FlushFinalBlock();
                     }
                     using (var length = new MemoryStream())
@@ -108,7 +108,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     int count;
                     while ((count = await file.ReadAsync(buffer, 0, buffer.Length, cancellation).ConfigureAwait(false)) != 0)
                     { cancellation.ThrowIfCancellationRequested(); digest.TransformBlock(buffer, 0, count, null, 0); }
-                    digest.TransformFinalBlock(Array.Empty<byte>(), 0, 0); hash = LanTransferProtocol.Hex(digest.Hash);
+                    digest.TransformFinalBlock(Array.Empty<byte>(), 0, 0); hash = CloudTransferProtocol.Hex(digest.Hash);
                 }
                 cancellation.ThrowIfCancellationRequested(); file.Position = 0;
                 var result = new CloudEncryptedSnapshot(path, file, cek, file.Length, hash);
@@ -124,7 +124,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         internal string KeyForQr()
-        { lock (gate) return key != null ? LanTransferProtocol.Base64Url(key) : throw new ObjectDisposedException(nameof(CloudEncryptedSnapshot)); }
+        { lock (gate) return key != null ? CloudTransferProtocol.Base64Url(key) : throw new ObjectDisposedException(nameof(CloudEncryptedSnapshot)); }
         internal FileStream OpenRead()
         {
             lock (gate)

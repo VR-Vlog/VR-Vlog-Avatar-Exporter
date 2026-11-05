@@ -25,7 +25,6 @@ if (-not (Test-Path -LiteralPath $referenceRoot -PathType Container)) {
 }
 $references = @((Get-ChildItem -LiteralPath $referenceRoot -Filter '*.dll').FullName) + $dependencies
 $sources = @(
-    (Join-Path $repoRoot 'Editor/LanTransfer/LanTransferProtocol.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferProtocol.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferAvailability.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/TransferTempDirectory.cs'),
@@ -34,10 +33,13 @@ $sources = @(
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudVrmTransferSession.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/AppTransferFlow.cs'),
     (Join-Path $repoRoot 'Editor/Compatibility/ExportNoteText.cs'),
+    (Join-Path $repoRoot 'Editor/Compatibility/ExportResultText.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/TransferNotes.cs'),
+    (Join-Path $repoRoot 'Editor/LanTransfer/TransferSizeText.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/CloudTransferTests.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/AppTransferFlowTests.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/TransferNotesTests.cs'),
+    (Join-Path $repoRoot 'Tests/LanTransfer/TransferSizeTextTests.cs'),
     (Join-Path $PSScriptRoot 'LanTransferTestHarness.cs')
 )
 $defines = 'VRVLOG_LAN_TRANSFER_CLI'

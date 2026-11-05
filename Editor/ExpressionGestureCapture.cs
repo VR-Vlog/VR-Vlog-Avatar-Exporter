@@ -194,28 +194,14 @@ namespace VRVlog.LilToonExporter
         internal byte[] Inject(byte[] bytes, IEnumerable<VrmMenuExpressions.Expression> expressions)
         {
             var document = GlbDocument.Read(bytes);
-            var written = new HashSet<string>(Member(document.Json, "extensions", "VRMC_vrm", "expressions", "custom")?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
+            var written = new HashSet<string>(document.Find("extensions", "VRMC_vrm", "expressions", "custom")?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
             var listed = (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).Where(expression => expression?.Clip != null).ToList();
             var data = Resolve(face => listed.Where(expression => ReferenceEquals(expression.Clip, faceClips[face]))
                 .Select(expression => expression.RegisteredName ?? expression.MergedInto).Where(name => name != null && written.Contains(name)));
             if (data == null) return bytes;
             var extension = ExpressionGestureData.Write(data);
-            if (!document.Json.TryGetValue("extensions", out var rawExtensions)) document.Json["extensions"] = rawExtensions = new Dictionary<string, object>();
-            ((Dictionary<string, object>)rawExtensions)[ExpressionGestureData.Extension] = extension;
-            if (!document.Json.TryGetValue("extensionsUsed", out var rawUsed)) document.Json["extensionsUsed"] = rawUsed = new List<object>();
-            var used = (List<object>)rawUsed;
-            if (!used.Contains(ExpressionGestureData.Extension)) used.Add(ExpressionGestureData.Extension);
+            document.PlaceExtension(ExpressionGestureData.Extension, extension);
             return document.Write();
-        }
-
-        static Dictionary<string, object> Member(Dictionary<string, object> current, params string[] keys)
-        {
-            foreach (var key in keys)
-            {
-                if (current == null || !current.TryGetValue(key, out var value)) return null;
-                current = value as Dictionary<string, object>;
-            }
-            return current;
         }
 
         static bool IsShape(EditorCurveBinding binding) =>
@@ -224,15 +210,7 @@ namespace VRVlog.LilToonExporter
         // The asset NDMF records the clip as made from, read without creating a reference.
         static Object RegisteredOrigin(object registry, AnimationClip clip)
         {
-            if (registry == null) return null;
-            var contract = registry.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-            var method = contract?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
-            if (method == null) return null;
-            try
-            {
-                var reference = method.Invoke(registry, new object[] { clip, false });
-                return reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)?.GetValue(reference) as Object;
-            }
+            try { return NdmfExportPreparation.RegisteredOriginal(registry, clip); }
             catch (TargetInvocationException) { return null; }
             catch (ArgumentException) { return null; }
         }
@@ -249,9 +227,7 @@ namespace VRVlog.LilToonExporter
                 internal float[] Shapes;
             }
 
-            readonly Scene scene;
-            readonly GameObject copy;
-            readonly Animator animator;
+            readonly AnimatorProbe probe;
             readonly Transform[] transforms;
             readonly bool[] rest;
             readonly RuntimeAnimatorController fx;
@@ -297,22 +273,10 @@ namespace VRVlog.LilToonExporter
                     }
                     Walk(machine, layers[layer].name);
                 }
-                scene = EditorSceneManager.NewPreviewScene();
                 try
                 {
-                    copy = Object.Instantiate(avatar);
-                    copy.name = avatar.name;
-                    copy.hideFlags = HideFlags.HideAndDontSave;
-                    SceneManager.MoveGameObjectToScene(copy, scene);
-                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                    animator = copy.GetComponent<Animator>();
-                    if (animator == null) animator = copy.AddComponent<Animator>();
-                    animator.runtimeAnimatorController = null;
-                    animator.enabled = true;
-                    animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                    animator.applyRootMotion = false;
-                    animator.fireEvents = false;
-                    copy.SetActive(true);
+                    probe = new AnimatorProbe(avatar);
+                    var copy = probe.Copy;
                     transforms = copy.GetComponentsInChildren<Transform>(true);
                     rest = transforms.Select(transform => transform.gameObject.activeSelf).ToArray();
                     foreach (var key in shapeBindings.Values.SelectMany(bindings => bindings).Distinct())
@@ -349,12 +313,9 @@ namespace VRVlog.LilToonExporter
             {
                 for (var i = 0; i < transforms.Length; i++) transforms[i].gameObject.SetActive(rest[i]);
                 foreach (var shape in shapes) shape.Renderer.SetBlendShapeWeight(shape.Index, shape.Weight);
-                var graph = PlayableGraph.Create("VR Vlog hand gesture sampling");
+                var graph = probe.Play("VR Vlog hand gesture sampling", fx, "Hand gestures", out var playable);
                 try
                 {
-                    graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                    var playable = AnimatorControllerPlayable.Create(graph, fx);
-                    AnimationPlayableOutput.Create(graph, "Hand gestures", animator).SetSourcePlayable(playable);
                     foreach (var pair in defaults) Write(playable, pair.Key, pair.Value);
                     // VRChat sends the hands every frame.
                     void Gestures()
@@ -425,9 +386,8 @@ namespace VRVlog.LilToonExporter
                     case VrChatParameterDriver.Program driver:
                         try
                         {
-                            VrChatParameterDriver.Execute(driver, Types, expressionParameters, writable, true,
-                                name => Read(playable, name), (name, value) => Write(playable, name, (float)value), supplied);
-                            return true;
+                            return VrChatParameterDriver.Execute(driver, Types, expressionParameters, writable, true,
+                                name => Read(playable, name), (name, value) => Write(playable, name, (float)value), supplied) == null;
                         }
                         catch (InvalidOperationException) { return false; }
                     case Exception _:
@@ -450,13 +410,7 @@ namespace VRVlog.LilToonExporter
 
             void Write(AnimatorControllerPlayable playable, string name, float value)
             {
-                if (!Types.TryGetValue(name, out var type)) return;
-                switch (type)
-                {
-                    case AnimatorControllerParameterType.Bool: playable.SetBool(name, value != 0f); break;
-                    case AnimatorControllerParameterType.Int: playable.SetInteger(name, Mathf.RoundToInt(value)); break;
-                    case AnimatorControllerParameterType.Float: playable.SetFloat(name, value); break;
-                }
+                if (Types.TryGetValue(name, out var type)) AnimatorProbe.Write(playable, type, name, value);
             }
 
             // The face clips playing on each layer with weight, in layer order.
@@ -498,11 +452,7 @@ namespace VRVlog.LilToonExporter
             internal bool Moves(AnimationClip clip, Run first, Run second) =>
                 shapeBindings[clip].Any(key => shapeIndex.TryGetValue(key, out var index) && Math.Abs(first.Shapes[index] - second.Shapes[index]) > ShapeTolerance);
 
-            public void Dispose()
-            {
-                if (copy != null) Object.DestroyImmediate(copy);
-                if (scene.IsValid()) EditorSceneManager.ClosePreviewScene(scene);
-            }
+            public void Dispose() => probe?.Dispose();
         }
     }
 }

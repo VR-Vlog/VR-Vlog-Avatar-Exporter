@@ -64,7 +64,7 @@ namespace VRVlog.LilToonExporter.Tests
             bindings.Capture(menu);
             AvatarBaseShape.Preserve(clone, clone, owned, null);
             var warnings = new List<string>();
-            var baked = VrChatExpressionBaker.Bake(null, clone, menu, owned, warnings, bindings);
+            var baked = VrChatExpressionBaker.Bake(clone, menu, owned, warnings, bindings);
             Assert.That(baked.Count, Is.EqualTo(14));
             Assert.That(warnings.Count(w => w.Contains("Body/extra_cheek5")), Is.EqualTo(1), "Shared stale references are reported together.");
             foreach (var entry in menu.Entries)
@@ -98,7 +98,7 @@ namespace VRVlog.LilToonExporter.Tests
             var menu = Read(); clone = Object.Instantiate(avatar);
             var bindings = new PreparedExpressionBindings(clone, menu); bindings.Capture(menu);
             AvatarBaseShape.Preserve(clone, clone, owned, null);
-            var baked = VrChatExpressionBaker.Bake(null, clone, menu, owned, null, bindings).Single();
+            var baked = VrChatExpressionBaker.Bake(clone, menu, owned, null, bindings).Single();
             Assert.That(menu.Entries[0].Animation.Single().Shape, Is.EqualTo("Blink"));
             Assert.That(baked.Animation.Channels.Count, Is.EqualTo(1));
             Assert.That(baked.Animation.Channels[0].Curve.Evaluate(.5), Is.EqualTo(50).Within(.001));
@@ -111,7 +111,7 @@ namespace VRVlog.LilToonExporter.Tests
             var menu = Read(); clone = Object.Instantiate(avatar);
             var bindings = new PreparedExpressionBindings(clone, menu); bindings.Capture(menu);
             Assert.That(menu.Entries[0].Error, Does.Contain("有効な顔"));
-            Assert.That(VrChatExpressionBaker.Bake(null, clone, menu, owned, null, bindings), Is.Empty);
+            Assert.That(VrChatExpressionBaker.Bake(clone, menu, owned, null, bindings), Is.Empty);
         }
 
         [TestCase(false)]
@@ -140,7 +140,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(entry.Values.Single(v => v.Shape == Missing).Weight, Is.EqualTo(20));
                 Assert.That(entry.Animation.Single().Shape, Is.EqualTo(Missing));
                 AvatarBaseShape.Preserve(clone, clone, owned, null);
-                Assert.That(VrChatExpressionBaker.Bake(null, clone, menu, owned, null, bindings).Count, Is.EqualTo(1));
+                Assert.That(VrChatExpressionBaker.Bake(clone, menu, owned, null, bindings).Count, Is.EqualTo(1));
             }
         }
 
@@ -171,24 +171,19 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FaceEmoRegisteredClipUsesTheSameRecoveryForPoseAndAnimation()
         {
-            var folderName = "__FaceEmoRecovery_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
-            try
-            {
-                Curve("Blink", AnimationCurve.Linear(0, 0, 1, 100));
-                Curve(Missing, AnimationCurve.Linear(0, 0, 1, 100));
-                AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
-                var list = new { Modes = new[] { new { DisplayName = "Wink", Branches = new[] { new { BaseAnimation = new { GUID = AssetDatabase.AssetPathToGUID(folder + "/Face.anim") } } } } } };
-                var menu = new VrChatExpressionMenu.Source();
-                FaceEmoPreparedFxIntegrationTests.ReadListed(avatar, list, menu);
-                clone = Object.Instantiate(avatar);
-                new PreparedExpressionBindings(clone, menu).Capture(menu);
-                var entry = menu.Entries.Single();
-                Assert.That(entry.Error, Is.Null);
-                Assert.That(entry.Values.Single().Shape, Is.EqualTo("Blink"));
-                Assert.That(entry.Animation.Single().Shape, Is.EqualTo("Blink"));
-            }
-            finally { AssetDatabase.DeleteAsset(folder); }
+            using var temp = new TempAssetFolder("__FaceEmoRecovery_"); var folder = temp.Path;
+            Curve("Blink", AnimationCurve.Linear(0, 0, 1, 100));
+            Curve(Missing, AnimationCurve.Linear(0, 0, 1, 100));
+            AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
+            var list = new { Modes = new[] { new { DisplayName = "Wink", Branches = new[] { new { BaseAnimation = new { GUID = AssetDatabase.AssetPathToGUID(folder + "/Face.anim") } } } } } };
+            var menu = new VrChatExpressionMenu.Source();
+            FaceEmoPreparedFxIntegrationTests.ReadListed(avatar, list, menu);
+            clone = Object.Instantiate(avatar);
+            new PreparedExpressionBindings(clone, menu).Capture(menu);
+            var entry = menu.Entries.Single();
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Values.Single().Shape, Is.EqualTo("Blink"));
+            Assert.That(entry.Animation.Single().Shape, Is.EqualTo("Blink"));
         }
     }
 }

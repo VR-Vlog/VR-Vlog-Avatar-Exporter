@@ -18,7 +18,7 @@ schemaVersion 1 の `VRVLOG_expression_animations` は、アニメーション�
   - `animations` の形は v1 と同じで、point の `target` だけを `{ node, index }`（glTF のノードの番号とその mesh の morph target の番号）か null にする。null の point は変形を動かさない。v1 にあった「先頭の point は null で、t=0 の値と一致する」決まりは v2 には無い。
   - `animations` の各 `expression` は `expressions` に載っている名前にする。1 つのアニメーションの中で同じ (node, index) を 2 回参照しない。
   - `expressions` と `animations` の両方が空のファイルは不正にする（書く意味が無い）。
-- v2 の意味（schema の description にも書いた）: VRM の表情は time = duration の形を持つ。アプリは毎フレーム、VRM の表情の更新の後に各チャンネルのカーブを評価し、そのチャンネルの point が指す変形のうち、値を挟む 2 つの point の変形には補間した重みを、それ以外の変形には 0 を書く（ほかから書かれた値は上書きする。0 を書かないと、値が別の区間へ移ったときに前の区間の変形に重みが残る）。表情の選択が終わったら、書いた変形を 0 に戻す。
+- v2 の意味（schema の description にも書いた）: VRM の表情は time = duration の形を持つ。アプリは毎フレーム、VRM の表情の更新の後に各チャンネルのカーブを評価し、そのチャンネルの point が指す変形のうち、値を挟む 2 つの point の変形には補間した重みを、それ以外の変形には 0 を書く（ほかから書かれた値は上書きする。0 を書かないと、値が別の区間へ移ったときに前の区間の変形に重みが残る）。表情の選択が終わったら、書いた変形を 0 に戻す。（2026-11-01 に、VRM の表情は顔を保つ区間の中ほどの形に改めた。[2026-11-01-expression-hold-frame](2026-11-01-expression-hold-frame.md)）
 - `ExpressionAnimationData.Write`・`Read` は v1 のまま残す。v2 は `WriteDocument`・`ReadDocument`（`ExpressionAnimationDocument`）で扱い、`ReadDocument` は v1 も読む。`WriteDocument` は v2 だけを書き、返す前に自分の出力を `ReadDocument` に通す。
 - `AvatarFormatVersions` に asset.extras のキー `VRVLOG_requiredAppVersions` と、拡張名と schemaVersion（`VRVLOG_materials_liltoon` は schemaMajor）から最低のアプリ版を返す表を置く。表に無い組み合わせは例外にする（推測の版を書かない）。版の比較 `Compare` は `major.minor.patch` を数値で比べ、それ以外の形（前ゼロ・4 要素・空など）は `FormatException` にする。
 - 表の値は「その版の番号を持つアプリのビルドならどれでも読める」最低の版にする。

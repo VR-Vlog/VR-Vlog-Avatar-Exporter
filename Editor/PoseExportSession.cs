@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
@@ -44,22 +43,22 @@ namespace VRVlog.LilToonExporter
                 if (component == null || component.GetType().FullName != AplType || excluded?.Invoke(component.transform) == true) continue;
                 if (!ExportRendererSelection.ActiveUnder(component.gameObject, source.transform)) continue;
                 if (component.GetComponentInParent<Animator>(true) != source.GetComponent<Animator>()) continue;
-                var data = PoseMenuResolver.Member(component, "data");
-                foreach (var category in PoseMenuResolver.Items(PoseMenuResolver.Member(data, "categories")))
-                    foreach (var pose in PoseMenuResolver.Items(PoseMenuResolver.Member(category, "poses")))
+                var data = VrChatExpressionMenu.Member(component, "data");
+                foreach (var category in PoseMenuResolver.Items(VrChatExpressionMenu.Member(data, "categories")))
+                    foreach (var pose in PoseMenuResolver.Items(VrChatExpressionMenu.Member(category, "poses")))
                     {
-                        var clip = PoseMenuResolver.Member(pose, "animationClip") as AnimationClip;
-                        var name = PoseMenuResolver.Member(pose, "name") as string;
+                        var clip = VrChatExpressionMenu.Member(pose, "animationClip") as AnimationClip;
+                        var name = VrChatExpressionMenu.Member(pose, "name") as string;
                         var row = new PoseCandidate { Name = string.IsNullOrWhiteSpace(name) ? clip?.name ?? "未設定" : name,
-                            Category = PoseMenuResolver.Member(category, "name") as string ?? "", Source = "APL" };
-                        var tracking = PoseMenuResolver.Member(pose, "tracking");
+                            Category = VrChatExpressionMenu.Member(category, "name") as string ?? "", Source = "APL" };
+                        var tracking = VrChatExpressionMenu.Member(pose, "tracking");
                         var mask = AplMask(tracking, source); if (mask != null) owned.Add(mask);
                         row.Layers.Add(new PoseLayer { Clip = clip, Mask = mask });
-                        if (PoseMenuResolver.Member(pose, "beforeAnimationClip") is AnimationClip || PoseMenuResolver.Member(pose, "afterAnimationClip") is AnimationClip)
+                        if (VrChatExpressionMenu.Member(pose, "beforeAnimationClip") is AnimationClip || VrChatExpressionMenu.Member(pose, "afterAnimationClip") is AnimationClip)
                             row.Error = "APLの開始／終了アニメーションを伴う登録は未対応です。";
                         else if (clip == null) row.Error = "APLの元クリップがありません。";
                         else if (PoseSampling.Moving(source, row.Layers[0])) row.Error = "APLの体の動くクリップです。手動追加で動くポーズとして保存できます。";
-                        else if (PoseMenuResolver.Member(data, "enableLocomotionAnimator") is bool active && !active)
+                        else if (VrChatExpressionMenu.Member(data, "enableLocomotionAnimator") is bool active && !active)
                             row.Error = "APLのHumanoidポーズ出力が無効です。";
                         row.Id = PoseSampling.Identity(row); Entries.Add(row);
                     }
@@ -79,7 +78,7 @@ namespace VRVlog.LilToonExporter
 
         static AvatarMask AplMask(object tracking, GameObject source)
         {
-            bool On(string name) => !(PoseMenuResolver.Member(tracking, name) is bool b) || b;
+            bool On(string name) => !(VrChatExpressionMenu.Member(tracking, name) is bool b) || b;
             if (On("arm") && On("foot") && On("finger") && On("locomotion")) return null;
             var mask = new AvatarMask();
             for (var i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++) mask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i, false);
@@ -117,7 +116,7 @@ namespace VRVlog.LilToonExporter
         {
             prepared = copy;
             if (!collect) yield break;
-            Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy));
+            Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy, warnings));
             var seen = new Dictionary<string, PoseCandidate>();
             foreach (var row in Entries.ToArray())
             {
@@ -179,7 +178,7 @@ namespace VRVlog.LilToonExporter
             foreach (var name in row.IsAnimation ? HumanoidAnimationData.BoneNames : HumanoidPoseData.BoneNames)
             {
                 var human = PoseSampling.HumanBone(name); var bone = HumanoidBones.Resolve(sourceAnimator, human);
-                if (bone == null || targetAnimator.GetBoneTransform(human) != null) continue;
+                if (bone == null || HumanoidBones.Resolve(targetAnimator, human) != null) continue;
                 if (row.Layers.Any(layer => layer.Clip != null && PoseSampling.WritesBone(layer, name, bone, source)))
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用コピーからポーズのHumanoidボーンが失われました: ") + human);
                 omitted.Add(name);
@@ -192,7 +191,7 @@ namespace VRVlog.LilToonExporter
             var animator = prepared.GetComponent<Animator>();
             int Node(string name)
             {
-                var transform = animator.GetBoneTransform(PoseSampling.HumanBone(name));
+                var transform = HumanoidBones.Resolve(animator, PoseSampling.HumanBone(name));
                 if (transform == null || !converter.Nodes.TryGetValue(transform.gameObject, out var node))
                     throw new InvalidOperationException("ポーズの骨が出力にありません: " + name);
                 return model.Nodes.IndexOf(node);
@@ -235,8 +234,6 @@ namespace VRVlog.LilToonExporter
             var poses = Selected(); var animations = SelectedAnimations();
             if (poses.Count == 0 && animations.Count == 0) return bytes;
             var document = GlbDocument.Read(bytes);
-            var extensions = (Dictionary<string, object>)document.Json["extensions"];
-            if (!document.Json.TryGetValue("extensionsUsed", out var raw)) document.Json["extensionsUsed"] = raw = new List<object>();
             if (poses.Count > 0)
             {
                 var extension = HumanoidPoseData.Write(poses);
@@ -245,9 +242,8 @@ namespace VRVlog.LilToonExporter
                     foreach (Dictionary<string, object> pose in (List<object>)extension["poses"]) ScaleOffset(pose, rootScale);
                     HumanoidPoseData.Read(extension);
                 }
-                if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidPoseData.MaximumBytes) throw new InvalidOperationException("ポーズ拡張が2MiBを超えました。");
                 HumanoidPoseData.ValidateReferences(poses, document.Json);
-                extensions.Add(HumanoidPoseData.Extension, extension); ((List<object>)raw).Add(HumanoidPoseData.Extension);
+                document.PlaceExtension(HumanoidPoseData.Extension, extension, "既存のポーズ拡張を上書きできません。");
             }
             if (animations.Count > 0)
             {
@@ -258,10 +254,8 @@ namespace VRVlog.LilToonExporter
                         foreach (Dictionary<string, object> frame in (List<object>)animation["frames"]) ScaleOffset(frame, rootScale);
                     HumanoidAnimationData.Read(extension);
                 }
-                if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidAnimationData.MaximumBytes)
-                    throw new InvalidOperationException("動くポーズの拡張が16MiBを超えました。不要な項目を除外してください。");
                 HumanoidAnimationData.ValidateReferences(animations, document.Json);
-                extensions.Add(HumanoidAnimationData.Extension, extension); ((List<object>)raw).Add(HumanoidAnimationData.Extension);
+                document.PlaceExtension(HumanoidAnimationData.Extension, extension, "既存のポーズアニメーション拡張を上書きできません。");
             }
             return AvatarFormatRequirements.Write(document.Write());
         }

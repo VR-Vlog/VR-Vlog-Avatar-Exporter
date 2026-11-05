@@ -36,7 +36,7 @@ namespace VRVlog.LilToonExporter
             // a large expression menu or reusing a pre-NDMF controller.
             var metadata = VrChatExpressionMenu.Read(prepared, new VrChatMenuImportPolicy { SkipAll = true });
             if (metadata.Controller == null) return new List<VrChatExpressionMenu.MorphValue>();
-            NeutralInputProof.Read(prepared, metadata);
+            NeutralInputProof.Read(prepared, metadata, warnings);
             var fixedContext = FixedExpressionContext.Create(metadata.Controller, metadata.Defaults, metadata);
             var automatic = AutomaticChannels(prepared);
             var completed = new HashSet<string>(StringComparer.Ordinal);
@@ -239,8 +239,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var name in names.Where(AvatarBaseShape.IsVisemeChannel)) Add(renderer, name);
             }
             if (BlinkExportSession.TryDescriptor(avatar, null, out var blink)) Add(blink.Renderer, blink.Shape);
-            var descriptor = avatar.GetComponents<Component>().FirstOrDefault(component => component != null &&
-                component.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(avatar);
             var visemeRenderer = VrChatExpressionMenu.Member(descriptor, "VisemeSkinnedMesh") as SkinnedMeshRenderer;
             if (VrChatExpressionMenu.Member(descriptor, "VisemeBlendShapes") is IEnumerable visemes)
                 foreach (var shape in visemes.OfType<string>()) Add(visemeRenderer, shape);

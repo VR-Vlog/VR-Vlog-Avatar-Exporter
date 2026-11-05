@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.MobileMaterialMath;
 
 namespace VRVlog.LilToonExporter
 {
@@ -32,11 +33,10 @@ namespace VRVlog.LilToonExporter
             internal OverLimit() : base("The MatCap images exceed the mobile texture limit.") { }
         }
 
-        internal static bool Enabled(Material material) =>
-            material.HasProperty("_UseMatCap") && material.GetFloat("_UseMatCap") > 0.5f;
+        internal static bool Enabled(Material material) => MobileMaterialMath.Enabled(material, "_UseMatCap");
 
         internal static int Mode(Material material) =>
-            Mathf.RoundToInt(material.HasProperty("_MatCapBlendMode") ? material.GetFloat("_MatCapBlendMode") : Add);
+            Mathf.RoundToInt(Float(material, "_MatCapBlendMode", Add));
 
         // The MatCap has a blend mask, so MToon's MatCap over the whole mesh
         // would light parts lilToon leaves alone.
@@ -71,8 +71,8 @@ namespace VRVlog.LilToonExporter
             // The mean is read back as floats; without them keep the main image.
             if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGBFloat)) return null;
             var mean = Mean(material);
-            // Shaders read colors as they are in a gamma project.
-            var shaded = QualitySettings.activeColorSpace == ColorSpace.Linear ? color.linear : color;
+            // The bake works in linear values as the app does, also in a Gamma project.
+            var shaded = color.linear;
             // Normal replaces dst by src, so it darkens by a; the added src is
             // MToon's own MatCap. Multiply darkens by a * (1 - src).
             var product = mode == Multiply
@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Mean of a and a * rgb of the MatCap image over the disk lilToon
-        // reads, in the space the shader works in. lilToon applies
+        // reads, in linear values. lilToon applies
         // _MatCapTex_ST to the view normal in [-1, 1] before mapping it to [0, 1].
         private static (float Alpha, Vector3 Product) Mean(Material material)
         {
@@ -103,6 +103,9 @@ namespace VRVlog.LilToonExporter
                     GL.sRGBWrite = false;
                     Graphics.Blit(texture, target, scale, (Vector2.one - scale + offset) * 0.5f);
                 });
+                // A Gamma project does not decode sRGB images when sampling.
+                if (ManualSrgb && texture.isDataSRGB)
+                    for (var i = 0; i < pixels.Length; i++) pixels[i] = pixels[i].linear;
                 float alpha = 0f, count = 0f;
                 var product = Vector3.zero;
                 for (var y = 0; y < size; y++)
@@ -145,7 +148,12 @@ namespace VRVlog.LilToonExporter
             Texture2D result = null;
             try
             {
-                baker.SetColor("_Color", color);
+                // A Linear project hands the shader linear colors and decodes
+                // sRGB images and the target; a Gamma project leaves that to the shader.
+                baker.SetColor("_Color", ManualSrgb ? color.linear : color);
+                baker.SetFloat("_VrvDecodeMain", ManualSrgb && main.isDataSRGB ? 1f : 0f);
+                baker.SetFloat("_VrvDecodeMask", ManualSrgb && maskTexture.isDataSRGB ? 1f : 0f);
+                baker.SetFloat("_VrvEncode", ManualSrgb ? 1f : 0f);
                 baker.SetTexture("_MatCapBlendMask", maskTexture);
                 baker.SetTextureScale("_MatCapBlendMask", maskScale);
                 baker.SetTextureOffset("_MatCapBlendMask", maskOffset);
@@ -169,6 +177,10 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The bakes are made in linear values as in a Linear project and in
+        // the app; a Gamma project converts them in the shader.
+        private static bool ManualSrgb => QualitySettings.activeColorSpace == ColorSpace.Gamma;
+
         private static string Join(params float[] values)
         {
             var parts = new string[values.Length];
@@ -182,7 +194,6 @@ namespace VRVlog.LilToonExporter
             return mask == Texture2D.whiteTexture ? null : mask;
         }
 
-        private static float Float(Material material, string property, float fallback) => material.HasProperty(property) ? material.GetFloat(property) : fallback;
         private static Texture Texture(Material material, string property) => material.HasProperty(property) ? material.GetTexture(property) : null;
     }
 }

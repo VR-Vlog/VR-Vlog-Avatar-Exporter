@@ -67,7 +67,7 @@ namespace VRVlog.LilToonExporter
             var finding = new ExportGimmickFinding { Target = renderer.gameObject, Renderer = renderer };
             if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
                 materials.Length == 0 || materials.Any(m => m == null || m.shader == null))
-                finding.Reason = "メッシュまたは材質が不足しているため自動判定できません。";
+                finding.Reason = "メッシュまたはマテリアルが不足しているため自動判定できません。";
             else if (materials.All(Portable)) return null;
             else if (materials.All(HiddenFallback))
             {
@@ -75,7 +75,7 @@ namespace VRVlog.LilToonExporter
                 finding.Reason = "未対応シェーダーに、代替表示では隠す指定があります（VRCFallback=Hidden）。";
             }
             else finding.Reason = materials.Any(HiddenFallback)
-                ? "通常の材質と補助演出が混在しているため、そのまま含めます。"
+                ? "通常のマテリアルと補助演出が混在しているため、そのまま含めます。"
                 : "未対応シェーダーですが、非表示の指定がないため、そのまま含めます。";
             return finding;
         }
@@ -116,7 +116,7 @@ namespace VRVlog.LilToonExporter
         internal const string PlatformFilterMixedReason = "Platform Filterで含める指定と外す指定が混在しているため残します。";
         internal const string PlatformFilterUnreadableReason = "Platform Filterの設定を読めないため残します。";
         internal const string VrChatOnlyReason = "VRChatの中でだけ動く仕組み（カメラ・音・パーティクル等）を持つギミックです。";
-        internal const string VrChatOnlyUncertainReason = "メッシュまたは材質が不足しているため、VRChat専用のギミックか判定できず残します。";
+        internal const string VrChatOnlyUncertainReason = "メッシュまたはマテリアルが不足しているため、VRChat専用のギミックか判定できず残します。";
         internal const string VrChatOnlyNoEvidenceReason = "VRChatの中でだけ動く仕組みが見つからないため、自動では外さずに残します。";
         // MA's platform for builds that target no particular platform.
         const string GenericPlatform = "nadena.dev.ndmf.generic";
@@ -564,7 +564,7 @@ namespace VRVlog.LilToonExporter
                 var materials = renderer.sharedMaterials;
                 var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
                 if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount || materials.Any(m => m == null || m.shader == null))
-                    return "メッシュまたは材質が不足しているため、システム全体は残します。";
+                    return "メッシュまたはマテリアルが不足しているため、システム全体は残します。";
                 if (!(renderer is MeshRenderer || renderer is SkinnedMeshRenderer) || materials.Length == 0 || !materials.All(HiddenFallback))
                     return "通常の表示物を含むため、システム全体は残して補助Rendererだけを判定します。";
             }

@@ -48,17 +48,17 @@ assemblies, no `testables`, no `VR Vlog/` entry but the two app transfers, the
 backend is ready, refresh and reload keep the backend, the report says
 `Status: Ready`). It then builds a Humanoid skeleton in code with one skinned box
 using `new Material(Shader.Find("lilToon"))`, and calls the same internal methods
-as the export window through reflection: `LilToonExporterWindow.PackageVersion`,
-`LilToonExporterWindow.RequireSupportedLilToon` (version range and shader
+as the export window through reflection: `ExportEntry.PackageVersion`,
+`ExportEntry.RequireLilToon` (lilToon present and shader
 structure check) and `UniVrmOneClickExporter.Export`. Options the window can
 set (gimmicks, blink, poses, recovery, license) keep their defaults. It reads
 the GLB JSON chunk of the result.
 
-Since 2026-10-22 the method is `RequireLilToon(GameObject, ICollection<string>)`
-and it stops only without lilToon or with a changed baker shader
-([decision](../../../Documentation~/decisions/2026-10-22-liltoon-no-version-gate.md)).
-`ZipProbe.cs.txt` is kept as it ran; running it again needs that name and a
-warnings list.
+The results below ran with the earlier `RequireSupportedLilToon`, which also
+checked the version range. Since 2026-10-22 `RequireLilToon` stops only without
+lilToon or with a changed baker shader
+([decision](../../../Documentation~/decisions/2026-10-22-liltoon-no-version-gate.md)),
+and `ZipProbe.cs.txt` calls that method.
 
 ## Results
 

@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -22,15 +20,12 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimatorState command, neutral, selected;
         private const int TargetLayer = 4;
 
-        private static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         [SetUp]
         public void SetUp()
         {
-            if (Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null || Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl") == null)
+            if (OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null || OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__SelectedLayerControl_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__SelectedLayerControl_");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
             skin = body.GetComponent<SkinnedMeshRenderer>();
@@ -39,7 +34,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Body size", 100, Enumerable.Repeat(Vector3.right * .02f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17);
             controller = Graph("FX", new[] { "Body" }, "Body size", 1, out command, out neutral, out selected);
-            descriptor = avatar.AddComponent(Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); SetFx(descriptor, controller);
+            descriptor = avatar.AddComponent(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); VrcAvatar.SetFx(descriptor, controller);
         }
 
         [TearDown]
@@ -48,18 +43,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (avatar != null) Object.DestroyImmediate(avatar);
             if (mesh != null) Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip)
-        {
-            var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state; return state;
-        }
-
-        private static AnimatorStateMachine Layer(AnimatorController fx, string name)
-        {
-            fx.AddLayer(name); var layers = fx.layers; layers[layers.Length - 1].defaultWeight = 1; fx.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
         }
 
         private static void To(AnimatorState from, AnimatorState to, float value)
@@ -81,19 +64,19 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/" + name + ".controller");
             fx.AddParameter("Menu", AnimatorControllerParameterType.Int);
-            State(fx.layers[0].stateMachine, "Base rest", Clip(fx, "Base rest", paths, shape, baseWeight));
-            control = State(Layer(fx, "SDK command source"), "Command", Clip(fx, "Empty command motion"));
-            State(Layer(fx, "Unrelated slot 2"), "Empty", Clip(fx, "Empty 2"));
-            State(Layer(fx, "Unrelated slot 3"), "Empty", Clip(fx, "Empty 3"));
-            var target = Layer(fx, "Controlled face at physical index 4");
-            rest = State(target, "Neutral", Clip(fx, "Neutral", paths, shape, 60));
-            endpoint = State(target, "Selected endpoint", Clip(fx, "Selected endpoint", paths, shape, 80));
+            FxGraph.StartState(fx.layers[0].stateMachine, "Base rest", Clip(fx, "Base rest", paths, shape, baseWeight));
+            control = FxGraph.StartState(FxGraph.Layer(fx, "SDK command source"), "Command", Clip(fx, "Empty command motion"));
+            FxGraph.StartState(FxGraph.Layer(fx, "Unrelated slot 2"), "Empty", Clip(fx, "Empty 2"));
+            FxGraph.StartState(FxGraph.Layer(fx, "Unrelated slot 3"), "Empty", Clip(fx, "Empty 3"));
+            var target = FxGraph.Layer(fx, "Controlled face at physical index 4");
+            rest = FxGraph.StartState(target, "Neutral", Clip(fx, "Neutral", paths, shape, 60));
+            endpoint = FxGraph.StartState(target, "Selected endpoint", Clip(fx, "Selected endpoint", paths, shape, 80));
             To(rest, endpoint, 1); To(endpoint, rest, 0);
             var layers = fx.layers; layers[TargetLayer].defaultWeight = weight; fx.layers = layers; return fx;
         }
 
         private static StateMachineBehaviour Control(AnimatorState state, float goal, int target = TargetLayer, float duration = 0, string playable = "FX")
-            => Configure(state.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")), goal, target, duration, playable);
+            => Configure(state.AddStateMachineBehaviour(OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")), goal, target, duration, playable);
 
         private static StateMachineBehaviour Configure(StateMachineBehaviour value, float goal, int target, float duration, string playable)
         {
@@ -102,16 +85,6 @@ namespace VRVlog.LilToonExporter.Tests
             var property = data.FindProperty("playable"); property.enumValueIndex = Array.IndexOf(property.enumNames, playable);
             data.FindProperty("layer").intValue = target; data.FindProperty("goalWeight").floatValue = goal;
             data.FindProperty("blendDuration").floatValue = duration; data.ApplyModifiedPropertiesWithoutUndo(); return value;
-        }
-
-        private static void SetFx(Component target, AnimatorController fx)
-        {
-            using var data = new SerializedObject(target);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-            var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-            type.enumValueIndex = Array.IndexOf(type.enumNames, "FX"); layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = fx; data.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private Dictionary<Object, string> Before() => AssetDatabase.LoadAllAssetsAtPath(folder + "/FX.controller")
@@ -127,22 +100,10 @@ namespace VRVlog.LilToonExporter.Tests
         // documented final layer weight through Unity's native API instead.
         private float Native(AnimatorController reference, float goal, int target = TargetLayer, float menu = 1, int shapeIndex = 0)
         {
-            var copy = Object.Instantiate(avatar); var graph = PlayableGraph.Create("SDK layer weight native reference");
-            try
-            {
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.enabled = true; animator.runtimeAnimatorController = null;
-                animator.applyRootMotion = false; animator.fireEvents = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, reference);
-                for (var index = 0; index < reference.layers.Length; index++) playable.SetLayerWeight(index, index == 0 ? 1 : reference.layers[index].defaultWeight);
-                playable.SetLayerWeight(target, target == 0 ? 1 : goal); playable.SetInteger("Menu", Mathf.RoundToInt(menu));
-                AnimationPlayableOutput.Create(graph, "Native reference", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 240; frame++) graph.Evaluate(1f / 60);
-                return copy.transform.Find("Body").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(shapeIndex);
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            using var native = new NativeFxPlayback(avatar, reference, isolate: true, defaultWeights: true);
+            native.Playable.SetLayerWeight(target, target == 0 ? 1 : goal); native.Playable.SetInteger("Menu", Mathf.RoundToInt(menu));
+            native.Start(); native.Run(240);
+            return native.Skin("Body").GetBlendShapeWeight(shapeIndex);
         }
 
         [TestCase("native", 0f)] [TestCase("native", .5f)]
@@ -178,7 +139,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (dormantEnable)
             {
                 controller.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
-                var dormant = State(controller.layers[1].stateMachine, "Dormant enable", Clip(controller, "Dormant enable"));
+                var dormant = FxGraph.StartState(controller.layers[1].stateMachine, "Dormant enable", Clip(controller, "Dormant enable"));
                 Control(dormant, 1);
                 var transition = command.AddTransition(dormant); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.If, 0, "AFK");
@@ -210,8 +171,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DirectBaseClipWithoutStateProvenanceCannotDiscardItsLayerControl()
         {
-            var candidate = State(controller.layers[0].stateMachine, "Base callback candidate",
-                Clip(controller, "Base callback candidate", new[] { "Body" }, value: 80));
+            var candidate = FxGraph.StartState(controller.layers[0].stateMachine, "Base callback candidate", Clip(controller, "Base callback candidate", new[] { "Body" }, value: 80));
             Control(candidate, 1);
             var layers = controller.layers; layers[TargetLayer].defaultWeight = 0; controller.layers = layers;
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)candidate.motion, entry);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VRVlog.AvatarFormats;
 using VRVlog.Expressions;
 using VRVlog.FaceTracking;
 
@@ -44,8 +45,20 @@ namespace VRVlog.LilToonExporter
             "Blink", "BlinkLeft", "BlinkRight", "EyeBlinkLeft", "EyeBlinkRight", "_neutral",
         };
 
+        // The directional eye shapes the app's camera gaze (CameraEyeGaze.Families)
+        // looks for. It compares the whole name with only its letters and digits
+        // in lower case, so "eye_up" and "Eye Up" match and "Face.eye_up" does not.
+        static readonly HashSet<string> GazeNames = new HashSet<string>(
+            new[] { "look", "eye", "eyes", "pupil", "eyepupil", "iris", "eyeiris", "eyelook" }
+                .SelectMany(family => new[] { "up", "down", "left", "right" }.Select(direction => family + direction)),
+            StringComparer.Ordinal);
+
+        static string GazeKey(string name) =>
+            new string(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
         // Whether the app moves a morph target of this name by itself: the
-        // names above, Perfect Sync (not under "UE/") and Unified Expressions.
+        // names above, the camera gaze, Perfect Sync (not under "UE/") and
+        // Unified Expressions.
         // Names under "VRChat /" are menu expressions, never tracking.
         internal static bool AppDrives(string name)
         {
@@ -54,6 +67,7 @@ namespace VRVlog.LilToonExporter
             if (value.Length == 0) return false;
             if (LegacyNames.Contains(value) || LegacyNames.Contains(value.Substring(value.LastIndexOf('.') + 1)) ||
                 LegacyNames.Contains(value.Substring(value.LastIndexOf('/') + 1))) return true;
+            if (GazeNames.Contains(GazeKey(value))) return true;
             var menu = value.IndexOf('/');
             if (menu >= 0 && string.Equals(value.Substring(0, menu).Trim(), "VRChat", StringComparison.OrdinalIgnoreCase)) return false;
             if (!value.StartsWith("ue/", StringComparison.OrdinalIgnoreCase) && TrackingExpressionNames.IsPerfectSync(value)) return true;
@@ -407,11 +421,9 @@ namespace VRVlog.LilToonExporter
 
         static bool IsNumber(object value) => value is long || value is int || value is double d && !double.IsNaN(d) && !double.IsInfinity(d);
 
-        static Dictionary<string, object> Object(Dictionary<string, object> owner, string key) =>
-            owner != null && owner.TryGetValue(key, out var value) ? value as Dictionary<string, object> : null;
+        static Dictionary<string, object> Object(Dictionary<string, object> owner, string key) => JsonAccess.Object(owner, key);
 
-        static List<object> List(Dictionary<string, object> owner, string key) =>
-            owner != null && owner.TryGetValue(key, out var value) ? value as List<object> : null;
+        static List<object> List(Dictionary<string, object> owner, string key) => JsonAccess.List(owner, key);
 
         static IEnumerable<Dictionary<string, object>> Objects(List<object> list) =>
             list?.OfType<Dictionary<string, object>>() ?? Enumerable.Empty<Dictionary<string, object>>();
