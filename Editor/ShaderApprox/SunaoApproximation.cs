@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using static VRVlog.LilToonExporter.NumericChecks;
 using static VRVlog.LilToonExporter.UnsupportedShaderSubstitution;
@@ -120,7 +121,7 @@ namespace VRVlog.LilToonExporter
             var custom = values.TryVector("_CustomShadeColor", out var authored) && Finite(authored) ? (Color)authored : new Color(0, 0, 0, 0);
             var amount = Mathf.Clamp01(custom.a);
             var shade = Mathf.Clamp01(values.Float("_ShadeColor", .5f));
-            var tint = (material.GetColor("_Color") * Mathf.Clamp01(values.Float("_Bright", 1))).linear;
+            var tint = material.GetColor("_Color").linear * Mathf.Clamp01(values.Float("_Bright", 1));
             var linearCustom = custom.linear;
             Color Factor(Color color) => Color.Lerp(new Color(Mathf.Clamp01(color.r * 3 - 1.5f) * shade, Mathf.Clamp01(color.g * 3 - 1.5f) * shade,
                 Mathf.Clamp01(color.b * 3 - 1.5f) * shade), linearCustom, amount);
@@ -208,17 +209,22 @@ namespace VRVlog.LilToonExporter
         {
             if (values.Float("_RimLitEnable", 0) < .5f) return;
             if (values.Float("_RimLitMode", 0) != 0) { dropped.Add("Rim Light (Multiply or Minus)"); return; }
+            var power = values.Float("_RimLit", 1);
+            if (power <= 0) return;
             var gradient = Mathf.Max(.01f, values.Float("_RimLitGradient", 1));
             var cube = gradient * gradient * gradient;
             Set(material, "_UseRim", 1);
             Set(material, "_RimFresnelPower", 2);
-            var power = values.Float("_RimLit", 1);
             var lift = Mathf.Clamp01(power - 1);
             if (lift > 0) dropped.Add("Rim Light Lift");
             var full = Mathf.Max(.001f, .5f + (.5f - lift) / cube);
-            Set(material, "_RimBorder", lift > 0 ? full / 2 : Mathf.Clamp01(.5f + (1 - power) / cube));
-            Set(material, "_RimBlur", Mathf.Clamp(lift > 0 ? full : 1 / cube, .001f, 1));
+            // Below 1 the source's ramp starts at the same angle but stops at the
+            // height of _RimLit, so the ramp is narrower and the color scaled.
+            var height = Mathf.Min(1, power);
+            Set(material, "_RimBorder", lift > 0 ? full / 2 : Mathf.Clamp01(.5f + (.5f - height / 2) / cube));
+            Set(material, "_RimBlur", Mathf.Clamp(lift > 0 ? full : height / cube, .001f, 1));
             var color = values.TryVector("_RimLitColor", out var authored) && Finite(authored) ? (Color)authored : Color.white;
+            color.a *= height;
             material.SetColor("_RimColor", color);
             Set(material, "_RimBlendMode", 1);
             Set(material, "_RimEnableLighting", values.Float("_RimLitLighthing", 1) > .5f ? 1 : 0);
@@ -248,10 +254,13 @@ namespace VRVlog.LilToonExporter
             Set(material, "_MatCapBlendMode", 1);
             Set(material, "_MatCapMainStrength", values.Float("_MatCapTexColor", 0) > .5f ? 1 : 0);
             Set(material, "_MatCapEnableLighting", values.Float("_MatCapLit", 3) > .5f ? 1 : 0);
-            Set(material, "_MatCapLod", 3 * (1 - Mathf.Clamp01(values.Float("_GlossMapScale", .75f))));
+            Set(material, "_MatCapLod", 0);
             var name = values.Float("_MatCapMaskEnable", 1) > .5f ? "_MetallicGlossMap" : "_MatCapMask";
             if (values.Texture(name, out var mask, out _, out _) && Flat(mask))
             {
+                // The alpha of the mask picks the blur; lilToon has one value for the whole surface.
+                var alpha = Sampled(mask, 32, 32);
+                if (alpha != null && alpha.Length > 0) Set(material, "_MatCapLod", 3 * (1 - Mathf.Clamp01(alpha.Average(c => c.a))));
                 var grey = Grey(mask) ? mask : BakeMask(mask, 4, false, textures);
                 if (grey != null) SetTexture(material, "_MatCapBlendMask", grey, Vector2.one, Vector2.zero);
                 else dropped.Add("MatCap Mask");

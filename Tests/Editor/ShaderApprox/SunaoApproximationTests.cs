@@ -247,8 +247,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(dropped, Does.Contain(label));
         }
 
-        // A ramp of slope 8 around 0.5, moved down by 1 - 0.75: width 1 / 8,
-        // centered at 0.5 + 0.25 / 8.
+        // A ramp of slope 8 around 0.5, moved down by 1 - 0.75: it starts at
+        // 0.46875, stops at 0.5625 with the height 0.75.
         [Test] public void TheRimRampLandsOnTheSameAngle()
         {
             var source = Source();
@@ -261,13 +261,21 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(source);
             Assert.That(output.GetFloat("_UseRim"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_RimFresnelPower"), Is.EqualTo(2f));
-            Assert.That(output.GetFloat("_RimBorder"), Is.EqualTo(.53125f).Within(1e-5f));
-            Assert.That(output.GetFloat("_RimBlur"), Is.EqualTo(.125f).Within(1e-5f));
+            Assert.That(output.GetFloat("_RimBorder"), Is.EqualTo(.515625f).Within(1e-5f));
+            Assert.That(output.GetFloat("_RimBlur"), Is.EqualTo(.09375f).Within(1e-5f));
             var rim = output.GetColor("_RimColor");
-            Assert.That(new[] { rim.r, rim.g, rim.b, rim.a }, Is.EqualTo(new[] { .1f, .2f, .3f, .5f }).Within(1e-5f));
+            Assert.That(new[] { rim.r, rim.g, rim.b, rim.a }, Is.EqualTo(new[] { .1f, .2f, .3f, .375f }).Within(1e-5f));
             Assert.That(output.GetFloat("_RimBlendMode"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_RimMainStrength"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_RimEnableLighting"), Is.EqualTo(0f));
+        }
+
+        [Test] public void NoRimPowerMeansNoRim()
+        {
+            var source = Source();
+            source.SetFloat("_RimLitEnable", 1);
+            source.SetFloat("_RimLit", 0);
+            Assert.That(Substitute(source).GetFloat("_UseRim"), Is.EqualTo(0f));
         }
 
         // Above 1 the source starts lifted and reaches 1 at x = 0.5; lilToon's
@@ -301,7 +309,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Substitute(source).GetFloat("_UseMatCap"), Is.EqualTo(0f));
 
             source.SetFloat("_ReflectionEnable", 1);
-            source.SetFloat("_GlossMapScale", 1);
+            source.SetFloat("_GlossMapScale", .25f);
             source.SetFloat("_MatCapTexColor", 1);
             source.SetFloat("_MatCapLit", 0);
             var output = Substitute(source, Opaque, out var dropped);
@@ -326,6 +334,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Substitute(source).GetTexture("_MatCapBlendMask"), Is.SameAs(metallic));
             source.SetFloat("_MatCapMaskEnable", 0);
             Assert.That(Substitute(source).GetTexture("_MatCapBlendMask"), Is.SameAs(own));
+        }
+
+        [Test] public void TheMatcapBlurComesFromTheMaskAlpha()
+        {
+            var source = Source();
+            source.SetFloat("_ReflectionEnable", 1);
+            source.SetTexture("_MatCap", Image("matcap", Color.white));
+            source.SetTexture("_MetallicGlossMap", Image("metallic", new Color(1, 1, 1, .5f)));
+            Assert.That(Substitute(source).GetFloat("_MatCapLod"), Is.EqualTo(1.5f).Within(.02f));
+        }
+
+        // _Bright scales the linear color: 0.8 gives the factor saturate(2.4 - 1.5) × 0.5.
+        [Test] public void BrightScalesTheLinearColorOfTheShade()
+        {
+            var source = Source();
+            source.SetFloat("_Bright", .8f);
+            source.SetFloat("_ShadeColor", .5f);
+            source.SetColor("_Color", Color.white);
+            var shade = Substitute(source).GetColor("_ShadowColor").linear;
+            Assert.That(shade.r, Is.EqualTo(.45f).Within(.01f));
         }
 
         // A square decal of size 0.5 centered at (0.75, 0.5), unrotated: its
