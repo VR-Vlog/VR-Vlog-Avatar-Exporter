@@ -411,7 +411,7 @@ namespace VRVlog.LilToonExporter
             {
                 diagnostics.TryGetValue(omission.Stage, out var found);
                 report.Fallbacks.AddStage(omission.Stage, omission.Error.Message, found);
-                warnings?.Add(ExporterLocalization.T("書き出しの一部を省略しました") + ": " +
+                warnings?.Add(ExporterLocalization.T(StageOmittedWarning) + ": " +
                     ExportStageGuard.DisplayName(omission.Stage) + " — " + omission.Error.Message);
             }
         }
@@ -1258,6 +1258,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string MissingMaterialsError = "表示中のメッシュに材質が1つも割り当てられていないため、書き出せません。材質の参照が切れている可能性があります。元のアバターで材質を割り当ててください: ";
+        internal const string StageOmittedWarning = "書き出しの一部を省略しました";
         internal const string MaterialApproximatedWarning = "変換できなかったマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
         internal const string NonLilToonWarning = "lilToon以外のマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
 
