@@ -40,9 +40,9 @@ namespace VRVlog.LilToonExporter
         {
             var animator = avatar.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || !animator.avatar.isHuman || !animator.avatar.isValid) return null;
-            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            var head = HumanoidBones.Resolve(animator, HumanBodyBones.Head);
             if (head == null) return null;
-            var neck = animator.GetBoneTransform(HumanBodyBones.Neck);
+            var neck = HumanoidBones.Resolve(animator, HumanBodyBones.Neck);
             return Estimate(avatar.transform, head, neck, DescriptorFaceShapes(avatar));
         }
 
