@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path -Parent $PSScriptRoot
 $taskSources = @(
     (Join-Path $taskRepo 'Editor/JsonDom.cs'),
+    (Join-Path $taskRepo 'Formats/Runtime/JsonAccess.cs'),
     (Join-Path $taskRepo 'Formats/Runtime/LilToonFullContract.cs'),
     (Join-Path $taskRepo 'Formats/Runtime/LilToon234Catalogue.cs'),
     (Join-Path $taskRepo 'Editor/GlbDocument.cs'),
@@ -15,6 +16,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/MobileTextureEncoder.cs'),
     (Join-Path $taskRepo 'Editor/Compatibility/ExportNoteText.cs'),
     (Join-Path $taskRepo 'Editor/BlinkShapeNames.cs'),
+    (Join-Path $taskRepo 'Editor/ExpressionPresetGroups.cs'),
     (Join-Path $taskRepo 'Editor/ExpressionNameInference.cs'),
     (Join-Path $taskRepo 'Editor/ExpressionShapeNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmExpressionBindings.cs'),
@@ -22,6 +24,8 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/VrmUnifiedExpressions.cs'),
     (Join-Path $taskRepo 'Editor/TrackingExpressionNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmMenuExpressions.cs'),
+    (Join-Path $taskRepo 'Editor/ClipFaceTime.Curves.cs'),
+    (Join-Path $taskRepo 'Editor/ExpressionNameAffix.cs'),
     (Join-Path $taskRepo 'Formats/Runtime/ExpressionAnimationData.cs'),
     (Join-Path $taskRepo 'Editor/LilToonEmissionPolicy.cs'),
     (Join-Path $taskRepo 'Editor/NumericChecks.cs'),
@@ -32,6 +36,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/ExportRendererSelection.cs'),
     (Join-Path $taskRepo 'Editor/AvatarBaseShape.cs'),
     (Join-Path $taskRepo 'Editor/MobileMaterialMath.cs'),
+    (Join-Path $taskRepo 'Editor/MobileMaterialMath.Properties.cs'),
     (Join-Path $taskRepo 'Editor/LilToonGlbExtension.cs'),
     (Join-Path $taskRepo 'Editor/LilToonExtensionValidator.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/MaterialBindingFixture.cs'),

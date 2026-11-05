@@ -16,7 +16,12 @@ namespace VRVlog.LilToonExporter.Tests
     {
         const string Joint = "Independent hair/Head";
 
-        static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
+        // The export is off until the app plays the transforms; these tests
+        // check what it writes once it is on.
+        ExpressionTransformsSwitch transforms;
+        [SetUp] public void TurnTransformsOn() => transforms = new ExpressionTransformsSwitch(true);
+        [TearDown] public void RestoreTransforms() => transforms?.Dispose();
+
         static EditorCurveBinding Bone(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
         static EditorCurveBinding Shown(string path) => EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive");
         static EditorCurveBinding Shape => EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
@@ -132,29 +137,19 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal Scene(bool spring = false)
             {
-                var descriptorType = SdkType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-                if (descriptorType == null || Shader.Find("lilToon") == null || spring && SdkType(PhysBoneSpringExport.PhysBoneType) == null)
+                var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                if (descriptorType == null || Shader.Find("lilToon") == null || spring && OptionalTools.Find(PhysBoneSpringExport.PhysBoneType) == null)
                 {
                     Dispose(); Assert.Ignore("Install the real VRChat SDK and lilToon.");
                 }
                 // The export writes lilToon materials only.
                 material = new Material(Shader.Find("lilToon"));
                 foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterials = new[] { material };
-                var name = "__ExpressionBones_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+                folder = TempAssetFolder.Create("__ExpressionBones_");
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 var idle = Controller.layers[0].stateMachine.AddState("Idle"); idle.writeDefaultValues = false;
                 var descriptor = Fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-                    var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = Controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, Controller);
                 // An object the export leaves out (inactive) and an empty one
                 // the export prunes.
                 var prop = new GameObject("Hidden prop", typeof(MeshFilter), typeof(MeshRenderer));
@@ -165,7 +160,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new GameObject("Marker").transform.SetParent(Fixture.Source.transform, false);
                 if (spring)
                 {
-                    var physBone = Fixture.Source.transform.Find(Joint).gameObject.AddComponent(SdkType(PhysBoneSpringExport.PhysBoneType));
+                    var physBone = Fixture.Source.transform.Find(Joint).gameObject.AddComponent(OptionalTools.Find(PhysBoneSpringExport.PhysBoneType));
                     using var data = new SerializedObject(physBone);
                     data.FindProperty("endpointPosition").vector3Value = new Vector3(0, .1f, 0);
                     data.ApplyModifiedPropertiesWithoutUndo();
@@ -175,7 +170,7 @@ namespace VRVlog.LilToonExporter.Tests
             internal AnimationClip Add(AnimationClip clip) { AssetDatabase.AddObjectToAsset(clip, Controller); return clip; }
 
             internal byte[] Export(List<string> warnings, params AnimationClip[] faces) =>
-                UniVrmOneClickExporter.Export(Fixture.Source, "Expression bones", "Tests", warnings,
+                UniVrmOneClickExporter.Export(Fixture.Source, "Expression bones", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: faces.Select(face => (face.name, face, 0f)).ToList());
 
@@ -343,6 +338,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain("Shown: " + ExporterLocalization.T(ExpressionTransformCurves.HiddenShownWarning) + "Hidden prop"));
         }
 
+        // While the export is off, no face writes bones or visibility, as in
+        // 1.4.2: a face with BlendShapes keeps them, one without is left out.
+        [Test]
+        public void WhileOffNoFaceWritesBonesOrVisibility()
+        {
+            using var off = new ExpressionTransformsSwitch(false);
+            using var scene = new Scene();
+            var nod = scene.Add(Clip("Nod", Held(Shape, 80), Held(Bone(Joint, "localEulerAnglesRaw.y"), 30), Held(Shown("Back"), 0)));
+            var turn = scene.Add(Clip("Turn", Held(Bone(Joint, "localEulerAnglesRaw.z"), 20)));
+            var still = scene.Add(Clip("Still", Held(Shape, 60)));
+            Assert.That(ExpressionTransformCurves.Read(scene.Fixture.Source, nod).Tracks, Is.Empty);
+            var warnings = new List<string>();
+            var bytes = scene.Export(warnings, nod, turn, still);
+            var extension = Extension(bytes);
+            Assert.That(extension.ContainsKey("transforms"), Is.False);
+            Assert.That(ExpressionAnimationData.ReadDocument(extension).Expressions.Select(e => e.Expression),
+                Is.EquivalentTo(new[] { "Nod", "Still" }), string.Join("\n", warnings));
+        }
+
         // Rest-valued bone and visibility curves change nothing in the file.
         [Test]
         public void FacesWithoutBonesOrVisibilityWriteNoTransforms()
@@ -361,5 +375,14 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionAnimationData.ReadDocument(Extension(plain)).Animations.Single().Expression, Is.EqualTo("Wave"));
             Assert.That(withRest, Is.EqualTo(plain));
         }
+    }
+
+    // Turns the export of the expression transforms on or off for one test
+    // and puts the previous state back.
+    internal sealed class ExpressionTransformsSwitch : IDisposable
+    {
+        readonly bool previous = ExpressionTransformCurves.Enabled;
+        internal ExpressionTransformsSwitch(bool enabled) => ExpressionTransformCurves.Enabled = enabled;
+        public void Dispose() => ExpressionTransformCurves.Enabled = previous;
     }
 }

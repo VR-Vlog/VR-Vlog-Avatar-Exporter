@@ -20,6 +20,10 @@ namespace VRVlog.LilToonExporter
     internal sealed class NdmfExportPreparation : IDisposable
     {
         private readonly HashSet<Object> generated = new HashSet<Object>();
+        // Unsaved objects loaded before the build tools ran. They belong to someone
+        // else (a tool's cache, an open window), so clean-up must leave them alive
+        // even when a tool assigned them to the copy.
+        private HashSet<Object> unsavedBeforeBuild;
         // Provenance only for copies made by our own isolation pass. Assets
         // created or replaced by NDMF plugins never enter this identity map.
         private readonly Dictionary<Object, Object> isolatedAssets = new Dictionary<Object, Object>();
@@ -45,7 +49,7 @@ namespace VRVlog.LilToonExporter
         // NDMF tracks asset replacements made by authoring/optimization passes.
         // Keep the optional public registry available to the preparation callback.
         internal object ObjectRegistry { get; private set; }
-        private const string MaNamespace = "nadena.dev.modular_avatar.core.";
+        private const string MaNamespace = ExportTypeNames.MaNamespace;
         // Weak keys keep reference-context markers scoped to owned copies.
         // Authored NDMF markers retain their existing processing semantics.
         private static readonly ConditionalWeakTable<GameObject, CopyAvatarRoot> copyAvatarRoots =
@@ -128,54 +132,204 @@ namespace VRVlog.LilToonExporter
         internal static GameObject InstantiateOwnedCopy(GameObject source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            var host = new GameObject("VRVlog inactive copy staging");
+            try
+            {
+                // HideAndDontSave removes GameObjects from their native scene.
+                // A preview scene provides isolation without invalidating the
+                // scene captured by NDMF diagnostics.
+                return InstantiateInactive(source, "VRVlog inactive copy staging", HideFlags.None, CopyScene(), true, copy =>
+                {
+                    copy.hideFlags = HideFlags.None;
+                    // A Missing Script has no type and appears as a null component.
+                    // Remove it from the owned copy only; the source keeps it.
+                    foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
+                        UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
+                    // The project's own UniVRM components and MToon materials become
+                    // the exporter's vendored ones before any script runs on the copy.
+                    ForeignUniVrm.Adopt(copy);
+                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
+                    {
+                        if (behaviour == null) continue;
+                        var type = behaviour.GetType();
+                        var authoring = IsAuthoringTag(type) || type.GetInterfaces().Any(contract => contract.FullName == "VRC.SDKBase.IEditorOnly");
+                        if (authoring || PreservesExportBehaviour(behaviour)) continue;
+                        var editorCallbacks = ExportTypeNames.SelfAndBaseTypes(type).Any(current => current.GetCustomAttributesData().Any(attribute =>
+                            attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" || attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode"));
+                        // Disabled editor scripts can still receive Awake on activation.
+                        // Remove editor scripts outside export/authoring contracts
+                        // before activation. Preserve inert runtime/metadata enabled
+                        // states: PhysBones and constraints use them during export.
+                        if (behaviour is MonoBehaviour && editorCallbacks) Object.DestroyImmediate(behaviour);
+                        else if (behaviour is Animator) behaviour.enabled = false;
+                    }
+                });
+            }
+            finally { ReleaseUnusedCopyScene(); }
+        }
+
+        // Clones source under an inactive host, moved to scene when it is valid,
+        // so that no copied script runs before prepare has dealt with the
+        // scripts. A hidden avatar (or one under a hidden parent) exports too:
+        // only the copy's own root is shown, still under the host, before it is
+        // taken out of the host. The source is untouched; the host is destroyed
+        // either way, and the copy too when this fails.
+        internal static GameObject InstantiateInactive(GameObject source, string hostName, HideFlags hostFlags, Scene scene,
+            bool worldPositionStays, Action<GameObject> prepare)
+        {
+            var host = new GameObject(hostName) { hideFlags = hostFlags };
             host.SetActive(false);
             GameObject copy = null;
             try
             {
-                SceneManager.MoveGameObjectToScene(host, CopyScene());
-                copy = Object.Instantiate(source, host.transform, true);
-                // HideAndDontSave removes GameObjects from their native scene.
-                // A preview scene provides isolation without invalidating the
-                // scene captured by NDMF diagnostics.
-                copy.name = source.name; copy.hideFlags = HideFlags.None;
-                // A Missing Script has no type and appears as a null component.
-                // Remove it from the owned copy only; the source keeps it.
-                foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
-                    UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
-                // The project's own UniVRM components and MToon materials become
-                // the exporter's vendored ones before any script runs on the copy.
-                ForeignUniVrm.Adopt(copy);
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
-                {
-                    if (behaviour == null) continue;
-                    var type = behaviour.GetType();
-                    var authoring = IsAuthoringTag(type) || type.GetInterfaces().Any(contract => contract.FullName == "VRC.SDKBase.IEditorOnly");
-                    if (authoring || PreservesExportBehaviour(behaviour)) continue;
-                    var editorCallbacks = false;
-                    for (var current = type; current != null; current = current.BaseType)
-                        editorCallbacks |= current.GetCustomAttributesData().Any(attribute => attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" ||
-                            attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode");
-                    // Disabled editor scripts can still receive Awake on activation.
-                    // Remove editor scripts outside export/authoring contracts
-                    // before activation. Preserve inert runtime/metadata enabled
-                    // states: PhysBones and constraints use them during export.
-                    if (behaviour is MonoBehaviour && editorCallbacks) Object.DestroyImmediate(behaviour);
-                    else if (behaviour is Animator) behaviour.enabled = false;
-                }
-                // A hidden avatar (or one under a hidden parent) exports too: only
-                // the owned copy's root is shown, still under the inactive host,
-                // so nothing runs before the cleanup above. The source is untouched.
+                if (scene.IsValid()) SceneManager.MoveGameObjectToScene(host, scene);
+                copy = Object.Instantiate(source, host.transform, worldPositionStays);
+                copy.name = source.name;
+                prepare(copy);
                 if (!copy.activeSelf) copy.SetActive(true);
-                copy.transform.SetParent(null, true);
+                copy.transform.SetParent(null, worldPositionStays);
                 return copy;
             }
             catch { if (copy != null) Object.DestroyImmediate(copy); throw; }
-            finally { Object.DestroyImmediate(host); ReleaseUnusedCopyScene(); }
+            finally { Object.DestroyImmediate(host); }
         }
 #endif
 
-        internal static bool NeedsProcessing(GameObject avatar) => avatar != null && RelevantAuthoring(avatar).Count != 0;
+        internal static bool NeedsProcessing(GameObject avatar) => avatar != null &&
+            (RelevantAuthoring(avatar).Count != 0 || HasPluginToolComponent(avatar));
+
+        // Tools that build through NDMF without MA's or AAO's tag classes
+        // (TexTransTool, lilycalInventory, texture compressors) still have
+        // their plugins run by a VRChat build. A component from a package that
+        // exports an NDMF plugin starts the export build too. With the VRChat
+        // SDK installed, such tools mark their settings IEditorOnly so the
+        // upload strips them; requiring it keeps a package's runtime
+        // components from starting the build.
+        private static HashSet<string> pluginPackages;
+        private static readonly Dictionary<Assembly, string> packageOfAssembly = new Dictionary<Assembly, string>();
+
+        internal static bool HasPluginToolComponent(GameObject avatar)
+        {
+            var packages = ExportTestHooks.PluginPackagesOverride ?? PluginPackages();
+            if (packages.Count == 0) return false;
+            var editorOnly = FindType("VRC.SDKBase.IEditorOnly");
+            return avatar.GetComponentsInChildren<Component>(true).Any(component => component != null &&
+                !IsCopyAvatarRoot(avatar, component) && (editorOnly == null || editorOnly.IsInstanceOfType(component)) &&
+                PackageOf(component.GetType().Assembly) is string package && packages.Contains(package));
+        }
+
+        private static string PackageOf(Assembly assembly)
+        {
+            if (!packageOfAssembly.TryGetValue(assembly, out var package))
+                packageOfAssembly[assembly] = package = PackageInfo.FindForAssembly(assembly)?.name;
+            return package;
+        }
+
+        // Script changes and package installs reload the domain, which clears
+        // this cache together with the assemblies it was read from.
+        private static HashSet<string> PluginPackages() => pluginPackages ?? (pluginPackages =
+            PluginPackages(AppDomain.CurrentDomain.GetAssemblies(), PackageOf(typeof(NdmfExportPreparation).Assembly)));
+
+        // excluded: the exporter's own package, whose test plugins must not
+        // turn its vendored VRM components into build triggers.
+        internal static HashSet<string> PluginPackages(IEnumerable<Assembly> assemblies, string excluded)
+        {
+            var packages = new HashSet<string>();
+            foreach (var assembly in assemblies)
+            {
+                IList<CustomAttributeData> attributes;
+                try { attributes = assembly.GetCustomAttributesData(); }
+                catch (Exception) { continue; }
+                if (attributes.Any(attribute => attribute.AttributeType.FullName == "nadena.dev.ndmf.ExportsPlugin") &&
+                    PackageOf(assembly) is string package && package != excluded)
+                    packages.Add(package);
+            }
+            return packages;
+        }
+
+        // VRCFury builds from the VRChat SDK's preprocess callbacks instead of
+        // NDMF. An upload runs it after NDMF's Transforming phase and before
+        // Optimizing (callback order -10000), so the export runs the same hook
+        // on its copy at that point, or alone when nothing needs NDMF.
+        internal const string VrcFuryCompatibilityMessage =
+            "このバージョンのVRCFuryは書き出しに対応していません\nALCOMでVRCFuryを更新";
+        internal const string VrcFuryFailureMessage =
+            "VRCFuryの処理に失敗しました\nVRCFuryのエラー表示で原因を確認";
+        internal const string VrcFuryNoDescriptorWarning =
+            "VRC Avatar Descriptorが無いためVRCFuryの設定を適用せずに書き出しました";
+        internal const string VrcFuryApplied = "VRCFuryの設定を一時コピーに適用しました";
+        internal static Func<GameObject, bool> VrcFuryOverride;
+
+        // The hook is called directly, so VRCFury's own refusal to build its
+        // test copy again (a patch on the VRChat SDK callbacks) does not run.
+        internal static bool HasVrcFuryComponent(GameObject avatar) => avatar != null &&
+            !avatar.GetComponents<Component>().Any(component => component != null && component.GetType().FullName == "VF.Model.VRCFuryTest") &&
+            avatar.GetComponentsInChildren<Component>(true).Any(component => component != null && IsVrcFuryComponent(component.GetType()));
+
+        private static bool IsVrcFuryComponent(Type type)
+        {
+            // VRCFury itself skips avatars whose only component is its debug info,
+            // and its test copy is an avatar it has already built.
+            if (type.FullName == "VF.Model.VRCFuryDebugInfo" || type.FullName == "VF.Model.VRCFuryTest") return false;
+            return ExportTypeNames.InheritsFrom(type, "VF.Component.VRCFuryComponent");
+        }
+
+        // An upload saves NDMF's build output before VRCFury runs; serialize
+        // does the same here. VRCFury reads each controller's state behaviours
+        // from the saved asset, so a controller NDMF wrote back would reach it
+        // without them (an outfit's parameter drivers, for example).
+        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings, Action serialize = null)
+        {
+            if (!HasVrcFuryComponent(clone)) return;
+            if (!clone.GetComponents<Component>().Any(component => component != null &&
+                component.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
+            {
+                warnings?.Add(VrcFuryNoDescriptorWarning);
+                return;
+            }
+            SkipVrcFuryWriteDefaultsQuestion(clone, FindType("VF.Model.VRCFury"), FindType("VF.Model.Feature.FixWriteDefaults"));
+            serialize?.Invoke();
+            RememberUnsavedObjects();
+            try
+            {
+                bool succeeded;
+                if (VrcFuryOverride != null) succeeded = VrcFuryOverride(clone);
+                else
+                {
+                    var hook = FindType("VF.Hooks.VrcPreuploadHook");
+                    var run = hook?.GetMethod("OnPreprocessAvatar", BindingFlags.Public | BindingFlags.Instance, null,
+                        new[] { typeof(GameObject) }, null);
+                    if (run == null || run.ReturnType != typeof(bool) || hook.GetConstructor(
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null) == null)
+                        throw new InvalidOperationException(VrcFuryCompatibilityMessage);
+                    var instance = Activator.CreateInstance(hook, true);
+                    succeeded = (bool)Invoke(() => run.Invoke(instance, new object[] { clone }));
+                }
+                if (!succeeded) throw new InvalidOperationException(VrcFuryFailureMessage);
+            }
+            finally { CaptureGenerated(clone); }
+            warnings?.Add(VrcFuryApplied);
+        }
+
+        // VRCFury asks on every build whether to fix a mixed Write Defaults
+        // setup, and the answer changes the FX the expressions come from. It
+        // saves the answer on the avatar it finds by a "(Clone)" name, which the
+        // export's copy does not have, so the copy would ask on every export.
+        // Unless the avatar already has a Fix Write Defaults setting, the copy
+        // gets the one "Skip and stop asking" saves, and the FX stays as it is.
+        internal static void SkipVrcFuryWriteDefaultsQuestion(GameObject clone, Type component, Type feature)
+        {
+            var content = component?.GetField("content", BindingFlags.Public | BindingFlags.Instance);
+            var features = component?.GetMethod("GetAllFeatures", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            var mode = feature?.GetField("mode", BindingFlags.Public | BindingFlags.Instance);
+            if (content == null || features == null || mode == null || !content.FieldType.IsAssignableFrom(feature) ||
+                !mode.FieldType.IsEnum || !Enum.IsDefined(mode.FieldType, "Disabled")) return;
+            foreach (var existing in clone.GetComponentsInChildren<Component>(true).Where(component.IsInstanceOfType))
+                if (features.Invoke(existing, null) is System.Collections.IEnumerable list && list.Cast<object>().Any(feature.IsInstanceOfType))
+                    return;
+            var setting = Activator.CreateInstance(feature, true);
+            mode.SetValue(setting, Enum.Parse(mode.FieldType, "Disabled"));
+            content.SetValue(clone.AddComponent(component), setting);
+        }
 
         internal Object IsolatedCopyOf(Object original) => original != null && isolatedAssets.TryGetValue(original, out var copy)
             ? copy : original;
@@ -253,20 +407,30 @@ namespace VRVlog.LilToonExporter
             warnings?.Add(ExporterLocalization.T(LostGeneratedMorphs) + string.Join(", ", lost));
         }
 
+        // IObjectRegistry.GetReference(Object, bool create) of an NDMF build's
+        // registry, or null when the registry is null or does not expose it.
+        internal static MethodInfo RegistryGetReference(object registry) =>
+            registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == ExportTypeNames.NdmfObjectRegistry)
+                ?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
+
+        // The original object the registry records for value, read without
+        // creating a reference. null when the registry cannot be read or records
+        // nothing for value; exceptions from the registry reach the caller.
+        internal static Object RegisteredOriginal(object registry, Object value)
+        {
+            var reference = RegistryGetReference(registry)?.Invoke(registry, new object[] { value, false });
+            return reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)?.GetValue(reference) as Object;
+        }
+
         // NDMF's registry records provenance for diagnostic references. Read its
         // existing references without creating entries or guessing by shape/name.
         // Only one-to-one registered component replacement can carry a channel.
         private void CaptureRendererReplacements(GameObject clone, object context)
         {
             var registry = context?.GetType().GetProperty("ObjectRegistry", BindingFlags.Public | BindingFlags.Instance)?.GetValue(context);
-            var contract = registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-            var getReference = contract?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
-            if (getReference == null) return;
             foreach (var current in clone.GetComponentsInChildren<Renderer>(true))
             {
-                var reference = getReference.Invoke(registry, new object[] { current, false });
-                var original = reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)?.GetValue(reference)
-                    as Renderer;
+                var original = RegisteredOriginal(registry, current) as Renderer;
                 if (ReferenceEquals(original, null)) continue;
                 // A build can retain the original disabled component. Its own
                 // diagnostic reference is not a competing replacement.
@@ -282,9 +446,7 @@ namespace VRVlog.LilToonExporter
 
         private static bool IsAuthoringTag(Type type)
         {
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == MaNamespace + "AvatarTagComponent" ||
-                    current.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
+            if (ExportTypeNames.InheritsFrom(type, ExportTypeNames.MaAvatarTag) || ExportTypeNames.InheritsFrom(type, ExportTypeNames.AaoAvatarTag)) return true;
             return type.GetInterfaces().Any(i => i.FullName == "nadena.dev.ndmf.INDMFEditorOnly" ||
                 i.FullName == "nadena.dev.ndmf.runtime.INDMFEditorOnly");
         }
@@ -307,7 +469,7 @@ namespace VRVlog.LilToonExporter
 
         private static string FollowingProperty(Component component)
         {
-            for (var type = component.GetType(); type != null; type = type.BaseType)
+            foreach (var type in ExportTypeNames.SelfAndBaseTypes(component.GetType()))
             {
                 if (type.FullName == MaNamespace + "ModularAvatarMergeArmature") return "mergeTargetObject";
                 if (type.FullName == MaNamespace + "ModularAvatarBoneProxy") return "target";
@@ -430,7 +592,7 @@ namespace VRVlog.LilToonExporter
             if (!NeedsProcessing(clone))
             {
                 var lease = new NdmfExportPreparation(); lease.CaptureShapes(clone);
-                try { afterTransforming?.Invoke(lease); return lease; }
+                try { lease.ApplyVrcFury(clone, warnings); afterTransforming?.Invoke(lease); return lease; }
                 catch { lease.Dispose(); throw; }
             }
             ValidateSource(clone, deferUnresolvedTargets: true);
@@ -452,8 +614,7 @@ namespace VRVlog.LilToonExporter
             var lease = new NdmfExportPreparation();
             var sourceAssets = Dependencies(source);
             var cloneAssets = Dependencies(clone);
-            var existing = new HashSet<Object>(sourceAssets);
-            existing.UnionWith(cloneAssets);
+            lease.RememberUnsavedObjects();
             var requiredMorphs = ExportMorphs(clone);
             lease.CaptureShapes(clone);
             object context = null;
@@ -504,6 +665,7 @@ namespace VRVlog.LilToonExporter
                         }
                         if (IsSuccessful(bridge, context))
                         {
+                            lease.ApplyVrcFury(clone, warnings, () => Invoke(() => bridge.Serialize.Invoke(context, null)));
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);
@@ -574,7 +736,7 @@ namespace VRVlog.LilToonExporter
                     finally
                     {
                         try { directoryScope?.Dispose(); }
-                        finally { lease.CaptureGenerated(clone, existing); }
+                        finally { lease.CaptureGenerated(clone); }
                     }
                 }
             }
@@ -600,13 +762,8 @@ namespace VRVlog.LilToonExporter
             !clone.GetComponents<Component>().Any(c => c != null && AvatarOptimizerPlatformTypes.Contains(c.GetType().FullName)) &&
             clone.GetComponentsInChildren<Component>(true).Any(IsAvatarOptimizerComponent);
 
-        private static bool IsAvatarOptimizerComponent(Component component)
-        {
-            if (component == null) return false;
-            for (var type = component.GetType(); type != null; type = type.BaseType)
-                if (type.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
-            return false;
-        }
+        private static bool IsAvatarOptimizerComponent(Component component) =>
+            component != null && ExportTypeNames.InheritsFrom(component.GetType(), ExportTypeNames.AaoAvatarTag);
 
         // The lent controller keeps one empty layer: Animator::Sample, which
         // AnimationMode.SampleAnimationClip calls (as plugins that photograph menu
@@ -631,16 +788,7 @@ namespace VRVlog.LilToonExporter
             return failure;
         }
 
-        internal static bool FailedInOptimizing(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error.Data.Contains(OptimizingFailureKey)) return true;
-                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(FailedInOptimizing)) return true;
-                error = error.InnerException;
-            }
-            return false;
-        }
+        internal static bool FailedInOptimizing(Exception error) => ExceptionChain.Any(error, value => value.Data.Contains(OptimizingFailureKey));
 
         private static bool IsSuccessful(Bridge bridge, object context) =>
             Invoke(() => bridge.Successful.GetValue(context)) is bool success && success;
@@ -682,18 +830,19 @@ namespace VRVlog.LilToonExporter
             !(value is GameObject) && !(value is Component) && !(value is Shader) &&
             !(value is ComputeShader) && !(value is MonoScript);
 
-        private static IEnumerable<Object> References(Object value)
+        private static List<Object> References(Object value)
         {
+            var result = new List<Object>();
             // Mesh/texture payloads can contain millions of scalar elements,
             // but do not contain asset references that need remapping here.
-            if (value is Mesh || value is Texture) yield break;
-            using (var serialized = new SerializedObject(value))
+            if (value is Mesh || value is Texture) return result;
+            SerializedReferences.Visit(value, property =>
             {
-                var property = serialized.GetIterator();
-                while (property.Next(true))
-                    if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue != null)
-                        yield return property.objectReferenceValue;
-            }
+                if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue != null)
+                    result.Add(property.objectReferenceValue);
+                return false;
+            });
+            return result;
         }
 
         private static void RequireCopySceneReferences(GameObject clone, HashSet<Object> cloneAssets)
@@ -706,22 +855,19 @@ namespace VRVlog.LilToonExporter
             foreach (var holder in holders)
             {
                 if (holder is Mesh || holder is Texture) continue;
-                using (var serialized = new SerializedObject(holder))
+                SerializedReferences.Visit(holder, property =>
                 {
-                    var property = serialized.GetIterator();
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                        var reference = property.objectReferenceValue;
-                        var target = reference is GameObject gameObject ? gameObject.transform :
-                            (reference as Component)?.transform;
-                        if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
-                            throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
-                                ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
-                                "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
-                                "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
-                    }
-                }
+                    if (property.propertyType != SerializedPropertyType.ObjectReference) return false;
+                    var reference = property.objectReferenceValue;
+                    var target = reference is GameObject gameObject ? gameObject.transform :
+                        (reference as Component)?.transform;
+                    if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
+                        throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
+                            ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
+                            "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
+                            "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
+                    return false;
+                });
             }
         }
 
@@ -771,40 +917,29 @@ namespace VRVlog.LilToonExporter
                         Invoke(() => { set.Invoke(reference, new object[] { target }); return null; });
                     }
                 }
-                using (var serialized = new SerializedObject(component))
+                SerializedReferences.Visit(component, property =>
                 {
-                    var property = serialized.GetIterator();
-                    var changed = false;
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.Generic || property.type != type.Name) continue;
-                        var direct = property.FindPropertyRelative("targetObject");
-                        var path = property.FindPropertyRelative("referencePath");
-                        if (direct?.propertyType != SerializedPropertyType.ObjectReference ||
-                            path?.propertyType != SerializedPropertyType.String || string.IsNullOrEmpty(path.stringValue)) continue;
-                        var stale = direct.objectReferenceValue as GameObject;
-                        if (stale == null || EditorUtility.IsPersistent(stale) || IsWithinCopy(stale.transform, clone)) continue;
-                        var resolved = Invoke(() => resolve.Invoke(null, new object[] { property })) as GameObject;
-                        // Merge Armature's runtime getter includes MA's own
-                        // special handling for duplicated Armature transforms.
-                        // Preserve that effective target instead of choosing one.
-                        if (property.propertyPath == "mergeTarget" && FollowingProperty(component) == "mergeTargetObject")
-                            resolved = ReadFollowingTarget(component, "mergeTargetObject")?.gameObject;
-                        if (resolved == null || !IsWithinCopy(resolved.transform, clone)) continue;
-                        direct.objectReferenceValue = resolved;
-                        changed = true;
-                    }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    if (property.propertyType != SerializedPropertyType.Generic || property.type != type.Name) return false;
+                    var direct = property.FindPropertyRelative("targetObject");
+                    var path = property.FindPropertyRelative("referencePath");
+                    if (direct?.propertyType != SerializedPropertyType.ObjectReference ||
+                        path?.propertyType != SerializedPropertyType.String || string.IsNullOrEmpty(path.stringValue)) return false;
+                    var stale = direct.objectReferenceValue as GameObject;
+                    if (stale == null || EditorUtility.IsPersistent(stale) || IsWithinCopy(stale.transform, clone)) return false;
+                    var resolved = Invoke(() => resolve.Invoke(null, new object[] { property })) as GameObject;
+                    // Merge Armature's runtime getter includes MA's own
+                    // special handling for duplicated Armature transforms.
+                    // Preserve that effective target instead of choosing one.
+                    if (property.propertyPath == "mergeTarget" && FollowingProperty(component) == "mergeTargetObject")
+                        resolved = ReadFollowingTarget(component, "mergeTargetObject")?.gameObject;
+                    if (resolved == null || !IsWithinCopy(resolved.transform, clone)) return false;
+                    direct.objectReferenceValue = resolved;
+                    return true;
+                });
             }
         }
 
-        private static bool IsMaTag(Type type)
-        {
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == MaNamespace + "AvatarTagComponent") return true;
-            return false;
-        }
+        private static bool IsMaTag(Type type) => ExportTypeNames.InheritsFrom(type, ExportTypeNames.MaAvatarTag);
 
         private void IsolateSharedAssets(GameObject clone, HashSet<Object> sourceAssets, HashSet<Object> cloneAssets,
             Action<Material, Material> materialCopyObserver)
@@ -870,28 +1005,37 @@ namespace VRVlog.LilToonExporter
             foreach (var target in targets)
             {
                 if (target is Mesh || target is Texture) continue;
-                using (var serialized = new SerializedObject(target))
-                {
-                    var property = serialized.GetIterator();
-                    var changed = false;
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                        var original = property.objectReferenceValue;
-                        if (original == null || !replacements.TryGetValue(original, out var replacement)) continue;
-                        property.objectReferenceValue = replacement;
-                        changed = true;
-                    }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                SerializedReferences.Replace(target, replacements);
             }
         }
 
-        private void CaptureGenerated(GameObject clone, HashSet<Object> existing)
+        private void RememberUnsavedObjects()
+        {
+            if (unsavedBeforeBuild != null) return;
+            unsavedBeforeBuild = new HashSet<Object>(Resources.FindObjectsOfTypeAll<Object>().Where(value =>
+                !(value is GameObject) && !(value is Component) && !EditorUtility.IsPersistent(value)));
+        }
+
+        private void CaptureGenerated(GameObject clone)
         {
             foreach (var value in Dependencies(clone))
                 if (value != null && !(value is GameObject) && !(value is Component) &&
-                    !EditorUtility.IsPersistent(value) && !existing.Contains(value)) generated.Add(value);
+                    !EditorUtility.IsPersistent(value) && !unsavedBeforeBuild.Contains(value)) generated.Add(value);
+        }
+
+        // NDMF saves every unsaved object the copy references into the temporary
+        // folder, so deleting the folder would destroy these with it.
+        private void TakeOwnObjectsOutOfTemporaryFolder(string folder)
+        {
+            if (unsavedBeforeBuild == null) return;
+            foreach (var value in unsavedBeforeBuild)
+                if (value != null && EditorUtility.IsPersistent(value) &&
+                    AssetDatabase.GetAssetPath(value).StartsWith(folder + "/", StringComparison.Ordinal))
+                {
+                    // The folder must still be deleted, and a failure here must not hide why the export failed.
+                    try { AssetDatabase.RemoveObjectFromAsset(value); }
+                    catch (Exception exception) { Debug.LogWarning("VR Vlog: 一時データから取り出せませんでした: " + value.name + "\n" + exception.Message); }
+                }
         }
 
         private static HashSet<string> ExportMorphs(GameObject root)
@@ -939,6 +1083,7 @@ namespace VRVlog.LilToonExporter
                     // Do not remove a replacement folder or a moved/user asset.
                     if (AssetDatabase.IsValidFolder(path) && AssetDatabase.AssetPathToGUID(path) == guid)
                     {
+                        TakeOwnObjectsOutOfTemporaryFolder(path);
                         if (!AssetDatabase.DeleteAsset(path))
                             Debug.LogWarning("VR Vlog: 書き出しの一時データを削除できませんでした: " + path);
                     }
@@ -1059,7 +1204,7 @@ namespace VRVlog.LilToonExporter
         internal sealed class Bridge
         {
             internal ConstructorInfo Context, DirectoryScope;
-            internal MethodInfo Process, Finish, PrimaryPlatform;
+            internal MethodInfo Process, Finish, Serialize, PrimaryPlatform;
             internal PropertyInfo Successful, AssetSaver, GenericPlatform;
             internal object First, Generating, Transforming, Optimizing;
 
@@ -1087,6 +1232,7 @@ namespace VRVlog.LilToonExporter
                     DirectoryScope = directory.GetConstructor(new[] { typeof(string) }),
                     Process = processor.GetMethod("ProcessAvatar", staticMembers, null, new[] { context, phase, phase }, null),
                     Finish = context.GetMethod("Finish", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null),
+                    Serialize = context.GetMethod("Serialize", publicInstance, null, Type.EmptyTypes, null),
                     Successful = context.GetProperty("Successful", publicInstance),
                     AssetSaver = context.GetProperty("AssetSaver", publicInstance),
                     PrimaryPlatform = registry?.GetMethod("GetPrimaryPlatformForAvatar", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null),
@@ -1097,7 +1243,7 @@ namespace VRVlog.LilToonExporter
                     Optimizing = phase.GetField("Optimizing", staticMembers)?.GetValue(null)
                 };
                 if (result.Context == null || result.DirectoryScope == null || !typeof(IDisposable).IsAssignableFrom(directory) ||
-                    result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) ||
+                    result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) || result.Serialize?.ReturnType != typeof(void) ||
                     result.Successful?.PropertyType != typeof(bool) || result.Successful.GetMethod == null || result.AssetSaver?.GetMethod == null ||
                     (platforms && (result.PrimaryPlatform?.ReturnType != provider || result.GenericPlatform?.PropertyType != provider)) ||
                     !phase.IsInstanceOfType(result.First) || !phase.IsInstanceOfType(result.Generating) || !phase.IsInstanceOfType(result.Transforming) ||

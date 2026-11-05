@@ -25,17 +25,6 @@ namespace VRVlog.LilToonExporter
             internal string Source;
         }
 
-        [Serializable]
-        internal sealed class PoseReference
-        {
-            public string Guid, Name, Category;
-            public long LocalId;
-            public float Time;
-        }
-
-        [Serializable]
-        internal sealed class PoseNameReference { public string Id, Name; }
-
         readonly Dictionary<AnimationClip, HashSet<string>> clipRoots = new Dictionary<AnimationClip, HashSet<string>>();
         // Clips a gesture enters in any of the avatar's controllers. The gesture route exports them even
         // when they change nothing, so the board keeps them.
@@ -128,6 +117,26 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The board's time to read a clip (ClipFaceTime): its BlendShapes on the
+        // avatar's paths, measured from the baseline face, without the meshes
+        // the recorded face leaves out.
+        internal float FaceTime(AnimationClip clip)
+        {
+            if (clip == null) return 0;
+            string root;
+            try { root = ClipRoot(clip); }
+            catch (InvalidOperationException) { root = ""; } // Reading the clip reports it.
+            return ClipFaceTime.Of(clip, binding =>
+            {
+                var path = string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path;
+                if (skippedPaths.Contains(path)) return null;
+                var shape = binding.propertyName.Substring("blendShape.".Length);
+                var row = Baseline?.Rows.FirstOrDefault(candidate => candidate.Path == path);
+                var index = row == null ? -1 : Array.IndexOf(row.Shapes, shape);
+                return index >= 0 ? row.Weights[index] : 0;
+            });
+        }
+
         string ClipRoot(AnimationClip clip)
         {
             if (!clipRoots.TryGetValue(clip, out var roots)) return ""; // Explicit, unregistered .anim uses avatar-relative paths.
@@ -171,12 +180,6 @@ namespace VRVlog.LilToonExporter
         // Button items that select each clip in the FX controller, in menu
         // order. The board reads emotions from them as the quick export reads
         // its menu faces. Nothing here may stop the board from opening.
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar) =>
-            MenuClipPaths(() => VrChatExpressionMenu.Read(avatar));
-
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(Func<VrChatExpressionMenu.Source> read) =>
-            ReadMenuLinks(read).Paths;
-
         // MenuClipPaths and MenuEntriesOutsideBoard from one menu read. A menu
         // that cannot be read gives no paths and a null Outside (unreadable,
         // not "no items"). The record route still drops the menu's faces
@@ -330,7 +333,7 @@ namespace VRVlog.LilToonExporter
             var result = new Dictionary<AnimationClip, string>();
             foreach (var clip in clips.Where(clip => clip != null).Distinct())
             {
-                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, clip.length, "プレビュー"))); }
+                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, FaceTime(clip), "プレビュー"))); }
                 catch (InvalidOperationException error) { result.Add(clip, error.Message); }
             }
             return result;
@@ -358,7 +361,8 @@ namespace VRVlog.LilToonExporter
 
         bool MovesBonesOrVisibility(AnimationClip clip)
         {
-            if (!AnimationUtility.GetCurveBindings(clip).Any(BoneOrShown)) return false;
+            // While the export leaves them out, the face stays out as before.
+            if (!ExpressionTransformCurves.Enabled || !AnimationUtility.GetCurveBindings(clip).Any(BoneOrShown)) return false;
             var root = ClipRoot(clip);
             var target = string.IsNullOrEmpty(root) ? Copy?.transform : Copy?.transform.Find(root);
             // Without the copy's pose a bone curve may move, so the face stays.
@@ -377,6 +381,7 @@ namespace VRVlog.LilToonExporter
 
         // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
         // bones or shows objects stays unsupported there, as before (the preset would lose them).
+        // The same holds for every face while the export does not write bones and visibility.
         Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));
@@ -390,13 +395,14 @@ namespace VRVlog.LilToonExporter
             // them beside the BlendShapes and the board shows the BlendShapes alone. Materials and
             // parameters still make it unsupported.
             var gesture = gestureClips.Contains(clip);
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (presetFace || !BoneOrShown(binding)) &&
+            var blendShapesOnly = presetFace || !ExpressionTransformCurves.Enabled;
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (blendShapesOnly || !BoneOrShown(binding)) &&
                     !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
-                throw new InvalidOperationException((presetFace
-                    ? ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ")
+                throw new InvalidOperationException((blendShapesOnly
+                    ? ExporterLocalization.T("顔の変形以外の変更を含みます。マテリアル・ボーン・表示切替は追加対応が必要です: ")
                     : ExporterLocalization.T("顔の変形・ボーン・表示切替以外の変更を含みます: ")) +
                     unsupported[0].path + " / " + unsupported[0].propertyName);
             if (bindings.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("このクリップにはBlendShapeの表情がありません。全身ポーズはポーズ欄へ追加してください。"));
@@ -467,24 +473,6 @@ namespace VRVlog.LilToonExporter
             }
             Expressions.Clear(); Expressions.AddRange(retained); Expressions.AddRange(staged);
             return staged;
-        }
-
-        static PoseReference SavePoseReference(ManualPose pose)
-        {
-            if (pose.Clip == null || !AssetDatabase.TryGetGUIDAndLocalFileIdentifier(pose.Clip, out string guid, out long id) || string.IsNullOrEmpty(guid))
-                throw new InvalidOperationException(ExporterLocalization.T("ポーズの元クリップをUnityのProjectへ保存してから設定を保存してください。"));
-            return new PoseReference { Guid = guid, LocalId = id, Name = pose.Name, Category = pose.Category, Time = pose.Time };
-        }
-
-        static ManualPose LoadPoseReference(PoseReference reference)
-        {
-            if (reference == null || !Finite(reference.Time) || string.IsNullOrEmpty(reference.Guid))
-                throw new InvalidOperationException(ExporterLocalization.T("ポーズの記録設定が不正です。"));
-            var clip = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(reference.Guid)).OfType<AnimationClip>().FirstOrDefault(candidate =>
-                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(candidate, out string guid, out long id) && id == reference.LocalId);
-            if (clip == null || reference.Time < 0 || reference.Time > clip.length)
-                throw new InvalidOperationException(ExporterLocalization.T("ポーズの元クリップが見つからないか、時刻が範囲外です: ") + reference.Name);
-            return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
         }
     }
 }

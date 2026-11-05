@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.MobileMaterialMath;
 using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
@@ -14,13 +15,13 @@ namespace VRVlog.LilToonExporter
         internal static bool NeedsBake(Material material) => Enabled(material, "_UseMain2ndTex") ||
             Enabled(material, "_UseMain3rdTex") ||
             (material.HasProperty("_MainTexHSVG") && material.GetVector("_MainTexHSVG") != new Vector4(0, 1, 1, 1)) ||
-            Value(material, "_MainGradationStrength") != 0;
+            Float(material, "_MainGradationStrength") != 0;
 
-        internal static bool NeedsLayerAlphaBake(Material material, MaterialBakeOptions options = null) => !IsOpaque(material) &&
-            (Enabled(material, "_UseMain2ndTex") && options?.Omits(material, "2nd") != true && Value(material, "_Main2ndTexAlphaMode") != 0 ||
-             Enabled(material, "_UseMain3rdTex") && options?.Omits(material, "3rd") != true && Value(material, "_Main3rdTexAlphaMode") != 0);
+        internal static bool NeedsLayerAlphaBake(Material material) => !IsOpaque(material) &&
+            (Enabled(material, "_UseMain2ndTex") && Float(material, "_Main2ndTexAlphaMode") != 0 ||
+             Enabled(material, "_UseMain3rdTex") && Float(material, "_Main3rdTexAlphaMode") != 0);
 
-        internal static void ValidateAvatar(GameObject avatar, Func<Transform, bool> excluded = null, MaterialBakeOptions options = null)
+        internal static void ValidateAvatar(GameObject avatar, Func<Transform, bool> excluded = null)
         {
             var issues = new List<MaterialBakeIssue>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
@@ -35,8 +36,8 @@ namespace VRVlog.LilToonExporter
                     if (!LilToonMaterialReader.IsLilToon(material) || !NeedsBake(material)) continue;
                     foreach (var layer in new[] { "2nd", "3rd" })
                     {
-                        if (!Enabled(material, "_UseMain" + layer + "Tex") || options?.Omits(material, layer) == true) continue;
-                        var layerAlpha = NeedsLayerAlphaBake(material, options);
+                        if (!Enabled(material, "_UseMain" + layer + "Tex")) continue;
+                        var layerAlpha = NeedsLayerAlphaBake(material);
                         issues.AddRange(LayerIssues(material, layer, path, layerAlpha));
                         var property = "_Main" + layer + "Tex";
                         if (layerAlpha && !HasSingleUvTile(renderer, slot, material))
@@ -74,37 +75,8 @@ namespace VRVlog.LilToonExporter
             catch (UnityException) { return false; }
         }
 
-        internal static void ApplyOmissions(GameObject avatar, List<Material> materials, ICollection<string> warnings, MaterialBakeOptions options)
-        {
-            if (options == null) return;
-            var copies = new Dictionary<Material, Material>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
-            {
-                var slots = renderer.sharedMaterials;
-                for (var i = 0; i < slots.Length; i++)
-                {
-                    var original = slots[i];
-                    if (!LilToonMaterialReader.IsLilToon(original) || !(options.Omits(original, "2nd") || options.Omits(original, "3rd"))) continue;
-                    if (!copies.TryGetValue(original, out var copy))
-                    {
-                        copy = new Material(original) { name = original.name };
-                        copies.Add(original, copy);
-                        materials.Add(copy);
-                        foreach (var layer in new[] { "2nd", "3rd" })
-                            if (options.Omits(original, layer))
-                            {
-                                copy.SetFloat("_UseMain" + layer + "Tex", 0);
-                                warnings?.Add(original.name + ": 確認した内容に従い、メインカラー" + layer + "を省略しました。");
-                            }
-                    }
-                    slots[i] = copy;
-                }
-                renderer.sharedMaterials = slots;
-            }
-        }
-
         internal static void Prepare(GameObject avatar, List<Material> materials, List<Texture2D> textures,
-            ICollection<string> warnings, bool suppressSharedEmission, bool suppressHdrTextureEmission, MaterialBakeOptions options = null, bool approximationOnly = false)
+            ICollection<string> warnings, bool suppressSharedEmission, bool suppressHdrTextureEmission, bool approximationOnly = false)
         {
             var copies = new Dictionary<Material, Material>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
@@ -121,12 +93,6 @@ namespace VRVlog.LilToonExporter
                         var origin = AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform) + "#" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
                         materials.Add(copy);
                         copies.Add(original, copy);
-                        foreach (var layer in new[] { "2nd", "3rd" })
-                            if (options?.Omits(original, layer) == true && Enabled(copy, "_UseMain" + layer + "Tex"))
-                            {
-                                copy.SetFloat("_UseMain" + layer + "Tex", 0);
-                                warnings?.Add(original.name + ": 確認した内容に従い、メインカラー" + layer + "の模様・文字を出力用コピーから省略しました。");
-                            }
                         // Test before baking changes the main texture's identity.
                         if (LilToonEmissionPolicy.IsSuppressed(original, suppressSharedEmission) ||
                             suppressHdrTextureEmission && LilToonEmissionPolicy.HasHdrTextureEmission(original))
@@ -223,7 +189,7 @@ namespace VRVlog.LilToonExporter
                         var texture = material.GetTexture(property);
                         if (texture == null) continue;
                         var scale = material.GetTextureScale(property);
-                        var angle = Value(material, property + "Angle");
+                        var angle = Float(material, property + "Angle");
                         var c = Math.Abs(Math.Cos(angle)); var s = Math.Abs(Math.Sin(angle));
                         // lilCalcDecalUV rotates mesh UV before applying ST.
                         var w = (texture.width * Math.Abs(scale.x) * c + texture.height * Math.Abs(scale.y) * s) / Math.Abs(mainScale.x);
@@ -240,7 +206,7 @@ namespace VRVlog.LilToonExporter
                     var scale = LilToonMobileProfile.DefaultMaximumTextureSize / (float)Mathf.Max(width, height);
                     width = Mathf.Max(1, Mathf.RoundToInt(width * scale));
                     height = Mathf.Max(1, Mathf.RoundToInt(height * scale));
-                    warnings?.Add(string.Format(ExportNoteText.MainTextureResized, material.name, width, height));
+                    warnings?.Add(ExporterLocalization.Format(ExportNoteText.MainTextureResized, material.name, width, height));
                 }
                 var bakedName = DeterministicNames.Unique(material.name + "__VRVlog_Main_" + DeterministicNames.Hash("Main", origin, material.name),
                     candidate => textures.Exists(texture => texture != null && texture.name == candidate));
@@ -272,7 +238,7 @@ namespace VRVlog.LilToonExporter
         {
             var property = "_Main" + layer + "Tex";
             var layerAlpha = alphaBake ?? NeedsLayerAlphaBake(material);
-            var uvMode = Value(material, property + "_UVMode");
+            var uvMode = Float(material, property + "_UVMode");
             if (uvMode != 0)
                 yield return Issue(material, path, layer, "UV Mode: " + (uvMode == 4 ? "MatCap" : "UV" + uvMode),
                     uvMode == 4 ? "見る方向によって模様の位置が変わる設定です。" : "この模様は、メイン画像とは別のUV（画像の配置）を使っています。",
@@ -284,7 +250,7 @@ namespace VRVlog.LilToonExporter
                         "左右の出し分けを保つ変換は未対応です。このレイヤーを省略して出力することはできます。");
             // Opaque lilToon ignores the stored alpha mode. For cutout and
             // transparent layers, reproduce alpha AND the ensuing RGB blend.
-            var alphaMode = Value(material, property + "AlphaMode");
+            var alphaMode = Float(material, property + "AlphaMode");
             if (!IsOpaque(material) && (!Finite(alphaMode) || alphaMode < 0 || alphaMode > 4 || alphaMode != Mathf.RoundToInt(alphaMode)))
                 yield return Issue(material, path, layer, "透明度の合成: " + alphaMode,
                     "透明度の合成方法が不正です。",
@@ -300,7 +266,7 @@ namespace VRVlog.LilToonExporter
                 var layerScale = material.GetTextureScale(property);
                 var layerOffset = material.GetTextureOffset(property);
                 if (!Finite(layerScale.x) || !Finite(layerScale.y) || layerScale.x == 0 || layerScale.y == 0 ||
-                    !Finite(layerOffset.x) || !Finite(layerOffset.y) || !Finite(Value(material, property + "Angle")))
+                    !Finite(layerOffset.x) || !Finite(layerOffset.y) || !Finite(Float(material, property + "Angle")))
                     yield return Issue(material, path, layer, "レイヤーの配置",
                         "模様の倍率・オフセット・角度が不正なため、透過を焼き込めません。",
                         "倍率を0以外にし、オフセット・角度を確認してください。");
@@ -332,12 +298,12 @@ namespace VRVlog.LilToonExporter
                     "効果を保つ自動変換は未対応です。このレイヤーを省略して出力することはできます。");
             // Matching the material's culling removes only faces the material
             // already hides, so it adds no separate layer-dependent appearance.
-            if (Value(material, property + "_Cull") != 0 && Value(material, property + "_Cull") != Value(material, "_Cull", 2))
-                yield return Issue(material, path, layer, "表示する面: " + (Value(material, property + "_Cull") == 1 ? "裏面のみ" : "表面のみ"),
+            if (Float(material, property + "_Cull") != 0 && Float(material, property + "_Cull") != Float(material, "_Cull", 2))
+                yield return Issue(material, path, layer, "表示する面: " + (Float(material, property + "_Cull") == 1 ? "裏面のみ" : "表面のみ"),
                     "表と裏で模様の表示を分ける設定です。",
                     "表裏の違いを保つ変換は未対応です。このレイヤーを省略して出力することはできます。");
-            if (Value(material, "_Main" + layer + "EnableLighting", 1) != 1)
-                yield return Issue(material, path, layer, "ライティングの適用: " + Value(material, "_Main" + layer + "EnableLighting", 1),
+            if (Float(material, "_Main" + layer + "EnableLighting", 1) != 1)
+                yield return Issue(material, path, layer, "ライティングの適用: " + Float(material, "_Main" + layer + "EnableLighting", 1),
                     "この模様だけ光の影響を変える設定です。メイン画像に混ぜると明るさが変わります。",
                     "照明の違いを保つ変換は未対応です。このレイヤーを省略して出力することはできます。");
             if (Vector(material, "_Main" + layer + "DistanceFade", Vector4.zero).z != 0)
@@ -361,7 +327,7 @@ namespace VRVlog.LilToonExporter
 
         private static bool IsOpaque(Material material)
         {
-            if (material.GetTag("RenderType", false, "") != "Opaque" || Value(material, "_TransparentMode") != 0) return false;
+            if (material.GetTag("RenderType", false, "") != "Opaque" || Float(material, "_TransparentMode") != 0) return false;
             var name = material.shader != null ? material.shader.name : "";
             foreach (var variant in new[] { "Cutout", "Transparent", "Refraction", "Gem", "Fur" })
                 if (name.IndexOf(variant, StringComparison.OrdinalIgnoreCase) >= 0) return false;
@@ -372,7 +338,5 @@ namespace VRVlog.LilToonExporter
 
         private static Vector4 Vector(Material material, string name, Vector4 fallback) =>
             material.HasProperty(name) ? material.GetVector(name) : fallback;
-        private static float Value(Material m, string name, float fallback = 0) => m.HasProperty(name) ? m.GetFloat(name) : fallback;
-        private static bool Enabled(Material m, string name) => Value(m, name) > 0.5f;
     }
 }

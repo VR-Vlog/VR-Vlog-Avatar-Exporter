@@ -7,33 +7,24 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    // The export result list. Before saving it replaces the old yes/no dialog;
-    // after saving the same list opens from "書き出しの詳細". Rows and columns
-    // have fixed sizes so long names never move the layout.
+    // The export result list. It opens once the file is saved or the transfer
+    // has ended, with a heading that says which. Rows and columns have fixed
+    // sizes so long names never move the layout.
     internal sealed class ExportResultWindow : EditorWindow
     {
         internal const string WindowTitle = "VR Vlog 書き出し結果";
-        internal const string PendingTitle = "まだ保存していません";
         internal const string SavedTitle = "VRMを保存しました";
-        // Saved, but a material's shader is missing: the file does not look like the avatar.
-        internal const string SavedWithWarningsTitle = "VRMを保存しました（警告あり）";
-        internal const string SaveButton = "保存する";
-        internal const string ChangeSettingsButton = "設定を変更する";
+        // A material's shader is missing: the file does not look like the avatar.
+        internal const string WarningsTitleFormat = "{0}（警告あり）";
         internal const string CloseButton = "閉じる";
         internal const string AllTab = "すべて";
         internal const string SearchPlaceholder = "名前で絞り込み";
         internal const string EmptyList = "変えた項目はありません";
         internal const string NoMatch = "条件に合う項目はありません";
         internal const string ReloadedList = "スクリプトの再読み込みで一覧が消えました";
-        internal const string ReloadedPending = "保存していません もう一度書き出します";
         internal const string SelectButton = "選択";
         internal const string MissingTarget = "アバターに見つかりません";
         internal const string BlinkButton = "瞬きを設定";
-        internal const string CopyDiagnosticsButton = "診断情報をコピー";
-        internal const string DiagnosticsCopied = "コピーしました";
-        internal const string DiagnosticsHint = "名前やパスは含みません";
-        internal const string NamedDiagnosticsItem = "名前・パスを含めてコピー（DM など非公開の場だけ）";
-
         const float HeaderHeight = 32f, ToolbarHeight = 22f, ColumnHeight = 18f, FooterHeight = 40f;
         const float GroupHeight = 22f, RowHeight = 20f, LineHeight = 18f;
         const float Indent = 24f, OutcomeWidth = 58f, TargetWidth = 150f, ArrowWidth = 18f, LabelWidth = 72f, TabWidth = 78f;
@@ -44,8 +35,11 @@ namespace VRVlog.LilToonExporter
         ExportDiagnostics diagnostics;
         bool diagnosticsCopied;
         GameObject avatar;
-        Action save, changeSettings, openBlinkSettings;
-        [SerializeField] bool pending, saved;
+        Action openBlinkSettings;
+        // Source text of what happened, translated when drawn.
+        [SerializeField] string heading = SavedTitle;
+        // Shown beside the heading when there is no file to name, such as why a transfer failed.
+        [SerializeField] string note = "";
         [SerializeField] string destination = "";
         [SerializeField] int filter = -1;
         [SerializeField] string query = "";
@@ -55,31 +49,15 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<ExportResultRow> expanded = new HashSet<ExportResultRow>();
         GUIStyle titleStyle, mutedStyle, groupStyle, cellStyle, rightMutedStyle, wrappedStyle;
 
-        internal bool IsPending => pending && !saved;
-
-        internal static ExportResultWindow ShowPending(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
-        {
-            var window = Open(result, avatar, openBlinkSettings);
-            window.pending = true; window.saved = false;
-            window.save = save; window.changeSettings = changeSettings;
-            return window;
-        }
-
-        internal static ExportResultWindow ShowSaved(ExportResultList result, GameObject avatar, Action openBlinkSettings)
-        {
-            var window = Open(result, avatar, openBlinkSettings);
-            window.pending = false; window.saved = true;
-            window.save = null; window.changeSettings = null;
-            return window;
-        }
-
-        static ExportResultWindow Open(ExportResultList result, GameObject avatar, Action openBlinkSettings)
+        internal static ExportResultWindow Open(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings)
         {
             var window = GetWindow<ExportResultWindow>(true, ExporterLocalization.T(WindowTitle), true);
             // Wide enough for three buttons on the left and the feedback beside them.
             window.minSize = new Vector2(640f, 420f);
             window.result = result ?? new ExportResultList();
-            window.diagnostics = ExportDiagnostics.Last;
+            window.heading = string.IsNullOrEmpty(heading) ? SavedTitle : heading;
+            window.note = Note(note);
+            window.diagnostics = diagnostics;
             window.diagnosticsCopied = false;
             window.avatar = avatar;
             window.destination = window.result.Destination;
@@ -90,38 +68,6 @@ namespace VRVlog.LilToonExporter
             window.Show();
             window.Focus();
             return window;
-        }
-
-        // Writes the file. A failed write keeps the list open with the error.
-        internal void Save()
-        {
-            if (!IsPending || save == null) return;
-            try
-            {
-                save();
-                saved = true; pending = false; save = null; changeSettings = null;
-                feedback = null; feedbackFailed = false;
-            }
-            catch (Exception error)
-            {
-                feedback = ExporterLocalization.T("保存できませんでした") + " " + error.Message;
-                feedbackFailed = true;
-            }
-            Repaint();
-        }
-
-        internal void ChangeSettings()
-        {
-            var back = changeSettings;
-            save = null; changeSettings = null; pending = false;
-            Close();
-            back?.Invoke();
-        }
-
-        // Closing with the title bar answers neither; say so instead of dropping the export silently.
-        void OnDestroy()
-        {
-            if (IsPending && save != null) Debug.LogWarning(ExporterLocalization.T(ReloadedPending));
         }
 
         static HashSet<string> Collapsed() => new HashSet<string>(SessionState.GetString(CollapsedKey, "")
@@ -145,8 +91,8 @@ namespace VRVlog.LilToonExporter
             wrappedStyle = new GUIStyle(EditorStyles.label) { wordWrap = true };
         }
 
-        static Color Muted => EditorGUIUtility.isProSkin ? new Color(0.62f, 0.62f, 0.62f) : new Color(0.38f, 0.38f, 0.38f);
-        static Color Hairline => EditorGUIUtility.isProSkin ? new Color(0f, 0f, 0f, 0.35f) : new Color(0f, 0f, 0f, 0.15f);
+        static Color Muted => ExporterColors.Muted;
+        static Color Hairline => ExporterColors.Hairline;
         static Color GroupBackground => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.04f) : new Color(0f, 0f, 0f, 0.05f);
         static Color OpenBackground => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.07f) : new Color(0f, 0f, 0f, 0.07f);
 
@@ -173,24 +119,34 @@ namespace VRVlog.LilToonExporter
             DrawFooter(new Rect(0f, position.height - FooterHeight, width, FooterHeight));
         }
 
-        // The heading source text. Before saving the rows already show a missing shader.
-        internal static string Title(bool saved, ExportResultList result) =>
-            !saved ? PendingTitle : result != null && result.MissingShaderCount > 0 ? SavedWithWarningsTitle : SavedTitle;
+        // The heading as shown: what happened, marked when a shader is missing.
+        internal static string Title(string heading, ExportResultList result)
+        {
+            var text = ExporterLocalization.T(heading);
+            return result != null && result.MissingShaderCount > 0 ? string.Format(ExporterLocalization.T(WarningsTitleFormat), text) : text;
+        }
+
+        // Lines joined into one beside the heading; the tooltip shows it all when it is cut.
+        internal static string Note(string text) =>
+            string.Join(" ", (text ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
 
         void DrawHeader(Rect area)
         {
-            var title = ExporterLocalization.T(Title(saved, result));
+            var title = Title(heading, result);
             var titleWidth = titleStyle.CalcSize(new GUIContent(title)).x;
             var line = new Rect(area.x + 10f, area.y + 6f, area.width - 20f, 20f);
-            var right = saved && File.Exists(destination) ? 104f : 0f;
+            // A transfer's own copy has no destination: no file name and no button.
+            var hasFile = !string.IsNullOrEmpty(destination) && File.Exists(destination);
+            var right = hasFile ? 104f : 0f;
             var titleRect = new Rect(line.x, line.y, Mathf.Min(titleWidth, line.width - right), line.height);
             GUI.Label(titleRect, title, titleStyle);
             var file = Path.GetFileName(destination ?? "");
-            if (saved && File.Exists(destination))
+            if (hasFile)
                 file += "・" + EditorUtility.FormatBytes(new FileInfo(destination).Length);
+            var beside = file.Length == 0 && !string.IsNullOrEmpty(note) ? new GUIContent(note, note) : new GUIContent(file, destination);
             GUI.Label(new Rect(titleRect.xMax + 8f, line.y, Mathf.Max(0f, line.width - titleRect.width - 8f - right), line.height),
-                new GUIContent(file, destination), mutedStyle);
-            if (right > 0f && GUI.Button(new Rect(line.xMax - 100f, line.y, 100f, line.height), ExporterLocalization.T("保存先を開く")))
+                beside, mutedStyle);
+            if (right > 0f && GUI.Button(new Rect(line.xMax - 100f, line.y, 100f, line.height), ExporterLocalization.T(ExportResultText.OpenSaveLocation)))
                 EditorUtility.RevealInFinder(destination);
         }
 
@@ -254,7 +210,7 @@ namespace VRVlog.LilToonExporter
             if (result == null)
             {
                 GUI.Label(new Rect(area.x + 10f, area.y + 10f, area.width - 20f, LineHeight),
-                    ExporterLocalization.T(pending ? ReloadedPending : ReloadedList), mutedStyle);
+                    ExporterLocalization.T(ReloadedList), mutedStyle);
                 return;
             }
             var collapsed = Collapsed();
@@ -381,12 +337,7 @@ namespace VRVlog.LilToonExporter
                 x += buttonWidth + 6f;
                 return GUI.Button(rect, ExporterLocalization.T(label));
             }
-            if (IsPending && result != null)
-            {
-                if (Left(ChangeSettingsButton, 120f)) { ChangeSettings(); GUIUtility.ExitGUI(); }
-                if (Left("全文をコピー", 104f)) Copy();
-            }
-            else if (result != null)
+            if (result != null)
             {
                 if (Left("全文をコピー", 104f)) Copy();
                 if (Left("テキスト保存", 104f)) SaveText();
@@ -397,17 +348,16 @@ namespace VRVlog.LilToonExporter
                 // The named text is behind the arrow, with where it may be sent in the item itself.
                 var arrow = new Rect(rect.xMax, y, 20f, 24f);
                 x = arrow.xMax + 6f;
-                var label = ExporterLocalization.T(diagnosticsCopied ? DiagnosticsCopied : CopyDiagnosticsButton);
-                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(DiagnosticsHint)))) CopyDiagnostics(false);
-                if (GUI.Button(arrow, new GUIContent("▾", ExporterLocalization.T(NamedDiagnosticsItem))))
+                var label = ExporterLocalization.T(diagnosticsCopied ? ExportResultText.DiagnosticsCopied : ExportResultText.CopyDiagnostics);
+                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(ExportResultText.DiagnosticsHint)))) CopyDiagnostics(false);
+                if (GUI.Button(arrow, new GUIContent("▾", ExporterLocalization.T(ExportResultText.NamedDiagnosticsItem))))
                 {
                     var menu = new GenericMenu();
-                    menu.AddItem(new GUIContent(ExporterLocalization.T(NamedDiagnosticsItem)), false, () => CopyDiagnostics(true));
+                    menu.AddItem(new GUIContent(ExporterLocalization.T(ExportResultText.NamedDiagnosticsItem)), false, () => CopyDiagnostics(true));
                     menu.DropDown(arrow);
                 }
             }
-            var primary = IsPending && result != null;
-            var buttonWidth = primary ? 112f : 88f;
+            const float buttonWidth = 88f;
             var feedbackRect = new Rect(x + 4f, y + 3f, Mathf.Max(0f, area.xMax - 10f - buttonWidth - 8f - x - 4f), 18f);
             if (!string.IsNullOrEmpty(feedback))
             {
@@ -416,19 +366,12 @@ namespace VRVlog.LilToonExporter
                 GUI.Label(feedbackRect, new GUIContent(feedback, feedback), style);
             }
             var button = new Rect(area.xMax - 10f - buttonWidth, y, buttonWidth, 24f);
-            if (primary)
-            {
-                var background = GUI.backgroundColor;
-                GUI.backgroundColor = EditorGUIUtility.isProSkin ? new Color(0.35f, 0.6f, 1f) : new Color(0.55f, 0.75f, 1f);
-                if (GUI.Button(button, ExporterLocalization.T(SaveButton))) Save();
-                GUI.backgroundColor = background;
-            }
-            else if (GUI.Button(button, ExporterLocalization.T(CloseButton))) { Close(); GUIUtility.ExitGUI(); }
+            if (GUI.Button(button, ExporterLocalization.T(CloseButton))) { Close(); GUIUtility.ExitGUI(); }
         }
 
         void Copy()
         {
-            ExportDetailsText.Copy(result?.Text(LilToonExporterWindow.PackageVersion()));
+            ExportDetailsText.Copy(result?.Text(ExportEntry.PackageVersion()));
             feedback = ExporterLocalization.T("全文をコピーしました");
             feedbackFailed = false;
         }
@@ -442,7 +385,7 @@ namespace VRVlog.LilToonExporter
 
         void SaveText()
         {
-            var text = result?.Text(LilToonExporterWindow.PackageVersion());
+            var text = result?.Text(ExportEntry.PackageVersion());
             var done = ExportDetailsText.Save(text, () => EditorUtility.SaveFilePanel(
                 ExporterLocalization.T("書き出し詳細を保存"), "", "VRVlog-export-details", "txt"), out var error);
             if (done || error != null)

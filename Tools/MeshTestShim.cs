@@ -19,13 +19,17 @@ namespace UnityEngine
         public float GetBlendShapeWeight(int index) => throw new NotSupportedException();
         public void SetBlendShapeWeight(int index, float value) => throw new NotSupportedException();
     }
+    public class MeshRenderer : Renderer { }
+    public class MeshFilter : Component { public Mesh sharedMesh; }
     public struct Vector3
     {
         public float x,y,z;
         public Vector3(float x,float y,float z) { this.x=x;this.y=y;this.z=z; }
         public static Vector3 zero => new Vector3();
+        public float magnitude => (float)Math.Sqrt(x*x+y*y+z*z);
         public static Vector3 operator +(Vector3 a,Vector3 b) => new Vector3(a.x+b.x,a.y+b.y,a.z+b.z);
         public static Vector3 operator -(Vector3 a,Vector3 b) => new Vector3(a.x-b.x,a.y-b.y,a.z-b.z);
+        public static Vector3 operator *(Vector3 a,float d) => new Vector3(a.x*d,a.y*d,a.z*d);
         public static Vector3 LerpUnclamped(Vector3 a,Vector3 b,float t) => new Vector3(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t);
     }
     public struct Vector4

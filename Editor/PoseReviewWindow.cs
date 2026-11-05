@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
             return window;
         }
         void OnEnable() => EditorApplication.update += AdvanceRebuild;
-        void RequestRebuild() { rebuildRequested = true; Repaint(); }
+        internal void RequestRebuild() { rebuildRequested = true; Repaint(); }
 
         // Never rebuild inside a drag/button IMGUI event. Sample at most one
         // candidate per editor update so a batch leaves time for input/repaint.
@@ -100,6 +100,8 @@ namespace VRVlog.LilToonExporter
                     renderer.forceMatrixRecalculationPerRender = true;
                 }
                 var animator = copy.GetComponent<Animator>();
+                // The poses are differences from the T-pose the VRM is written in.
+                AvatarRestPose.AlignArms(animator);
                 foreach (var name in VRVlog.Poses.HumanoidAnimationData.BoneNames)
                 { var bone = animator.GetBoneTransform(PoseSampling.HumanBone(name)); if (bone != null) rest[bone] = bone.rotation; }
                 hipsRest = animator.GetBoneTransform(HumanBodyBones.Hips).position;
@@ -113,6 +115,7 @@ namespace VRVlog.LilToonExporter
         }
         void OnGUI()
         {
+            if (source == null) { Close(); return; }
             ExporterWindowHeader.Layout(ExporterLocalization.T("ポーズを確認・調整"));
             if (options == null) return;
             if (manualOnly) { DrawSimple(); return; }

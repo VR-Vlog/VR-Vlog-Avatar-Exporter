@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -24,8 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__InvariantOwnership_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__InvariantOwnership_");
             avatar = new GameObject("Avatar", typeof(Animator));
             var renderer = new GameObject("Face", typeof(SkinnedMeshRenderer)).GetComponent<SkinnedMeshRenderer>();
             renderer.transform.SetParent(avatar.transform, false); mesh = BaseShapeFixture.Create(); renderer.sharedMesh = mesh;
@@ -37,11 +34,11 @@ namespace VRVlog.LilToonExporter.Tests
             offClip = Clip("Outfit off and face reset", 30, false);
             onClip = Clip("Outfit on and same face reset", 30, true);
             var machine = controller.layers[0].stateMachine;
-            off = State(machine, "Off", offClip); on = State(machine, "On", onClip); machine.defaultState = off;
+            off = FxGraph.State(machine, "Off", offClip); on = FxGraph.State(machine, "On", onClip); machine.defaultState = off;
             var transition = off.AddTransition(on); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Outfit");
             controller.AddLayer("Selected authored face"); var layers = controller.layers; layers[1].defaultWeight = 1;
-            faceClip = Clip("Selected face", 75); face = State(layers[1].stateMachine, "Face", faceClip);
+            faceClip = Clip("Selected face", 75); face = FxGraph.State(layers[1].stateMachine, "Face", faceClip);
             layers[1].stateMachine.defaultState = face; controller.layers = layers;
         }
 
@@ -59,11 +56,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (active.HasValue) AnimationUtility.SetEditorCurve(clip,
                 EditorCurveBinding.FloatCurve("Coat", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, active.Value ? 1 : 0));
             return clip;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
         }
 
         private NeutralShapePlan Plan() => NeutralShapePlan.Create(avatar, controller, new[] { new[] { Morph } },
@@ -85,21 +77,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // Independent witness: run the complete authored graph, rather
             // than the exporter's dependency/probe controller.
-            var clone = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Invariant reset native oracle");
             float expected;
-            try
+            using (var native = new NativeFxPlayback(avatar, controller))
             {
-                var animator = clone.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Face", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                expected = clone.transform.Find("Face").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0);
+                native.Start(); native.Run(120);
+                expected = native.Skin("Face").GetBlendShapeWeight(0);
                 Assert.That(expected, Is.EqualTo(75).Within(.01));
             }
-            finally { graph.Destroy(); Object.DestroyImmediate(clone); }
             var before = ExportSourceFingerprint.Compute(avatar); var controllerBefore = EditorJsonUtility.ToJson(controller);
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, faceClip, entry);
             VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, 1, false,
@@ -139,7 +123,7 @@ namespace VRVlog.LilToonExporter.Tests
             // come through their shared custom input, not clip co-location.
             AnimationUtility.SetEditorCurve(offClip, Morph, null); AnimationUtility.SetEditorCurve(onClip, Morph, null);
             var machine = controller.layers[1].stateMachine;
-            var alternate = State(machine, "Other face", Clip("Other face", varying ? 50 : 75));
+            var alternate = FxGraph.State(machine, "Other face", Clip("Other face", varying ? 50 : 75));
             var transition = face.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Outfit");
             Assert.That(Plan().PreservedMorphs.Contains(Morph), Is.EqualTo(varying));
@@ -179,9 +163,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NativeLayerWeightCommandsKeepIdenticalResetsConservative()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to validate native weight controls.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK to validate native weight controls.");
             var control = face.AddStateMachineBehaviour(type);
             using (var data = new SerializedObject(control))
             {

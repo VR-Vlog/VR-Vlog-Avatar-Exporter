@@ -12,30 +12,19 @@ namespace VRVlog.LilToonExporter
         internal const string BakedFormat = ExportNoteText.ExpressionsAdded;
         internal const string NoneBakedWarning = ExportNoteText.ExpressionsNone;
 
-        private sealed class Channel
-        {
-            internal string Path, Shape;
-            internal SkinnedMeshRenderer Renderer;
-            internal Mesh Mesh;
-            internal float[] Rest;
-            internal bool HasValue;
-            internal float Weight;
-            internal ExpressionAnimationData.Curve Curve;
-        }
-
         private sealed class Pose
         {
             internal SkinnedMeshRenderer Renderer;
             internal Mesh Mesh;
             internal float[] Rest;
-            internal readonly List<Channel> Channels = new List<Channel>();
+            internal readonly List<ExpressionChannelMerge.Channel> Channels = new List<ExpressionChannelMerge.Channel>();
         }
 
         private sealed class Plan
         {
             internal VrChatExpressionMenu.Entry Entry;
             internal readonly List<Pose> Poses = new List<Pose>();
-            internal readonly List<Channel> Animation = new List<Channel>();
+            internal readonly List<ExpressionChannelMerge.Channel> Animation = new List<ExpressionChannelMerge.Channel>();
         }
 
         internal static bool SameCurve(ExpressionAnimationData.Curve first, ExpressionAnimationData.Curve second)
@@ -62,65 +51,28 @@ namespace VRVlog.LilToonExporter
         // Authoring paths retain provenance through NDMF. Baking addresses the
         // final renderer/channel: one pose and one temporal program per channel,
         // with every collision proved compatible before any mesh is changed.
-        private static List<Plan> Prepare(GameObject source, GameObject clone, VrChatExpressionMenu.Source menu,
+        private static List<Plan> Prepare(GameObject clone, VrChatExpressionMenu.Source menu,
             PreparedExpressionBindings prepared)
         {
             var plans = new List<Plan>();
             foreach (var entry in menu.Entries.Where(value => value.Error == null))
             {
-                var origins = new Dictionary<(string Path, string Shape), Channel>();
-                Channel Origin(string path, string shape)
-                {
-                    var key = (path, shape);
-                    if (origins.TryGetValue(key, out var found)) return found;
-                    var binding = prepared?.Get(path);
-                    var original = binding == null ? VrChatExpressionSampler.FindRenderer(source, path) : null;
-                    var mesh = binding?.Mesh ?? original.sharedMesh;
-                    var renderer = binding?.Renderer ?? VrChatExpressionSampler.FindRenderer(clone, path);
-                    var rest = binding?.Weights ?? Enumerable.Range(0, mesh.blendShapeCount).Select(original.GetBlendShapeWeight).ToArray();
-                    var channel = new Channel { Path = path, Shape = shape, Renderer = renderer, Mesh = mesh, Rest = rest };
-                    origins.Add(key, channel); return channel;
-                }
-                InvalidOperationException Conflict(Channel channel) => new InvalidOperationException(
+                InvalidOperationException Conflict(ExpressionChannelMerge.Channel channel) => new InvalidOperationException(
                     "Modular Avatar / NDMF の処理で同じ表情の変形に異なる値・アニメーションが統合されました。統合前の表情設定を一致させてください: " +
                     entry.Name + " / " + UnityEditor.AnimationUtility.CalculateTransformPath(channel.Renderer.transform, clone.transform) + " / " + channel.Shape);
-                foreach (var value in entry.Values)
-                {
-                    var channel = Origin(value.Path, value.Shape);
-                    if (channel.HasValue && !channel.Weight.Equals(value.Weight)) throw Conflict(channel);
-                    channel.HasValue = true; channel.Weight = value.Weight;
-                }
-                foreach (var value in entry.Animation)
-                {
-                    var channel = Origin(value.Path, value.Shape);
-                    if (channel.Curve != null && !SameCurve(channel.Curve, value.Curve)) throw Conflict(channel);
-                    channel.Curve = value.Curve;
-                }
-                // The readers record an animated channel's static value as the
-                // clip's first pose, so a merged value must still match that.
-                // The value itself is not baked: the animation alone moves the
-                // channel, and the VRM expression takes its last frame.
-                foreach (var channel in origins.Values)
-                {
-                    if (channel.Curve != null)
-                    {
-                        var initial = (float)channel.Curve.Evaluate(0);
-                        if (channel.HasValue && !channel.Weight.Equals(initial)) throw Conflict(channel);
-                        channel.Weight = initial;
-                    }
-                }
+                // An animated channel's merged value is not baked: the animation
+                // alone moves the channel, and the VRM expression takes its last frame.
                 var plan = new Plan { Entry = entry };
-                foreach (var group in origins.Values.GroupBy(channel => (channel.Renderer, channel.Shape)))
+                foreach (var channel in ExpressionChannelMerge.Groups(entry, path =>
                 {
-                    var channel = group.First();
-                    foreach (var other in group.Skip(1))
-                    {
-                        if (!channel.Weight.Equals(other.Weight) ||
-                            !(SameCurve(channel.Curve, other.Curve) || ConstantAt(channel.Curve, channel.Weight) && ConstantAt(other.Curve, other.Weight)))
-                            throw Conflict(channel);
-                        if (!ReferenceEquals(channel.Mesh, other.Mesh) || !channel.Rest.SequenceEqual(other.Rest))
-                            throw new InvalidOperationException("処理後の表情の基準形を一意に確定できません: " + entry.Name + " / " + channel.Shape);
-                    }
+                    var binding = prepared.Get(path);
+                    return new ExpressionChannelMerge.Channel { Renderer = binding.Renderer, Mesh = binding.Mesh, Rest = binding.Weights };
+                }, Conflict, sameGroup: (first, other) =>
+                {
+                    if (!ReferenceEquals(first.Mesh, other.Mesh) || !first.Rest.SequenceEqual(other.Rest))
+                        throw new InvalidOperationException("処理後の表情の基準形を一意に確定できません: " + entry.Name + " / " + first.Shape);
+                }))
+                {
                     var pose = plan.Poses.SingleOrDefault(value => value.Renderer == channel.Renderer);
                     if (pose == null)
                     {
@@ -176,14 +128,11 @@ namespace VRVlog.LilToonExporter
             return from >= -10000 && to <= 10000 && from <= minimum && maximum <= to && to > from;
         }
 
-        internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
-            VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings)
-            => Bake(source, clone, menu, meshes, warnings, null);
-
-        // visemeRenderer and visemeShapes are what AvatarBaseShape.Preserve received.
-        internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
+        // visemeRenderer, visemeShapes and defaultFace are what AvatarBaseShape.Preserve received.
+        internal static List<VrmMenuExpressions.Expression> Bake(GameObject clone,
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings,
-            PreparedExpressionBindings prepared, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null)
+            PreparedExpressionBindings prepared, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null,
+            ICollection<(SkinnedMeshRenderer Renderer, string Shape)> defaultFace = null)
         {
             var result = new List<VrmMenuExpressions.Expression>();
             // A viseme exported without the other visemes' rests is not the
@@ -194,13 +143,15 @@ namespace VRVlog.LilToonExporter
             {
                 if (!withoutOtherRests.TryGetValue(skin, out var shapes))
                 {
-                    shapes = AvatarBaseShape.ShapesWithoutOtherRests(mesh, rest, AvatarBaseShape.ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes));
+                    var exclusive = AvatarBaseShape.ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes);
+                    shapes = AvatarBaseShape.ShapesWithoutOtherRests(mesh, rest, exclusive,
+                        AvatarBaseShape.MouthRests(skin, mesh, rest, exclusive, defaultFace));
                     withoutOtherRests.Add(skin, shapes);
                 }
                 return shapes;
             }
-            if (prepared == null) new PreparedExpressionBindings(clone, menu, source).Capture(menu);
-            var plans = Prepare(source, clone, menu, prepared);
+            if (prepared == null) throw new ArgumentNullException(nameof(prepared));
+            var plans = Prepare(clone, menu, prepared);
             foreach (var message in menu.Messages) warnings?.Add(message);
             // A controller-wide limitation or a stale shared curve should not
             // print the same explanation once for every menu item.
@@ -287,13 +238,20 @@ namespace VRVlog.LilToonExporter
                         var index = group.Mesh.GetBlendShapeIndex(value.Shape);
                         if (index >= 0 && value.Weight != group.Rest[index]) expression.Shapes.Add((value.Shape, value.Weight));
                     }
+                // A moving face is still where it holds its face (ClipFaceTime);
+                // the VRM expression is the animation at that time.
+                var faceTime = ClipFaceTime.Of(plan.Animation.Select(animated =>
+                {
+                    var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
+                    return (animated.Curve, index >= 0 ? (double)animated.Rest[index] : 0);
+                }), entry.Duration) ?? entry.Duration;
                 foreach (var animated in plan.Animation)
                 {
                     var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
-                    var end = animated.Curve.Evaluate(entry.Duration);
-                    if (index >= 0 && end != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)end));
+                    var face = ClipFaceTime.Value(animated.Curve, faceTime, entry.Duration);
+                    if (index >= 0 && face != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)face));
                 }
-                // Binds that change the face at time = duration; a zero marker does not.
+                // Binds that change the face at the face time; a zero marker does not.
                 var moved = 0;
                 foreach (var group in plan.Poses)
                 {
@@ -310,7 +268,7 @@ namespace VRVlog.LilToonExporter
                     if (fixedChannels.Length == 0) continue;
                     var rest = group.Rest;
                     var pose = (float[])rest.Clone();
-                    var residual = new List<Channel>();
+                    var residual = new List<ExpressionChannelMerge.Channel>();
                     var direct = 0;
                     foreach (var value in fixedChannels)
                     {
@@ -343,6 +301,7 @@ namespace VRVlog.LilToonExporter
                 if (plan.Animation.Count > 0)
                 {
                     expression.Animation = new ExpressionAnimationData { Duration = entry.Duration, Loop = entry.Loop };
+                    expression.FaceTime = faceTime;
                     var usedTargets = new HashSet<string>(StringComparer.Ordinal);
                     var endsAwayFromRest = false;
                     foreach (var animated in plan.Animation)
@@ -352,7 +311,7 @@ namespace VRVlog.LilToonExporter
                         var shape = original.GetBlendShapeIndex(animated.Shape);
                         if (shape < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + animated.Shape);
                         animated.Curve.Range(out var minimum, out var maximum);
-                        if (animated.Curve.Evaluate(entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
+                        if (ClipFaceTime.Value(animated.Curve, faceTime, entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
                         var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
                         expression.Animation.Channels.Add(channel);
                         if (!WithoutOtherRests(animated.Renderer, original, animated.Rest).Contains(shape) &&
@@ -415,10 +374,11 @@ namespace VRVlog.LilToonExporter
                             channel.Points.Add(new ExpressionAnimationData.Point { Value = weight, Target = target });
                         }
                     }
-                    // Every channel ending at rest is the neutral face even
-                    // when its final points are two binds that cancel out.
+                    // Every channel at rest at the face time is the neutral face
+                    // even when its points there are two binds that cancel out.
                     if (endsAwayFromRest) moved += expression.FinalPoints().Count();
-                    // The loop ends on the neutral face. Keep the expression
+                    // The face time shows the neutral face (a loop that ends
+                    // on it without a hold). Keep the expression
                     // selectable with the shared zero marker unless those
                     // binds already do.
                     if (moved == 0)

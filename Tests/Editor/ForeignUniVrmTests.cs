@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
             var blink = ProjectBlink(true, weight);
             var settings = ProjectSettings(blink);
             Attach(fixture.Source, settings);
-            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Project UniVRM", "Tests"));
+            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Project UniVRM", "Tests", exporterVersion: null));
             var extension = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
             var presets = (Dictionary<string, object>)((Dictionary<string, object>)extension["expressions"])["preset"];
             var exported = (Dictionary<string, object>)presets["blink"];
@@ -171,8 +171,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void AdoptGivesTheCopyBundledComponentsAndMaterialsOnly()
         {
-            var shader = Shader.Find("VRM10/MToon10");
-            if (shader == null) Assert.Ignore("The project has no UniVRM MToon10.");
+            var shader = OptionalTools.RequireShader("VRM10/MToon10", "The project has no UniVRM MToon10.");
             var source = new GameObject("Avatar"); owned.Add(source);
             Attach(source, ProjectSettings(ProjectBlink(true, 1f)));
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube); body.transform.SetParent(source.transform);

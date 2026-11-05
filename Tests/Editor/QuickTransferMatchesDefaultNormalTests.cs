@@ -23,23 +23,19 @@ namespace VRVlog.LilToonExporter.Tests
         const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         static readonly Type Board = typeof(ExperimentalExpressionCaptureWindow);
 
-        // Answers the result list at once, as if the user pressed 保存する, and
-        // keeps its text.
-        sealed class SavingDialog : IExportFallbackDialog
+        // Keeps the text of each result list opened.
+        sealed class SavingDialog
         {
             internal readonly List<string> Texts = new List<string>();
-            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
-            {
+            public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) =>
                 Texts.Add(result.Text());
-                save();
-            }
         }
 
         // What one export wrote and reported.
         sealed class Exported
         {
             internal string Path;
-            // The result list: shown before saving by "通常", logged by "かんたん". Null
+            // The result list: shown after the transfer by "通常", logged by "かんたん". Null
             // when the export worked around nothing.
             internal string ResultList;
             // The detail lines logged after saving.
@@ -47,7 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         string settingsPath, previousSettingsPath, presetPath, previousPresetPath;
-        IExportFallbackDialog originalDialog;
+        Action<ExportResultList, GameObject, string, string, ExportDiagnostics, Action> originalDialog;
         Func<bool> originalBatchMode;
         SavingDialog dialog;
         readonly List<string> files = new List<string>();
@@ -63,7 +59,7 @@ namespace VRVlog.LilToonExporter.Tests
             ExpressionPresetStore.PathOverride = presetPath;
             originalDialog = ExportFallbackConfirmation.Dialog;
             originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
-            ExportFallbackConfirmation.Dialog = dialog = new SavingDialog();
+            ExportFallbackConfirmation.Dialog = (dialog = new SavingDialog()).Show;
             // The test runner may be a batch run; pretend an Editor session so
             // "通常" asks about the result list as it does for a user.
             ExportFallbackConfirmation.IsBatchMode = () => false;
@@ -170,11 +166,10 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
-            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
-            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var previous = ExportTestHooks.ContinueByDefault;
             try
             {
-                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, true);
+                ExportTestHooks.ContinueByDefault = true;
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var (quick, normal) = ExportBoth(fixture.Source);
@@ -185,8 +180,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
-                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+                ExportTestHooks.ContinueByDefault = previous;
                 foreach (var failure in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failure);
                 Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
             }
@@ -202,7 +196,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var other = new AttachmentConnectionTests.Fixture();
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
-            Board.GetField("automaticBlink", Flags).SetValue(window, false);
+            Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
             Board.GetField("autoLightweight", Flags).SetValue(window, true);
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
@@ -391,7 +385,6 @@ namespace VRVlog.LilToonExporter.Tests
             return new[]
             {
                 "page " + window.Page,
-                "automaticBlink " + Board.GetField("automaticBlink", Flags).GetValue(window),
                 "autoLightweight " + Board.GetField("autoLightweight", Flags).GetValue(window),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),
@@ -452,6 +445,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var saved = 0;
                 var logs = Capture(() => Assert.That(transfer.ExportDetailed(avatar, "Avatar", result.Path, () => saved++), Is.Null));
                 Assert.That(saved, Is.EqualTo(1));
+                Assert.That(dialog.Texts.Count, Is.EqualTo(asked), "The result list waits for the transfer to end.");
+                // As the transfer screen does once the transfer has ended.
+                transfer.LastResult()?.Invoke(ExportResultWindow.SavedTitle, null);
                 Assert.That(dialog.Texts.Count - asked, Is.LessThanOrEqualTo(1));
                 result.ResultList = dialog.Texts.Count > asked ? dialog.Texts.Last() : null;
                 result.Details = Details(logs);

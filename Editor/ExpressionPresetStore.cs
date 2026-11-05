@@ -41,10 +41,12 @@ namespace VRVlog.LilToonExporter
         }
 
         [Serializable]
-        sealed class Store
+        sealed class Store : UserSettingsFile.IStore
         {
             public int Version = 1;
             public List<AvatarEntry> Avatars = new List<AvatarEntry>();
+            int UserSettingsFile.IStore.Version => Version;
+            bool UserSettingsFile.IStore.HasAvatars => Avatars != null;
         }
 
         const int MaximumAvatars = 256;
@@ -76,7 +78,7 @@ namespace VRVlog.LilToonExporter
             {
                 try
                 {
-                    var loaded = ExperimentalExpressionCaptureSession.LoadPresetsForStore(value);
+                    var loaded = ExperimentalExpressionCaptureSession.LoadPreset(value);
                     if (!seen.Add(loaded.Preset)) throw new InvalidOperationException();
                     result.Add(loaded);
                 }
@@ -144,10 +146,7 @@ namespace VRVlog.LilToonExporter
             var named = names == null ? previousNames.Where(item => item != null).ToList() : Named(names);
             if (saved.Count > 0 || references.Count > 0 || named.Count > 0)
                 store.Avatars.Add(new AvatarEntry { Avatar = key, Presets = saved, Excluded = references, Names = named });
-            if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
-            var path = FilePath;
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+            UserSettingsFile.Write(FilePath, store, store.Avatars, MaximumAvatars);
         }
 
         // Persisted form references the clip asset, never an instance ID.
@@ -173,34 +172,11 @@ namespace VRVlog.LilToonExporter
 
         // problem is the warning to show instead of saving, when the file is
         // there but from another format version or cannot be read.
-        static Store Read(out string problem)
-        {
-            problem = null;
-            var path = FilePath;
-            try
-            {
-                if (!File.Exists(path)) return null;
-                if (new FileInfo(path).Length > 4 * 1024 * 1024) { problem = Unreadable(path); return null; }
-                var text = File.ReadAllText(path);
-                if (string.IsNullOrWhiteSpace(text)) return null;
-                var store = JsonUtility.FromJson<Store>(text);
-                if (store != null && store.Version != 1) { problem = string.Format(ExporterLocalization.T(OtherVersionFormat), path); return null; }
-                if (store == null || store.Avatars == null) { problem = Unreadable(path); return null; }
-                return store;
-            }
+        static Store Read(out string problem) => UserSettingsFile.Read<Store>(FilePath,
+            path => string.Format(ExporterLocalization.T(OtherVersionFormat), path), Unreadable,
             // A lock or missing permission is not a broken file: deleting it
             // would lose every avatar's choices, so that message does not ask to.
-            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
-            {
-                problem = string.Format(ExporterLocalization.T(CannotOpenFormat), path);
-                return null;
-            }
-            catch (ArgumentException)
-            {
-                problem = Unreadable(path);
-                return null;
-            }
-        }
+            path => string.Format(ExporterLocalization.T(CannotOpenFormat), path), out problem);
 
         internal const string OtherVersionFormat = "表情ボードの選択を記録したファイルが別の版のため、選択を保存しませんでした: {0}";
         internal const string CannotOpenFormat = "表情ボードの選択を記録したファイルを開けないため、選択を保存しませんでした。別のプログラムが使っていないか確かめてください: {0}";

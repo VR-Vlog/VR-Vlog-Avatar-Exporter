@@ -26,10 +26,10 @@ namespace VRVlog.LilToonExporter
         // PhysBone notes, each written as "<PhysBone name>: <sentence>". The first and the last are
         // written for every PhysBone; the others by its settings.
         public const string SpringForces = "揺れの力・減衰・重力はVRM向けの近似です。VRChatと同一の物理演算ではありません。";
-        public const string SpringAdvanced = "Advanced積分／Stiffnessの独立効果は再現せず、PullとSpringから近似しました。";
-        public const string SpringImmobileAllMotion = "Immobile（All Motion）は揺れの強さと減衰を上げて近似しました。";
+        public const string SpringAdvanced = "Advanced積分のPull・Spring・Stiffnessは硬さと減衰に換算しました。";
+        public const string SpringImmobileAllMotion = "Immobile（All Motion）は割合に応じて硬さを上げて近似しました。";
         public const string SpringImmobileWorld = "Immobile（World）はアプリの安定化（揺れの基準をモデルのルートにする）に委ねました。";
-        public const string SpringGravityFalloff = "Gravity Falloffは重力の減衰として近似しました。";
+        public const string SpringGravityFalloff = "Gravity Falloffは書き出し時の角度と揺れの大きさから重力と硬さに換算しました。";
         public const string SpringStretch = "伸縮は保存せず、元のボーン長を保持しました。";
         public const string SpringAnimated = "Is Animatedは出力時の姿勢を基準とします。";
         public const string SpringLimit = "角度制限はUniVRMの制限へ近似しました。PolarのZ角度は0〜90度に制限します。";

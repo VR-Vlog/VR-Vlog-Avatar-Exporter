@@ -46,6 +46,12 @@ HISTORICAL_RELEASE_PATH = "/mitsuya0077/VR-Vlog-lilToon-Exporter/releases/downlo
 RELEASE_PATHS = (RELEASE_PATH, PREVIOUS_RELEASE_PATH, HISTORICAL_RELEASE_PATH)
 MAX_LISTING_BYTES = 4 * 1024 * 1024
 MAX_FILE_BYTES = 4 * 1024 * 1024
+# Read-only, never through a symlink in the final component, never blocking on a
+# special file. Windows has no O_NOFOLLOW or O_NONBLOCK, so there only the lstat
+# check before each open rejects a symlink, not one swapped in after it; publishing
+# runs on Linux CI. O_BINARY keeps the bytes raw on Windows.
+SAFE_READ_FLAGS = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                   | getattr(os, "O_BINARY", 0))
 MAX_PUBLICATION_BYTES = 8 * 1024 * 1024
 MAX_API_BYTES = 8 * 1024 * 1024
 MAX_FILES = 1000
@@ -408,7 +414,7 @@ def read_publication(root):
             relative = safe_path(path.relative_to(root).as_posix())
             # Pin the final component, reject a raced-in special file, and bound
             # the actual read even if the file grows after its metadata check.
-            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            descriptor = os.open(path, SAFE_READ_FLAGS)
             with os.fdopen(descriptor, "rb") as stream:
                 require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Publication contains a non-regular file")
                 raw = stream.read(MAX_FILE_BYTES + 1)

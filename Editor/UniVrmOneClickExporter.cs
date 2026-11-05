@@ -7,6 +7,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
+using static VRVlog.LilToonExporter.MobileMaterialMath;
 
 namespace VRVlog.LilToonExporter
 {
@@ -129,13 +130,9 @@ namespace VRVlog.LilToonExporter
             if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
-        // Tests throw here to prove that a failure after the build passes,
-        // outside every stage, does not stop a lenient export.
-        internal static Action<GameObject> ConversionFaultInjection;
-
-        public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
-            string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
-            IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
+        public static byte[] Export(GameObject source, string avatarName, string author, string exporterVersion, ICollection<string> warnings = null,
+            bool suppressSharedTextureEmission = false, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
@@ -168,7 +165,7 @@ namespace VRVlog.LilToonExporter
             {
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
-                    suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
+                    suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
                     authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight);
             }, failure => report.Fallbacks.Clear());
             try
@@ -264,7 +261,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // An animated expression whose loop ends neutral shows no change in
-        // apps that only read the VRM expression. Ask before saving.
+        // apps that only read the VRM expression. Listed after saving.
         internal static void RecordExpressionsEndingNeutral(IEnumerable<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
         {
             foreach (var expression in expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>())
@@ -307,7 +304,7 @@ namespace VRVlog.LilToonExporter
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
         internal const string ApproximatedLilToonReason = "lilToon 2.3.4とプロパティが合わないためMToonで近似します";
-        internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
+        internal const string StandardMaterialLimitWarning = "標準VRMのマテリアルが{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
         internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
 
         // A file without the lilToon extension is not checked against the app's
@@ -320,7 +317,7 @@ namespace VRVlog.LilToonExporter
             {
                 var reason = string.Format(ExporterLocalization.T(StandardMaterialLimitWarning), materials, LilToonMobileProfile.MaximumMaterials);
                 warnings?.Add(reason);
-                report.Fallbacks.Record(ExportOutcome.Kept, category, ExporterLocalization.T("標準VRMの材質"), reason, materials);
+                report.Fallbacks.Record(ExportOutcome.Kept, category, ExporterLocalization.T("標準VRMのマテリアル"), reason, materials);
             }
             if (textures > LilToonMobileProfile.MaximumTextures)
             {
@@ -367,11 +364,8 @@ namespace VRVlog.LilToonExporter
         internal static List<(Material Material, Renderer Renderer)> MissingShaderMaterials(GameObject root, Func<Material, Material> original = null)
         {
             var found = new List<(Material Material, Renderer Renderer)>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(root))
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(root))
             {
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 foreach (var slot in renderer.sharedMaterials)
                 {
                     if (slot == null || slot.shader != null && slot.shader.name != MissingShaderName) continue;
@@ -417,14 +411,14 @@ namespace VRVlog.LilToonExporter
             {
                 diagnostics.TryGetValue(omission.Stage, out var found);
                 report.Fallbacks.AddStage(omission.Stage, omission.Error.Message, found);
-                warnings?.Add(ExporterLocalization.T("書き出しの一部を省略しました") + ": " +
+                warnings?.Add(ExporterLocalization.T(StageOmittedWarning) + ": " +
                     ExportStageGuard.DisplayName(omission.Stage) + " — " + omission.Error.Message);
             }
         }
 
         static byte[] ExportCore(GameObject source, string avatarName, string author, ICollection<string> warnings, bool suppressSharedTextureEmission,
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
-            MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
+            ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
@@ -503,7 +497,7 @@ namespace VRVlog.LilToonExporter
                 // Source getters can use an enclosing root or no root at all.
                 guard.Step(ExportStage.CopyValidation, () => NdmfExportPreparation.ValidateCopy(source, clone,
                     target => exclusions.ContainsCopyTransform(clone, target)));
-                var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport, bakeOptions);
+                var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
                 // Lip Sync captured before the caller removed the descriptor
                 // follows this copy and the optimizer the same way as blink.
@@ -516,11 +510,9 @@ namespace VRVlog.LilToonExporter
                 recovery?.Apply(warnings);
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(null, menu, warnings));
-                if (exporterVersion == null) LilToonMainTextureBaker.ValidateAvatar(clone, options: bakeOptions);
-                // Omission consent follows source identity before plugins clone
-                // materials. All actual baking waits for the final appearance.
-                if (exporterVersion == null) LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);
-                var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone);
+                // All actual baking waits for the final appearance.
+                if (exporterVersion == null) LilToonMainTextureBaker.ValidateAvatar(clone);
+                var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone) || NdmfExportPreparation.HasVrcFuryComponent(clone);
                 if (requiresPreparation)
                     SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
                 var unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
@@ -606,6 +598,9 @@ namespace VRVlog.LilToonExporter
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", "", reason);
                         }
                     }
+                    // After the build passes, which match clothing to the bones as
+                    // authored, and before anything below reads the rest pose.
+                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>());
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     // The faces are the board's list: its clips are read as the
@@ -684,6 +679,8 @@ namespace VRVlog.LilToonExporter
                         if (lenient) RecordLostMenuExpressions(menu, recoveryReport);
                         RecordSettledMenuExpressions(menu, recoveryReport);
                     });
+                    // Read before blink.Bake renames its shapes to the generated ones.
+                    var defaultFace = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.DefaultFace(neutral, fxRest, blink.Slots.SelectMany(slot => slot)));
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     VrChatVisemeExport.Captured visemes = null;
                     guard.Watch(ExportStage.Expressions, () =>
@@ -692,11 +689,11 @@ namespace VRVlog.LilToonExporter
                         // or as captured when the caller removed the descriptor.
                         visemes = capturedVisemes ?? VrChatVisemeExport.Read(clone);
                         AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings,
-                            visemeRenderer: visemes?.Renderer, visemeShapes: visemes?.Exclusive);
+                            visemeRenderer: visemes?.Renderer, visemeShapes: visemes?.Exclusive, defaultFace: defaultFace);
                         authoredEndpoints.Bake(temporaryMeshes);
                     });
                     expressions = guard.Step(ExportStage.Expressions,
-                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive), () => new List<VrmMenuExpressions.Expression>());
+                        () => VrChatExpressionBaker.Bake(clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive, defaultFace), () => new List<VrmMenuExpressions.Expression>());
                     guard.Watch(ExportStage.Expressions, () => RecordExpressionsEndingNeutral(expressions, recoveryReport));
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.
@@ -747,7 +744,7 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 DropEmptySubmeshes(clone, temporaryMeshes, warnings);
-                recoveryReport.Stage = "材質保存";
+                recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
                 // below would hide which materials had lost their shader.
@@ -789,7 +786,7 @@ namespace VRVlog.LilToonExporter
                 if (withoutLilToon && !guard.ContinueOnFailure &&
                     ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
                         .Any(material => LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)))
-                    throw new InvalidOperationException("公式lilToon材質が見つかりません。");
+                    throw new InvalidOperationException("公式lilToonマテリアルが見つかりません。");
                 if (withoutLilToon && guard.ContinueOnFailure)
                     foreach (var material in ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
                                  .Where(material => material != null && LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)).Distinct())
@@ -820,7 +817,7 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
-                recoveryReport.Stage = "材質保存";
+                recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // MToon's outline width does not follow the renderer scale that lilToon's
                 // does. Measured here because texture baking swaps every lilToon slot for
@@ -849,7 +846,7 @@ namespace VRVlog.LilToonExporter
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
-                ConversionFaultInjection?.Invoke(clone);
+                ExportTestHooks.ConversionFaultInjection?.Invoke(clone);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -897,7 +894,7 @@ namespace VRVlog.LilToonExporter
                     RecordMergedExpressions(expressions, recoveryReport);
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
-                    var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
+                    var output = VrmExpressionBindings.AddMissing(menuOutput, warnings,
                         inferEmotions: inferEmotionPresets, filledPresets: filled,
                         emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
                         emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,
@@ -1037,7 +1034,7 @@ namespace VRVlog.LilToonExporter
                     var original = slots[i];
                     if (original == null) continue;
                     var official = ExportRecoveryReport.Official(original);
-                    if (!controls.Any(property => original.HasProperty(property) && original.GetFloat(property) != 0) &&
+                    if (!controls.Any(property => NonZero(original, property)) &&
                         !(official && original.HasProperty("_UseAudioLink") && audioKeywords.Any(original.IsKeywordEnabled))) continue;
                     if (!replacements.TryGetValue(original, out var material))
                     {
@@ -1117,14 +1114,7 @@ namespace VRVlog.LilToonExporter
                 mesh.subMeshCount = kept.Length;
                 for (var sub = 0; sub < kept.Length; sub++)
                     mesh.SetIndices(original.GetIndices(kept[sub]), original.GetTopology(kept[sub]), sub, false);
-                if (skin == null) filter.sharedMesh = mesh;
-                else
-                {
-                    var weights = new float[original.blendShapeCount];
-                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
-                    skin.sharedMesh = mesh;
-                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
-                }
+                ReplaceMesh(skin, filter, mesh);
                 renderer.sharedMaterials = materials;
                 warnings?.Add(ExporterLocalization.T(EmptySubmeshesOmitted) +
                     (renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform)));
@@ -1145,15 +1135,18 @@ namespace VRVlog.LilToonExporter
                 var copy = UnityEngine.Object.Instantiate(mesh);
                 copy.name = mesh.name;
                 owned.Add(copy);
-                if (skin == null) filter.sharedMesh = copy;
-                else
-                {
-                    var weights = new float[mesh.blendShapeCount];
-                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
-                    skin.sharedMesh = copy;
-                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
-                }
+                ReplaceMesh(skin, filter, copy);
             }
+        }
+
+        // Puts mesh on the skin, keeping its BlendShape weights, or else on the filter.
+        static void ReplaceMesh(SkinnedMeshRenderer skin, MeshFilter filter, Mesh mesh)
+        {
+            if (skin == null) { filter.sharedMesh = mesh; return; }
+            var weights = new float[skin.sharedMesh.blendShapeCount];
+            for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
+            skin.sharedMesh = mesh;
+            for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
         }
 
         // UniVRM 0.131 ModelExporter skips a renderer without vertices or
@@ -1286,9 +1279,18 @@ namespace VRVlog.LilToonExporter
             return converted;
         }
 
-        internal const string MissingMaterialsError = "表示中のメッシュに材質が1つも割り当てられていないため、書き出せません。材質の参照が切れている可能性があります。元のアバターで材質を割り当ててください: ";
-        internal const string MaterialApproximatedWarning = "変換できなかった材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
-        internal const string NonLilToonWarning = "lilToon以外の材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
+        internal const string MissingMaterialsError = "表示中のメッシュにマテリアルが1つも割り当てられていないため、書き出せません。マテリアルの参照が切れている可能性があります。元のアバターでマテリアルを割り当ててください: ";
+        internal const string StageOmittedWarning = "書き出しの一部を省略しました";
+        internal const string MaterialApproximatedWarning = "変換できなかったマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
+        internal const string NonLilToonWarning = "lilToon以外のマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
+
+        static string MarkedProperty(Material material, UnityEngine.Rendering.ShaderPropertyFlags flag)
+        {
+            var shader = material.shader;
+            for (var i = 0; shader != null && i < shader.GetPropertyCount(); i++)
+                if ((shader.GetPropertyFlags(i) & flag) != 0) return shader.GetPropertyName(i);
+            return null;
+        }
 
         internal static Material CreateMToonDefault(Material source, List<Material> created)
         {
@@ -1296,9 +1298,15 @@ namespace VRVlog.LilToonExporter
             if (shader == null) throw new InvalidOperationException("UniVRMのMToon10シェーダーを利用できません。");
             var material = new Material(shader) { name = source.name };
             created.Add(material);
-            var mainName = source.HasProperty("_MainTex") ? "_MainTex" : source.HasProperty("_BaseMap") ? "_BaseMap" : null;
-            var main = mainName != null ? source.GetTexture(mainName) as Texture2D : null;
-            var color = source.HasProperty("_Color") ? source.GetColor("_Color") : source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") : UnityEngine.Color.white;
+            // The properties the shader marks with [MainTexture]/[MainColor] come
+            // first; an empty mark falls back to the common names, as the
+            // substitution does.
+            Texture2D main = null; string mainName = null;
+            foreach (var name in new[] { MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainTexture), "_MainTex", "_BaseMap" })
+                if (name != null && source.HasProperty(name) && (main = source.GetTexture(name) as Texture2D) != null) { mainName = name; break; }
+            var colorName = MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainColor) ??
+                (source.HasProperty("_Color") ? "_Color" : source.HasProperty("_BaseColor") ? "_BaseColor" : null);
+            var color = colorName != null ? source.GetColor(colorName) : UnityEngine.Color.white;
             // Flat toon: the shade color equals the base color, so no shading band appears.
             var shaderName = source.shader != null ? source.shader.name : "";
             var cutout = shaderName.IndexOf("Cutout", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -1332,13 +1340,13 @@ namespace VRVlog.LilToonExporter
             if (shader == null) throw new InvalidOperationException("UniVRMのMToon10シェーダーを利用できません。");
             var material = new Material(shader) { name = source.name };
             created.Add(material);
-            var shadowEnabled = source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > 0.5f;
-            var backlightEnabled = source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > 0.5f;
+            var shadowEnabled = Enabled(source, "_UseShadow");
+            var backlightEnabled = Enabled(source, "_UseBacklight");
             var normalEnabled = EnabledOrTexture(source, "_UseBumpMap", "_BumpMap");
             var emissionEnabled = EnabledOrTexture(source, "_UseEmission", "_EmissionMap") &&
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
             var matcapAdditive = MatcapAdditive(source);
-            var rimEnabled = source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > 0.5f;
+            var rimEnabled = Enabled(source, "_UseRim");
             var hidden = HiddenInFallback(source);
             var outlineEnabled = !hidden && LilToonMaterialReader.HasPortableOutline(source);
             var shadeTexture = ShadeTexture(source);
@@ -1442,7 +1450,7 @@ namespace VRVlog.LilToonExporter
                     if (HiddenInFallback(source)) color.a = 0f;
                     return color;
                 case MaterialColorType.shadeColor:
-                    if (!(source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f)) return Color(source, "_Color", UnityEngine.Color.white);
+                    if (!Enabled(source, "_UseShadow")) return Color(source, "_Color", UnityEngine.Color.white);
                     var shade = MobileMaterialMath.Shadow2ndShade(Color(source, "_ShadowColor", UnityEngine.Color.gray), Color(source, "_Shadow2ndColor", UnityEngine.Color.clear),
                         Float(source, "_ShadowBorder", 0.5f), Float(source, "_Shadow2ndBorder", 0.15f));
                     // The shade image is the main image unless a shadow color
@@ -1458,10 +1466,10 @@ namespace VRVlog.LilToonExporter
                         * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) * LilToonEmissionPolicy.GradientFactor(source) : UnityEngine.Color.black;
                 case MaterialColorType.matcapColor: return MatcapAdditive(source)
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
-                case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
+                case MaterialColorType.rimColor: return Enabled(source, "_UseRim")
                     ? MobileMaterialMath.MatcapColor(Color(source, "_RimColor", UnityEngine.Color.black), 1f)
                     // lilToon 2.x scales backlight by its color alpha, like the rim above.
-                    : source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > .5f
+                    : Enabled(source, "_UseBacklight")
                         ? MobileMaterialMath.MatcapColor(Color(source, "_BacklightColor", UnityEngine.Color.black), 1f) : UnityEngine.Color.black;
                 case MaterialColorType.outlineColor: return Color(source, "_OutlineColor", UnityEngine.Color.black);
                 default: throw new ArgumentOutOfRangeException(nameof(type));
@@ -1480,7 +1488,6 @@ namespace VRVlog.LilToonExporter
             return mode == 1 ? MToon10AlphaMode.Cutout : mode == 2 ? MToon10AlphaMode.Transparent : MToon10AlphaMode.Opaque;
         }
 
-        private static float Float(Material material, string property, float fallback) => material.HasProperty(property) ? material.GetFloat(property) : fallback;
         private static Color Color(Material material, string property, Color fallback) => material.HasProperty(property) ? material.GetColor(property) : fallback;
         private static Texture Texture(Material material, string property) => material.HasProperty(property) ? material.GetTexture(property) : null;
         private static Texture ShadeTexture(Material material)
@@ -1489,14 +1496,12 @@ namespace VRVlog.LilToonExporter
             return texture == Texture2D.whiteTexture ? null : texture;
         }
         private static bool EnabledOrTexture(Material material, string enableProperty, string textureProperty) =>
-            material.HasProperty(enableProperty)
-                ? material.GetFloat(enableProperty) > 0.5f
-                : Texture(material, textureProperty) != null;
+            material.HasProperty(enableProperty) ? Enabled(material, enableProperty) : Texture(material, textureProperty) != null;
 
         // MToon adds its MatCap. lilToon's multiply mode (3) darkens instead,
         // so adding it would brighten the surface; such a MatCap is omitted.
         private static bool MatcapAdditive(Material material) =>
-            material.HasProperty("_UseMatCap") && material.GetFloat("_UseMatCap") > 0.5f &&
+            Enabled(material, "_UseMatCap") &&
             Mathf.RoundToInt(Float(material, "_MatCapBlendMode", 1f)) != 3;
     }
 }

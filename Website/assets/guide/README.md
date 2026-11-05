@@ -7,3 +7,5 @@
 - unity-qr-transfer.png: replacement screenshot supplied by the site owner. The avatar name in the window title and fields and the author name are replaced with generic words; nothing else is changed.
 - phone-receive.webp: the app's avatar receipt confirmation screen captured in the Android emulator.
 - vcc-add-repository.webp, vcc-repositories.webp, vcc-installed-version.webp: reference screenshots from the VRChat Creator Companion documentation, clearly credited and linked in the page. Source: https://vcc.docs.vrchat.com/guides/community-repositories/
+
+- tutorial-first-frame.png: the unmodified frame at exactly 0.0 seconds from the existing published October 28 tutorial (`public/guide/vrvlog-start-guide.mp4`, Git blob `4df4b1a38ec92b5a98601e161c8f56e029b69ca8`, 11,833,830 bytes) in the official website repository. Extracted with macOS AVFoundation using zero time tolerance, 1920×1080. No video, subtitle, audio, or frame-content changes.

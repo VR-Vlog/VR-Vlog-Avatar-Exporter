@@ -213,9 +213,11 @@ namespace VRVlog.LilToonExporter.Tests
         // the kept ones needs one frame at 100. The base is the original plus
         // every rest. A shape at full weight ends at the original base plus its
         // frame plus the rest of the other shapes, leaving out the other group
-        // shapes when it is in the group (VRChat shows one viseme at a time).
+        // shapes when it is in the group (VRChat shows one viseme at a time),
+        // and the mouth shapes, the default mouth a viseme takes off.
         // Kept shapes are exported exactly as authored.
-        internal static string RebasedAsVrChatShows(Mesh source, float[] weights, string[] group, string[] kept, Mesh baked)
+        internal static string RebasedAsVrChatShows(Mesh source, float[] weights, string[] group, string[] kept, Mesh baked,
+            string[] mouth = null)
         {
             var n = source.vertexCount;
             var count = source.blendShapeCount;
@@ -270,7 +272,8 @@ namespace VRVlog.LilToonExporter.Tests
                     {
                         var expected = original[part][v] + frame[part][v];
                         for (var other = 0; other < count; other++)
-                            if (other != shape && !(inGroup && Array.IndexOf(group, source.GetBlendShapeName(other)) >= 0))
+                            if (other != shape && !(inGroup && (Array.IndexOf(group, source.GetBlendShapeName(other)) >= 0 ||
+                                Array.IndexOf(mouth ?? Array.Empty<string>(), source.GetBlendShapeName(other)) >= 0)))
                                 expected += rests[other][part][v];
                         if (!Near(expected, actualBase[part][v] + exported[part][v])) return $"{name}: {parts[part]} of vertex {v} at full weight.";
                     }

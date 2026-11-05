@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
             window.message = exception.Message;
             window.technicalDetails = exception.ToString();
             var report = ExportRecoveryReport.FromException(null, exception);
-            window.supportText = report.BuildSupportText(LilToonExporterWindow.PackageVersion());
+            window.supportText = report.BuildSupportText(ExportEntry.PackageVersion());
             window.SetIssues(report.Diagnostics);
             window.ShowUtility();
         }
@@ -86,7 +86,7 @@ namespace VRVlog.LilToonExporter
         {
             message = session.WasCanceled ? ExporterLocalization.T("キャンセル") : session.Failure?.Message;
             technicalDetails = session.Failure?.ToString();
-            supportText = session.Report?.BuildSupportText(LilToonExporterWindow.PackageVersion()) ?? "";
+            supportText = session.Report?.BuildSupportText(ExportEntry.PackageVersion()) ?? "";
             selected.Clear();
             foreach (var action in session.SelectedOptions.Actions) selected.Add(action.Id);
             var diagnostics = (session.Report?.Diagnostics ?? new List<ExportRecoveryDiagnostic>())
@@ -106,7 +106,7 @@ namespace VRVlog.LilToonExporter
         private void SetIssues(IEnumerable<ExportRecoveryDiagnostic> diagnostics)
         {
             var all = diagnostics.Where(issue => issue != null).ToArray();
-            fullDetails = ExportDetailsText.Failure(message, technicalDetails, all, LilToonExporterWindow.PackageVersion());
+            fullDetails = ExportDetailsText.Failure(message, technicalDetails, all, ExportEntry.PackageVersion());
             detailsFeedback = null;
             detailsSaveFailed = false;
             issues.Clear();

@@ -25,26 +25,25 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var descriptorType = SdkType("VRCAvatarDescriptor");
-            if (descriptorType == null || SdkType("VRCAnimatorLayerControl") == null || SdkType("VRCPlayableLayerControl") == null)
+            var descriptorType = VrcAvatar.ComponentType("VRCAvatarDescriptor");
+            if (descriptorType == null || VrcAvatar.ComponentType("VRCAnimatorLayerControl") == null || VrcAvatar.ComponentType("VRCPlayableLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__AdditionalPlayableCallbacks_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__AdditionalPlayableCallbacks_");
             fx = Controller("FX"); action = Controller("Additional");
             fx.AddParameter("Menu", AnimatorControllerParameterType.Int);
-            opening = State(fx.layers[0].stateMachine, "Opening", Morph(75)); fx.layers[0].stateMachine.defaultState = opening;
-            var selected = State(fx.layers[0].stateMachine, "Selected", Morph(100));
-            Transition(opening, selected).AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            opening = FxGraph.State(fx.layers[0].stateMachine, "Opening", Morph(75)); fx.layers[0].stateMachine.defaultState = opening;
+            var selected = FxGraph.State(fx.layers[0].stateMachine, "Selected", Morph(100));
+            FxGraph.Transition(opening, selected).AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
             fx.AddLayer("Unrelated native support");
             var layers = fx.layers; layers[1].defaultWeight = 1; fx.layers = layers;
-            var support = State(fx.layers[1].stateMachine, "Native", Empty()); fx.layers[1].stateMachine.defaultState = support;
+            var support = FxGraph.State(fx.layers[1].stateMachine, "Native", Empty()); fx.layers[1].stateMachine.defaultState = support;
             // Normal external semantics deliberately disagree with the authored
             // Animator default, proving that no accidental default-only prune
             // makes the dormant branch disappear.
             action.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
-            waiting = State(action.layers[0].stateMachine, "Waiting", Empty()); action.layers[0].stateMachine.defaultState = waiting;
-            command = State(action.layers[0].stateMachine, "Command", Empty());
-            gate = Transition(waiting, command); gate.AddCondition(AnimatorConditionMode.If, 0, "AFK");
+            waiting = FxGraph.State(action.layers[0].stateMachine, "Waiting", Empty()); action.layers[0].stateMachine.defaultState = waiting;
+            command = FxGraph.State(action.layers[0].stateMachine, "Command", Empty());
+            gate = FxGraph.Transition(waiting, command); gate.AddCondition(AnimatorConditionMode.If, 0, "AFK");
             source = new VrChatExpressionMenu.Source { Controller = fx };
             source.Defaults["IsLocal"] = 1; source.Defaults["Menu"] = 0;
             source.OtherControllers.Add(action);
@@ -67,9 +66,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
 
-        private static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components." + name)).FirstOrDefault(type => type != null);
-
         private AnimatorController Controller(string name) => AnimatorController.CreateAnimatorControllerAtPath(folder + "/" + name + ".controller");
 
         private AnimationClip Empty()
@@ -82,16 +78,6 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "Open " + weight };
             AnimationUtility.SetEditorCurve(clip, OpenBinding, AnimationCurve.Constant(0, 1, weight));
             AssetDatabase.AddObjectToAsset(clip, fx); return clip;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion = null)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
-        }
-
-        private static AnimatorStateTransition Transition(AnimatorState from, AnimatorState to)
-        {
-            var transition = from.AddTransition(to); transition.hasExitTime = false; transition.duration = 0; return transition;
         }
 
         private void SetDescriptorControllers()
@@ -115,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static StateMachineBehaviour AddControl(AnimatorState state, string kind = "animator", float duration = .1f, int index = 1)
         {
-            return Configure(state.AddStateMachineBehaviour(SdkType(kind == "animator" ? "VRCAnimatorLayerControl" : "VRCPlayableLayerControl")), kind, duration, index);
+            return Configure(state.AddStateMachineBehaviour(VrcAvatar.ComponentType(kind == "animator" ? "VRCAnimatorLayerControl" : "VRCPlayableLayerControl")), kind, duration, index);
         }
 
         private static StateMachineBehaviour Configure(StateMachineBehaviour control, string kind, float duration, int index)
@@ -207,14 +193,14 @@ namespace VRVlog.LilToonExporter.Tests
             var root = action.layers[0].stateMachine;
             root.RemoveState(command); waiting.RemoveTransition(gate);
             var nested = root.AddStateMachine("Nested additional branch");
-            var first = State(nested, "Start", Morph(0)); nested.defaultState = first;
-            var last = State(nested, "End", Empty()); Transition(first, last);
+            var first = FxGraph.State(nested, "Start", Morph(0)); nested.defaultState = first;
+            var last = FxGraph.State(nested, "End", Empty()); FxGraph.Transition(first, last);
             var exit = last.AddExitTransition(); exit.hasExitTime = false; exit.duration = 0;
             var enter = waiting.AddTransition(first); enter.hasExitTime = false; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.If, 0, "AFK");
-            if (onMachine) Configure(nested.AddStateMachineBehaviour(SdkType("VRCAnimatorLayerControl")), "animator", .1f, 1);
+            if (onMachine) Configure(nested.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl")), "animator", .1f, 1);
             else AddControl(first);
-            var restore = State(root, "Exit restore", Empty()); AddControl(restore);
+            var restore = FxGraph.State(root, "Exit restore", Empty()); AddControl(restore);
             root.AddStateMachineTransition(nested, restore);
             Assert.That(Analyze().Morphs.Contains(OpenBinding), Is.True);
             Assert.That(NeutralShapeSampler.Sample(avatar).Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
@@ -236,11 +222,11 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 case "default": machine.defaultState = command; break;
                 case "opposite": gate.conditions = Array.Empty<AnimatorCondition>(); gate.AddCondition(AnimatorConditionMode.IfNot, 0, "AFK"); break;
-                case "ancestor": Configure(machine.AddStateMachineBehaviour(SdkType("VRCAnimatorLayerControl")), "animator", .1f, 1); break;
+                case "ancestor": Configure(machine.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl")), "animator", .1f, 1); break;
                 case "entry": machine.AddEntryTransition(command); break;
                 case "anyState": machine.AddAnyStateTransition(command); break;
-                case "unconditional": Transition(waiting, command); break;
-                case "timed": var timed = Transition(waiting, command); timed.hasExitTime = true; timed.exitTime = .5f; break;
+                case "unconditional": FxGraph.Transition(waiting, command); break;
+                case "timed": var timed = FxGraph.Transition(waiting, command); timed.hasExitTime = true; timed.exitTime = .5f; break;
             }
             AssertAdditionalRejected();
         }
@@ -265,7 +251,7 @@ namespace VRVlog.LilToonExporter.Tests
             else if (writer == "thirdDriver")
             {
                 var third = Controller("Third"); third.AddParameter("AFK", AnimatorControllerParameterType.Bool);
-                state = State(third.layers[0].stateMachine, "Writer", Empty()); third.layers[0].stateMachine.defaultState = state; source.OtherControllers.Add(third);
+                state = FxGraph.State(third.layers[0].stateMachine, "Writer", Empty()); third.layers[0].stateMachine.defaultState = state; source.OtherControllers.Add(third);
             }
             else state = command; // Even a writer inside the apparently dormant branch invalidates a circular constant proof.
             if (writer.EndsWith("Curve", StringComparison.Ordinal))
@@ -281,7 +267,7 @@ namespace VRVlog.LilToonExporter.Tests
             AddControl(command);
             if (declaredInFx) fx.AddParameter("AFK", AnimatorControllerParameterType.Bool);
             var third = Controller("Third"); third.AddParameter("AFK", AnimatorControllerParameterType.Float);
-            var state = State(third.layers[0].stateMachine, "Idle", Empty()); third.layers[0].stateMachine.defaultState = state; source.OtherControllers.Add(third);
+            var state = FxGraph.State(third.layers[0].stateMachine, "Idle", Empty()); third.layers[0].stateMachine.defaultState = state; source.OtherControllers.Add(third);
             AssertAdditionalRejected();
         }
 
@@ -306,7 +292,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (location == "dormant") command.AddStateMachineBehaviour<UnknownStateCallbackProbe>();
             else
             {
-                var third = Controller("Third"); var state = State(third.layers[0].stateMachine, "Unknown", Empty());
+                var third = Controller("Third"); var state = FxGraph.State(third.layers[0].stateMachine, "Unknown", Empty());
                 third.layers[0].stateMachine.defaultState = state; state.AddStateMachineBehaviour<UnknownStateCallbackProbe>(); source.OtherControllers.Add(third);
             }
             // A valid earlier weight command must not hide a genuinely unknown
@@ -384,7 +370,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             AddControl(command); action.layers[0].stateMachine.defaultState = command;
             action.AddParameter("Lottery", AnimatorControllerParameterType.Float);
-            Transition(command, waiting).AddCondition(AnimatorConditionMode.Greater, .5f, "Lottery");
+            FxGraph.Transition(command, waiting).AddCondition(AnimatorConditionMode.Greater, .5f, "Lottery");
             var operations = new List<VrChatParameterDriver.Operation> { ParameterDriverExpressionTests.Op("Random", "Lottery") };
             if (later != null) operations.Add(later);
             var driver = ParameterDriverExpressionTests.Driver(command, operations.ToArray());
@@ -420,7 +406,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var boolean = kind == "Bool Add";
             action.AddParameter("Needed", boolean ? AnimatorControllerParameterType.Bool : AnimatorControllerParameterType.Float);
-            Transition(command, waiting).AddCondition(boolean ? AnimatorConditionMode.If : AnimatorConditionMode.Greater, boolean ? 0 : .5f, "Needed");
+            FxGraph.Transition(command, waiting).AddCondition(boolean ? AnimatorConditionMode.If : AnimatorConditionMode.Greater, boolean ? 0 : .5f, "Needed");
             VrChatParameterDriver.Operation invalid;
             if (kind.StartsWith("Random", StringComparison.Ordinal)) invalid = ParameterDriverExpressionTests.Op("Random", "Needed");
             else if (kind == "Bool Add") invalid = ParameterDriverExpressionTests.Op("Add", "Needed", 1);

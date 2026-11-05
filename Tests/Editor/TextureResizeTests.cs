@@ -16,7 +16,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void ConvertedFourKTexturePreservesColorAlphaAndSource(bool srgb)
         {
-            var source = Image(4096, 8, !srgb, _ => new Color32(102, 51, 204, 128));
+            var source = TestTextures.Image(4096, 8, !srgb, _ => new Color32(102, 51, 204, 128));
             var decoded = new Texture2D(2, 2, TextureFormat.RGBA32, false, !srgb);
             try
             {
@@ -39,7 +39,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void FourKNormalMapIsConvertedBeforeResizeWithoutReimportingSource()
         {
             var path = "Assets/__VRVlogResizeNormal_" + Guid.NewGuid().ToString("N") + ".png";
-            var originalImage = Image(4096, 8, true, _ => new Color32(128, 128, 255, 255));
+            var originalImage = TestTextures.Image(4096, 8, true, _ => new Color32(128, 128, 255, 255));
             var decoded = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
             try
             {
@@ -84,7 +84,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FourKOutlineWidthMaskIsResizedOnItsExportCopy()
         {
-            var source = Image(4096, 8, true, _ => new Color32(64, 200, 100, 255));
+            var source = TestTextures.Image(4096, 8, true, _ => new Color32(64, 200, 100, 255));
             var owned = new List<Texture2D>();
             try
             {
@@ -99,12 +99,5 @@ namespace VRVlog.LilToonExporter.Tests
             finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); }
         }
 
-        private static Texture2D Image(int width, int height, bool linear, Func<int,Color32> pixel)
-        {
-            var image = new Texture2D(width, height, TextureFormat.RGBA32, false, linear);
-            image.SetPixels32(Enumerable.Range(0, width * height).Select(pixel).ToArray());
-            image.Apply(false, false);
-            return image;
-        }
     }
 }

@@ -182,7 +182,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            using var session = new Session(fixture.Source);
             Assert.That(session.SourceMenuEntriesOutsideBoard, Is.Not.Null.And.Empty);
         }
     }

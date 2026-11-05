@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
@@ -15,7 +17,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // window opens for it only when the exporter cannot run, to say why.
     public sealed class AppTransferWindow : EditorWindow
     {
-        internal const string QuickMenu = "アプリに転送（かんたん）...", DetailedMenu = "アプリに転送（通常）...";
+        internal const string QuickMenu = "アプリに転送（かんたん）｜Send to App (Quick)...", DetailedMenu = "アプリに転送（通常）｜Send to App...";
         internal const string QuickMenuPath = ExporterMenu.Hierarchy + QuickMenu, DetailedMenuPath = ExporterMenu.Hierarchy + DetailedMenu;
         internal const string QuickMenuBarPath = ExporterMenu.MenuBar + QuickMenu, DetailedMenuBarPath = ExporterMenu.MenuBar + DetailedMenu;
         internal const string QuickAssetsPath = ExporterMenu.Assets + QuickMenu, DetailedAssetsPath = ExporterMenu.Assets + DetailedMenu;
@@ -57,7 +59,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private static bool CanOpenFromMenu() => CloudTransferAvailability.Enabled && ExporterMenu.OneAvatarRootSelected();
 
         // The detailed transfer starts on the expression board. When the exporter cannot
-        // run, the quick window opens instead and says why.
+        // run, this window opens in its detailed form and says why.
         [MenuItem(DetailedMenuPath, false, DetailedMenuPriority)]
         [MenuItem(DetailedMenuBarPath, false, DetailedMenuBarPriority)]
         [MenuItem(DetailedAssetsPath, false, DetailedAssetsPriority)]
@@ -65,8 +67,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
             if (selected == null) return;
-            var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? AppTransferPanel.ExportEntry.Resolve() : null;
-            if (entry != null) entry.EditDetails(selected);
+            if (DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null) new AppTransferExport().EditDetails(selected);
             // Without the exporter the detailed window says why, under the item the user chose.
             else OpenDetailed(selected);
         }
@@ -142,10 +143,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal static FontAsset TextFont()
         {
             // Without the font the lookup would log once per window opening; try once per domain.
-            if (textFont != null || textFontTried || Application.platform != RuntimePlatform.WindowsEditor) return textFont;
+            if (TextFontIsWhole() || textFontTried || Application.platform != RuntimePlatform.WindowsEditor) return textFont;
             textFont = OsFont(TextFontName, "Yu Gothic UI", "Semilight");
             textFontTried = textFont == null;
-            if (textFont != null && (textFont.fallbackFontAssetTable == null || textFont.fallbackFontAssetTable.Count == 0))
+            if (textFont != null)
             {
                 textFont.fallbackFontAssetTable = TextFallbackFamilies
                     .Select(family => OsFont(TextFontName + " " + family, family, "Regular"))
@@ -154,14 +155,57 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return textFont;
         }
 
-        // The asset outlives a domain reload; reuse it rather than make one more each time.
+        private static bool TextFontIsWhole() =>
+            textFont != null && IsWhole(textFont)
+            && (textFont.fallbackFontAssetTable ?? new List<FontAsset>()).All(f => f != null && IsWhole(f));
+
+        // The font outlives a domain reload; reuse it rather than make one more each time. Opening a
+        // scene unloads the assets no scene uses, and the font's material and atlas textures are objects
+        // of their own: they carry the font's DontSave so the unload leaves them with the font. A font that
+        // lost them anyway, such as one an older version made, is ours to destroy and make again.
         private static FontAsset OsFont(string name, string family, string style)
         {
-            var font = Resources.FindObjectsOfTypeAll<FontAsset>().FirstOrDefault(f => f.name == name);
-            if (font != null) return font;
-            font = FontAsset.CreateFontAsset(family, style, 90);
-            if (font != null) { font.name = name; font.hideFlags = HideFlags.DontSave; }
+            var named = Resources.FindObjectsOfTypeAll<FontAsset>().Where(f => f.name == name).ToList();
+            var font = named.FirstOrDefault(IsWhole);
+            foreach (var broken in named.Where(f => f != font)) UnityEngine.Object.DestroyImmediate(broken);
+            if (font == null)
+            {
+                font = FontAsset.CreateFontAsset(family, style, 90);
+                if (font == null) return null;
+                font.name = name;
+            }
+            KeepWithFont(font);
             return font;
+        }
+
+        private static bool IsWhole(FontAsset font) =>
+            font.material != null && font.atlasTextures != null
+            && font.atlasTextures.Take(font.atlasTextureCount).All(t => t != null);
+
+        private static void KeepWithFont(FontAsset font)
+        {
+            font.hideFlags = HideFlags.DontSave;
+            font.material.hideFlags = HideFlags.DontSave;
+            foreach (var atlas in font.atlasTextures.Take(font.atlasTextureCount)) atlas.hideFlags = HideFlags.DontSave;
+        }
+
+        // The font adds an atlas texture when a new character no longer fits, which happens while the panel
+        // draws. Unity 2022.3 leaves the added texture without the font's hideFlags (later versions copy
+        // them), so the next scene opening would destroy it. The font announces each added texture
+        // through an internal editor callback, the one the editor uses to store it in a font saved as an
+        // asset; this passes DontSave on there, for the panel's fonts only. Later versions that copy the
+        // flags themselves still raise the callback, so this only repeats what they already did.
+        [InitializeOnLoadMethod]
+        private static void KeepAddedAtlasTextures()
+        {
+            var field = typeof(FontAsset).GetField("OnFontAssetTextureChanged", BindingFlags.Static | BindingFlags.NonPublic);
+            if (field == null || field.FieldType != typeof(Action<Texture, FontAsset>)) return;
+            Action<Texture, FontAsset> keep = (texture, font) =>
+            {
+                if (texture != null && font != null && font.name.StartsWith(TextFontName, StringComparison.Ordinal))
+                    texture.hideFlags = HideFlags.DontSave;
+            };
+            field.SetValue(null, Delegate.Combine((Delegate)field.GetValue(null), keep));
         }
     }
 }

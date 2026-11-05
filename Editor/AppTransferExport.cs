@@ -4,10 +4,42 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    // Export side of the "アプリに転送" window. That window ships with the optional
-    // QR module and binds these members by name where it uses them, so the
-    // exporter keeps compiling and working in packages without the module.
-    internal sealed class AppTransferExport
+    // What the "アプリに転送" window asks the exporter. The window ships with the
+    // optional QR module, which references this assembly; this one never names it.
+    // Tests give the window a stand-in through this interface.
+    public interface IAppTransferExport
+    {
+        void SelectAvatar(GameObject avatar);
+        bool HasAuthor();
+        int LastMissingShaderCount();
+        int LastOmittedStageCount();
+        string[] LastNotes();
+        Func<string> LastDiagnostics();
+        Func<string> LastNamedDiagnostics();
+        Action<string, string> LastResult();
+        string RememberedName(GameObject avatar);
+        string SettingsSummary(GameObject avatar, bool detailed);
+        string DetailedProblem(GameObject avatar);
+        bool DetailedNeedsFix(GameObject avatar);
+        bool EditDetails(GameObject avatar);
+        void DrawTerms(bool markAuthor);
+        string Export(GameObject avatar, string name, string destination, Action saved);
+        string ExportDetailed(GameObject avatar, string name, string destination, Action saved);
+        string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved);
+        string SaveFileName(GameObject avatar);
+        string TermsKey();
+        void RememberTransferName(GameObject avatar, string name);
+        object SourceStamp(GameObject avatar, bool detailed);
+        bool SourceUnchanged(object stamp, GameObject avatar);
+        bool ChoicesUnchanged(object stamp);
+        bool DrawQuickPreview(GameObject avatar, Rect rect);
+        bool QuickPreviewChanged(GameObject avatar);
+        bool QuickPreviewFailed();
+        void ReleaseQuickPreview();
+    }
+
+    // Export side of the "アプリに転送" window.
+    public sealed class AppTransferExport : IAppTransferExport
     {
         // Only the open/closed state of the section. The author is remembered
         // per avatar through ExportAuthor, like the export windows.
@@ -33,6 +65,8 @@ namespace VRVlog.LilToonExporter
         // The notes of the last saved export, as LastNotes of the board.
         private string[] lastNotes = Array.Empty<string>();
         private ExportDiagnostics lastDiagnostics;
+        // Opens the result list of the last transfer export, given the heading and a note, or null.
+        private Action<string, string> lastResult;
 
         // The author is the avatar's remembered one, else what this window
         // already holds. The license is the avatar's remembered settings; an
@@ -62,6 +96,11 @@ namespace VRVlog.LilToonExporter
 
         // The same text with the names and paths left in, for a private message, or null.
         public Func<string> LastNamedDiagnostics() => lastDiagnostics == null ? null : (Func<string>)lastDiagnostics.NamedText;
+
+        // Opens the result list of the export last handed to a transfer by Export or ExportDetailed,
+        // given the heading and a note beside it; null when there is nothing to show. The transfer
+        // screen opens it once the transfer has ended.
+        public Action<string, string> LastResult() => lastResult;
 
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
@@ -108,8 +147,7 @@ namespace VRVlog.LilToonExporter
             if (summaryStyle == null) summaryStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = false, clipping = TextClipping.Clip };
             if (missingLabelStyle == null)
             {
-                // The red of the window's own warnings (AppTransferWindow.uss).
-                var red = EditorGUIUtility.isProSkin ? new Color32(245, 107, 102, 255) : new Color32(184, 36, 31, 255);
+                var red = ExporterColors.TransferError;
                 missingLabelStyle = new GUIStyle(EditorStyles.label);
                 missingLabelStyle.normal.textColor = missingLabelStyle.focused.textColor = missingLabelStyle.hover.textColor = red;
                 missingLineStyle = new GUIStyle(EditorStyles.miniLabel);
@@ -148,43 +186,37 @@ namespace VRVlog.LilToonExporter
         // Writes what "通常" writes for this avatar when nothing on the expression
         // board is touched: a board is prepared out of sight, as opening "通常"
         // prepares it, and exports with the name, author and license of this
-        // window. Only the result list is not asked about before saving.
+        // window. Only the result list is not shown; it goes to the Console.
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
-        public string Export(GameObject avatar, string name, string destination, Action saved)
+        public string Export(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved, false);
+
+        // Writes what the expression board for this avatar shows, with the name,
+        // author and license of this window. Returns like Export; without that
+        // board it returns why and writes nothing.
+        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved, true);
+
+        private string Export(GameObject avatar, string name, string destination, Action saved, bool detailed)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
+            var open = detailed ? ExperimentalExpressionCaptureWindow.ForTransfer(avatar) : null;
+            if (detailed && open == null) return ExporterLocalization.T(BoardClosed);
             // The window does not start without an author; a retry or
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             lastMissingShaderCount = 0;
             lastOmittedStageCount = 0;
             lastNotes = Array.Empty<string>();
+            lastResult = null;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
+            if (open != null) return ExportFrom(open, avatar, name, targetAuthor, targetSettings, destination, saved, true);
             ExperimentalExpressionCaptureWindow board;
             try { board = ExperimentalExpressionCaptureWindow.PrepareHidden(avatar); }
             catch (OperationCanceledException) { return null; }
             try { return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, false); }
             finally { UnityEngine.Object.DestroyImmediate(board); }
-        }
-
-        // Writes what the expression board for this avatar shows, with the name,
-        // author and license of this window. Returns like Export; without that
-        // board it returns why and writes nothing.
-        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved)
-        {
-            if (saved == null) throw new ArgumentNullException(nameof(saved));
-            var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
-            if (board == null) return ExporterLocalization.T(BoardClosed);
-            if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
-            lastMissingShaderCount = 0;
-            lastOmittedStageCount = 0;
-            lastNotes = Array.Empty<string>();
-            var targetAuthor = author;
-            var targetSettings = RememberTerms(avatar, targetAuthor);
-            return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
         }
 
         // "VRMを保存" on the transfer screen: what the transfer would send (detailed: the open board,
@@ -278,6 +310,7 @@ namespace VRVlog.LilToonExporter
                 lastOmittedStageCount = board.LastOmittedStageCount;
                 lastNotes = board.LastNotes;
                 lastDiagnostics = board.LastDiagnostics;
+                lastResult = board.LastResult;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             }, interactive);

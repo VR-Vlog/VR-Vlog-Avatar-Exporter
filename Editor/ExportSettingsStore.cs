@@ -67,10 +67,12 @@ namespace VRVlog.LilToonExporter
         }
 
         [Serializable]
-        sealed class Store
+        sealed class Store : UserSettingsFile.IStore
         {
             public int Version = 1;
             public List<AvatarEntry> Avatars = new List<AvatarEntry>();
+            int UserSettingsFile.IStore.Version => Version;
+            bool UserSettingsFile.IStore.HasAvatars => Avatars != null;
         }
 
         const int MaximumAvatars = 256;
@@ -195,13 +197,10 @@ namespace VRVlog.LilToonExporter
 
         static bool Write(Store store)
         {
-            if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
             // Remembering is a convenience: a file that cannot be written never stops an export.
             try
             {
-                var path = FilePath;
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+                UserSettingsFile.Write(FilePath, store, store.Avatars, MaximumAvatars);
                 return true;
             }
             catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
@@ -313,27 +312,8 @@ namespace VRVlog.LilToonExporter
 
         // problem is the warning to show instead of saving, when the file is
         // there but from another format version or cannot be read.
-        static Store Read(out string problem)
-        {
-            problem = null;
-            var path = FilePath;
-            try
-            {
-                if (!File.Exists(path)) return null;
-                if (new FileInfo(path).Length > 4 * 1024 * 1024) { problem = Unreadable(path); return null; }
-                var text = File.ReadAllText(path);
-                if (string.IsNullOrWhiteSpace(text)) return null;
-                var store = JsonUtility.FromJson<Store>(text);
-                if (store != null && store.Version != 1) { problem = ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。"); return null; }
-                if (store == null || store.Avatars == null) { problem = Unreadable(path); return null; }
-                return store;
-            }
-            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is ArgumentException)
-            {
-                problem = Unreadable(path);
-                return null;
-            }
-        }
+        static Store Read(out string problem) => UserSettingsFile.Read<Store>(FilePath,
+            path => ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。"), Unreadable, Unreadable, out problem);
 
         static string Unreadable(string path) =>
             string.Format(ExporterLocalization.T("書き出し設定ファイルを読み込めないため、書き出し設定を保存しませんでした。ファイルを直すか削除すると、また保存できます: {0}"), path);

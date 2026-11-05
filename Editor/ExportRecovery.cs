@@ -131,8 +131,8 @@ namespace VRVlog.LilToonExporter
                         "このレイヤーの模様・文字・透過効果が失われます。", action);
                 }
             }
-            else if (code == "audio-link" && target is Material audio && ContainsMaterial(source, audio) && Official(audio) && Enabled(audio, "_UseAudioLink"))
-                Add(code, audio, audio.name, "AudioLinkは外部連携のため今回の再現対象外です。", "変換用コピーで、この材質のAudioLinkをOFFにして試せます。",
+            else if (code == "audio-link" && target is Material audio && ContainsMaterial(source, audio) && Official(audio) && MobileMaterialMath.NonZero(audio, "_UseAudioLink"))
+                Add(code, audio, audio.name, "AudioLinkは外部連携のため今回の再現対象外です。", "変換用コピーで、このマテリアルのAudioLinkをOFFにして試せます。",
                     "音に連動した発光・色・動きが失われます。", MaterialAction(audio, ExportRecoveryActionKind.DisableAudioLink));
             else if (code == "material-layer" && target is Material layerMaterial && ContainsMaterial(source, layerMaterial) && Official(layerMaterial) &&
                 (error.Data[ExportRecoveryFailure.LayerKey] as string == "2nd" || error.Data[ExportRecoveryFailure.LayerKey] as string == "3rd"))
@@ -217,7 +217,7 @@ namespace VRVlog.LilToonExporter
                 case "コピー作成": return "copy";
                 case "ビルド処理": return "preparation";
                 case "状態確定": return "appearance";
-                case "材質保存": return "material-snapshot";
+                case "マテリアル保存": return "material-snapshot";
                 case "揺れ物変換": return "physbone";
                 case "コンストレイント変換": return "constraint";
                 case "VRM変換": return "vrm";
@@ -228,7 +228,6 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static bool Official(Material material) => material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name);
-        internal static bool Enabled(Material material, string property) => material != null && material.HasProperty(property) && material.GetFloat(property) != 0;
         internal static bool ContainsMaterial(GameObject source, Material material)
         {
             if (source == null || material == null) return false;
@@ -267,17 +266,16 @@ namespace VRVlog.LilToonExporter
         readonly List<Material> owned;
         readonly ExportRecoveryOptions options;
         readonly ExportRecoveryReport report;
-        readonly MaterialBakeOptions bakeOptions;
         readonly Dictionary<Material, Material> originals = new Dictionary<Material, Material>();
         readonly Dictionary<Renderer, Renderer> renderers = new Dictionary<Renderer, Renderer>();
 
         internal ExportRecoveryCopySession(GameObject source, GameObject copy, List<Material> owned,
-            ExportRecoveryOptions options, ExportRecoveryReport report = null, MaterialBakeOptions bakeOptions = null)
+            ExportRecoveryOptions options, ExportRecoveryReport report = null)
         {
             if (source == null || copy == null || source == copy || EditorUtility.IsPersistent(copy) ||
                 copy.transform.IsChildOf(source.transform) || source.transform.IsChildOf(copy.transform))
                 throw new ArgumentException("An independent export copy is required.");
-            this.source = source; this.copy = copy; this.owned = owned; this.options = options; this.report = report; this.bakeOptions = bakeOptions;
+            this.source = source; this.copy = copy; this.owned = owned; this.options = options; this.report = report;
             foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
             {
                 var mapped = Resolve(renderer.transform, source.transform, copy.transform);
@@ -316,9 +314,6 @@ namespace VRVlog.LilToonExporter
                         slots[i] = material;
                     }
                     var original = originals[slots[i]];
-                    foreach (var layer in new[] { "2nd", "3rd" })
-                        if (bakeOptions?.Omits(original, layer) == true && slots[i].HasProperty("_UseMain" + layer + "Tex"))
-                            slots[i].SetFloat("_UseMain" + layer + "Tex", 0);
                     foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
                     {
                         if (action.Material != original && action.Material != current) continue;
@@ -345,15 +340,7 @@ namespace VRVlog.LilToonExporter
             // this prevents a material setter from restoring the source asset.
             if (replacements.Count != 0)
                 foreach (var component in copy.GetComponentsInChildren<Component>(true))
-                {
-                    if (component == null) continue;
-                    using var serialized = new SerializedObject(component);
-                    var property = serialized.GetIterator(); var changed = false;
-                    while (property.Next(true))
-                        if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue is Material material && replacements.TryGetValue(material, out var replacement))
-                        { property.objectReferenceValue = replacement; changed = true; }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    if (component != null) SerializedReferences.Replace(component, replacements);
             foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
             {
                 if (action.Kind == ExportRecoveryActionKind.ExcludeHiddenRenderer && renderers.TryGetValue(action.Renderer, out var renderer) && renderer != null)
@@ -373,11 +360,11 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             if (!ExportRecoveryReport.ContainsMaterial(source, action.Material))
-                throw new InvalidOperationException("対策の材質が選択アバターにありません。再検査してください。");
+                throw new InvalidOperationException("対策のマテリアルが選択アバターにありません。再検査してください。");
             if (action.Kind == ExportRecoveryActionKind.DisableAudioLink && !ExportRecoveryReport.Official(action.Material))
-                throw new InvalidOperationException("公式lilToonと確認できない材質のAudioLinkは自動変更できません。");
+                throw new InvalidOperationException("公式lilToonと確認できないマテリアルのAudioLinkは自動変更できません。");
             if ((action.Kind == ExportRecoveryActionKind.OmitSecondLayer || action.Kind == ExportRecoveryActionKind.OmitThirdLayer) && !LilToonMaterialReader.IsLilToon(action.Material))
-                throw new InvalidOperationException("この材質のレイヤー省略は適用できません。");
+                throw new InvalidOperationException("このマテリアルのレイヤー省略は適用できません。");
             if (!Enum.IsDefined(typeof(ExportRecoveryActionKind), action.Kind)) throw new InvalidOperationException("未対応の対策です。");
         }
 
@@ -397,57 +384,51 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportRecoveryPreview : IDisposable
     {
         internal GameObject Copy { get; private set; }
-        GameObject inactiveHost;
         readonly List<Material> materials = new List<Material>();
         readonly List<Mesh> meshes = new List<Mesh>();
 
         internal static ExportRecoveryPreview Create(GameObject source, ExportRecoveryOptions options = null,
-            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, MaterialBakeOptions bakeOptions = null)
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             var preview = new ExportRecoveryPreview();
+            ExportGimmickSession gimmicks = null;
             try
             {
-                // Instantiate under an inactive parent so ExecuteAlways
-                // Awake/OnEnable cannot run before the shared assets are split.
-                preview.inactiveHost = new GameObject("VRVlog display-copy staging") { hideFlags = HideFlags.HideAndDontSave };
-                preview.inactiveHost.SetActive(false);
-                preview.Copy = Object.Instantiate(source, preview.inactiveHost.transform, false);
-                preview.Copy.name = source.name;
-                var session = new ExportRecoveryCopySession(source, preview.Copy, preview.materials, options, bakeOptions: bakeOptions);
-                using var gimmicks = new ExportGimmickSession(source, preview.Copy, gimmickOptions ?? new ExportGimmickOptions { AutoExclude = false });
                 using var manual = new ExportObjectExclusions(source, excludedObjects);
                 var findings = gimmickOptions?.AutoExclude == true ? ExportGimmickDetection.Analyze(source, manual.Contains) : new List<ExportGimmickFinding>();
                 using var exclusions = new ExportObjectExclusions(source, (excludedObjects ?? Array.Empty<GameObject>()).Concat(ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions)));
-                MaAppearanceSnapshot.Apply(source, preview.Copy, preview.meshes, exclusions);
-                PoseExportSession.RemoveAplFromCopy(source, preview.Copy);
-                // Disabling a MonoBehaviour alone does not suppress its Awake
-                // when the GameObject is activated. Display-only copies have no
-                // runtime/authoring scripts, while preserving their baked shape.
-                foreach (var script in preview.Copy.GetComponentsInChildren<MonoBehaviour>(true))
-                    if (script != null) Object.DestroyImmediate(script);
-                // Split/redirect material references after script removal too,
-                // so these Editor writes cannot invoke a copied OnValidate.
-                session.Apply();
-                foreach (var behaviour in preview.Copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                foreach (var transform in preview.Copy.GetComponentsInChildren<Transform>(true)) transform.gameObject.hideFlags = HideFlags.HideAndDontSave;
-                // Like the export copy, show only the display copy's own root.
-                if (!preview.Copy.activeSelf) preview.Copy.SetActive(true);
-                preview.Copy.transform.SetParent(null, false);
-                Object.DestroyImmediate(preview.inactiveHost);
-                preview.inactiveHost = null;
+                // Instantiate under an inactive parent so ExecuteAlways
+                // Awake/OnEnable cannot run before the shared assets are split.
+                // Like the export copy, only the display copy's own root is shown.
+                preview.Copy = NdmfExportPreparation.InstantiateInactive(source, "VRVlog display-copy staging", HideFlags.HideAndDontSave, default, false, copy =>
+                {
+                    var session = new ExportRecoveryCopySession(source, copy, preview.materials, options);
+                    gimmicks = new ExportGimmickSession(source, copy, gimmickOptions ?? new ExportGimmickOptions { AutoExclude = false });
+                    MaAppearanceSnapshot.Apply(source, copy, preview.meshes, exclusions);
+                    PoseExportSession.RemoveAplFromCopy(source, copy);
+                    // Disabling a MonoBehaviour alone does not suppress its Awake
+                    // when the GameObject is activated. Display-only copies have no
+                    // runtime/authoring scripts, while preserving their baked shape.
+                    foreach (var script in copy.GetComponentsInChildren<MonoBehaviour>(true))
+                        if (script != null) Object.DestroyImmediate(script);
+                    // Split/redirect material references after script removal too,
+                    // so these Editor writes cannot invoke a copied OnValidate.
+                    session.Apply();
+                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
+                    foreach (var transform in copy.GetComponentsInChildren<Transform>(true)) transform.gameObject.hideFlags = HideFlags.HideAndDontSave;
+                });
                 gimmicks.Apply(null, null, null);
                 return preview;
             }
             catch { preview.Dispose(); throw; }
+            finally { gimmicks?.Dispose(); }
         }
 
         public void Dispose()
         {
             if (Copy != null) Object.DestroyImmediate(Copy);
             Copy = null;
-            if (inactiveHost != null) Object.DestroyImmediate(inactiveHost);
-            inactiveHost = null;
             foreach (var material in materials) if (material != null) Object.DestroyImmediate(material);
             foreach (var mesh in meshes) if (mesh != null) Object.DestroyImmediate(mesh);
             materials.Clear(); meshes.Clear();

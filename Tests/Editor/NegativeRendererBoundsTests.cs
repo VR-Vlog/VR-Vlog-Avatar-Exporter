@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter.Tests
                 front.localBounds=new Bounds(new Vector3(.1f,1.2f,-.3f),new Vector3(2,-.78f,2));
                 Assert.That(front.localBounds.extents.y,Is.LessThan(0),"Unity keeps the authored negative extent this case reproduces.");
                 var warnings=new List<string>();
-                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Negative bounds","Tests",warnings,exporterVersion:"0.10.0-preview.1",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Negative bounds","Tests",warnings: warnings,exporterVersion:"0.10.0-preview.1",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var glb=GlbDocument.Read(bytes);F.Validate(glb.Json,bytes.Length,glb.Binary.Length);
                 var states=F.List(F.Root(glb.Json),"bindings").Select(F.Object).Select(b=>F.Object(F.Get(b,"renderer"))).ToArray();
                 var state=states.Single(s=>Mathf.Abs(F.Vector(F.Get(s,"boundsCenter"))[1]-1.2f)<1e-5f);

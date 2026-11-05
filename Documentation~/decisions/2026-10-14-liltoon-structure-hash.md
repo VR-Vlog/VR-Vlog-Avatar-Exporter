@@ -21,7 +21,7 @@
   - 同じ名前が複数回宣言されたら最初の宣言を使う（Unity と同じ）。シェーダーによって型が違う名前があれば生成を止める。
   - `UsePass "Hidden/ltspass_xxx/NAME"` は参照先のパスの名前と LightMode に置き換える。名前の無いパス（`LightMode = Never` の偽のパス）と `GrabPass` はカタログに入れない。
 - 読めないものは黙って飛ばさず生成を止める: Properties の中に宣言として読めない部分が残ったとき、マテリアル用のシェーダーに LightMode が `Never` 以外の名前の無いパスがあったとき、SubShader が 2 つ以上あったとき。新しい版でこれらが出たら、パーサーを直すか構成の差として扱うかを人が決める。
-  - `RequiredProperties` は各シェーダーが宣言する runtime のプロパティを宣言順に並べたもの。`Passes` はパス名を ordinal で並べたもの、`PassLightModes` は宣言順。`TextureFaces` は runtime のテクスチャで、2D を 1、Cube を 6 にする。
+  - `RequiredProperties` は各シェーダーが宣言する runtime のプロパティを宣言順に並べたもの。`Passes` はパス名を ordinal で並べたもの、`PassLightModes` は宣言順。2 つはシェーダーごとの（パス名, LightMode）の並び `PassDeclarations` 1 つから C# の初期化で作る（2026-11-02。同じパス名を 2 か所に書いていたため）。`TextureFaces` は runtime のテクスチャで、2D を 1、Cube を 6 にする。
 - プロパティの役割（runtime／editor／external）は lilToon のソースからは決まらない Exporter 側の方針なので、`Tools/liltoon_catalogue.py` の `EDITOR_PROPERTIES`・`EXTERNAL_PROPERTIES` に表として持つ。表に無い名前は runtime になる。新しい版で追加されたプロパティは runtime として必須プロパティに入り、構成ハッシュが変わる。
 - ソースは、手元のフォルダ（`--source`）、手元のクローンのタグ（`--git`）、GitHub のタグのアーカイブ（`--fetch`）のどれからでも読める。アーカイブは一時フォルダに展開し、リポジトリには置かない。commit はアーカイブの pax ヘッダーから読む。
 

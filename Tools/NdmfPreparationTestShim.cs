@@ -10,9 +10,13 @@ using System.Reflection;
 namespace UnityEngine
 {
     public static class Debug { public static void LogWarning(object message) { } }
+    [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = true, Inherited = true)]
+    public sealed class RequireComponent : System.Attribute { }
     public class Object
     {
+        internal static readonly List<Object> Loaded = new List<Object>();
         public string name; public HideFlags hideFlags; internal bool destroyed, persistent;
+        public Object() { Loaded.Add(this); }
         static bool Null(Object value) => ReferenceEquals(value, null) || value.destroyed;
         public static bool operator ==(Object a, Object b) => Null(a) ? Null(b) : !Null(b) && ReferenceEquals(a, b);
         public static bool operator !=(Object a, Object b) => !(a == b);
@@ -21,7 +25,7 @@ namespace UnityEngine
         public static T Instantiate<T>(T value) where T : Object
         {
             if (value is GameObject) throw new NotSupportedException("Unity hierarchy cloning requires installed-package tests.");
-            var copy = (T)value.MemberwiseClone(); copy.persistent = false; copy.destroyed = false; return copy;
+            var copy = (T)value.MemberwiseClone(); copy.persistent = false; copy.destroyed = false; Loaded.Add(copy); return copy;
         }
         public static void DestroyImmediate(Object value)
         {
@@ -32,6 +36,7 @@ namespace UnityEngine
                 foreach (var component in root.GetComponentsInChildren<Component>(true)) component.destroyed = true;
         }
     }
+    public static class Resources { public static T[] FindObjectsOfTypeAll<T>() where T : Object => Object.Loaded.OfType<T>().Where(x => x != null).ToArray(); }
     public class Component : Object
     {
         public GameObject gameObject;
@@ -89,7 +94,7 @@ namespace UnityEngine
         public int GetBlendShapeIndex(string name) => names.IndexOf(name);
         public void AddBlendShapeFrame(string name,float weight,Vector3[] vertices,Vector3[] normals,Vector3[] tangents) => names.Add(name);
     }
-    public class Renderer : Component { public bool enabled = true; }
+    public class Renderer : Component { public bool enabled = true; public Material[] sharedMaterials = new Material[0]; }
     public class SkinnedMeshRenderer : Renderer
     {
         public Mesh sharedMesh; public Transform[] bones; public Transform rootBone;
@@ -120,7 +125,9 @@ namespace UnityEditor.Animations
 namespace UnityEditor
 {
     using Object = UnityEngine.Object;
-    public class MonoScript : Object { }
+    public class MonoScript : Object { public System.Type GetClass() => null; }
+    public static class MonoImporter { public static MonoScript[] GetAllRuntimeMonoScripts() => new MonoScript[0]; }
+    public static class EditorPrefs { public static bool GetBool(string key, bool defaultValue) => defaultValue; }
     public static class EditorUtility
     {
         public static void CopySerialized(Object source, Object destination)
@@ -162,16 +169,28 @@ namespace UnityEditor
     }
     public sealed class SerializedProperty
     {
-        readonly Object target; readonly FieldInfo[] fields; int position = -1;
-        public SerializedProperty(Object target) { this.target = target; fields = EditorUtility.Fields(target.GetType()).Where(f => typeof(Object).IsAssignableFrom(f.FieldType)).ToArray(); }
-        public bool Next(bool children) => ++position < fields.Length;
+        sealed class Slot { public string path, type; public Func<Object> get; public Action<Object> set; }
+        readonly Slot[] slots; int position = -1;
+        public SerializedProperty(Object target) { slots = EditorUtility.Fields(target.GetType()).SelectMany(field => Slots(target, field)).ToArray(); }
+        static IEnumerable<Slot> Slots(Object target, FieldInfo field)
+        {
+            if (typeof(Object).IsAssignableFrom(field.FieldType))
+                yield return new Slot { path = field.Name, type = field.FieldType.Name, get = () => (Object)field.GetValue(target), set = value => field.SetValue(target, value) };
+            else if (field.FieldType.IsArray && typeof(Object).IsAssignableFrom(field.FieldType.GetElementType()) && field.GetValue(target) is Array items)
+                for (var index = 0; index < items.Length; index++)
+                {
+                    var item = index;
+                    yield return new Slot { path = field.Name + ".Array.data[" + item + "]", type = field.FieldType.GetElementType().Name, get = () => (Object)items.GetValue(item), set = value => items.SetValue(value, item) };
+                }
+        }
+        public bool Next(bool children) => ++position < slots.Length;
         public SerializedPropertyType propertyType => SerializedPropertyType.ObjectReference;
-        public string propertyPath => fields[position].Name;
-        public string type => fields[position].FieldType.Name;
+        public string propertyPath => slots[position].path;
+        public string type => slots[position].type;
         // Native MA reference-resolution cases run in Unity, not this adapter.
         public SerializedProperty FindPropertyRelative(string name) => null;
         public string stringValue => null;
-        public Object objectReferenceValue { get => (Object)fields[position].GetValue(target); set => fields[position].SetValue(target, value); }
+        public Object objectReferenceValue { get => slots[position].get(); set => slots[position].set(value); }
     }
     public static class AssetDatabase
     {
@@ -183,6 +202,8 @@ namespace UnityEditor
         public static bool IsValidFolder(string path) => path=="Assets" || folders.ContainsKey(path);
         public static string[] GetSubFolders(string path) => folders.Keys.Where(key => key.StartsWith(path+"/",StringComparison.Ordinal) && key.IndexOf('/',path.Length+1)<0).ToArray();
         public static void CreateAsset(Object value,string path) { value.persistent = true; assets.Add(path,value); }
+        public static string GetAssetPath(Object value) => assets.FirstOrDefault(item => ReferenceEquals(item.Value,value)).Key ?? "";
+        public static void RemoveObjectFromAsset(Object value) { assets.Remove(GetAssetPath(value)); value.persistent = false; }
         public static bool DeleteAsset(string path)
         {
             if (folders.Remove(path))
@@ -229,7 +250,7 @@ namespace NUnit.Framework
         public static void IsTrue(bool value,string message = null) { Assertions++; if (!value) throw new Exception(message ?? "Expected true"); }
         public static void IsFalse(bool value,string message = null) => IsTrue(!value,message);
         public static void IsNull(object value) => IsTrue(value == null);
-        public static void IsNotNull(object value) => IsTrue(value != null);
+        public static void IsNotNull(object value,string message = null) => IsTrue(value != null,message);
         public static void AreSame(object a,object b,string message = null) => IsTrue(ReferenceEquals(a,b),message);
         public static void AreNotSame(object a,object b,string message = null) => IsTrue(!ReferenceEquals(a,b),message);
         public static void AreEqual(object a,object b,string message = null) => IsTrue(Equals(a,b),message ?? $"Expected {a}; got {b}");
@@ -240,7 +261,14 @@ namespace NUnit.Framework
         public static void Ignore(string reason) => throw new IgnoredException();
     }
     public static class StringAssert { public static void Contains(string part,string value) => Assert.IsTrue(value.Contains(part)); }
-    public static class CollectionAssert { public static void AreEqual(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().SequenceEqual(b.Cast<object>())); }
+    public static class CollectionAssert
+    {
+        public static void AreEqual(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().SequenceEqual(b.Cast<object>()));
+        public static void AreEquivalent(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().OrderBy(x => x?.ToString()).SequenceEqual(b.Cast<object>().OrderBy(x => x?.ToString())));
+        public static void IsEmpty(IEnumerable a) => Assert.IsTrue(!a.Cast<object>().Any());
+        public static void Contains(IEnumerable a,object value) => Assert.IsTrue(a.Cast<object>().Contains(value));
+        public static void DoesNotContain(IEnumerable a,object value) => Assert.IsTrue(!a.Cast<object>().Contains(value));
+    }
 }
 public static class NdmfPreparationHostTests
 {
@@ -272,6 +300,10 @@ namespace VRVlog.LilToonExporter.Vendor.UniVRM10
 namespace VRVlog.LilToonExporter
 {
     // Warnings keep their Japanese source text; translation is not tested here.
-    public static class ExporterLocalization { public static string T(string source) => source; }
+    public static class ExporterLocalization
+    {
+        public static string T(string source) => source;
+        public static string Format(string template, params object[] values) => string.Format(T(template), values);
+    }
 }
 #endif

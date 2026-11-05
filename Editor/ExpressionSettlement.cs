@@ -177,16 +177,9 @@ namespace VRVlog.LilToonExporter
                 {
                     if (!relevantCurve(layer, clip, binding)) continue;
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                    if (VrChatExpressionSampler.IsConstant(curve)) continue;
+                    if (CurveChecks.Constant(curve)) continue;
                     if (whole || curve.postWrapMode == WrapMode.Loop || curve.postWrapMode == WrapMode.PingPong) return true;
-                    var keys = curve.keys;
-                    for (var index = 1; index < keys.Length; index++)
-                    {
-                        var left = keys[index - 1]; var right = keys[index];
-                        if (right.time <= from) continue;
-                        if (left.value != right.value || left.outTangent != 0 && !float.IsInfinity(left.outTangent) ||
-                            right.inTangent != 0 && !float.IsInfinity(right.inTangent)) return true;
-                    }
+                    if (!CurveChecks.HoldsAfter(curve, from)) return true;
                 }
                 return false;
             }

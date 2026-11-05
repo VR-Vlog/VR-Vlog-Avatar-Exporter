@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static byte[] Export(GameObject source, ExportRecoveryReport report, ICollection<string> warnings) =>
-            UniVrmOneClickExporter.Export(source, "Hidden root", "Tests", warnings,
+            UniVrmOneClickExporter.Export(source, "Hidden root", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
 
@@ -199,6 +199,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.LeftEye), Is.SameAs(bones[HumanBodyBones.LeftEye]));
             Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.RightEye), Is.SameAs(bones[HumanBodyBones.RightEye]));
             Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.Jaw), Is.Null, "An unmapped bone stays unresolved.");
+            Assert.That(ConstraintExport.HumanoidBones(root), Is.EquivalentTo(bones.Values), "Spring and constraint conversion keep these bones out.");
             var error = Assert.Throws<InvalidOperationException>(() => new ExportObjectExclusions(root, new[] { hips.gameObject }));
             Assert.That(error.Message, Does.Contain("Humanoid"));
             Assert.That(root.activeSelf, Is.True);

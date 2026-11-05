@@ -29,13 +29,11 @@ namespace VRVlog.LilToonExporter
         {
             var shaders = new List<Shader>();
             var bakes = false;
-            foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
+            // Same selection as LilToonFullSnapshot.Capture.
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(avatar))
             {
-                // Same selection as LilToonFullSnapshot.Capture: UniVRM exports
-                // only mesh primitives with geometry.
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
+                // Capture leaves a renderer with an empty slot on standard VRM materials.
+                if (renderer.sharedMaterials.Any(material => material == null)) continue;
                 foreach (var material in renderer.sharedMaterials)
                 {
                     // A substitute can carry the source's brightness into

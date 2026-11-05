@@ -22,14 +22,13 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__DirectFxDiscovery_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__DirectFxDiscovery_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var face = new GameObject("Face", typeof(SkinnedMeshRenderer)); face.transform.SetParent(avatar.transform, false);
             mesh = BaseShapeFixture.Create(); face.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
             face.GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 25);
-            neutral = State(controller.layers[0].stateMachine, "Neutral", Clip("Neutral", 0));
+            neutral = FxGraph.State(controller.layers[0].stateMachine, "Neutral", Clip("Neutral", 0));
             controller.layers[0].stateMachine.defaultState = neutral;
         }
 
@@ -46,24 +45,12 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationCurve.Constant(0, 1, weight));
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
-        static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
-        }
-        static AnimatorStateTransition Transition(AnimatorState from, AnimatorState to, string parameter, float value,
-            AnimatorConditionMode mode = AnimatorConditionMode.Equals)
-        {
-            var transition = from.AddTransition(to); transition.duration = 0; transition.hasExitTime = false;
-            transition.AddCondition(mode, value, parameter); return transition;
-        }
         static float Weight(VrChatExpressionMenu.Entry entry) => entry.Values.Single(value => value.Shape == "Face size").Weight;
 
         [Test]
         public void DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to validate descriptor FX discovery.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK to validate descriptor FX discovery.");
             var descriptor = avatar.AddComponent(type);
             using (var data = new SerializedObject(descriptor))
             {
@@ -91,9 +78,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         StateMachineBehaviour InstalledMaBuildMarker(bool disableInMmd)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarMMDLayerControl")).FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real Modular Avatar package to validate its generated data-only build marker.");
+            var type = OptionalTools.Require("nadena.dev.modular_avatar.core.ModularAvatarMMDLayerControl", "Install the real Modular Avatar package to validate its generated data-only build marker.");
             var marker = (StateMachineBehaviour)ScriptableObject.CreateInstance(type);
             AssetDatabase.AddObjectToAsset(marker, controller);
             using (var data = new SerializedObject(marker))
@@ -115,7 +100,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("FaceChoice", AnimatorControllerParameterType.Int);
             var root = controller.layers[0].stateMachine;
-            var selected = State(root, "Smile", Clip("Smile", 75)); Transition(neutral, selected, "FaceChoice", 1);
+            var selected = FxGraph.State(root, "Smile", Clip("Smile", 75)); FxGraph.Transition(neutral, selected, "FaceChoice", AnimatorConditionMode.Equals, 1);
             var marker = InstalledMaBuildMarker(disableInMmd);
             if (placement == "machine") root.behaviours = new[] { marker }; else selected.behaviours = new[] { marker };
             var markerJson = EditorJsonUtility.ToJson(marker); var controllerJson = EditorJsonUtility.ToJson(controller);
@@ -132,7 +117,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("FaceChoice", AnimatorControllerParameterType.Int);
             var root = controller.layers[0].stateMachine;
-            var selected = State(root, "Smile", Clip("Smile", 75)); Transition(neutral, selected, "FaceChoice", 1);
+            var selected = FxGraph.State(root, "Smile", Clip("Smile", 75)); FxGraph.Transition(neutral, selected, "FaceChoice", AnimatorConditionMode.Equals, 1);
             var marker = InstalledMaBuildMarker(false);
             var callback = selected.AddStateMachineBehaviour<UnknownStateCallbackProbe>();
             Assert.That(ExpressionDependencies.IsInertAuthoringMarker(callback), Is.False);

@@ -48,15 +48,27 @@ namespace VRVlog.LilToonExporter
             internal double TransformDuration = 0;
             internal bool TransformLoop = false;
 
-            // The animation's shape at time = duration: per channel the two
-            // points Channel.Weights picks, at 1 - blend and blend. Points that
-            // move nothing and zero weights are left out.
+            // The time of Animation that the VRM expression shows (ClipFaceTime);
+            // unset, the end of the animation.
+            internal double? FaceTime { get; set; }
+
+            // The animation's shape at FaceTime: per channel the two points
+            // Channel.Weights picks, at 1 - blend and blend. Points that move
+            // nothing and zero weights are left out. The value is read as
+            // ClipFaceTime.Value does, so a held value is its key value.
             internal IEnumerable<(ExpressionAnimationData.Point Point, float Weight)> FinalPoints()
             {
                 if (Animation == null) yield break;
                 foreach (var channel in Animation.Channels)
                 {
-                    channel.Weights(Animation.Duration, out var left, out var right, out var blend);
+                    var value = FaceTime == null ? channel.Curve.Evaluate(Animation.Duration)
+                        : ClipFaceTime.Value(channel.Curve, FaceTime.Value, Animation.Duration);
+                    // As Channel.Weights, from the value.
+                    var right = 1;
+                    while (right < channel.Points.Count - 1 && value > channel.Points[right].Value) right++;
+                    var left = right - 1;
+                    var blend = (float)Math.Max(0, Math.Min(1,
+                        (value - channel.Points[left].Value) / (channel.Points[right].Value - channel.Points[left].Value)));
                     if (1f - blend != 0f && Moves(channel.Points[left])) yield return (channel.Points[left], 1f - blend);
                     if (blend != 0f && Moves(channel.Points[right])) yield return (channel.Points[right], blend);
                 }
@@ -101,23 +113,6 @@ namespace VRVlog.LilToonExporter
             Dictionary<string, object> MenuBinding(Dictionary<string, object> json, UnityEngine.SkinnedMeshRenderer renderer, string shape, float weight);
         }
 
-        // Counts the expressions this exporter registered: those listed in the
-        // expression animation extension that bind a morph. Authored custom
-        // expressions and unbound names are not counted.
-        internal static int CountRegistered(byte[] bytes)
-        {
-            var json = GlbDocument.Read(bytes).Json;
-            var custom = Path(json, "extensions", "VRMC_vrm", "expressions", "custom");
-            if (custom == null) return 0;
-            return RegisteredNames(json).Count(name => custom.TryGetValue(name, out var value) &&
-                value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
-                binds is List<object> list && list.Count > 0);
-        }
-
-        // Names the expression animation extension lists as registered by this
-        // exporter, with their final duplicate-name suffix. Empty without it.
-        internal static IReadOnlyCollection<string> RegisteredNames(byte[] bytes) => RegisteredNames(GlbDocument.Read(bytes).Json);
-
         // The expressions Add registered, by final name, with the text emotion
         // inference reads for each: the same text as before names lost their
         // menu path, so a "Smile" submenu still makes its item "1" happy.
@@ -129,23 +124,6 @@ namespace VRVlog.LilToonExporter
         internal static Dictionary<string, IReadOnlyList<(string Shape, float Weight)>> EmotionShapes(IEnumerable<Expression> expressions) =>
             (expressions ?? Enumerable.Empty<Expression>()).Where(e => e.RegisteredName != null && e.Shapes.Count > 0)
                 .ToDictionary(e => e.RegisteredName, e => (IReadOnlyList<(string Shape, float Weight)>)e.Shapes, StringComparer.Ordinal);
-
-        static IReadOnlyCollection<string> RegisteredNames(Dictionary<string, object> json)
-        {
-            var extensions = Path(json, "extensions");
-            if (extensions == null || !extensions.TryGetValue(ExpressionAnimationData.Extension, out var value)) return Array.Empty<string>();
-            return ExpressionAnimationData.ReadDocument(value).Expressions.Select(e => e.Expression).ToArray();
-        }
-
-        static Dictionary<string, object> Path(Dictionary<string, object> current, params string[] keys)
-        {
-            foreach (var key in keys)
-            {
-                if (!current.TryGetValue(key, out var value) || !(value is Dictionary<string, object> next)) return null;
-                current = next;
-            }
-            return current;
-        }
 
         static readonly HashSet<string> PresetNames = new HashSet<string>(
             Enum.GetNames(typeof(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset)).Where(name => name != "custom"), StringComparer.Ordinal);
@@ -179,7 +157,7 @@ namespace VRVlog.LilToonExporter
 
         // Register only actual menu entries. Each one binds its composite
         // targets at full weight, the original shapes it moves linearly at
-        // their own weight, and its animation's shape at time = duration;
+        // their own weight, and its animation's shape at FaceTime;
         // raw shapes do not become selectable expressions. The animation
         // extension (schema 2) lists every registered expression with its
         // source and refers to morphs by node and morph target index.
@@ -278,8 +256,8 @@ namespace VRVlog.LilToonExporter
                         // An optimizer merged two animated shapes, or an
                         // animated shape and a fixed one, into one morph; the
                         // app could not move them apart. Keep the VRM
-                        // expression (the last frame) without the motion.
-                        warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて最後のフレームの顔だけを登録しました。");
+                        // expression (its face time) without the motion.
+                        warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて動かない顔だけを登録しました。");
                         animation = null;
                     }
                 }
@@ -330,12 +308,19 @@ namespace VRVlog.LilToonExporter
                 if (group != null) group.Add(item);
                 else groups.Add(new List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> { item });
             }
-            foreach (var group in groups)
+            var kept = groups.Select(group => (Group: group, Face: KeptFace(group))).ToList();
+            // A prefix or suffix every written name shares is left out
+            // (ExpressionNameAffix). Every reference below takes the final
+            // name: the extension, RegisteredName and MergedInto.
+            var names = ExpressionNameAffix.Trim(kept.Select(item => item.Face.Expression.Name).ToArray(),
+                candidate => Reserved(candidate) || custom.ContainsKey(candidate));
+            for (var index = 0; index < kept.Count; index++)
             {
-                var (expression, binds, animation) = KeptFace(group);
+                var group = kept[index].Group;
+                var (expression, binds, animation) = kept[index].Face;
                 // The name carries no source prefix; the extension lists the
                 // source. Recorded and authored custom faces keep their names.
-                var name = UniqueName(expression.Name, custom.ContainsKey);
+                var name = UniqueName(names[index], custom.ContainsKey);
                 // A face with no binds moves only bones or visibility. It
                 // leaves blink, mouth and gaze to tracking, so an app that
                 // ignores transforms shows the face unchanged.
@@ -360,12 +345,7 @@ namespace VRVlog.LilToonExporter
                     document.Transforms.Add(transforms);
                 }
             }
-            var extensions = (Dictionary<string, object>)glb.Json["extensions"];
-            if (extensions.ContainsKey(ExpressionAnimationData.Extension))
-                throw new InvalidOperationException("既存の表情アニメーション拡張を上書きできません。");
-            extensions.Add(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document));
-            if (!glb.Json.TryGetValue("extensionsUsed", out var used)) glb.Json["extensionsUsed"] = used = new List<object>();
-            ((List<object>)used).Add(ExpressionAnimationData.Extension);
+            glb.PlaceExtension(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document), "既存の表情アニメーション拡張を上書きできません。");
             return glb.Write();
         }
 
