@@ -417,7 +417,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // channel 0-3 is R, G, B, A and 4 the BT.709 luminance of RGB.
-        static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures)
+        internal static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures)
         {
             if (textures == null) return null;
             var fit = Mathf.Min(1, 2048f / Mathf.Max(mask.width, mask.height));
@@ -605,7 +605,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Puts back the shader's own defaults.
-        static void Reset(Material material, params string[] names)
+        internal static void Reset(Material material, params string[] names)
         {
             var shader = material.shader;
             foreach (var name in names)
@@ -646,7 +646,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static void SetTexture(Material material, string name, Texture texture, Vector2 scale, Vector2 offset)
+        internal static void SetTexture(Material material, string name, Texture texture, Vector2 scale, Vector2 offset)
         {
             if (!material.HasProperty(name)) return;
             material.SetTexture(name, texture);
