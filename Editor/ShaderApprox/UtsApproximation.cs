@@ -32,7 +32,10 @@ namespace VRVlog.LilToonExporter
             Rim(values, material, textures, dropped);
             Matcap(values, material, textures, dropped);
             if (Outline(values)) ApplyOutline(values, material, textures, dropped);
-            if (Opaque(values, "_HighColor", Color.black).maxColorComponent > 0) Drop(dropped, "High Color");
+            // A power of 0 draws no high color unless it follows the specular.
+            if (Opaque(values, "_HighColor", Color.black).maxColorComponent > 0
+                && (values.Float("_HighColor_Power", 0) > 0 || values.Float("_Is_SpecularToHighColor", 0) > .5f))
+                Drop(dropped, "High Color");
             if (values.Float("_AngelRing", 0) > .5f) Drop(dropped, "Angel Ring");
             if (values.Keyword("_EMISSIVE_ANIMATION")) Drop(dropped, "Emission Animation");
         }
@@ -104,8 +107,13 @@ namespace VRVlog.LilToonExporter
         static void Layer(Material material, string colorName, string textureName, Color color, Texture map, bool useMain, Color mainColor,
             List<Texture2D> textures, ref Texture white)
         {
-            if (useMain) material.SetColor(colorName, Ratio(color, mainColor));
-            else ShadeLayers.Absolute(material, colorName, textureName, color, map, textures, ref white);
+            // The source draws the main image × color. As a ratio to the base
+            // color this needs no image, but a shade brighter than the base
+            // would stop at 1, so that one takes the main image.
+            if (useMain && color.r <= mainColor.r && color.g <= mainColor.g && color.b <= mainColor.b)
+                material.SetColor(colorName, Ratio(color, mainColor));
+            else
+                ShadeLayers.Absolute(material, colorName, textureName, color, useMain ? material.GetTexture("_MainTex") : map, textures, ref white);
         }
 
         // The shader's rim is pow(1 - N·V, 2^lerp(3, 0, power)), rising from
@@ -181,8 +189,8 @@ namespace VRVlog.LilToonExporter
                 // The source multiplies by the base twice. lilToon draws one
                 // image, so the second one is the base color only.
                 SetTexture(material, "_OutlineTex", material.GetTexture("_MainTex"), material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"));
-                var main = material.GetColor("_Color");
-                color *= main * main;
+                var main = material.GetColor("_Color").linear;
+                color = (color.linear * main * main).gamma;
                 color.a = 1;
             }
             material.SetColor("_OutlineColor", color);
