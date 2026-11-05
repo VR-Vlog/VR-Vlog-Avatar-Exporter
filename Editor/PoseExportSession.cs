@@ -178,7 +178,7 @@ namespace VRVlog.LilToonExporter
             foreach (var name in row.IsAnimation ? HumanoidAnimationData.BoneNames : HumanoidPoseData.BoneNames)
             {
                 var human = PoseSampling.HumanBone(name); var bone = HumanoidBones.Resolve(sourceAnimator, human);
-                if (bone == null || targetAnimator.GetBoneTransform(human) != null) continue;
+                if (bone == null || HumanoidBones.Resolve(targetAnimator, human) != null) continue;
                 if (row.Layers.Any(layer => layer.Clip != null && PoseSampling.WritesBone(layer, name, bone, source)))
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用コピーからポーズのHumanoidボーンが失われました: ") + human);
                 omitted.Add(name);
@@ -191,7 +191,7 @@ namespace VRVlog.LilToonExporter
             var animator = prepared.GetComponent<Animator>();
             int Node(string name)
             {
-                var transform = animator.GetBoneTransform(PoseSampling.HumanBone(name));
+                var transform = HumanoidBones.Resolve(animator, PoseSampling.HumanBone(name));
                 if (transform == null || !converter.Nodes.TryGetValue(transform.gameObject, out var node))
                     throw new InvalidOperationException("ポーズの骨が出力にありません: " + name);
                 return model.Nodes.IndexOf(node);

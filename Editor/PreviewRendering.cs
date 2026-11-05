@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter
         {
             var animator = root.GetComponent<Animator>();
             var head = animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+                ? HumanoidBones.Resolve(animator, HumanBodyBones.Head) : null;
             center = head != null ? head.position + Vector3.up * bounds.size.y * .065f : bounds.center;
             distance = head != null ? Mathf.Max(.35f, bounds.size.y * .65f) : Mathf.Max(.5f, bounds.size.magnitude * 1.2f);
         }

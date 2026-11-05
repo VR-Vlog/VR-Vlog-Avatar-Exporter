@@ -68,7 +68,7 @@ namespace VRVlog.LilToonExporter
             var reading = new Reading();
             var root = avatar.transform;
             var paths = SelectedExpressionAppearance.TransformsByPath(avatar);
-            var humanoid = HumanoidBones(avatar);
+            var humanoid = HumanoidTransforms(avatar);
             var bindings = AnimationUtility.GetCurveBindings(clip).Where(binding => !binding.isPPtrCurve && excludedPath?.Invoke(binding.path) != true).ToArray();
             var parts = bindings.Where(binding => binding.type == typeof(Transform)).Select(binding =>
             {
@@ -240,14 +240,14 @@ namespace VRVlog.LilToonExporter
             return 2 * Math.Atan2(Math.Sqrt(x * x + y * y + z * z), Math.Abs(w)) * 180 / Math.PI;
         }
 
-        static HashSet<Transform> HumanoidBones(GameObject avatar)
+        static HashSet<Transform> HumanoidTransforms(GameObject avatar)
         {
             var result = new HashSet<Transform>();
             var animator = avatar.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return result;
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
             {
-                var transform = animator.GetBoneTransform(bone);
+                var transform = HumanoidBones.Resolve(animator, bone);
                 if (transform != null) result.Add(transform);
             }
             return result;
