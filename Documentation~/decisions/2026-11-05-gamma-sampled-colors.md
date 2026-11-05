@@ -21,6 +21,6 @@ lilToon のマテリアルを読む `TextureColors.ReadLinear` は、Gamma の�
 
 ## 残したもの
 
-`MatcapApproximation` も `GpuReadback.LinearPixels` で直接読んでいて、Gamma のときに直していない。置き換えとは別の経路で、Gamma で失敗するテストも無いので、この変更には入れていない。
+`MatcapApproximation` も `GpuReadback.LinearPixels` で直接読んでいて、Gamma のときに直していない。置き換えとは別の経路で、Gamma で失敗するテストも無いので、この変更には入れていない（2026-11-06-gamma-matcap-and-gradation.md で直した）。
 
 GPU が補間したあとで Linear の値に直すので、Gamma のプロジェクトでは、色の違う画素どうしを補間するところ（縮小・境目・UV のずらし）が Linear のプロジェクトと少し違う。黒と白の間の 1 画素なら、Linear では 0.5、この方法では約 0.21 になる。補間の前に直すには元の解像度で読んで CPU で縮小し直す必要があり、作り直しが大きいので入れていない。`TextureColors.ReadLinear` も同じ順序で直している。前は全部の画素がずれていたが、残るのはこの補間するところだけになる。
