@@ -13,4 +13,4 @@
 
 ## 確かめたこと
 
-R09（Unity 2022.3.22f1）で `ExperimentalExpressionCaptureTests` を回し、足した `TheResultListBlinkButtonStillOpensAfterARebuild`（作り直したあとは開く・別のアバターに移ったら開かない）が通った。183 件のうち失敗 2 件はファイルのドラッグのテストで、develop でも同じ環境で同じように落ちる。
+検証環境（Unity 2022.3.22f1）で `ExperimentalExpressionCaptureTests` を回し、足した `TheResultListBlinkButtonStillOpensAfterARebuild`（作り直したあとは開く・別のアバターに移ったら開かない）が通った。183 件のうち失敗 2 件はファイルのドラッグのテストで、develop でも同じ環境で同じように落ちる。
