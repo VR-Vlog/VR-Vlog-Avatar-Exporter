@@ -150,6 +150,26 @@ namespace VRVlog.LilToonExporter.Tests
             finally { TestObjects.Destroy(material, created, textures, matcap, main); }
         }
 
+        // A screen MatCap adds src * (1 - dst); the weight image holds 1 - albedo
+        // in linear values.
+        [Test]
+        public void AScreenMatcapWeighsByTheLinearAlbedo()
+        {
+            var material = Create(2);
+            var main = Srgb(new Color(.5f, .5f, .5f, 1));
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                material.SetTexture("_MainTex", main);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                var weight = (Texture2D)fallback.GetTexture("_RimTex");
+                Assert.That(textures, Does.Contain(weight));
+                Assert.That(weight.GetPixel(0, 0).linear.r, Is.EqualTo(1 - Mathf.GammaToLinearSpace(.5f)).Within(.015f));
+            }
+            finally { TestObjects.Destroy(material, created, textures, main); }
+        }
+
         // A 2x2 sRGB image with point sampling, pixels from the bottom left.
         static Texture2D Srgb(params Color[] pixels)
         {
