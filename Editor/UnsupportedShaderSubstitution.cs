@@ -892,7 +892,7 @@ namespace VRVlog.LilToonExporter
 
         // The same through the image's tiling and offset: the pixels are laid
         // out in the mesh's UV space.
-        static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
+        internal static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
             try
@@ -936,7 +936,7 @@ namespace VRVlog.LilToonExporter
             // The name Create was given; null for a missing shader.
             internal readonly string ShaderName;
 
-            internal SourceValues(Material material, string shaderName)
+            internal SourceValues(Material material, string shaderName = null)
             {
                 ShaderName = shaderName == MissingShader ? null : shaderName;
                 var shader = material.shader;

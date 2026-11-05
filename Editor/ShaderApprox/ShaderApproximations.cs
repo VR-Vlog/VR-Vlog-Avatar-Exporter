@@ -11,6 +11,7 @@ namespace VRVlog.LilToonExporter
         {
             new NonToonApproximation(),
             new SilentCelShadingApproximation(),
+            new SunaoApproximation(),
         };
 
         internal static IShaderApproximation Find(string shaderName, SourceValues values)
