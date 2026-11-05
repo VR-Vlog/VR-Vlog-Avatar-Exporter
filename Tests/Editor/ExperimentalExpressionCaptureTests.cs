@@ -1041,10 +1041,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
         static void ConfigureRegisteredMenuPose(GameObject source, AnimationClip clip, System.Collections.Generic.List<Object> assets)
         {
-            // Descriptor skips without the SDK, but through Invoke the skip would arrive wrapped as a failure.
-            OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install VRChat SDK for registration tests.");
-            var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
-            var descriptor = (Component)typeof(PoseRegistrationTests).GetMethod("Descriptor", flags).Invoke(null, new object[] { source });
+            var descriptor = PoseRegistrationTests.Descriptor(source);
             var controller = new AnimatorController(); assets.Add(controller);
             controller.AddParameter("Pose", AnimatorControllerParameterType.Int);
             var machine = new AnimatorStateMachine(); assets.Add(machine);
@@ -2411,7 +2408,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // NDMF before 1.8.0 has no generic platform and builds the FX
                 // that Merge Animator merges into from a VRChat descriptor.
                 if (OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
-                    typeof(PoseRegistrationTests).GetMethod("Descriptor", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, new object[] { fixture.Source });
+                    PoseRegistrationTests.Descriptor(fixture.Source);
                 var merge = fixture.Source.AddComponent(mergeType);
                 using (var data = new SerializedObject(merge))
                 {

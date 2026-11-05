@@ -31,7 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
             try { action(); }
             finally { AssetDatabase.StopAssetEditing(); }
         }
-        static Component Descriptor(GameObject root)
+        internal static Component Descriptor(GameObject root)
         {
             var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install VRChat SDK for registration tests.");
             var result = root.AddComponent(type); VrcAvatar.Set(result, "customExpressions", true); VrcAvatar.Set(result, "customizeAnimationLayers", true);

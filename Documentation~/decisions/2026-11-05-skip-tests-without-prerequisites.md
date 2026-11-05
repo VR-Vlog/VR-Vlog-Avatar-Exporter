@@ -1,7 +1,7 @@
 # 前提のパッケージや色空間が無いテストは失敗でなく飛ばす
 
 - 日付: 2026-11-05
-- 対象: `Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/Editor/AppearancePreparationTests.cs`・`Tests/Editor/SelectedExpressionAppearanceTests.cs`
+- 対象: `Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/Editor/AppearancePreparationTests.cs`・`Tests/Editor/PoseRegistrationTests.cs`・`Tests/Editor/SelectedExpressionAppearanceTests.cs`
 
 ## 背景
 
@@ -22,7 +22,7 @@ Modular Avatar・VRChat SDK・Linear がそろったプロジェクトでは、d
 18 件は、前提が無ければ理由を出して飛ばす。
 
 - Modular Avatar と VRChat SDK の型は `OptionalTools.Require` で探す。`AppearancePreparationTests.AddRule` も同じにしたので、これを使うほかのテストも、Modular Avatar が無いときは飛ばす。
-- `PoseRegistrationTests.Descriptor` をリフレクションで呼ぶ前に、VRChat SDK があるかを確かめる。`Invoke` の中で飛ばすと、包まれて失敗になるため。
+- `PoseRegistrationTests.Descriptor` を `internal` にし、リフレクションを通さず直接呼ぶ。`Invoke` の中で飛ばすと、`TargetInvocationException` に包まれて失敗になるため。
 - 実際の描画と比べるテストは、Linear でなければ飛ばす。期待する値を Linear のプロジェクトとして計算しているため。
 
 期待する値と、前提がそろったときに確かめる中身は変えていない。`Tools/run-unity-compatibility.py` は飛ばしたテストも失敗として扱うので、互換性の確認で見逃すことはない。
