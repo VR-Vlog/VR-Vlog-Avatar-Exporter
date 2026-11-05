@@ -223,7 +223,7 @@ namespace VRVlog.LilToonExporter
             if (rate >= .5f)
             {
                 SetTexture(material, "_OutlineTex", material.GetTexture("_MainTex"), material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"));
-                if (hasImage) Drop(dropped, "Outline Image");
+                if (hasImage && rate < 1) Drop(dropped, "Outline Image");
             }
             else if (hasImage) SetTexture(material, "_OutlineTex", image, scale, offset);
             color = Color.Lerp(color.linear, material.GetColor("_Color").linear, rate).gamma;

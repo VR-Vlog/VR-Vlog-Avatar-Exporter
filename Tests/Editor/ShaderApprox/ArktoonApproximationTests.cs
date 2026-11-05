@@ -325,6 +325,18 @@ namespace VRVlog.LilToonExporter.Tests
             else Assert.That(dropped, Does.Not.Contain("Outline Image"));
         }
 
+        // At rate 1 the original does not show the outline's image at all.
+        [Test] public void AnOutlineImageWithNoEffectIsNotReported()
+        {
+            var source = Source();
+            source.SetFloat("_UseOutline", 1);
+            source.SetFloat("_OutlineWidth", .1f);
+            source.SetFloat("_OutlineTextureColorRate", 1);
+            source.SetTexture("_OutlineTexture", Image("outline"));
+            Substitute(source, out var dropped);
+            Assert.That(dropped, Does.Not.Contain("Outline Image"));
+        }
+
         [Test] public void WhatLilToonCannotShowIsReported()
         {
             var source = Source();
