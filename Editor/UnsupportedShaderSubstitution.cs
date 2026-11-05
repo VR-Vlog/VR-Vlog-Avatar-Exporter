@@ -160,7 +160,7 @@ namespace VRVlog.LilToonExporter
         internal static Material Create(Material source, string shaderName, out bool colorSkipped, out Route route,
             out IReadOnlyList<string> dropped, List<Texture2D> textures = null)
         {
-            var values = new SourceValues(source);
+            var values = new SourceValues(source, shaderName);
             colorSkipped = false; route = Route.Generic; dropped = Array.Empty<string>();
             if (LooksLikeLilToon(source) || values.SavedLilToon(source)) return FromDerived(source, values);
             var approximation = ShaderApproximations.Find(shaderName == MissingShader ? null : shaderName, values);
@@ -933,9 +933,12 @@ namespace VRVlog.LilToonExporter
             internal readonly int Queue;
             // Properties the live shader marks with [MainTexture] and [MainColor].
             internal readonly string MainTextureName, MainColorName;
+            // The name Create was given; null for a missing shader.
+            internal readonly string ShaderName;
 
-            internal SourceValues(Material material)
+            internal SourceValues(Material material, string shaderName = null)
             {
+                ShaderName = shaderName == MissingShader ? null : shaderName;
                 var shader = material.shader;
                 if (shader != null && shader.name != MissingShader)
                 {
