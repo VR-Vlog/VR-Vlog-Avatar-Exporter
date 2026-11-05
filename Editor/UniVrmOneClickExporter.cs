@@ -1275,10 +1275,12 @@ namespace VRVlog.LilToonExporter
             if (shader == null) throw new InvalidOperationException("UniVRMのMToon10シェーダーを利用できません。");
             var material = new Material(shader) { name = source.name };
             created.Add(material);
-            // The properties the shader marks with [MainTexture]/[MainColor] first.
-            var mainName = MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainTexture) ??
-                (source.HasProperty("_MainTex") ? "_MainTex" : source.HasProperty("_BaseMap") ? "_BaseMap" : null);
-            var main = mainName != null ? source.GetTexture(mainName) as Texture2D : null;
+            // The properties the shader marks with [MainTexture]/[MainColor] come
+            // first; an empty mark falls back to the common names, as the
+            // substitution does.
+            Texture2D main = null; string mainName = null;
+            foreach (var name in new[] { MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainTexture), "_MainTex", "_BaseMap" })
+                if (name != null && source.HasProperty(name) && (main = source.GetTexture(name) as Texture2D) != null) { mainName = name; break; }
             var colorName = MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainColor) ??
                 (source.HasProperty("_Color") ? "_Color" : source.HasProperty("_BaseColor") ? "_BaseColor" : null);
             var color = colorName != null ? source.GetColor(colorName) : UnityEngine.Color.white;
