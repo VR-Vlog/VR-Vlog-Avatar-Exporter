@@ -13,6 +13,7 @@ namespace VRVlog.LilToonExporter
             new MochieStandardApproximation(),
             new SilentCelShadingApproximation(),
             new UtsApproximation(),
+            new ArktoonApproximation(),
             new SunaoApproximation(),
             new UnlitWFApproximation(),
         };
