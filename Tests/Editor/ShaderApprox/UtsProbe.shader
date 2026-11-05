@@ -38,6 +38,7 @@ Shader "Hidden/VRVlogTests/UtsProbe"
         _RimLight_InsideMask ("Rim Inside", Range(0.0001, 1)) = 0.0001
         _RimLight_FeatherOff ("Rim Feather Off", Float) = 0
         _LightDirection_MaskOn ("Rim Direction", Float) = 0
+        _Tweak_LightDirection_MaskLevel ("Rim Direction Level", Float) = 0
         _Add_Antipodean_RimLight ("Antipodean", Float) = 0
         _Set_RimLightMask ("Rim Mask", 2D) = "white" {}
         _Tweak_RimLightMaskLevel ("Rim Mask Level", Range(-1, 1)) = 0
