@@ -32,6 +32,11 @@ PREFLIGHT_FILE = "vpm-mirror-preflight.json"
 # UniVRM is bundled inside the exporter; earlier dependency packages stay only as published history.
 REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter",)
 MAX_FILE_BYTES = 4 * 1024 * 1024
+# Read-only, never through a symlink in the final component, never blocking on a
+# special file. Windows has no O_NOFOLLOW or O_NONBLOCK (the lstat checks before
+# each open still reject symlinks there) and needs O_BINARY for raw bytes.
+SAFE_READ_FLAGS = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                   | getattr(os, "O_BINARY", 0))
 MAX_PUBLICATION_BYTES = 8 * 1024 * 1024
 MAX_FILES = 1000
 MAX_DIRECTORIES = 1000
@@ -142,7 +147,7 @@ def read_preflight(environment, publisher):
     require(root.is_dir() and not root.is_symlink(), "Runner temporary directory must be a real directory")
     path = root / PREFLIGHT_FILE
     require(path.exists() and stat.S_ISREG(path.lstat().st_mode), "Mirror preflight proof is missing or unsafe")
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    descriptor = os.open(path, SAFE_READ_FLAGS)
     with os.fdopen(descriptor, "rb") as stream:
         require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Mirror preflight proof is not a regular file")
         raw = stream.read(MAX_FILE_BYTES + 1)
@@ -348,7 +353,7 @@ def read_snapshot(root, *, allow_stale_receipt=False):
             require(stat.S_ISREG(path.lstat().st_mode), "Publication contains a non-regular file")
             # O_NOFOLLOW pins the final component; O_NONBLOCK avoids hanging on a
             # special file if an entry changes between validation and opening.
-            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            descriptor = os.open(path, SAFE_READ_FLAGS)
             with os.fdopen(descriptor, "rb") as stream:
                 require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Publication contains a non-regular file")
                 raw = stream.read(MAX_FILE_BYTES + 1)

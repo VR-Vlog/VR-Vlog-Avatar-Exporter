@@ -241,11 +241,13 @@ class PublicationTests(unittest.TestCase):
         self.assert_rejected_unchanged("roots cannot be symlinks", source=alias)
 
     def test_special_file_and_unsafe_paths_are_rejected(self):
-        fifo = self.source / "pipe"
-        os.mkfifo(fifo)
-        self.assert_rejected_unchanged("non-regular")
-        fifo.unlink()
-        for name in ("bad\\path", "bad\npath"):
+        if hasattr(os, "mkfifo"):  # Windows has no FIFOs; CI (Linux) covers this part
+            fifo = self.source / "pipe"
+            os.mkfifo(fifo)
+            self.assert_rejected_unchanged("non-regular")
+            fifo.unlink()
+        # Windows cannot create these names; CI (Linux) covers them.
+        for name in ("bad\\path", "bad\npath") if os.name == "posix" else ():
             path = self.source / name
             path.write_bytes(b"invalid name")
             self.assert_rejected_unchanged("Invalid publication path")
@@ -597,9 +599,10 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
             publication.read_preflight(environment, self.publisher)
         path.unlink()
-        os.mkfifo(path)
-        with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
-            publication.read_preflight(environment, self.publisher)
+        if hasattr(os, "mkfifo"):  # Windows has no FIFOs; CI (Linux) covers this part
+            os.mkfifo(path)
+            with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
+                publication.read_preflight(environment, self.publisher)
 
     def test_cli_refuses_missing_preflight_and_succeeds_with_matching_ci_proof(self):
         command = [sys.executable, str(Path(__file__).with_name("prepare-exporter-publication.py")),

@@ -930,7 +930,8 @@ class ApiTests(unittest.TestCase):
             root = Path(folder); target = root / sync.PREFLIGHT_FILENAME
             sync.save_preflight_evidence(evidence)
             self.assertEqual(json.loads(target.read_bytes()), evidence)
-            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":  # Windows reports no owner-only permission bits
+                self.assertEqual(target.stat().st_mode & 0o777, 0o600)
             before = target.read_bytes()
             with patch.object(sync.os, "replace", side_effect=OSError("private-marker")):
                 with self.assertRaises(OSError):
