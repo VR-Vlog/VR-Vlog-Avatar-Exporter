@@ -93,6 +93,10 @@ namespace VRVlog.LilToonExporter.Tests
                 // as the word in it lists it in Japanese.
                 var quoting = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + ExporterLocalization.T(UnsupportedShaderSubstitution.Warning);
                 Assert.That(ExportAppearanceReport.Changes(new[] { quoting }), Is.EqualTo(new[] { quoting }), locale);
+                // Many notes are still written in Japanese whatever the language, as PhysBoneSpringExport
+                // and UniVrmOneClickExporter write these; they are listed in every language.
+                var japanese = new[] { "Hair: PhysBoneを省略 — reason", "自動除外せず保持: Ribbon", "標準VRM表示の近似: Body" };
+                Assert.That(ExportAppearanceReport.Changes(japanese), Is.EqualTo(japanese), locale);
             }
             finally
             {

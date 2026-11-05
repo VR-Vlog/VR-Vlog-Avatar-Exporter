@@ -9,10 +9,12 @@
 
 ## 決定
 
-ほかの UI と同じく言語の表（`Editor/Locales/ExporterLocale_*.json`）に寄せる。表の元の日本語にこの 5 語のどれかが入っている文を集め、Editor の言語に訳した文を含む注記を拾う。訳した文の `{0}` や `{name}` のところは何が入ってもよいとして探す。5 語そのものも表に入っているので、日本語のときはこれまでと同じく語で探すのと同じになる。手で並べていた一覧は消した。
+ほかの UI と同じく言語の表（`Editor/Locales/ExporterLocale_*.json`）に寄せる。表の元の日本語にこの 5 語のどれかが入っている文を集め、Editor の言語に訳した文を含む注記を拾う。訳した文の `{0}` や `{name}` のところは何が入ってもよいとして探す。手で並べていた一覧は消した。
+
+5 語そのものはどの言語でも日本語のまま探す。Editor の言語に関係なく日本語で書かれる注記（PhysBone の省略・自動除外せず保持など）がまだ多いため。5 語だけを訳したものでは探さない。韓国語・中国語では「조정」「调整」のような短い語になり、日本語では拾わない注記まで拾うため。日本語のときは表から足すものがなく、これまでと同じになる。
 
 このため `ExporterLocalization` に今の言語（`Locale`）と、表の元の日本語の一覧（`Sources()`）を出した。
 
 ## 確かめたこと
 
-R09（Unity 2022.3.22f1）で `ExportAppearanceReportLanguageTests`・`ExportFallbackConfirmationTests`・`QuickTransferMatchesDefaultNormalTests` の 39 件が通った。足したテストでは、5 つの言語で lilToon の構造の注記のうちマテリアルを MToon で書く注記が拾われ、プロパティを書かない注記は拾われない。
+検証環境（Unity 2022.3.22f1）で `ExportAppearanceReportLanguageTests`・`ExportFallbackConfirmationTests`・`QuickTransferMatchesDefaultNormalTests` の 39 件が通った。足したテストでは、5 つの言語で lilToon の構造の注記のうちマテリアルを MToon で書く注記が拾われ、プロパティを書かない注記は拾われない。日本語で書かれた注記は 5 つの言語すべてで拾われる。

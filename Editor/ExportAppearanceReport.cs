@@ -13,16 +13,19 @@ namespace VRVlog.LilToonExporter
         static string patternsLocale;
         static Regex[] patterns;
 
-        // A note is listed when it contains, in the language of the Editor, a sentence of the
-        // locale table whose Japanese holds one of the words; the words are in the table too,
-        // so in Japanese this is the same as finding the words. {0} or {name} stand for what
-        // is written into the sentence.
+        // A note is listed when it holds one of the words, as the many notes still written in
+        // Japanese do, or contains, in the language of the Editor, a sentence of the locale table
+        // whose Japanese holds one; in Japanese the table adds nothing. A word alone is not
+        // translated: Korean and Chinese render it as a shorter word that other notes use too.
+        // {0} or {name} stand for what is written into the sentence.
         static Regex[] Patterns()
         {
             var locale = ExporterLocalization.Locale;
             if (patterns != null && patternsLocale == locale) return patterns;
-            var sentences = Words.Concat(ExporterLocalization.Sources().Where(source => Words.Any(source.Contains)))
-                .Select(ExporterLocalization.T).Distinct(StringComparer.Ordinal);
+            var sentences = Words.Concat(ExporterLocalization.Sources()
+                    .Where(source => !Words.Contains(source) && Words.Any(source.Contains))
+                    .Select(ExporterLocalization.T))
+                .Distinct(StringComparer.Ordinal);
             patterns = sentences.Select(text => Regex.Split(text, @"\{[^{}]*\}"))
                 .Where(parts => parts.Any(part => part.Trim().Length > 0))
                 .Select(parts => new Regex(string.Join(".*?", parts.Select(Regex.Escape)), RegexOptions.Singleline))
