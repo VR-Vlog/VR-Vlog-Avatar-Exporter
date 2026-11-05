@@ -874,20 +874,10 @@ namespace VRVlog.LilToonExporter
 
         // The middle row of an image in linear values, read through the GPU so
         // that images without CPU access are read too.
-        static Color[] ReadRow(Texture texture)
-        {
-            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
-            const int Width = 64;
-            try
-            {
-                return GpuReadback.LinearPixels(Width, 1, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
-                    target => Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f)));
-            }
-            catch (Exception) { return null; }
-        }
+        static Color[] ReadRow(Texture texture) => Sampled(texture, 64, 1, new Vector2(1, 0), new Vector2(0, .5f));
 
-        // The pixels as a shader samples them, at the given size. Null when they
-        // cannot be read (no graphics device).
+        // The pixels as a shader samples them in a Linear project, at the given
+        // size. Null when they cannot be read (no graphics device).
         static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
 
         // The same through the image's tiling and offset: the pixels are laid
@@ -895,12 +885,17 @@ namespace VRVlog.LilToonExporter
         static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
+            Color[] pixels;
             try
             {
-                return GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                pixels = GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
                     target => Graphics.Blit(texture, target, scale, offset));
             }
             catch (Exception) { return null; }
+            // A Gamma project does not decode sRGB images when sampling.
+            if (QualitySettings.activeColorSpace == ColorSpace.Gamma && texture.isDataSRGB)
+                for (var i = 0; i < pixels.Length; i++) pixels[i] = pixels[i].linear;
+            return pixels;
         }
 
         // An image owned by textures, with the wrap and filter of origin. linear
