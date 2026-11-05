@@ -208,7 +208,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Whether the red channel equals the luminance (also when it cannot be checked).
-        static bool Grey(Texture mask)
+        internal static bool Grey(Texture mask)
         {
             foreach (var c in Sampled(mask, 32, 32) ?? System.Array.Empty<Color>())
                 if (Mathf.Abs(c.r - c.g) > .02f || Mathf.Abs(c.r - c.b) > .02f) return false;
