@@ -14,6 +14,8 @@ namespace VRVlog.LilToonExporter
             new SilentCelShadingApproximation(),
             new UtsApproximation(),
             new ArktoonApproximation(),
+            new XsToonApproximation(outlined: true),
+            new XsToonApproximation(outlined: false),
             new SunaoApproximation(),
             new UnlitWFApproximation(),
         };

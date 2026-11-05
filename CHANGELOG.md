@@ -2,6 +2,7 @@
 
 ## 未リリース
 
+- Xiexe XSToonのマテリアルで、描画モード、影（Ramp・Shade Map・Solid）、リム、マットキャップ、輪郭線を公式lilToonへ写すようにしました。
 - Arktoonのマテリアルで、影（Plan Bを含む）、リム、マットキャップ、輪郭線、裏面の明るさを公式lilToonへ写すようにしました。
 - Silent's Cel Shadingのマテリアルの描画モード・影の段と色・ランプ画像・輪郭線・リムライト・マットキャップ・発光・スペキュラーを公式lilToonの同じ役割の項目へ写し、書き出したVRMの見た目を元に近づけました。
 - Unity-chan Toon Shader（UTS2・UTS3）のマテリアルで、2段の影、リム、マットキャップ、輪郭線を公式lilToonへ写すようにしました。
