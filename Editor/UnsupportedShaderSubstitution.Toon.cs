@@ -278,9 +278,7 @@ namespace VRVlog.LilToonExporter
             // still keeps a shade from getting brighter than the lit color.
             var origin = material.GetTexture("_MainTex");
             Texture white = null;
-            Texture Absolute() => multiply || origin == null ? null
-                : white != null ? white
-                : white = NewImage(origin, "__VRVlog_Shade", 4, 4, Enumerable.Repeat(Color.white, 16).ToArray(), textures, false);
+            Texture Absolute() => multiply || origin == null ? null : ShadeLayers.White(origin, textures, ref white);
             if (map == null && !useBase) map = Absolute();
             var main = ToonShadeLayer(material, "_ShadowColor", "_ShadowColorTex", map,
                 values.TryVector("_1st_ShadeColor", out var color) ? color : Vector4.one, useBase, multiply, mainColor);

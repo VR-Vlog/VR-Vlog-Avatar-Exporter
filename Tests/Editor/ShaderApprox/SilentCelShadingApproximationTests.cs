@@ -168,6 +168,16 @@ namespace VRVlog.LilToonExporter.Tests
             // The tone times the tint, not multiplied by the main image again.
             AssertColor(output.GetColor("_ShadowColor"), new Color(.125f, .125f, .125f, 1));
             Assert.That(output.GetFloat("_ShadowMainStrength"), Is.EqualTo(0f));
+
+            // A separate second tone takes the same white image.
+            source.SetFloat("_2nd_ShadeColor_Step", .3f);
+            source.SetFloat("_Crosstone2ndSeparation", 1);
+            var both = Substitute(source);
+            Assert.That(both.GetTexture("_ShadowColorTex"), Is.Not.Null);
+            Assert.That(both.GetTexture("_Shadow2ndColorTex"), Is.SameAs(both.GetTexture("_ShadowColorTex")));
+            AssertColor(((Texture2D)both.GetTexture("_Shadow2ndColorTex")).GetPixel(0, 0), Color.white);
+            AssertColor(both.GetColor("_ShadowColor"), new Color(.125f, .125f, .125f, 1));
+            Assert.That(both.GetFloat("_ShadowMainStrength"), Is.EqualTo(0f));
         }
 
         [Test] public void TheLightRampIsFittedWithOneEdgeAndItsDarkEndSetsTheColor()

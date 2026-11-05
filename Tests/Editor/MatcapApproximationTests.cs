@@ -24,8 +24,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(textures, Has.Count.EqualTo(1));
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.AreSame(textures[0], weight);
-                Assert.That(TestTextures.Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not add the MatCap.");
-                Assert.That(TestTextures.Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
+                Assert.That(weight.GetPixel(0, 0).linear.maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not add the MatCap.");
+                Assert.That(weight.GetPixel(1, 0).linear.r, Is.EqualTo(1f).Within(.015f));
                 Assert.AreSame(main, fallback.GetTexture("_MainTex"), "An added MatCap does not change the main image.");
                 Assert.AreSame(mask, material.GetTexture("_MatCapBlendMask"));
                 // Without a MatCap image there is nothing to weigh.
@@ -58,8 +58,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fallback.GetColor("_RimColor").maxColorComponent, Is.GreaterThan(0f));
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.AreSame(textures[0], weight, "The mask replaces the rim image.");
-                Assert.That(TestTextures.Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f));
-                Assert.That(TestTextures.Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
+                Assert.That(weight.GetPixel(0, 0).linear.maxColorComponent, Is.EqualTo(0f).Within(.015f));
+                Assert.That(weight.GetPixel(1, 0).linear.r, Is.EqualTo(1f).Within(.015f));
                 // Without a mask the MatCap covers the mesh in lilToon too, so
                 // the rim keeps its own image.
                 material.SetTexture("_MatCapBlendMask", null);
@@ -92,8 +92,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var baked = (Texture2D)fallback.GetTexture("_MainTex");
                 Assert.AreSame(textures[0], baked);
                 Assert.AreSame(baked, fallback.GetTexture("_ShadeTex"), "The shade image is the main image.");
-                Assert.That(TestTextures.Linear(baked.GetPixel(0, 0)).r, Is.EqualTo(1f).Within(.015f), "Black mask keeps the main image.");
-                var pixel = TestTextures.Linear(baked.GetPixel(1, 0));
+                Assert.That(baked.GetPixel(0, 0).linear.r, Is.EqualTo(1f).Within(.015f), "Black mask keeps the main image.");
+                var pixel = baked.GetPixel(1, 0).linear;
                 Assert.That(pixel.r, Is.EqualTo(.5f).Within(.015f));
                 Assert.That(pixel.g, Is.EqualTo(.25f).Within(.015f));
                 Assert.That(pixel.b, Is.EqualTo(1f).Within(.015f));
@@ -101,6 +101,83 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.AreSame(main, material.GetTexture("_MainTex"));
             }
             finally { TestObjects.Destroy(material, created, textures, matcap, mask, main); }
+        }
+
+        // The bakes are sRGB images that the app reads in linear values, so a
+        // Gamma project bakes the same pixels as a Linear one: it decodes the
+        // sRGB main image and mask, darkens in linear values and encodes.
+        [Test]
+        public void ANormalMatcapDarkensAnSrgbMainImageInLinearValues()
+        {
+            var material = Create(0);
+            var main = Srgb(new Color(.5f, .5f, .5f, 1));
+            var mask = Srgb(new Color(.5f, .5f, .5f, 1));
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                material.SetTexture("_MainTex", main);
+                material.SetTexture("_MatCapBlendMask", mask);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                var baked = (Texture2D)fallback.GetTexture("_MainTex");
+                Assert.That(textures, Does.Contain(baked));
+                // lilToon draws lerp(main, MatCap, mask); seen from every side the main image keeps 1 - mask.
+                var gray = Mathf.GammaToLinearSpace(.5f);
+                Assert.That(baked.GetPixel(0, 0).linear.r, Is.EqualTo(gray * (1 - gray)).Within(.015f));
+            }
+            finally { TestObjects.Destroy(material, created, textures, mask, main); }
+        }
+
+        [Test]
+        public void AMultiplyMatcapAveragesAnSrgbImageInLinearValues()
+        {
+            var material = Create(3);
+            // Half the disk is mid gray, half white.
+            var matcap = Srgb(new Color(.5f, .5f, .5f, 1), Color.white, new Color(.5f, .5f, .5f, 1), Color.white);
+            var main = TestTextures.Solid(Color.white);
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                material.SetTexture("_MainTex", main);
+                material.SetTexture("_MatCapTex", matcap);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                var baked = (Texture2D)fallback.GetTexture("_MainTex");
+                Assert.That(textures, Does.Contain(baked));
+                var mean = (Mathf.GammaToLinearSpace(.5f) + 1) / 2;
+                Assert.That(baked.GetPixel(0, 0).linear.r, Is.EqualTo(mean).Within(.015f));
+            }
+            finally { TestObjects.Destroy(material, created, textures, matcap, main); }
+        }
+
+        // A screen MatCap adds src * (1 - dst); the weight image holds 1 - albedo
+        // in linear values.
+        [Test]
+        public void AScreenMatcapWeighsByTheLinearAlbedo()
+        {
+            var material = Create(2);
+            var main = Srgb(new Color(.5f, .5f, .5f, 1));
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                material.SetTexture("_MainTex", main);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                var weight = (Texture2D)fallback.GetTexture("_RimTex");
+                Assert.That(textures, Does.Contain(weight));
+                Assert.That(weight.GetPixel(0, 0).linear.r, Is.EqualTo(1 - Mathf.GammaToLinearSpace(.5f)).Within(.015f));
+            }
+            finally { TestObjects.Destroy(material, created, textures, main); }
+        }
+
+        // A 2x2 sRGB image with point sampling, pixels from the bottom left.
+        static Texture2D Srgb(params Color[] pixels)
+        {
+            if (pixels.Length == 1) pixels = new[] { pixels[0], pixels[0], pixels[0], pixels[0] };
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
         }
 
         // 55 materials need 111 images without the bakes and 166 with them.
