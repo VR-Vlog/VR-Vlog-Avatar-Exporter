@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
             // The shade reads the base color the adjustment leaves.
             Adjust(values, material, textures, dropped);
             Shade(values, material, textures, dropped);
-            Rim(values, material, textures, dropped);
+            Rim(values, material, dropped);
             Reflection(values, material, textures, dropped);
             if (Outline(values)) ApplyOutline(values, material, textures, dropped);
             var blend = Mathf.RoundToInt(values.Float("_BlendMode", 0));
@@ -80,9 +80,8 @@ namespace VRVlog.LilToonExporter
             var tint = Opaque(values, "_ShadowColor", Color.white);
             if (type == 1)
             {
-                // Shade Map draws map × tint instead of the albedo.
-                if (!values.Texture("_ShadeMap", out var map, out var scale, out var offset) || !Flat(map)) map = null;
-                if (map != null) ShadeLayers.ReportOwnUv(material, scale, offset, dropped, "Shade Map Tiling");
+                // Shade Map draws map × tint instead of the albedo, on the albedo's UV.
+                if (!values.Texture("_ShadeMap", out var map, out _, out _) || !Flat(map)) map = null;
                 Texture white = null;
                 ShadeLayers.Absolute(material, "_ShadowColor", "_ShadowColorTex", tint, map, textures, ref white);
             }
@@ -128,7 +127,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // saturate(1 - N·V) × N·L^threshold, fading over range ± sharpness.
-        static void Rim(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
+        static void Rim(SourceValues values, Material material, ICollection<string> dropped)
         {
             var intensity = values.Float("_RimIntensity", 0);
             if (intensity <= 0) return;
@@ -153,7 +152,7 @@ namespace VRVlog.LilToonExporter
             Set(material, "_RimEnableLighting", 1);
             Set(material, "_RimShadowMask", Mathf.Clamp01(values.Float("_RimAttenEffect", 1)));
             Set(material, "_RimNormalStrength", 1);
-            CopyMask(values, material, "_RimMask", "", "", "_RimColorTex", "_UseRim", textures, dropped, "Rim Mask");
+            // The source samples _RimMask but its lighting never reads the result.
             if (values.Float("_RimCubemapTint", 0) > 0) Drop(dropped, "Rim Environment Tint");
         }
 

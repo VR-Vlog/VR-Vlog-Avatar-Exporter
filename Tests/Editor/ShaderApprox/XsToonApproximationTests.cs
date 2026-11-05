@@ -164,7 +164,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Substitute(source).GetColor("_Color").r, Is.EqualTo(1).Within(1e-3f));
         }
 
-        [Test] public void AShadeMapWithAlphaOrTilingIsHandled()
+        // The source draws the shade map on the albedo's UV, so its own tiling does nothing.
+        [Test] public void AShadeMapWithAlphaIsHandledAndItsTilingIgnored()
         {
             var source = Source();
             source.SetFloat("_ShadowType", 1);
@@ -172,7 +173,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_ShadeMap", image);
             source.SetTextureScale("_ShadeMap", new Vector2(2, 2));
             var output = Substitute(source, out var dropped);
-            Assert.That(dropped, Does.Contain("Shade Map Tiling"));
+            Assert.That(dropped, Does.Not.Contain("Shade Map Tiling"));
             var drawn = output.GetTexture("_ShadowColorTex");
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) { Assert.That(drawn, Is.SameAs(image)); return; }
             Assert.That(((Texture2D)drawn).GetPixel(0, 0).a, Is.EqualTo(1).Within(1e-3f));
@@ -192,6 +193,17 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(Source());
             Assert.That(output.GetFloat("_Shadow2ndNormalStrength"), Is.EqualTo(1));
             Assert.That(output.GetFloat("_Shadow2ndReceive"), Is.EqualTo(1));
+        }
+
+        // The source samples the rim mask but never uses it, so it must not mask the rim.
+        [Test] public void TheRimMaskHasNoEffect()
+        {
+            var source = Source();
+            source.SetFloat("_RimIntensity", 1);
+            source.SetTexture("_RimMask", Image("rim"));
+            var output = Substitute(source, out var dropped);
+            Assert.That(output.GetTexture("_RimColorTex"), Is.Null);
+            Assert.That(dropped, Does.Not.Contain("Rim Mask"));
         }
 
         [TestCase(1f, -.5f)]
