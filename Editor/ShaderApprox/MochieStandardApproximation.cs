@@ -44,7 +44,7 @@ namespace VRVlog.LilToonExporter
             ApplyNormal(values, material);
             // Both turn the normal toward the viewer on back faces.
             S.Set(material, "_FlipNormal", values.Float("_FlipBackfaceNormals", 0) >= .5f ? 1 : 0);
-            ApplyFiltering(values, material, dropped);
+            ApplyFiltering(values, material, textures, dropped);
             ApplyEmission(values, material, textures, dropped, mobile);
             ApplyLambert(material);
             ApplyReflection(values, material, textures, dropped);
@@ -71,13 +71,22 @@ namespace VRVlog.LilToonExporter
             if (material.GetFloat("_TransparentMode") == (int)Mode.Opaque) return;
             var source = Mathf.RoundToInt(values.Float("_AlphaSource", 0));
             if (source == 2) { S.Drop(dropped, "Vertex Color Alpha"); return; }
-            if (source != 1 || !values.Texture("_AlphaMask", out var mask, out var scale, out var offset) || !S.Flat(mask)) return;
+            if (source != 1) return;
+            var opacity = Mathf.Clamp01(values.Float("_AlphaMaskOpacity", 1));
+            // An empty slot reads as white, so the alpha is the opacity; lilToon's
+            // empty mask is white too.
+            if (!values.Texture("_AlphaMask", out var mask, out var scale, out var offset) || mask == null)
+            {
+                S.SetAlphaMask(material, 1, null, Vector2.one, Vector2.zero, opacity, 0);
+                return;
+            }
+            if (!S.Flat(mask)) { S.Drop(dropped, "Alpha Mask"); return; }
             var channel = Mathf.Clamp(Mathf.RoundToInt(values.Float("_AlphaMaskChannel", 0)), 0, 3);
             var copy = channel == 0 && S.Grey(mask) ? mask : S.BakeMask(mask, channel, false, textures);
             if (copy == null) { S.Drop(dropped, "Alpha Mask"); return; }
             if (values.Float("_UVAlphaMaskSet", 0) != 0) S.Drop(dropped, "Alpha Mask UV Set");
             S.MainRelative(material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"), ref scale, ref offset);
-            S.SetAlphaMask(material, 1, copy, scale, offset, Mathf.Clamp01(values.Float("_AlphaMaskOpacity", 1)), 0);
+            S.SetAlphaMask(material, 1, copy, scale, offset, opacity, 0);
         }
 
         // The shader reads _NormalMap only with _NORMALMAP_ON, at _NormalStrength.
@@ -93,25 +102,85 @@ namespace VRVlog.LilToonExporter
             if (values.TryFloat("_NormalStrength", out var strength)) S.Set(material, "_BumpScale", strength);
         }
 
-        // With _Filtering on, the base color is hue shifted (_HueMode 0 in HSV,
-        // 1 in Oklab), then lerp(luma, color, _Saturation), then contrast around
-        // 0.5, then times _Brightness. lilToon's _MainTexHSVG adds the hue in
-        // HSV and multiplies saturation and value; contrast has no counterpart.
-        static void ApplyFiltering(SourceValues values, Material material, ICollection<string> dropped)
+        // With _Filtering on, the base color (image times _Color) is hue
+        // shifted (_HueMode 0 in HSV, 1 in Oklab; _MonoTint sets the hue
+        // instead of adding it), then lerp(luma, color, _Saturation), then
+        // lerp(0.5, color, _Contrast), then times _Brightness. lilToon's
+        // _MainTexHSVG multiplies the HSV saturation, which also changes the
+        // brightness, and has no contrast, so the result is baked into the
+        // main image. Without a GPU the HSV values are used instead.
+        static void ApplyFiltering(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (values.Float("_Filtering", 0) < .5f) return;
-            var hue = values.Float("_Hue", 0);
-            var shifted = hue > 0 && hue < 1;
-            if (values.Float("_MonoTint", 0) > .5f) { S.Drop(dropped, "Mono Tint"); shifted = false; }
-            if (shifted && values.Float("_HueMode", 0) > .5f) { S.Drop(dropped, "Hue (Oklab)"); shifted = false; }
-            if (values.Float("_Contrast", 1) != 1) S.Drop(dropped, "Contrast");
             // The lit color is filtered again with the Post values (and ACES);
             // MToon has no counterpart.
             var post = values.Float("_HuePost", 0);
             if ((post > 0 && post < 1) || values.Float("_SaturationPost", 1) != 1 || values.Float("_BrightnessPost", 1) != 1 ||
                 values.Float("_ContrastPost", 1) != 1 || values.Float("_ACES", 0) != 0) S.Drop(dropped, "Post Filtering");
-            var hsvg = new Vector4(shifted ? hue : 0, Mathf.Max(0, values.Float("_Saturation", 1)), Mathf.Max(0, values.Float("_Brightness", 1)), 1);
-            if (Finite(hsvg) && hsvg != new Vector4(0, 1, 1, 1)) material.SetVector("_MainTexHSVG", hsvg);
+
+            var hue = values.Float("_Hue", 0);
+            var mono = values.Float("_MonoTint", 0) > .5f;
+            var shifted = hue > 0 && hue < 1 || mono;
+            var oklab = shifted && values.Float("_HueMode", 0) > .5f;
+            var saturation = values.Float("_Saturation", 1);
+            var contrast = values.Float("_Contrast", 1);
+            var brightness = Mathf.Max(0, values.Float("_Brightness", 1));
+            if (!Finite(new Vector4(hue, saturation, contrast, brightness))) return;
+            if (!shifted && saturation == 1 && contrast == 1 && brightness == 1) return;
+            if (oklab) S.Drop(dropped, "Hue (Oklab)");
+
+            Vector3 Filter(Vector3 c)
+            {
+                if (shifted && !oklab)
+                {
+                    Color.RGBToHSV(new Color(Mathf.Max(0, c.x), Mathf.Max(0, c.y), Mathf.Max(0, c.z)), out var h, out var sat, out var v);
+                    h = Mathf.Repeat((mono ? 0 : h) + hue, 1);
+                    var rgb = Color.HSVToRGB(h, sat, v, true);
+                    c = new Vector3(rgb.r, rgb.g, rgb.b);
+                }
+                var luma = Vector3.Dot(c, new Vector3(.3f, .59f, .11f));
+                c = Vector3.LerpUnclamped(new Vector3(luma, luma, luma), c, saturation);
+                c = Vector3.LerpUnclamped(new Vector3(.5f, .5f, .5f), c, contrast);
+                return c * brightness;
+            }
+
+            var tint = material.GetColor("_Color");
+            var linearTint = new Vector3(tint.linear.r, tint.linear.g, tint.linear.b);
+            var main = material.GetTexture("_MainTex");
+            if (main == null)
+            {
+                var flat = Filter(linearTint);
+                var gamma = new Color(Mathf.Clamp01(flat.x), Mathf.Clamp01(flat.y), Mathf.Clamp01(flat.z)).gamma;
+                material.SetColor("_Color", new Color(gamma.r, gamma.g, gamma.b, tint.a));
+                return;
+            }
+            var fit = Mathf.Min(1, 2048f / Mathf.Max(main.width, main.height));
+            var width = Mathf.Max(1, Mathf.RoundToInt(main.width * fit));
+            var height = Mathf.Max(1, Mathf.RoundToInt(main.height * fit));
+            var pixels = S.Flat(main) ? S.Sampled(main, width, height) : null;
+            Texture2D baked = null;
+            if (pixels != null)
+            {
+                for (var i = 0; i < pixels.Length; i++)
+                {
+                    var p = pixels[i];
+                    var c = Filter(new Vector3(p.r * linearTint.x, p.g * linearTint.y, p.b * linearTint.z));
+                    var gamma = new Color(Mathf.Clamp01(c.x), Mathf.Clamp01(c.y), Mathf.Clamp01(c.z)).gamma;
+                    pixels[i] = new Color(gamma.r, gamma.g, gamma.b, p.a);
+                }
+                baked = S.NewImage(main, "__VRVlog_Filtered", width, height, pixels, textures, false);
+            }
+            if (baked != null)
+            {
+                S.SetTexture(material, "_MainTex", baked, material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"));
+                material.SetColor("_Color", new Color(1, 1, 1, tint.a));
+                return;
+            }
+            // lilToon adds the hue in HSV and multiplies saturation and value.
+            if (mono) S.Drop(dropped, "Mono Tint");
+            if (contrast != 1) S.Drop(dropped, "Contrast");
+            var hsvg = new Vector4(shifted && !oklab && !mono ? hue : 0, Mathf.Max(0, saturation), brightness, 1);
+            if (hsvg != new Vector4(0, 1, 1, 1)) material.SetVector("_MainTexHSVG", hsvg);
         }
 
         // The shader adds _EmissionMap × pow(_EmissionColor, 2.2) ×

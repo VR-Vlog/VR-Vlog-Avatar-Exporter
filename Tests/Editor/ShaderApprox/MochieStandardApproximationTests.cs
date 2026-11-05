@@ -121,6 +121,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Center(mask), Is.EqualTo(.25f).Within(.01f));
         }
 
+        [Test] public void AnEmptyAlphaMaskLeavesTheOpacity()
+        {
+            var source = Source(2);
+            source.SetFloat("_AlphaSource", 1);
+            source.SetFloat("_AlphaMaskOpacity", .4f);
+            var output = Substitute(source, Name, out _, out var dropped);
+            Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_AlphaMask"), Is.Null);
+            Assert.That(output.GetFloat("_AlphaMaskScale"), Is.EqualTo(.4f).Within(1e-6f));
+            Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(0f));
+            Assert.That(dropped, Is.Empty);
+        }
+
         [Test] public void AnOpaqueMaterialIgnoresTheAlphaMask()
         {
             var source = Source(0);
@@ -188,27 +201,63 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(dropped, Is.Empty);
         }
 
-        [Test] public void FilteringBecomesHueSaturationAndValueAndContrastIsReported()
+        // Mochie's saturation is lerp(luma, color, s): red at 0 becomes the
+        // grey of its luma (0.3), where HSV's would stay at full brightness.
+        [Test] public void FilteringIsBakedIntoTheMainImageWithMochiesFormula()
         {
             var source = Source();
+            source.SetTexture("_MainTex", Solid("main", new Color(1, 0, 0, .5f)));
+            source.SetTextureScale("_MainTex", new Vector2(2, 3));
+            source.SetColor("_Color", new Color(1, 1, 1, .75f));
             source.SetFloat("_Filtering", 1);
+            source.SetFloat("_Saturation", 0);
+            var textures = new List<Texture2D>();
+            var output = Substitute(source, Name, out _, out var dropped, textures);
+            var main = (Texture2D)output.GetTexture("_MainTex");
+            Assert.That(textures, Does.Contain(main));
+            Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(new Vector2(2, 3)));
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(new Color(1, 1, 1, .75f)));
+            Assert.That(output.GetVector("_MainTexHSVG"), Is.EqualTo(new Vector4(0, 1, 1, 1)));
+            var pixel = main.GetPixel(2, 2);
+            Assert.That(pixel.a, Is.EqualTo(.5f).Within(.01f));
+            var linear = pixel.linear;
+            Assert.That(linear.r, Is.EqualTo(.3f).Within(.01f));
+            Assert.That(linear.g, Is.EqualTo(.3f).Within(.01f));
+            Assert.That(dropped, Is.Empty);
+
+            // Hue in HSV, then saturation, contrast around 0.5 and brightness.
             source.SetFloat("_Hue", .2f);
             source.SetFloat("_Saturation", .5f);
-            source.SetFloat("_Brightness", .8f);
             source.SetFloat("_Contrast", 1.2f);
-            var output = Substitute(source, Name, out _, out var dropped);
-            var hsvg = output.GetVector("_MainTexHSVG");
-            Assert.That(hsvg.x, Is.EqualTo(.2f).Within(1e-6f));
-            Assert.That(hsvg.y, Is.EqualTo(.5f).Within(1e-6f));
-            Assert.That(hsvg.z, Is.EqualTo(.8f).Within(1e-6f));
-            Assert.That(hsvg.w, Is.EqualTo(1f));
-            Assert.That(dropped, Does.Contain("Contrast"));
+            source.SetFloat("_Brightness", .8f);
+            output = Substitute(source, Name, out _, out dropped, textures);
+            linear = ((Texture2D)output.GetTexture("_MainTex")).GetPixel(2, 2).linear;
+            var shifted = new Vector3(.8f, 1, 0);
+            var luma = Vector3.Dot(shifted, new Vector3(.3f, .59f, .11f));
+            var expected = (Vector3.one * .5f + (Vector3.Lerp(Vector3.one * luma, shifted, .5f) - Vector3.one * .5f) * 1.2f) * .8f;
+            Assert.That(linear.r, Is.EqualTo(expected.x).Within(.01f));
+            Assert.That(linear.g, Is.EqualTo(expected.y).Within(.01f));
+            Assert.That(linear.b, Is.EqualTo(expected.z).Within(.01f));
+            Assert.That(dropped, Is.Empty);
             Assert.That(dropped, Does.Not.Contain("Post Filtering"));
 
             // The lit color is filtered again by the Post values.
             source.SetFloat("_BrightnessPost", .5f);
-            Substitute(source, Name, out _, out dropped);
+            Substitute(source, Name, out _, out dropped, textures);
             Assert.That(dropped, Does.Contain("Post Filtering"));
+        }
+
+        [Test] public void FilteringWithoutAMainImageFiltersTheColor()
+        {
+            var source = Source();
+            source.SetTexture("_MainTex", null);
+            source.SetColor("_Color", new Color(0, 1, 0, 1));
+            source.SetFloat("_Filtering", 1);
+            source.SetFloat("_Saturation", 0);
+            var output = Substitute(source, Name, out _, out _);
+            var color = output.GetColor("_Color").linear;
+            Assert.That(color.r, Is.EqualTo(.59f).Within(1e-3f));
+            Assert.That(color.b, Is.EqualTo(.59f).Within(1e-3f));
         }
 
         [Test] public void FilteringOffLeavesTheColorAlone()
