@@ -15,6 +15,7 @@ namespace VRVlog.LilToonExporter
             new XsToonApproximation(outlined: true),
             new XsToonApproximation(outlined: false),
             new SunaoApproximation(),
+            new UnlitWFApproximation(),
         };
 
         internal static IShaderApproximation Find(string shaderName, SourceValues values)
