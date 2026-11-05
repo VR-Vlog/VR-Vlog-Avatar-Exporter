@@ -189,7 +189,7 @@ namespace VRVlog.LilToonExporter
             SetAlphaMask(material, 2, mask, scale, offset, 1, 0);
         }
 
-        static void SetAlphaMask(Material material, int mode, Texture mask, Vector2 scale, Vector2 offset, float maskScale, float maskValue)
+        internal static void SetAlphaMask(Material material, int mode, Texture mask, Vector2 scale, Vector2 offset, float maskScale, float maskValue)
         {
             Set(material, "_AlphaMaskMode", mode);
             SetTexture(material, "_AlphaMask", mask, scale, offset);
@@ -199,7 +199,7 @@ namespace VRVlog.LilToonExporter
 
         // A source mask sampled at uv * scale + offset, as lilToon's tiling on top
         // of the main image's: (uv * mainScale + mainOffset) * s + o.
-        static void MainRelative(Vector2 mainScale, Vector2 mainOffset, ref Vector2 scale, ref Vector2 offset)
+        internal static void MainRelative(Vector2 mainScale, Vector2 mainOffset, ref Vector2 scale, ref Vector2 offset)
         {
             if (mainScale.x == 0 || mainScale.y == 0) return;
             var relative = new Vector2(scale.x / mainScale.x, scale.y / mainScale.y);
