@@ -12,8 +12,9 @@ namespace VRVlog.LilToonExporter
         {
             var pixels = GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBHalf, TextureFormat.RGBAHalf,
                 target => Graphics.Blit(texture, target));
-            // A Gamma project does not decode sRGB images when sampling.
-            if (QualitySettings.activeColorSpace == ColorSpace.Gamma)
+            // A Gamma project does not decode sRGB images when sampling. An
+            // image imported as linear data already holds linear values.
+            if (QualitySettings.activeColorSpace == ColorSpace.Gamma && texture.isDataSRGB)
                 for (var i = 0; i < pixels.Length; i++) pixels[i] = pixels[i].linear;
             return pixels;
         }
