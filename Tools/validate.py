@@ -389,6 +389,19 @@ for locale in ("en", "ko", "zh-Hans", "zh-Hant"):
     for source in recovery_sources:
         # Some short Chinese labels (for example 正面) are also valid Japanese.
         assert translations.get(source), locale + ": missing recovery translation"
+    # Machine-checkable breakage of a translation. Many sources are fragments joined to a name or a
+    # number, so the whitespace at the ends must survive. The meaning itself needs a reader.
+    for source, translated in translations.items():
+        where = locale + ": " + json.dumps(source, ensure_ascii=False)
+        assert sorted(re.findall(r"\{[^{}]*\}", source)) == sorted(re.findall(r"\{[^{}]*\}", translated)), where + ": placeholders differ"
+        # The middle dot (U+30FB) is also Chinese punctuation; other kana is Japanese left in.
+        assert not re.search("[぀-ヺー-ヿ]", translated), where + ": Japanese kana left in the translation"
+        assert source.startswith("\n") == translated.startswith("\n") and source.endswith("\n") == translated.endswith("\n"), where + ": line breaks at the ends differ"
+        if source.endswith(" "):
+            # A name follows; Chinese may end with full-width punctuation instead of the space.
+            assert translated[-1:].isspace() or (locale.startswith("zh") and translated[-1:] in "：，。、）」"), where + ": trailing space lost"
+        if locale == "en" and source.startswith(" "):
+            assert not translated[:1].isalnum(), where + ": leading space lost"
 
 print("Exporter implementation, package, schema, UE and recovery locale checks passed.")
 
