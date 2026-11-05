@@ -99,7 +99,7 @@ namespace VRVlog.LilToonExporter
             var shifted = hue > 0 && hue < 1 || saturation != 0 || value != 0;
             var blended = material.GetFloat("_TransparentMode") != (int)Mode.Opaque;
             var separate = blended && values.Keyword("SEPARATE_ALPHA");
-            if (separate) ApplySeparateAlpha(values, material, alphaScale, textures, dropped);
+            if (separate) ApplySeparateAlpha(values, material, Second(values), alphaScale, textures, dropped);
             var scaled = blended && !separate && alphaScale != 1;
             if (!shifted && !scaled) return;
 
@@ -142,11 +142,13 @@ namespace VRVlog.LilToonExporter
             else if (scaled) S.Drop(dropped, "Alpha Scale");
         }
 
-        static void ApplySeparateAlpha(SourceValues values, Material material, float scale, List<Texture2D> textures, ICollection<string> dropped)
+        static void ApplySeparateAlpha(SourceValues values, Material material, bool second, float scale, List<Texture2D> textures, ICollection<string> dropped)
         {
-            // scale ≥ 0: red × scale; scale < 0: 1 − red × −scale. lilToon's
+            // scale ≥ 0: red × scale; on v2, scale < 0: 1 − red × −scale (the
+            // first version only clamps red × scale, so a negative one is 0). lilToon's
             // mask gives saturate(mask × _AlphaMaskScale + _AlphaMaskValue), and
             // an empty mask reads as white as the shader's does.
+            if (!second) scale = Mathf.Max(0, scale);
             var maskValue = scale < 0 ? 1 : 0;
             if (!values.Texture("_AlphaTex", out var mask, out _, out _) || !S.Flat(mask))
             {
@@ -488,7 +490,8 @@ namespace VRVlog.LilToonExporter
 
         // First version, REFLECTION_MODE_MATCAP: the matcap × lerp(1, albedo,
         // _MatcapTintToDiffuse) is the reflection, added (or multiplied) by
-        // _ReflectivityLevel × _ReflectivityMask.r without lighting.
+        // _ReflectivityLevel × _ReflectivityMask.r. Added, it is lit by the
+        // indirect light plus half the main light; multiplied, it is not.
         static void ApplyReflectionMatcap(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (!values.Keyword("REFLECTION_MODE_MATCAP")) return;
@@ -502,7 +505,7 @@ namespace VRVlog.LilToonExporter
             S.Set(material, "_MatCapBlend", level);
             S.Set(material, "_MatCapBlendMode", blend == 1 ? 3 : 1);
             S.Set(material, "_MatCapMainStrength", Mathf.Clamp01(values.Float("_MatcapTintToDiffuse", 0)));
-            S.Set(material, "_MatCapEnableLighting", 0);
+            S.Set(material, "_MatCapEnableLighting", blend == 1 ? 0 : 1);
             S.Set(material, "_MatCapShadowMask", 0);
             ReflectivityMask(values, material, "_MatCapBlendMask", textures, dropped);
         }
@@ -527,7 +530,7 @@ namespace VRVlog.LilToonExporter
         // v2: REFLECTIONS_ON). Metallic and smoothness are _Metallic and
         // _Smoothness, or with a map wider than 8 pixels its red and alpha
         // (1 − alpha in roughness mode) remapped from 0..1 to the remap
-        // ranges. v2's f0 for non-metals is 0.16 × _ReflectivityLevel².
+        // ranges. The f0 for non-metals is 0.16 × _ReflectivityLevel² in both versions.
         static void ApplyReflection(SourceValues values, Material material, bool second, List<Texture2D> textures, ICollection<string> dropped)
         {
             var on = second ? values.Keyword("REFLECTIONS_ON") : values.Keyword("REFLECTION_MODE_PBR") || values.Keyword("REFLECTION_MODE_BAKED_CUBEMAP");
@@ -537,7 +540,7 @@ namespace VRVlog.LilToonExporter
             S.Set(material, "_ApplySpecular", 0);
             S.Set(material, "_SpecularToon", 0);
             var level = Mathf.Clamp01(values.Float("_ReflectivityLevel", .5f));
-            S.Set(material, "_Reflectance", Mathf.LinearToGammaSpace(second ? .16f * level * level : .04f));
+            S.Set(material, "_Reflectance", Mathf.LinearToGammaSpace(.16f * level * level));
             Vector2 Remap(string name) => values.TryVector(name, out var v) && Finite(v) ? new Vector2(Mathf.Clamp01(v.x), Mathf.Clamp01(v.y)) : new Vector2(0, 1);
             if (values.Texture("_MetallicGlossMap", out var map, out var scale, out var offset) && S.Flat(map) && map.width > 8)
             {

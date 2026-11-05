@@ -123,6 +123,18 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Center(output.GetTexture("_AlphaMask")).r, Is.EqualTo(.6f).Within(.01f));
         }
 
+        // The first version clamps red × scale, so a negative scale gives 0.
+        [Test] public void TheFirstVersionDoesNotInvertTheSeparateAlpha()
+        {
+            var source = Source();
+            source.EnableKeyword("SEPARATE_ALPHA");
+            source.SetTexture("_AlphaTex", Solid("alpha", new Color(.6f, .1f, .1f, 1)));
+            source.SetFloat("_AlphaScale", -1);
+            var output = Substitute(source, "orels1/Toon/Transparent");
+            Assert.That(output.GetFloat("_AlphaMaskScale"), Is.EqualTo(0f));
+            Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(0f));
+        }
+
         [Test] public void TheRampIsFittedWithOneEdgeAndItsDarkEndSetsTheShadowColor()
         {
             var source = Source();
@@ -311,8 +323,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_UseMatCap"), Is.EqualTo(1f));
             Assert.That(output.GetTexture("_MatCapTex"), Is.SameAs(matcap));
             Assert.That(output.GetFloat("_MatCapBlend"), Is.EqualTo(.4f).Within(1e-6f));
-            Assert.That(output.GetFloat("_MatCapEnableLighting"), Is.EqualTo(0f));
+            Assert.That(output.GetFloat("_MatCapEnableLighting"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_UseReflection"), Is.EqualTo(0f));
+            source.SetFloat("_ReflectionBlendMode", 1);
+            output = Substitute(source);
+            Assert.That(output.GetFloat("_MatCapBlendMode"), Is.EqualTo(3f));
+            Assert.That(output.GetFloat("_MatCapEnableLighting"), Is.EqualTo(0f));
         }
 
         [Test] public void ReflectionsReadMetallicSmoothnessAndTheReflectivity()
@@ -328,6 +344,11 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_Metallic"), Is.EqualTo(Mathf.LinearToGammaSpace(.5f)).Within(1e-5f));
             Assert.That(output.GetFloat("_Smoothness"), Is.EqualTo(.7f).Within(1e-5f));
             Assert.That(output.GetFloat("_Reflectance"), Is.EqualTo(Mathf.LinearToGammaSpace(.04f)).Within(1e-5f));
+            // The first version uses the same 0.16 × level².
+            source.DisableKeyword("REFLECTIONS_ON");
+            source.EnableKeyword("REFLECTION_MODE_PBR");
+            source.SetFloat("_ReflectivityLevel", 1);
+            Assert.That(Substitute(source).GetFloat("_Reflectance"), Is.EqualTo(Mathf.LinearToGammaSpace(.16f)).Within(1e-5f));
         }
 
         // Red is metal, alpha smoothness, each remapped; roughness mode flips it.
