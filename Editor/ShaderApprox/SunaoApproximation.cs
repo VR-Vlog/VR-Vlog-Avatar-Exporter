@@ -43,6 +43,9 @@ namespace VRVlog.LilToonExporter
             ApplyRim(values, material, dropped);
             ApplyReflection(values, material, textures, dropped);
             ApplyDecal(values, material, dropped);
+            // A baked shade image replaces the color, with the decal on it, in the shade.
+            if (material.GetFloat("_UseShadow") > .5f && material.GetTexture("_ShadowColorTex") != null && material.GetFloat("_UseMain2ndTex") > .5f)
+                dropped.Add("Layers In Shade");
             if (Outline(values)) ApplyOutline(values, material, textures, dropped);
 
             if (values.TryFloat("_SunaoShaderType", out var type) && type >= 3) dropped.Add("Stencil");

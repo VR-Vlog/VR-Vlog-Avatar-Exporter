@@ -122,6 +122,31 @@ namespace VRVlog.LilToonExporter.Tests
             finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); Object.DestroyImmediate(mask); Object.DestroyImmediate(material); }
         }
 
+        // The factor is in linear values: an sRGB image is decoded and one
+        // imported as linear data is read as it is, in a Gamma project too.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AGradationImageIsReadInLinearValues(bool srgb)
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the gradation properties.");
+            var material = new Material(shader);
+            var gradation = new Texture2D(4, 1, TextureFormat.RGBA32, false, !srgb) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat };
+            try
+            {
+                gradation.SetPixels(new[] { Color.gray, Color.gray, Color.gray, Color.gray }); gradation.Apply();
+                material.SetFloat("_EmissionUseGrad", 1f);
+                material.SetTexture("_EmissionGradTex", gradation);
+                material.SetFloat("_EmissionGradSpeed", 0f);
+                var expected = srgb ? Mathf.GammaToLinearSpace(.5f) : .5f;
+                Assert.AreEqual(expected, LilToonEmissionPolicy.GradientFactor(material).r, .01f);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(gradation);
+            }
+        }
+
         // A gradation image wider than the row that is read was averaged after
         // one bilinear shrink, which skips texels: here every 4th texel is
         // white, and a 256-wide row samples between the black ones only.
