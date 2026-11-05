@@ -27,7 +27,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assume.That(shader, Is.Not.Null);
             var source = Own(new Material(shader) { name = "NonToonSource" });
             source.SetTexture("_BaseTexture", Own(new Texture2D(4, 4) { name = "main" }));
-            source.SetFloat("_RenderingMode", renderingMode);
+            source.SetInteger("_RenderingMode", renderingMode);
             source.SetFloat("_OutlineWidth", outlineWidth);
             return source;
         }
@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var source = Source();
             source.SetTexture("_NormalMap", Own(new Texture2D(4, 4) { name = "packed" }));
-            source.SetFloat("_NormalMapWithRoughness", 1);
+            source.SetInteger("_NormalMapWithRoughness", 1);
             var output = Substitute(source, "NonToon", out _, out var dropped);
             Assert.That(output.GetTexture("_BumpMap"), Is.Null);
             Assert.That(output.GetFloat("_UseBumpMap"), Is.EqualTo(0f));
