@@ -320,7 +320,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_OutlineTexture", image);
             var output = Substitute(source, out var dropped);
             Assert.That(output.GetTexture("_OutlineTex"), Is.SameAs(takesTheBase ? source.GetTexture("_MainTex") : image));
-            Assert.That(output.GetColor("_OutlineColor").b, Is.EqualTo(.6f * rate).Within(1e-3f));
+            Assert.That(output.GetColor("_OutlineColor").b, Is.EqualTo(Mathf.LinearToGammaSpace(Mathf.GammaToLinearSpace(.6f) * rate)).Within(1e-3f));
             if (takesTheBase) Assert.That(dropped, Does.Contain("Outline Image"));
             else Assert.That(dropped, Does.Not.Contain("Outline Image"));
         }

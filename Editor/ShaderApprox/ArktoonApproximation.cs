@@ -226,7 +226,7 @@ namespace VRVlog.LilToonExporter
                 if (hasImage) Drop(dropped, "Outline Image");
             }
             else if (hasImage) SetTexture(material, "_OutlineTex", image, scale, offset);
-            color = Color.Lerp(color, material.GetColor("_Color"), rate);
+            color = Color.Lerp(color.linear, material.GetColor("_Color").linear, rate).gamma;
             color.a = 1;
             material.SetColor("_OutlineColor", color);
             CopyMask(values, material, "_OutlineWidthMask", "", "", "_OutlineWidthMask", "", textures, dropped, "Outline Width Mask");
