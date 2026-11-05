@@ -133,6 +133,11 @@ namespace VRVlog.LilToonExporter.Tests
             AssertColor(output.GetColor("_Shadow2ndColor"), new Color(.3f, .25f, .2f, 1));
             Assert.That(output.GetFloat("_Shadow2ndBorder"), Is.EqualTo(.25f).Within(1e-5f));
             Assert.That(output.GetFloat("_Shadow2ndBlur"), Is.EqualTo(.1f).Within(1e-5f));
+
+            // A separate first tone carries the tint into the combined second.
+            source.SetFloat("_CrosstoneToneSeparation", 1);
+            source.SetColor("_Color", new Color(.5f, .5f, .5f, 1));
+            AssertColor(Substitute(source).GetColor("_Shadow2ndColor"), new Color(.15f, .125f, .1f, 1));
         }
 
         [Test] public void AShadeMapIsMultipliedByTheAlbedoUnlessTheTonesAreSeparate()
@@ -149,13 +154,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Substitute(source).GetFloat("_ShadowMainStrength"), Is.EqualTo(0f));
         }
 
-        [Test] public void ASeparateToneWithoutAnImageIsARatioToTheTint()
+        [Test] public void ASeparateToneWithoutAnImageTakesAWhiteImageInPlaceOfTheMainImage()
         {
             var source = Source();
             source.SetFloat("_CrosstoneToneSeparation", 1);
             source.SetColor("_Color", new Color(.5f, .5f, .5f, 1));
             source.SetColor("_1st_ShadeColor", new Color(.25f, .25f, .25f, 1));
-            AssertColor(Substitute(source).GetColor("_ShadowColor"), new Color(.25f, .25f, .25f, 1));
+            var output = Substitute(source);
+            var white = output.GetTexture("_ShadowColorTex") as Texture2D;
+            Assert.That(white, Is.Not.Null);
+            Assert.That(white, Is.Not.SameAs(Texture2D.whiteTexture));
+            AssertColor(white.GetPixel(0, 0), Color.white);
+            // The tone times the tint, not multiplied by the main image again.
+            AssertColor(output.GetColor("_ShadowColor"), new Color(.125f, .125f, .125f, 1));
+            Assert.That(output.GetFloat("_ShadowMainStrength"), Is.EqualTo(0f));
         }
 
         [Test] public void TheLightRampIsFittedWithOneEdgeAndItsDarkEndSetsTheColor()
@@ -181,6 +193,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Substitute(Source(), Lightramp).GetFloat("_UseShadow"), Is.EqualTo(0f));
         }
 
+        [Test] public void AGreyRampShadesTheWholeSurface()
+        {
+            var source = Source();
+            source.SetTexture("_Ramp", Solid("ramp", new Color(.5f, .5f, .5f, 1), 64));
+            var output = Substitute(source, Lightramp);
+            Assert.That(output.GetFloat("_UseShadow"), Is.EqualTo(1f));
+            Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(1f));
+            var expected = new Color(128 / 255f, 128 / 255f, 128 / 255f, 1).gamma;
+            AssertColor(output.GetColor("_ShadowColor"), new Color(expected.r, expected.g, expected.b, 1));
+        }
+
         [Test] public void TheSmoothRampTypeIsLambert()
         {
             var source = Source();
@@ -195,14 +218,21 @@ namespace VRVlog.LilToonExporter.Tests
             var source = Source(2);
             source.SetFloat("_AlbedoAlphaMode", 2);
             source.SetColor("_Color", new Color(1, 1, 1, .8f));
-            var mask = Solid("clip", Color.white);
+            var mask = Solid("clip", new Color(.5f, .5f, .5f, 1));
             source.SetTexture("_ClippingMask", mask);
             source.SetFloat("_Tweak_Transparency", .1f);
             var output = Substitute(source);
             Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(1f));
-            Assert.That(output.GetTexture("_AlphaMask"), Is.SameAs(mask));
+            // saturate(mask + tweak) is baked, then times the tint.
+            var baked = output.GetTexture("_AlphaMask") as Texture2D;
+            Assert.That(baked, Is.Not.Null.And.Not.SameAs(mask));
+            Assert.That(baked.GetPixel(0, 0).r, Is.EqualTo(.6f).Within(.01f));
             Assert.That(output.GetFloat("_AlphaMaskScale"), Is.EqualTo(.8f).Within(1e-5f));
-            Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(.08f).Within(1e-5f));
+            Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(0f));
+
+            source.SetFloat("_Tweak_Transparency", .7f);
+            Assert.That(((Texture2D)Substitute(source).GetTexture("_AlphaMask")).GetPixel(0, 0).r, Is.EqualTo(1f).Within(.01f),
+                "the sum is clamped before the tint");
 
             source.SetFloat("_Mode", 0);
             Assert.That(Substitute(source).GetFloat("_AlphaMaskMode"), Is.EqualTo(0f), "an opaque material keeps no mask");

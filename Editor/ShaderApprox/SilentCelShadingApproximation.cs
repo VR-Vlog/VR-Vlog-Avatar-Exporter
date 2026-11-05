@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using static VRVlog.LilToonExporter.NumericChecks;
 using Mode = VRVlog.LilToonExporter.UnsupportedShaderSubstitution.Mode;
@@ -53,12 +54,12 @@ namespace VRVlog.LilToonExporter
         public void Apply(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (Mathf.RoundToInt(values.Float("_Mode", 0)) == 4) S.Drop(dropped, "Additive");
-            ApplyAlpha(values, material, dropped);
+            ApplyAlpha(values, material, textures, dropped);
             ApplyColor(values, material, textures, dropped);
             // The source turns the normal toward the viewer on back faces, so a
             // double-sided back face is lit like its front.
             S.Set(material, "_FlipNormal", 1);
-            if (Crosstone(values)) ApplyCrosstone(values, material, dropped);
+            if (Crosstone(values)) ApplyCrosstone(values, material, textures, dropped);
             else ApplyLightramp(values, material, dropped);
             if (Outline(values)) ApplyOutline(values, material, dropped);
             ApplyRim(values, material, textures, dropped);
@@ -93,7 +94,7 @@ namespace VRVlog.LilToonExporter
         // is smoothness), 2 saturate(_ClippingMask.r + _Tweak_Transparency).
         // Each is multiplied by _Color.a. lilToon's replacing alpha mask is
         // mask × scale + value, without _Color.a.
-        static void ApplyAlpha(SourceValues values, Material material, ICollection<string> dropped)
+        static void ApplyAlpha(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (material.GetFloat("_TransparentMode") == (int)Mode.Opaque) return;
             var tint = values.TryVector("_Color", out var color) && Finite(color) ? Mathf.Clamp01(color.w) : 1;
@@ -110,9 +111,30 @@ namespace VRVlog.LilToonExporter
                         break;
                     }
                     S.MainRelative(material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"), ref scale, ref offset);
-                    S.SetAlphaMask(material, 1, mask, scale, offset, tint, tweak * tint);
+                    // The sum is clamped before the tint, so it is baked.
+                    var baked = Clipping(mask, tweak, textures);
+                    if (baked != null) S.SetAlphaMask(material, 1, baked, scale, offset, tint, 0);
+                    else S.SetAlphaMask(material, 1, mask, scale, offset, tint, tweak * tint);
                     break;
             }
+        }
+
+        // saturate(mask.r + tweak) as a grey, opaque image owned by textures,
+        // or null when it cannot be read.
+        static Texture2D Clipping(Texture mask, float tweak, List<Texture2D> textures)
+        {
+            if (textures == null) return null;
+            var fit = Mathf.Min(1, 2048f / Mathf.Max(mask.width, mask.height));
+            var width = Mathf.Max(1, Mathf.RoundToInt(mask.width * fit));
+            var height = Mathf.Max(1, Mathf.RoundToInt(mask.height * fit));
+            var pixels = S.Sampled(mask, width, height);
+            if (pixels == null) return null;
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var v = Mathf.Clamp01(pixels[i].r + tweak);
+                pixels[i] = new Color(v, v, v, 1);
+            }
+            return S.NewImage(mask, "__VRVlog_Clipping", width, height, pixels, textures, true);
         }
 
         // _ColorMask's green masks the tint and the hue shift (lilToon cannot
@@ -142,7 +164,7 @@ namespace VRVlog.LilToonExporter
         // with 1 they are absolute colors (times the tint). lilToon's shadow is
         // lerp(albedo, texture, texture.a) × color, multiplied by the albedo
         // again by _ShadowMainStrength, which both layers share.
-        static void ApplyCrosstone(SourceValues values, Material material, ICollection<string> dropped)
+        static void ApplyCrosstone(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             ShadowCommon(material);
             var separate = values.Float("_CrosstoneToneSeparation", 0) >= .5f;
@@ -152,7 +174,7 @@ namespace VRVlog.LilToonExporter
             var map0 = Map(values, "_1st_ShadeMap");
             var color0 = Shade(values, "_1st_ShadeColor") * (separate ? tint : Color.white);
             Edge(material, "_ShadowBorder", "_ShadowBlur", values.Float("_1st_ShadeColor_Step", .5f), values.Float("_1st_ShadeColor_Feather", .01f));
-            var multiply = Layer(material, "_ShadowColor", "_ShadowColorTex", map0, color0, separate, tint);
+            var multiply = Layer(material, "_ShadowColor", "_ShadowColorTex", map0, color0, separate, tint, textures);
 
             var step2 = values.Float("_2nd_ShadeColor_Step", 0);
             if (step2 > 0)
@@ -161,12 +183,12 @@ namespace VRVlog.LilToonExporter
                 var color1 = Shade(values, "_2nd_ShadeColor") * (separate2 ? tint : Color.white);
                 if (!separate2)
                 {
-                    color1 *= Shade(values, "_1st_ShadeColor");
+                    color1 *= color0;
                     if (map0 != null && map1 != null) S.Drop(dropped, "Combined Shade Maps");
                     map1 = map1 ?? map0;
                 }
                 Edge(material, "_Shadow2ndBorder", "_Shadow2ndBlur", step2, values.Float("_2nd_ShadeColor_Feather", .01f));
-                if (Layer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map1, color1, separate, tint) != multiply)
+                if (Layer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map1, color1, separate, tint, textures) != multiply)
                     S.Drop(dropped, "Multiplied Shadow Layers");
             }
             if (multiply) S.Set(material, "_ShadowMainStrength", 1);
@@ -201,13 +223,20 @@ namespace VRVlog.LilToonExporter
 
         // Returns true when the layer needs lilToon to multiply by the albedo
         // again (an image multiplied by the albedo).
-        static bool Layer(Material material, string colorName, string textureName, Texture map, Color color, bool separate, Color tint)
+        static bool Layer(Material material, string colorName, string textureName, Texture map, Color color, bool separate, Color tint, List<Texture2D> textures)
         {
             color.a = 1;
             if (map != null) S.SetTexture(material, textureName, map, Vector2.one, Vector2.zero);
-            // An absolute color without an image becomes a ratio to the main
-            // color, which lilToon multiplies back.
-            else if (separate) color = S.Ratio(color, tint);
+            else if (separate)
+            {
+                // An absolute color takes a white image in place of the main
+                // image, so the main image's pattern does not show through. When
+                // none can be made it becomes a ratio to the main color, which
+                // lilToon multiplies back.
+                var white = S.NewImage(null, "__VRVlog_Shade", 4, 4, Enumerable.Repeat(Color.white, 16).ToArray(), textures, false);
+                if (white != null) S.SetTexture(material, textureName, white, Vector2.one, Vector2.zero);
+                else color = S.Ratio(color, tint);
+            }
             material.SetColor(colorName, color);
             return map != null && !separate;
         }
@@ -238,6 +267,7 @@ namespace VRVlog.LilToonExporter
             var boost = values.Float("_IndirectLightingBoost", 0);
             if (S.Flat(Texture(values, "_ShadowMask"))) S.Drop(dropped, "Shadow Mask");
             if (type == 2) S.Drop(dropped, "Auto-Tone");
+            if (values.Float("_SDFMode", 0) >= .5f) S.Drop(dropped, "SDF");
             // The mask is taken as white.
             // Occlusion: saturate(boost + 1 - a); Tone: saturate(rgb + boost);
             // Median is not implemented in the source and leaves black.
@@ -281,7 +311,14 @@ namespace VRVlog.LilToonExporter
                 var c = Ramp(lift + i / (float)Steps * bias * (1 - lift));
                 brightness[i] = c.r * .2126f + c.g * .7152f + c.b * .0722f;
             }
-            if (!S.FitShadowEdge(brightness, material)) { S.Set(material, "_UseShadow", 0); return; }
+            if (!S.FitShadowEdge(brightness, material))
+            {
+                // A ramp that does not change shades the whole surface by its
+                // value; white leaves it unshaded.
+                if (brightness[0] > .999f) { S.Set(material, "_UseShadow", 0); return; }
+                S.Set(material, "_ShadowBorder", 1);
+                S.Set(material, "_ShadowBlur", .001f);
+            }
             var dark = Ramp(lift);
             var linear = tone.linear;
             var color = new Color(Mathf.Lerp(linear.r, 1, dark.r), Mathf.Lerp(linear.g, 1, dark.g), Mathf.Lerp(linear.b, 1, dark.b), 1);

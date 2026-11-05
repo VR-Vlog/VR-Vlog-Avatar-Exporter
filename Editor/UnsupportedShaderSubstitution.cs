@@ -905,7 +905,7 @@ namespace VRVlog.LilToonExporter
 
         // An image owned by textures, with the wrap and filter of origin. linear
         // keeps the pixels as stored values instead of sRGB colors.
-        static Texture2D NewImage(Texture origin, string suffix, int width, int height, Color[] pixels, List<Texture2D> textures, bool linear)
+        internal static Texture2D NewImage(Texture origin, string suffix, int width, int height, Color[] pixels, List<Texture2D> textures, bool linear)
         {
             if (textures == null) return null;
             var image = new Texture2D(width, height, TextureFormat.RGBA32, false, linear)
