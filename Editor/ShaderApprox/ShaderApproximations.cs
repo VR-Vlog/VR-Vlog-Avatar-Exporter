@@ -10,6 +10,9 @@ namespace VRVlog.LilToonExporter
         internal static readonly IShaderApproximation[] All =
         {
             new NonToonApproximation(),
+            new UtsApproximation(),
+            new SunaoApproximation(),
+            new UnlitWFApproximation(),
         };
 
         internal static IShaderApproximation Find(string shaderName, SourceValues values)

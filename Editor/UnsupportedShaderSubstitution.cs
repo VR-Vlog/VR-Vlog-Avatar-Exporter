@@ -860,7 +860,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Every slot the generic mapping fills is a 2D slot.
-        static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
+        internal static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
 
         internal static void Set(Material material, string name, float value)
@@ -888,11 +888,11 @@ namespace VRVlog.LilToonExporter
 
         // The pixels as a shader samples them, at the given size. Null when they
         // cannot be read (no graphics device).
-        static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
+        internal static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
 
         // The same through the image's tiling and offset: the pixels are laid
         // out in the mesh's UV space.
-        static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
+        internal static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
             try
@@ -905,7 +905,7 @@ namespace VRVlog.LilToonExporter
 
         // An image owned by textures, with the wrap and filter of origin. linear
         // keeps the pixels as stored values instead of sRGB colors.
-        static Texture2D NewImage(Texture origin, string suffix, int width, int height, Color[] pixels, List<Texture2D> textures, bool linear)
+        internal static Texture2D NewImage(Texture origin, string suffix, int width, int height, Color[] pixels, List<Texture2D> textures, bool linear)
         {
             if (textures == null) return null;
             var image = new Texture2D(width, height, TextureFormat.RGBA32, false, linear)
