@@ -23,11 +23,12 @@ namespace VRVlog.LilToonExporter
     internal static partial class UnsupportedShaderSubstitution
     {
         internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色のみ）: ";
-        internal const string KeptForExpressions = "表情で色や画像の位置を動かす材質は元のシェーダーのまま書き出しました: ";
-        internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
+        internal const string KeptForExpressions = "表情で色や画像の位置を動かすマテリアルは元のシェーダーのまま書き出しました: ";
+        internal const string Failed = "公式lilToonで近似できなかったマテリアルは元のまま書き出しました: ";
         internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
         internal const string ToonMapped = "他のトゥーンシェーダーの設定を公式lilToonの同じ役割の項目へ写しました（影・マットキャップ・リム・アウトライン・発光・ステンシルを含む）: ";
         internal const string VRChatMapped = "VRChatの公式シェーダーの設定を公式lilToonの同じ役割の項目へ写しました: ";
+        internal const string ApproximationMapped = "対応表のあるシェーダーの設定を公式lilToonの同じ役割の項目へ写しました: ";
         internal const string DroppedEffects = "元のシェーダーの効果のうち公式lilToonに無いものは書き出していません: ";
 
         const string Opaque = "lilToon";
@@ -35,11 +36,12 @@ namespace VRVlog.LilToonExporter
         const string Transparent = "Hidden/lilToonTransparent";
         const string MissingShader = "Hidden/InternalErrorShader";
 
-        enum Mode { Opaque, Cutout, Transparent }
+        internal enum Mode { Opaque, Cutout, Transparent }
 
         // Which mapping built the substitute: the generic one, the section by
-        // section one of a toon shader, or the row of a VRChat SDK shader.
-        internal enum Route { Generic, Toon, VRChat }
+        // section one of a toon shader, the row of a VRChat SDK shader, or the
+        // approximation of one shader (ShaderApprox).
+        internal enum Route { Generic, Toon, VRChat, Approximated }
 
         internal static bool NeedsSubstitute(Material material) =>
             material != null && (material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) &&
@@ -61,14 +63,11 @@ namespace VRVlog.LilToonExporter
             var colorSkipped = new List<string>();
             var mapped = new List<string>();
             var vrchat = new List<string>();
+            var approximated = new List<string>();
             var dropped = new List<string>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(copy))
+            // Particle and trail materials are not exported and are not listed.
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(copy))
             {
-                // Only renderers that become glTF meshes, as in LilToonFullSnapshot.
-                // Particle and trail materials are not exported and are not listed.
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 var slots = renderer.sharedMaterials;
                 var changed = false;
                 for (var i = 0; i < slots.Length; i++)
@@ -96,7 +95,7 @@ namespace VRVlog.LilToonExporter
                             {
                                 created.Add(substitute);
                                 track?.Invoke(substitute, source);
-                                var list = route == Route.Toon ? mapped : route == Route.VRChat ? vrchat : substituted;
+                                var list = route == Route.Toon ? mapped : route == Route.VRChat ? vrchat : route == Route.Approximated ? approximated : substituted;
                                 if (!list.Contains(source.name)) list.Add(source.name);
                                 var line = source.name + " (" + string.Join(", ", effects) + ")";
                                 if (effects.Count > 0 && !dropped.Contains(line)) dropped.Add(line);
@@ -116,6 +115,7 @@ namespace VRVlog.LilToonExporter
             if (substituted.Count > 0) warnings.Add(ExporterLocalization.T(Warning) + string.Join(", ", substituted));
             if (mapped.Count > 0) warnings.Add(ExporterLocalization.T(ToonMapped) + string.Join(", ", mapped));
             if (vrchat.Count > 0) warnings.Add(ExporterLocalization.T(VRChatMapped) + string.Join(", ", vrchat));
+            if (approximated.Count > 0) warnings.Add(ExporterLocalization.T(ApproximationMapped) + string.Join(", ", approximated));
             if (dropped.Count > 0) warnings.Add(ExporterLocalization.T(DroppedEffects) + string.Join(", ", dropped));
             if (colorSkipped.Count > 0) warnings.Add(ExporterLocalization.T(ColorAdjustmentSkipped) + string.Join(", ", colorSkipped));
             if (kept.Count > 0) warnings.Add(ExporterLocalization.T(KeptForExpressions) + string.Join(", ", kept));
@@ -160,9 +160,15 @@ namespace VRVlog.LilToonExporter
         internal static Material Create(Material source, string shaderName, out bool colorSkipped, out Route route,
             out IReadOnlyList<string> dropped, List<Texture2D> textures = null)
         {
-            var values = new SourceValues(source);
+            var values = new SourceValues(source, shaderName);
             colorSkipped = false; route = Route.Generic; dropped = Array.Empty<string>();
             if (LooksLikeLilToon(source) || values.SavedLilToon(source)) return FromDerived(source, values);
+            var approximation = ShaderApproximations.Find(shaderName == MissingShader ? null : shaderName, values);
+            if (approximation != null)
+            {
+                route = Route.Approximated;
+                return FromApproximation(source, values, approximation, textures, out colorSkipped, out dropped);
+            }
             if (shaderName != null && VRChatShaders.TryGetValue(shaderName, out var row))
             {
                 route = Route.VRChat;
@@ -171,6 +177,21 @@ namespace VRVlog.LilToonExporter
             if (!IsSectionedToon(source, values)) return FromGeneric(source, values, false, textures, out colorSkipped);
             route = Route.Toon;
             return FromSectionedToon(source, values, textures, out colorSkipped, out dropped);
+        }
+
+        // The generic mapping with the render mode and outline the
+        // approximation reads, then the values it maps under the shader's own
+        // names.
+        static Material FromApproximation(Material source, SourceValues values, IShaderApproximation approximation, List<Texture2D> textures,
+            out bool colorSkipped, out IReadOnlyList<string> dropped)
+        {
+            dropped = Array.Empty<string>();
+            var material = FromGeneric(source, values, approximation.Outline(values), textures, out colorSkipped, approximation.RenderMode(values));
+            if (material == null) return null;
+            var effects = new List<string>();
+            approximation.Apply(values, material, textures, effects);
+            dropped = effects;
+            return material;
         }
 
         internal static bool LooksLikeLilToon(Material material) =>
@@ -234,7 +255,7 @@ namespace VRVlog.LilToonExporter
             name.IndexOf("ZWrite", StringComparison.Ordinal) >= 0 || name.IndexOf("ZTest", StringComparison.Ordinal) >= 0 ||
             name.IndexOf("AlphaToMask", StringComparison.Ordinal) >= 0;
 
-        static readonly string[] MainTextures = { "_MainTex", "_BaseMap", "_BaseColorMap", "_MainTexture", "_Albedo", "_AlbedoMap", "_Diffuse", "_DiffuseMap", "_BaseTex" };
+        static readonly string[] MainTextures = { "_MainTex", "_BaseMap", "_BaseColorMap", "_MainTexture", "_Albedo", "_AlbedoMap", "_Diffuse", "_DiffuseMap", "_BaseTex", "_BaseTexture" };
         static readonly string[] MainColors = { "_BaseColor", "_Color", "_MainColor", "_TintColor" };
         // _Clipping_Level is not a cutoff: UTS adds it to the mask (see UtsAlpha).
         static readonly string[] Cutoffs = { "_Cutoff", "_AlphaCutoff", "_AlphaClipThreshold", "_Cutout", "_CutoutCutoutAdjust", "_CutoutThreshold", "_MaskClipValue" };
@@ -257,7 +278,10 @@ namespace VRVlog.LilToonExporter
             if (material == null) return null;
 
             Texture main = null; var mainScale = Vector2.one; var mainOffset = Vector2.zero;
-            foreach (var name in MainTextures)
+            // The property the shader marks as its main texture or color
+            // ([MainTexture]/[MainColor]) comes first; the common names are for
+            // shaders that mark none and for missing shaders.
+            foreach (var name in SourceValues.Main(MainTextures, values.MainTextureName))
                 if (values.Texture(name, out var texture, out var scale, out var offset) && Flat(texture))
                 { main = texture; mainScale = scale; mainOffset = offset; break; }
             if (main != null)
@@ -266,7 +290,7 @@ namespace VRVlog.LilToonExporter
                 material.SetTextureScale("_MainTex", mainScale); material.SetTextureOffset("_MainTex", mainOffset);
             }
             var color = Color.white;
-            foreach (var name in MainColors)
+            foreach (var name in SourceValues.Main(MainColors, values.MainColorName))
                 if (values.TryVector(name, out var vector) && Finite(vector)) { color = vector; break; }
             material.SetColor("_Color", color);
             colorSkipped = ApplyColorAdjustment(values, material);
@@ -323,6 +347,11 @@ namespace VRVlog.LilToonExporter
             if (Contains(name, "Clipping") || Contains(name, "AlphaTest")) return Mode.Cutout;
             var queue = values.Queue;
             if (queue > 2500 && (!values.TryFloat("_DstBlend", out var destination) || destination != 0)) return Mode.Transparent;
+            // A shader may keep its blended materials below queue 2500, where the
+            // built-in pipeline still casts shadows on them. Blending with what
+            // is behind is what makes a material transparent.
+            if (queue >= 2450 && values.TryFloat("_SrcBlend", out var blend) && blend == (float)BlendMode.SrcAlpha &&
+                values.TryFloat("_DstBlend", out destination) && destination == (float)BlendMode.OneMinusSrcAlpha) return Mode.Transparent;
             if (FallbackClips(source.shader == null ? "" : source.GetTag("VRCFallback", false, ""), ShaderText(source))) return Mode.Cutout;
             if (queue >= 2450 && queue <= 2500 && Cutoffs.Any(cutoff => values.TryFloat(cutoff, out _))) return Mode.Cutout;
             return Mode.Opaque;
@@ -554,7 +583,7 @@ namespace VRVlog.LilToonExporter
         static readonly Regex Whitespace = new Regex(@"\s+");
         // Indices are UnityEngine.Rendering.CompareFunction and CullMode; Off is
         // the ZTest keyword for no depth test.
-        static readonly string[] DepthComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always", "Off" };
+        static readonly string[] DepthComparisons = StencilComparisons.Append("Off").ToArray();
         static readonly string[] CullModes = { "Off", "Front", "Back" };
         static readonly string[] StencilOperations = { "Keep", "Zero", "Replace", "IncrSat", "DecrSat", "Invert", "IncrWrap", "DecrWrap" };
 
@@ -831,10 +860,10 @@ namespace VRVlog.LilToonExporter
         }
 
         // Every slot the generic mapping fills is a 2D slot.
-        static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
+        internal static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
 
-        static void Set(Material material, string name, float value)
+        internal static void Set(Material material, string name, float value)
         {
             if (!Finite(value) || !material.HasProperty(name)) return;
             var shader = material.shader;
@@ -843,24 +872,77 @@ namespace VRVlog.LilToonExporter
             else material.SetFloat(name, value);
         }
 
+        // The middle row of an image in linear values, read through the GPU so
+        // that images without CPU access are read too.
+        static Color[] ReadRow(Texture texture) => Sampled(texture, 64, 1, new Vector2(1, 0), new Vector2(0, .5f));
+
+        // The pixels as a shader samples them in a Linear project, at the given
+        // size. Null when they cannot be read (no graphics device).
+        internal static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
+
+        // The same through the image's tiling and offset: the pixels are laid
+        // out in the mesh's UV space.
+        internal static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
+            Color[] pixels;
+            try
+            {
+                pixels = GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target, scale, offset));
+            }
+            catch (Exception) { return null; }
+            // A Gamma project does not decode sRGB images when sampling.
+            if (QualitySettings.activeColorSpace == ColorSpace.Gamma && texture.isDataSRGB)
+                for (var i = 0; i < pixels.Length; i++) pixels[i] = pixels[i].linear;
+            return pixels;
+        }
+
+        // An image owned by textures, with the wrap and filter of origin. linear
+        // keeps the pixels as stored values instead of sRGB colors.
+        internal static Texture2D NewImage(Texture origin, string suffix, int width, int height, Color[] pixels, List<Texture2D> textures, bool linear)
+        {
+            if (textures == null) return null;
+            var image = new Texture2D(width, height, TextureFormat.RGBA32, false, linear)
+            {
+                name = DeterministicNames.Unique((origin != null ? origin.name : "Color") + suffix,
+                    candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
+                wrapModeU = origin != null ? origin.wrapModeU : TextureWrapMode.Repeat,
+                wrapModeV = origin != null ? origin.wrapModeV : TextureWrapMode.Repeat,
+                filterMode = origin != null ? origin.filterMode : FilterMode.Bilinear,
+            };
+            image.SetPixels(pixels);
+            image.Apply(false, false);
+            textures.Add(image);
+            return image;
+        }
+
         // Values of the source material. A missing shader no longer declares
         // its properties, so they are read from the saved material data.
-        sealed class SourceValues
+        internal sealed class SourceValues
         {
             readonly Dictionary<string, (Texture Texture, Vector2 Scale, Vector2 Offset)> textures = new Dictionary<string, (Texture, Vector2, Vector2)>(StringComparer.Ordinal);
             readonly Dictionary<string, float> floats = new Dictionary<string, float>(StringComparer.Ordinal);
             readonly Dictionary<string, Vector4> vectors = new Dictionary<string, Vector4>(StringComparer.Ordinal);
             readonly HashSet<string> keywords = new HashSet<string>(StringComparer.Ordinal);
             internal readonly int Queue;
+            // Properties the live shader marks with [MainTexture] and [MainColor].
+            internal readonly string MainTextureName, MainColorName;
+            // The name Create was given; null for a missing shader.
+            internal readonly string ShaderName;
 
-            internal SourceValues(Material material)
+            internal SourceValues(Material material, string shaderName = null)
             {
+                ShaderName = shaderName == MissingShader ? null : shaderName;
                 var shader = material.shader;
                 if (shader != null && shader.name != MissingShader)
                 {
                     for (var i = 0; i < shader.GetPropertyCount(); i++)
                     {
                         var name = shader.GetPropertyName(i);
+                        var flags = shader.GetPropertyFlags(i);
+                        if ((flags & ShaderPropertyFlags.MainTexture) != 0 && MainTextureName == null) MainTextureName = name;
+                        if ((flags & ShaderPropertyFlags.MainColor) != 0 && MainColorName == null) MainColorName = name;
                         switch (shader.GetPropertyType(i))
                         {
                             case ShaderPropertyType.Texture:
@@ -928,6 +1010,9 @@ namespace VRVlog.LilToonExporter
                 return false;
             }
 
+            internal static IEnumerable<string> Main(string[] names, string marked) =>
+                marked == null ? names : new[] { marked }.Concat(names.Where(name => name != marked));
+
             internal bool TryFloat(string name, out float value) => floats.TryGetValue(name, out value) && Finite(value);
             internal float Float(string name, float fallback) => TryFloat(name, out var value) ? value : fallback;
             internal bool TryVector(string name, out Vector4 value) => vectors.TryGetValue(name, out value);
@@ -959,7 +1044,8 @@ namespace VRVlog.LilToonExporter
             // The keyword space also holds the fallback's keywords, so a toon
             // shader that falls back to Standard lists _ALPHABLEND_ON; only a
             // keyword a pass of the subshader that draws uses counts. The
-            // fallback's subshaders are not valid pass identifiers.
+            // fallback's subshaders are not valid pass identifiers. A GrabPass
+            // has no program, and asking it logs an error.
             static bool OwnKeyword(Shader shader, string name)
             {
                 var keyword = shader.keywordSpace.FindKeyword(name);
@@ -968,7 +1054,7 @@ namespace VRVlog.LilToonExporter
                 var active = data?.ActiveSubshaderIndex ?? -1;
                 if (active < 0 || data.ActiveSubshader == null) return true;
                 for (var pass = 0; pass < data.ActiveSubshader.PassCount; pass++)
-                    if (ShaderUtil.PassHasKeyword(shader, new PassIdentifier((uint)active, (uint)pass), keyword)) return true;
+                    if (!data.ActiveSubshader.GetPass(pass).IsGrabPass && ShaderUtil.PassHasKeyword(shader, new PassIdentifier((uint)active, (uint)pass), keyword)) return true;
                 return false;
             }
         }

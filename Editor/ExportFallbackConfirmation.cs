@@ -146,25 +146,15 @@ namespace VRVlog.LilToonExporter
         }
     }
 
-    internal interface IExportFallbackDialog
+    internal static class ExportFallbackConfirmation
     {
         // Shows the export result once the file is saved or the transfer has
         // ended. heading is the source text of what happened ("VRMを保存しました");
         // note is text already translated for beside it, such as why a transfer failed.
         // diagnostics are those of the export listed, taken when it finished.
-        void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings);
-    }
-
-    internal static class ExportFallbackConfirmation
-    {
-        sealed class EditorDialog : IExportFallbackDialog
-        {
-            public void Show(ExportResultList result, GameObject avatar, string heading, string note, ExportDiagnostics diagnostics, Action openBlinkSettings) =>
-                ExportResultWindow.Open(result, avatar, heading, note, diagnostics, openBlinkSettings);
-        }
-
-        // Tests replace these two; batch runs and CI never reach the window.
-        internal static IExportFallbackDialog Dialog = new EditorDialog();
+        // Tests replace this and IsBatchMode; batch runs and CI never reach the window.
+        internal static Action<ExportResultList, GameObject, string, string, ExportDiagnostics, Action> Dialog =
+            (result, avatar, heading, note, diagnostics, openBlinkSettings) => ExportResultWindow.Open(result, avatar, heading, note, diagnostics, openBlinkSettings);
         internal static Func<bool> IsBatchMode = () => Application.isBatchMode;
 
         internal const string ExpressionEndsNeutralText = "ループの最後が元の顔に戻る表情です。VR Vlogでは動きますが、ほかのアプリでは選んでも顔が変わりません";
@@ -179,7 +169,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.ColliderSkipped: return "PhysBoneコライダーを変換できませんでした";
                 case ExportFallbackKind.StageOmitted: return "書き出しの一部を省略しました";
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた分を省略しました";
-                case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
+                case ExportFallbackKind.MaterialApproximated: return "一部のマテリアルを簡易表示にしました";
                 case ExportFallbackKind.ShaderSubstituted: return "非対応のシェーダーを公式lilToonで近似しました";
                 case ExportFallbackKind.ExpressionEndsNeutral: return ExpressionEndsNeutralText;
                 case ExportFallbackKind.MissingShader: return MissingShaderReason;
@@ -219,7 +209,7 @@ namespace VRVlog.LilToonExporter
             var result = ExportResultList.Build(report, warnings, destination);
             // A transfer opens the list later; another export may have been recorded by then.
             var diagnostics = ExportDiagnostics.Last;
-            return (heading, note) => Dialog.Show(result, avatar, heading, note, diagnostics, openBlinkSettings);
+            return (heading, note) => Dialog(result, avatar, heading, note, diagnostics, openBlinkSettings);
         }
 
         internal static GameObject[] Targets(ExportFallbackReport report, GameObject avatar)

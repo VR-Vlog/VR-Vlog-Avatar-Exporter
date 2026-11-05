@@ -85,7 +85,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 master = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 Size = master.Length;
                 if (Size < 1 || Size > CloudTransferProtocol.MaximumSize) throw new InvalidOperationException("スマホへの転送は256 MiB以下のVRMに対応しています。");
-                using (var hash = SHA256.Create()) FileHash = LanTransferProtocol.Hex(hash.ComputeHash(master));
+                using (var hash = SHA256.Create()) FileHash = CloudTransferProtocol.Hex(hash.ComputeHash(master));
                 master.Position = 0;
             }
             catch { Dispose(); throw; }
@@ -227,7 +227,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                             remaining -= part.Length; partNumber++;
                         }
                         hash.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                        if (reader.ReadByte() != -1 || LanTransferProtocol.Hex(hash.Hash) != protectedSnapshot.FileHash) throw CloudTransferProtocol.Invalid();
+                        if (reader.ReadByte() != -1 || CloudTransferProtocol.Hex(hash.Hash) != protectedSnapshot.FileHash) throw CloudTransferProtocol.Invalid();
                     }
                     lock (gate) activeReader = null;
                     CheckExpiry();

@@ -40,12 +40,6 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
-        internal static readonly string[] Reasons =
-        {
-            KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim, ApproximatedPosition,
-            OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedOff, OmittedReparent, OmittedBound
-        };
 
         // A VRM rotation constraint applies the source's local change in the
         // target's own frame. It equals the original when both rest rotations
@@ -284,14 +278,15 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static HashSet<Transform> HumanoidBones(GameObject copy)
+        internal static HashSet<Transform> HumanoidBones(GameObject copy)
         {
             var bones = new HashSet<Transform>();
             var animator = copy.GetComponent<Animator>();
-            if (animator == null || animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman) return bones;
             for (var index = 0; index < (int)HumanBodyBones.LastBone; index++)
             {
-                var bone = animator.GetBoneTransform((HumanBodyBones)index);
+                // An Animator that is not bound yet still knows its bones by name. Without
+                // them the body would swing and constraints would drive it, with no warning.
+                var bone = VRVlog.LilToonExporter.HumanoidBones.Resolve(animator, (HumanBodyBones)index);
                 if (bone != null) bones.Add(bone);
             }
             return bones;

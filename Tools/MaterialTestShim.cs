@@ -45,6 +45,7 @@ namespace UnityEngine
         public string name;
         public Transform transform;
         public T[] GetComponents<T>() => throw new System.NotSupportedException();
+        public T GetComponent<T>() => throw new System.NotSupportedException();
         public GameObject gameObject = new GameObject();
         public bool enabled = true;
         public Material[] sharedMaterials = System.Array.Empty<Material>();
@@ -128,6 +129,10 @@ namespace VRVlog.LilToonExporter.Vendor.UniVRM10
 namespace VRVlog.LilToonExporter
 {
     // The locale tables need AssetDatabase; the harness keeps the Japanese source.
-    public static class ExporterLocalization { public static string T(string source) => source; }
+    public static class ExporterLocalization
+    {
+        public static string T(string source) => source;
+        public static string Format(string template, params object[] values) => string.Format(T(template), values);
+    }
 }
 #endif

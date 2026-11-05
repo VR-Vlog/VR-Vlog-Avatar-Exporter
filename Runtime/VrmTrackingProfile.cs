@@ -17,23 +17,10 @@ namespace VRVlog.LilToonExporter
         public TrackingMorph[] morphs = Array.Empty<TrackingMorph>();
     }
 
-    [Serializable]
-    public sealed class VrcTrackingChannel
-    {
-        public string parameter;
-        public string negativeShape;
-        public string positiveShape;
-        public float center;
-        public float minimum = -1f;
-        public float maximum = 1f;
-        [Range(1f, 100f)] public float maxBlendShapeWeight = 100f;
-    }
-
     [CreateAssetMenu(menuName = "VR Vlog/Face Tracking Profile")]
     public sealed class VrmTrackingProfile : ScriptableObject
     {
         public TrackingExpression[] expressions = Array.Empty<TrackingExpression>();
-        public VrcTrackingChannel[] vrcChannels = Array.Empty<VrcTrackingChannel>();
     }
 
 }

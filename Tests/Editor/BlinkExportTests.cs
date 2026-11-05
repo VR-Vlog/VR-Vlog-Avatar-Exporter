@@ -498,8 +498,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void DescriptorBlinkUsesOnlyTheClosedSlotAndValidatesMissingIndices()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the descriptor integration test.");
             var skin = Skin("custom_closed", "custom_up", "custom_down", "Blink");
             var descriptor = root.AddComponent(descriptorType);
             descriptorType.GetField("enableEyeLook").SetValue(descriptor, true);
@@ -681,8 +680,8 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             if (modularAvatar)
             {
-                var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-                var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+                var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+                var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
                 if (proxyType == null || markerType == null) Assert.Ignore("Requires Modular Avatar and NDMF.");
                 fixture.Source.AddComponent(markerType);
                 var hair = fixture.Source.transform.Find("Independent hair");
@@ -694,7 +693,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
             var zeros = new Vector3[fixture.Mesh.vertexCount];
             fixture.Mesh.AddBlendShapeFrame("Blink", 100, zeros, zeros, zeros);
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Blink integration", "Tests");
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Blink integration", "Tests", exporterVersion: null);
             var glb = GlbDocument.Read(bytes);
             var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
             var preset = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["preset"];
@@ -721,7 +720,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Mesh.AddBlendShapeFrame(name, 100, moved, null, null);
             var warnings = new List<string>();
             var report = new ExportRecoveryReport();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Ambiguous blink", "Tests", warnings, recoveryReport: report);
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Ambiguous blink", "Tests", exporterVersion: null, warnings: warnings, recoveryReport: report);
             Assert.That(bytes, Is.Not.Empty);
             Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning), StringComparison.Ordinal)), Is.True);
             Assert.That(report.Fallbacks.Items.Select(item => item.Kind), Has.Member(ExportFallbackKind.Blink));
@@ -749,7 +748,7 @@ namespace VRVlog.LilToonExporter.Tests
             clip.IsBinary = true;
             clip.MorphTargetBindings = empty ? Array.Empty<MorphTargetBinding>() : new[] { new MorphTargetBinding("Front", 0, .6f) };
             vrm.Expression.Blink = clip; fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
-            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Authored blink", "Tests"));
+            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Authored blink", "Tests", exporterVersion: null));
             var extension = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
             var presets = (Dictionary<string, object>)((Dictionary<string, object>)extension["expressions"])["preset"];
             var blink = (Dictionary<string, object>)presets["blink"];

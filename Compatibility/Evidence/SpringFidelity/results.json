@@ -1,0 +1,344 @@
+{
+ "timeline": "13 s at 60 fps: still 0-1.5, walk 1.5-4.8, turn 180 degrees 4.8-5.8, shake and nod the head 5.8-9, jump 9-10, still 10-13. Hips are driven and the model root stays put, as in the app.",
+ "metric": "Mean over models of the mean per-bone direction error against the source PhysBone, weighted by bone length times bone count. tipPct is the RMS tip distance in percent of chain length.",
+ "bodies": {
+  "old_raw": "previous conversion, plain VRM solver",
+  "new_raw": "this conversion, plain VRM solver",
+  "old_app": "previous conversion, app load state",
+  "new_app": "this conversion, app load state"
+ },
+ "focused": {
+  "models": 4,
+  "chains": 119,
+  "overall": {
+   "old_raw": {
+    "deg": 10.072234765644108,
+    "tipPct": 10.399836394543746,
+    "lastBoneDeg": 20.775375798710122,
+    "ampRatio": 0.974266715178692,
+    "settleDiffSec": 0.2563366195762659,
+    "degMedian": 9.907174583909654,
+    "degP90": 10.944511030807295,
+    "degMax": 11.180263816171825
+   },
+   "new_raw": {
+    "deg": 5.328076347482673,
+    "tipPct": 5.541937076520502,
+    "lastBoneDeg": 11.883204025528583,
+    "ampRatio": 1.070666258493825,
+    "settleDiffSec": 0.14565347682870322,
+    "degMedian": 6.097438211208425,
+    "degP90": 7.519726215252808,
+    "degMax": 7.987728420159743
+   },
+   "old_app": {
+    "deg": 7.86344948118683,
+    "tipPct": 8.146541334734412,
+    "lastBoneDeg": 17.478241581786232,
+    "ampRatio": 1.1329034697445366,
+    "settleDiffSec": 0.2742314545423923,
+    "degMedian": 8.348706937793246,
+    "degP90": 9.717198442049204,
+    "degMax": 9.810436430763437
+   },
+   "new_app": {
+    "deg": 6.506318112975199,
+    "tipPct": 7.326415669779068,
+    "lastBoneDeg": 13.96676302386876,
+    "ampRatio": 1.1521616852688947,
+    "settleDiffSec": 0.14172305820111217,
+    "degMedian": 6.1142680545304815,
+    "degP90": 7.53188067634858,
+    "degMax": 8.006931813247052
+   }
+  },
+  "bySection": {
+   "idle": {
+    "old_raw": 1.2431677123163871,
+    "new_raw": 1.0589892560022136,
+    "old_app": 1.2436325885650605,
+    "new_app": 1.0595960085792129
+   },
+   "walk": {
+    "old_raw": 13.795724554874417,
+    "new_raw": 5.626575956662957,
+    "old_app": 10.08274120524312,
+    "new_app": 7.684731026147656
+   },
+   "turn": {
+    "old_raw": 16.5452650378715,
+    "new_raw": 7.359514329008886,
+    "old_app": 12.88741977284475,
+    "new_app": 9.480182689912349
+   },
+   "head": {
+    "old_raw": 11.975267959741624,
+    "new_raw": 7.739727963296287,
+    "old_app": 9.638712415121264,
+    "new_app": 8.818073123917912
+   },
+   "jump": {
+    "old_raw": 18.213698894382937,
+    "new_raw": 10.29076577803069,
+    "old_app": 13.23580001104322,
+    "new_app": 12.099170284477815
+   },
+   "rest": {
+    "old_raw": 3.489531833145648,
+    "new_raw": 2.230468882541293,
+    "old_app": 3.3730832798020023,
+    "new_app": 2.6119863958317646
+   }
+  },
+  "byPart": {
+   "hair": {
+    "old_raw": 11.941127884722953,
+    "new_raw": 6.001403917043558,
+    "old_app": 9.983172612830474,
+    "new_app": 7.479389080119279,
+    "chains": 51
+   },
+   "skirt": {
+    "old_raw": 4.421644047253798,
+    "new_raw": 4.168515684791034,
+    "old_app": 4.167370209682578,
+    "new_app": 4.567706993436472,
+    "chains": 28
+   },
+   "tail": {
+    "old_raw": 12.143168527786552,
+    "new_raw": 4.436091462708323,
+    "old_app": 7.777769419688632,
+    "new_app": 7.808226548753249,
+    "chains": 5
+   },
+   "ear": {
+    "old_raw": 8.939229111954617,
+    "new_raw": 4.10175923138956,
+    "old_app": 6.0270785962570566,
+    "new_app": 5.0250517737270926,
+    "chains": 6
+   },
+   "breast": {
+    "old_raw": 0.5402724999999999,
+    "new_raw": 0.48414999999999997,
+    "old_app": 0.5458825,
+    "new_app": 2.25266,
+    "chains": 4
+   },
+   "sleeve": {
+    "old_raw": null,
+    "new_raw": null,
+    "old_app": null,
+    "new_app": null,
+    "chains": 0
+   },
+   "other": {
+    "old_raw": 9.949013412498477,
+    "new_raw": 4.677986789410921,
+    "old_app": 6.9957168818586055,
+    "new_app": 5.115878205893585,
+    "chains": 25
+   }
+  },
+  "change": {
+   "raw": {
+    "improved": 4,
+    "same": 0,
+    "worse": 0,
+    "medianChange": -3.809736372701228,
+    "worstIncrease": -1.3065976584255603
+   },
+   "app": {
+    "improved": 3,
+    "same": 0,
+    "worse": 1,
+    "medianChange": -1.2889236672340343,
+    "worstIncrease": 0.8591604670780901
+   }
+  }
+ },
+ "focusedPerModel": [
+  {
+   "old_raw": 9.29,
+   "new_raw": 7.99,
+   "old_app": 9.81,
+   "new_app": 8.01
+  },
+  {
+   "old_raw": 9.42,
+   "new_raw": 6.43,
+   "old_app": 7.2,
+   "new_app": 6.42
+  },
+  {
+   "old_raw": 11.18,
+   "new_raw": 1.13,
+   "old_app": 4.95,
+   "new_app": 5.81
+  },
+  {
+   "old_raw": 10.39,
+   "new_raw": 5.77,
+   "old_app": 9.5,
+   "new_app": 5.79
+  }
+ ],
+ "wholeList": {
+  "models": 429,
+  "chains": 13179,
+  "overall": {
+   "old_raw": {
+    "deg": 10.545437150145437,
+    "tipPct": 10.824153741794307,
+    "lastBoneDeg": 22.78043281580338,
+    "ampRatio": 2.747211542459318,
+    "settleDiffSec": 0.21887986343256063,
+    "degMedian": 9.716611357164584,
+    "degP90": 12.970181260968358,
+    "degMax": 47.69750992183653
+   },
+   "new_raw": {
+    "deg": 5.088327989645111,
+    "tipPct": 6.04749919456284,
+    "lastBoneDeg": 10.514381512624865,
+    "ampRatio": 1.0767351532566731,
+    "settleDiffSec": 0.10584267066778744,
+    "degMedian": 5.689338600185775,
+    "degP90": 7.681448554359222,
+    "degMax": 47.517263481662994
+   },
+   "old_app": {
+    "deg": 9.072304632521961,
+    "tipPct": 9.221533948880346,
+    "lastBoneDeg": 20.730170324980303,
+    "ampRatio": 2.909526649278357,
+    "settleDiffSec": 0.23257677631061127,
+    "degMedian": 9.013500295907413,
+    "degP90": 13.383582236169765,
+    "degMax": 51.003375530044465
+   },
+   "new_app": {
+    "deg": 6.449205382787901,
+    "tipPct": 7.578138364586402,
+    "lastBoneDeg": 12.656572468504072,
+    "ampRatio": 1.1549280107962767,
+    "settleDiffSec": 0.1334639036853028,
+    "degMedian": 6.10332307994332,
+    "degP90": 9.377762223265949,
+    "degMax": 47.65419214913707
+   }
+  },
+  "bySection": {
+   "idle": {
+    "old_raw": 2.0334813172072463,
+    "new_raw": 1.4269938719332806,
+    "old_app": 2.0373458319163524,
+    "new_app": 1.449270618255627
+   },
+   "walk": {
+    "old_raw": 14.992132153351486,
+    "new_raw": 5.839540644172339,
+    "old_app": 11.975887948520855,
+    "new_app": 7.779413370988389
+   },
+   "turn": {
+    "old_raw": 15.778739330839237,
+    "new_raw": 6.4976420900274245,
+    "old_app": 13.738623396875708,
+    "new_app": 9.155382006476
+   },
+   "head": {
+    "old_raw": 11.871922103275022,
+    "new_raw": 6.896615420962829,
+    "old_app": 10.813014826204974,
+    "new_app": 8.417585462745675
+   },
+   "jump": {
+    "old_raw": 18.093657705389003,
+    "new_raw": 8.882418565993026,
+    "old_app": 14.257061956088428,
+    "new_app": 10.613968054545431
+   },
+   "rest": {
+    "old_raw": 4.234626341813869,
+    "new_raw": 2.429353986351921,
+    "old_app": 4.255394119516746,
+    "new_app": 3.0960281723563106
+   }
+  },
+  "byPart": {
+   "hair": {
+    "old_raw": 10.91111940947384,
+    "new_raw": 4.925592346778175,
+    "old_app": 8.345236062966539,
+    "new_app": 6.573631290714693,
+    "chains": 5331
+   },
+   "skirt": {
+    "old_raw": 5.6653986340554905,
+    "new_raw": 5.106906116444107,
+    "old_app": 5.730241416217873,
+    "new_app": 5.552228723083872,
+    "chains": 2228
+   },
+   "tail": {
+    "old_raw": 11.253062738304878,
+    "new_raw": 4.664700801628134,
+    "old_app": 7.817944167639932,
+    "new_app": 7.457442844498648,
+    "chains": 670
+   },
+   "ear": {
+    "old_raw": 9.121520977439387,
+    "new_raw": 4.1623873521009624,
+    "old_app": 6.69082302621596,
+    "new_app": 5.585501895260541,
+    "chains": 850
+   },
+   "breast": {
+    "old_raw": 0.7183101281855488,
+    "new_raw": 0.5633463008617172,
+    "old_app": 0.8276688977835188,
+    "new_app": 1.640097268078581,
+    "chains": 272
+   },
+   "sleeve": {
+    "old_raw": 17.190308524359583,
+    "new_raw": 4.87173492133194,
+    "old_app": 16.252669841413336,
+    "new_app": 5.895600742140902,
+    "chains": 198
+   },
+   "other": {
+    "old_raw": 10.781974477508342,
+    "new_raw": 4.069677321578113,
+    "old_app": 9.306357577782904,
+    "new_app": 5.148538769737118,
+    "chains": 3630
+   }
+  },
+  "change": {
+   "raw": {
+    "improved": 427,
+    "same": 2,
+    "worse": 0,
+    "medianChange": -4.337257653179041,
+    "worstIncrease": 0.23852893307358336
+   },
+   "app": {
+    "improved": 371,
+    "same": 19,
+    "worse": 39,
+    "medianChange": -2.030707606274648,
+    "worstIncrease": 9.824483602076128
+   }
+  }
+ },
+ "wholeListFailed": {
+  "no PhysBone on the model": 25,
+  "model is not Humanoid, so the motion cannot play": 2,
+  "no chain to compare": 4,
+  "assembly left no prefab": 2
+ }
+}

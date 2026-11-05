@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEngine;
 
 namespace VRVlog.LilToonExporter.Tests
 {
@@ -17,6 +19,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test]
         public void KeepsNamesTheAppDrives() => UnusedMorphTargetsFixture.KeepsNamesTheAppDrives(Check);
+
+        [Test]
+        public void KeepsTheShapesOfTheCameraGaze() => UnusedMorphTargetsFixture.KeepsTheShapesOfTheCameraGaze(Check);
 
         [Test]
         public void KeepsTargetsWithAWeight() => UnusedMorphTargetsFixture.KeepsTargetsWithAWeight(Check);
@@ -41,6 +46,26 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test]
         public void KeepsTheFileWhenNothingIsUnused() => UnusedMorphTargetsFixture.KeepsTheFileWhenNothingIsUnused(Check);
+
+        // The whole export, not only the strip step: nothing binds these shapes,
+        // and a later step must not lose them either.
+        [Test]
+        public void AnExportKeepsTheCameraGazeShapesThatNoExpressionBinds()
+        {
+            var gaze = new[] { "eye_up", "eye_down", "eye_left", "eye_right" };
+            using var avatar = new AttachmentConnectionTests.Fixture(eyes: true);
+            foreach (var name in gaze.Append("Unused detail"))
+                avatar.Mesh.AddBlendShapeFrame(name, 100, Enumerable.Repeat(new Vector3(.01f, 0, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            avatar.Source.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial.shader = OptionalTools.RequireShader("lilToon", "Install lilToon.");
+            var bytes = UniVrmOneClickExporter.Export(avatar.Source, "Camera gaze", "Tests", exporterVersion: "camera-gaze-regression",
+                lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+            var json = GlbDocument.Read(bytes).Json;
+            var names = ((List<object>)json["meshes"]).Cast<Dictionary<string, object>>()
+                .Where(mesh => mesh.ContainsKey("extras"))
+                .SelectMany(mesh => (List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"]).Cast<string>().ToList();
+            Assert.That(names, Is.SupersetOf(gaze));
+            Assert.That(names, Does.Not.Contain("Unused detail"), "The strip step still has to run for this test to mean anything.");
+        }
 
         [Test]
         public void EveryShippedLocaleTranslatesTheUnusedMorphStage()

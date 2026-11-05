@@ -68,8 +68,8 @@ namespace VRVlog.LilToonExporter.Tests
             // user's scene setup when the test run ends.
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var scenePath = "Assets/ExportAuthorScene-" + Guid.NewGuid().ToString("N") + ".unity";
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
-            var other = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
+            var other = BoardHarness.Create();
             string firstIdentity = null, secondIdentity = null;
             try
             {
@@ -88,15 +88,13 @@ namespace VRVlog.LilToonExporter.Tests
 
                 // The export window offers the remembered author for that avatar only.
                 ExportAuthor.Remember(first, "SampleAuthor");
-                var select = typeof(ExperimentalExpressionCaptureWindow).GetMethod("SelectSource", Flags);
-                var author = typeof(ExperimentalExpressionCaptureWindow).GetField("author", Flags);
-                select.Invoke(window, new object[] { first });
-                Assert.That(author.GetValue(window), Is.EqualTo("SampleAuthor"));
-                select.Invoke(other, new object[] { second });
-                Assert.That(author.GetValue(other), Is.Empty, "A new window for an avatar without a record starts empty.");
-                author.SetValue(other, "TypedName");
-                select.Invoke(other, new object[] { first });
-                Assert.That(author.GetValue(other), Is.EqualTo("SampleAuthor"));
+                window.Call("SelectSource", first);
+                Assert.That(window.Field("author"), Is.EqualTo("SampleAuthor"));
+                other.Call("SelectSource", second);
+                Assert.That(other.Field("author"), Is.Empty, "A new window for an avatar without a record starts empty.");
+                other.SetField("author", "TypedName");
+                other.Call("SelectSource", first);
+                Assert.That(other.Field("author"), Is.EqualTo("SampleAuthor"));
             }
             finally
             {
@@ -163,18 +161,17 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("   ")]
         public void ExportWindowDoesNotStartSavingWithoutAnAuthor(string author)
         {
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var window = BoardHarness.Create();
             var source = new GameObject("SampleAvatar");
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-author-" + Guid.NewGuid().ToString("N") + ".vrm");
             try
             {
-                var type = typeof(ExperimentalExpressionCaptureWindow);
-                type.GetField("source", Flags).SetValue(window, source);
-                type.GetField("author", Flags).SetValue(window, author);
+                window.SetField("source", source);
+                window.SetField("author", author);
                 var exception = Assert.Throws<InvalidOperationException>(() => window.SaveVrm(path));
                 Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
                 Assert.That(File.Exists(path), Is.False);
-                Assert.That(type.GetField("saved", Flags).GetValue(window), Is.Null);
+                Assert.That(window.Field("saved"), Is.Null);
             }
             finally
             {

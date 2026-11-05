@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using static VRVlog.LilToonExporter.MobileMaterialMath;
 
 namespace VRVlog.LilToonExporter
 {
@@ -29,11 +30,11 @@ namespace VRVlog.LilToonExporter
                 if (Enabled(material, toggle)) AddWarning(warnings, $"{material.name}: 未対応機能 {toggle} は省略し、対応部分だけを書き出しました。");
             if (EnabledOrTexture(material, "_UseEmission", "_EmissionMap"))
             {
-                if ((material.HasProperty("_EmissionMap_UVMode") && material.GetFloat("_EmissionMap_UVMode") != 0) ||
+                if (NonZero(material, "_EmissionMap_UVMode") ||
                     (material.HasProperty("_EmissionMap_ScrollRotate") && !material.GetVector("_EmissionMap_ScrollRotate").Equals(new Vector4(0, 0, 0, 0))) ||
                     (material.HasProperty("_EmissionBlink") && material.GetVector("_EmissionBlink").x != 0) ||
                     Enabled(material, "_EmissionUseGrad") ||
-                    (material.HasProperty("_EmissionParallaxDepth") && material.GetFloat("_EmissionParallaxDepth") != 0) ||
+                    NonZero(material, "_EmissionParallaxDepth") ||
                     (LilToonEmissionPolicy.HasEmissionMask(material) && material.HasProperty("_EmissionBlendMask_ScrollRotate") &&
                      !material.GetVector("_EmissionBlendMask_ScrollRotate").Equals(new Vector4(0, 0, 0, 0))))
                     AddWarning(warnings, $"{material.name}: 発光の特殊UV・回転・時間変化は省略し、UV0の固定した発光として近似しました。");
@@ -44,9 +45,9 @@ namespace VRVlog.LilToonExporter
                     AddWarning(warnings, $"{material.name}: 発光のマスク・合成方法は専用表示へ保存しました。標準MToonでは加算発光として近似します。");
             }
             if (HasOutline(material) && ((HasTexture(material, "_OutlineTex") && material.GetTexture("_OutlineTex") != Texture2D.whiteTexture) ||
-                (material.HasProperty("_OutlineFixWidth") && material.GetFloat("_OutlineFixWidth") != 0)))
+                NonZero(material, "_OutlineFixWidth")))
                 AddWarning(warnings, $"{material.name}: 輪郭の色模様・カメラ距離による幅の補正は、単色・一定の幅として近似しました。");
-            if (HasOutline(material) && material.HasProperty("_OutlineWidth") && material.GetFloat("_OutlineWidth") > .5f)
+            if (HasOutline(material) && Float(material, "_OutlineWidth") > .5f)
                 AddWarning(warnings, $"{material.name}: 太い輪郭をモバイル表示の上限5mmへ近似します。");
             var record = new LilToonMaterialRecord {
                 materialIndex = materialIndex, shaderFamily = family, renderMode = RenderMode(material, warnings),
@@ -168,7 +169,6 @@ namespace VRVlog.LilToonExporter
             if (leaf.StartsWith(optionalPrefix, StringComparison.OrdinalIgnoreCase)) leaf = leaf.Substring(optionalPrefix.Length).TrimStart();
             return leaf.StartsWith("lilToon", StringComparison.OrdinalIgnoreCase) ? leaf : "";
         }
-        private static bool Enabled(Material m, string p) => m.HasProperty(p) && m.GetFloat(p) > 0.5f;
         private static bool EnabledOrTexture(Material m, string enable, string texture) => m.HasProperty(enable) ? Enabled(m, enable) : HasTexture(m, texture);
         private static bool HasTexture(Material m, string p) => m.HasProperty(p) && m.GetTexture(p) != null;
         private static bool TextureFeatureEnabled(Material material, string semantic)

@@ -12,7 +12,7 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ExportFallbackConfirmationTests
     {
         // Records each result list opened.
-        sealed class RecordingDialog : IExportFallbackDialog
+        sealed class RecordingDialog
         {
             internal readonly List<ExportResultList> Calls = new List<ExportResultList>();
             internal readonly List<string> Headings = new List<string>();
@@ -31,7 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        IExportFallbackDialog originalDialog;
+        Action<ExportResultList, GameObject, string, string, ExportDiagnostics, Action> originalDialog;
         Func<bool> originalBatchMode;
         Object[] originalSelection;
         RecordingDialog dialog;
@@ -41,13 +41,12 @@ namespace VRVlog.LilToonExporter.Tests
             originalDialog = ExportFallbackConfirmation.Dialog;
             originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
             originalSelection = Selection.objects;
-            ExportFallbackConfirmation.Dialog = dialog = new RecordingDialog();
+            ExportFallbackConfirmation.Dialog = (dialog = new RecordingDialog()).Show;
             // The test runner itself is a batch run; pretend an Editor session.
             ExportFallbackConfirmation.IsBatchMode = () => false;
             // The wording assertions compare the Japanese source text, whatever
             // language the machine running the tests uses.
-            originalLocale = LocaleField.GetValue(null);
-            LocaleField.SetValue(null, "ja");
+            locale = new LocaleScope("ja");
         }
 
         [TearDown] public void TearDown()
@@ -55,12 +54,10 @@ namespace VRVlog.LilToonExporter.Tests
             ExportFallbackConfirmation.Dialog = originalDialog;
             ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
             Selection.objects = originalSelection;
-            LocaleField.SetValue(null, originalLocale);
+            locale.Dispose();
         }
 
-        static readonly System.Reflection.FieldInfo LocaleField = typeof(ExporterLocalization).GetField("_locale",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        object originalLocale;
+        LocaleScope locale;
 
         static ExportFallbackReport AllFallbacks(Transform root = null, Transform collider = null, Transform renderer = null)
         {
@@ -130,17 +127,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(list.Rows.Single(row => row.Outcome == null).Content, Is.EqualTo("別の知らせ"));
 
             // Default reasons are stored as Japanese source text and must follow the Editor language.
-            var messages = typeof(ExporterLocalization).GetField("_messages",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            try
+            using (new LocaleScope("en"))
             {
-                LocaleField.SetValue(null, "en");
-                messages.SetValue(null, null);
                 var english = ExportResultList.Build(report, null).Rows.Select(row => row.Content).ToArray();
                 Assert.That(english, Has.No.Member("PhysBoneコライダーを変換できませんでした"));
                 Assert.That(english, Has.Member(ExporterLocalization.T("PhysBoneコライダーを変換できませんでした")));
             }
-            finally { messages.SetValue(null, null); }
         }
 
         [Test] public void KeptItemsAreListedOnceWithoutAsking()
@@ -175,7 +167,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory);
-                var recovery = LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                var recovery = ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     calls++;
                     // What the exporter records while it works around each case.
@@ -213,7 +205,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory);
-                LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     report.Fallbacks.Add(ExportFallbackKind.Blink);
                     return bytes;
@@ -246,7 +238,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 // A folder in the way: the write fails, and the error goes to the caller as before.
                 Directory.CreateDirectory(destination);
-                Assert.Catch<IOException>(() => LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                Assert.Catch<IOException>(() => ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     report.Fallbacks.Add(ExportFallbackKind.Blink);
                     return bytes;
@@ -266,7 +258,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Directory.CreateDirectory(directory);
-                LilToonExporterWindow.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
+                ExportEntry.ExportAndSaveNormally(fixture.Source, destination, (options, report, warnings) =>
                 {
                     report.Fallbacks.Add(ExportFallbackKind.Blink);
                     return bytes;
@@ -313,7 +305,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = plain;
                 var report = new ExportRecoveryReport();
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback report", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback report", "Tests", warnings: warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 Assert.That(bytes, Is.Not.Empty);
                 // An unsupported shader is now approximated by official lilToon
@@ -378,7 +370,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var report = new ExportRecoveryReport();
                 // A warning the caller already has stays once, after the summary.
                 var warnings = new List<string> { "Earlier" };
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings: warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 // The export is not blocked; the VRM is still written.
                 Assert.That(bytes, Is.Not.Empty);
@@ -434,7 +426,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var report = new ExportRecoveryReport();
                     warnings = new List<string>();
-                    var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                    var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings: warnings,
                         exporterVersion: "0.11.15", lilToonVersion: "2.3.4", excludedObjects: excluded, recoveryReport: report);
                     Assert.That(bytes, Is.Not.Empty);
                     Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(report.Fallbacks.MissingShaderCount));
@@ -466,7 +458,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().sharedMaterial = second;
                 var report = new ExportRecoveryReport();
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings: warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 Assert.That(bytes, Is.Not.Empty);
                 Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(2));

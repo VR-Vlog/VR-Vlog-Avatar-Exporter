@@ -22,8 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__DirectNativeLayers_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__DirectNativeLayers_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Face", AnimatorControllerParameterType.Int);
             avatar = new GameObject("Avatar", typeof(Animator));
@@ -31,12 +30,12 @@ namespace VRVlog.LilToonExporter.Tests
             mesh = BaseShapeFixture.Create(); face.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
             face.GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 20);
             var machine = controller.layers[0].stateMachine;
-            lower = State(machine, "Default lower face", Clip("Lower default", 30)); machine.defaultState = lower;
-            alternate = State(machine, "Alternate lower face", Clip("Lower alternate", 60));
+            lower = FxGraph.State(machine, "Default lower face", Clip("Lower default", 30)); machine.defaultState = lower;
+            alternate = FxGraph.State(machine, "Alternate lower face", Clip("Lower alternate", 60));
             var transition = lower.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Face");
             controller.AddLayer("Authored player"); var layers = controller.layers; layers[1].defaultWeight = .5f;
-            selected = State(layers[1].stateMachine, "Authored expression", Clip("Selected", 80));
+            selected = FxGraph.State(layers[1].stateMachine, "Authored expression", Clip("Selected", 80));
             layers[1].stateMachine.defaultState = selected; controller.layers = layers;
         }
 
@@ -53,11 +52,6 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
                 AnimationCurve.Constant(0, 1, weight));
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip)
-        {
-            var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = false; return state;
         }
 
         // This reference plays the complete authored graph and its actual clips.
@@ -335,13 +329,13 @@ namespace VRVlog.LilToonExporter.Tests
                 if (dependency == "parameter curve")
                 {
                     AssetDatabase.AddObjectToAsset(clip, controller); controller.AddLayer("Changing parameter writer"); var layers = controller.layers;
-                    layers[2].defaultWeight = 1; layers[2].stateMachine.defaultState = State(layers[2].stateMachine, "Writer", clip); controller.layers = layers;
+                    layers[2].defaultWeight = 1; layers[2].stateMachine.defaultState = FxGraph.State(layers[2].stateMachine, "Writer", clip); controller.layers = layers;
                 }
                 else
                 {
                     var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Gesture.controller");
                     other.AddParameter("Face", AnimatorControllerParameterType.Int); AssetDatabase.AddObjectToAsset(clip, other);
-                    other.layers[0].stateMachine.defaultState = State(other.layers[0].stateMachine, "Writer", clip);
+                    other.layers[0].stateMachine.defaultState = FxGraph.State(other.layers[0].stateMachine, "Writer", clip);
                     metadata.OtherControllers.Add(other); expectedMessage = "FX以外";
                 }
             }

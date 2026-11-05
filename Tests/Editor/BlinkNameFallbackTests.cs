@@ -68,7 +68,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Face("まばたき", left + ":L", right + ":R", "smile");
             var resolved = BlinkExportSession.Resolve(root);
-            Assert.That(Shapes(resolved, 0), Is.EqualTo(new[] { "まばたき" }));
+            Assert.That(Shapes(resolved, 0), Is.EquivalentTo(new[] { left, right }), "Blink closes both sides once they are known.");
             Assert.That(Shapes(resolved, 1), Is.EqualTo(new[] { left }));
             Assert.That(Shapes(resolved, 2), Is.EqualTo(new[] { right }));
             Assert.That(resolved.Inferences.Single(), Is.EqualTo(BlinkExportSession.InferredSidesLog + "face/まばたき → " + left + " / " + right));
@@ -119,7 +119,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Face(shapes.Concat(new[] { "目閉じ", "目閉じ_L:L", "目閉じ_R:R" }).ToArray());
             var resolved = BlinkExportSession.Resolve(root);
-            Assert.That(Shapes(resolved, 0), Is.EqualTo(new[] { both }));
+            Assert.That(Shapes(resolved, 0), Is.EquivalentTo(new[] { left, right }), "Blink closes the chosen sides.");
             Assert.That(Shapes(resolved, 1), Is.EqualTo(new[] { left }));
             Assert.That(Shapes(resolved, 2), Is.EqualTo(new[] { right }));
             Assert.That(resolved.Inferences, Is.Empty);
@@ -138,8 +138,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(new[] { "目閉じ" }, new[] { "目閉じ" }, new string[0], new string[0])]
         [TestCase(new[] { "Eyes Blink", "smile" }, new[] { "Eyes Blink" }, new string[0], new string[0])]
-        [TestCase(new[] { "閉眼", "閉眼_L:L", "閉眼_R:R" }, new[] { "閉眼" }, new[] { "閉眼_L" }, new[] { "閉眼_R" })]
-        [TestCase(new[] { "目閉じ", "左目閉じ:L", "右目閉じ:R" }, new[] { "目閉じ" }, new[] { "左目閉じ" }, new[] { "右目閉じ" })]
+        [TestCase(new[] { "閉眼", "閉眼_L:L", "閉眼_R:R" }, new[] { "閉眼_L", "閉眼_R" }, new[] { "閉眼_L" }, new[] { "閉眼_R" })]
+        [TestCase(new[] { "目閉じ", "左目閉じ:L", "右目閉じ:R" }, new[] { "左目閉じ", "右目閉じ" }, new[] { "左目閉じ" }, new[] { "右目閉じ" })]
         [TestCase(new[] { "Eye_Blink.Left:L", "Eye_Blink.Right:R" }, new[] { "Eye_Blink.Left", "Eye_Blink.Right" }, new[] { "Eye_Blink.Left" }, new[] { "Eye_Blink.Right" })]
         [TestCase(new[] { "L_瞬き:L", "R_瞬き:R" }, new[] { "L_瞬き", "R_瞬き" }, new[] { "L_瞬き" }, new[] { "R_瞬き" })]
         public void AFaceWithoutKnownNamesIsReadByItsBlinkWords(string[] shapes, string[] both, string[] left, string[] right)
@@ -189,6 +189,7 @@ namespace VRVlog.LilToonExporter.Tests
             var skin = Face("まばたき", "まばたき_L:L", "まばたき_R:R");
             using var session = BlinkExportSession.CaptureForExport(root);
             Assert.That(session.Inferences.Single(), Does.StartWith(BlinkExportSession.InferredSidesLog));
+            Assert.That(Shapes(session, 0), Is.EquivalentTo(new[] { "まばたき_L", "まばたき_R" }));
             var keptShapes = kept.Split(',');
             var lost = Object.Instantiate(skin.sharedMesh); owned.Add(lost);
             lost.ClearBlendShapes();
@@ -205,8 +206,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void DescriptorClosureGainsItsOwnSides()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the descriptor integration test.");
             var skin = Face("closed_eyes", "look_up", "look_down", "closed_eyes_L:L", "closed_eyes_R:R");
             var descriptor = root.AddComponent(descriptorType);
             descriptorType.GetField("enableEyeLook").SetValue(descriptor, true);
@@ -218,7 +218,7 @@ namespace VRVlog.LilToonExporter.Tests
             settingsField.SetValue(descriptor, settings);
             var resolved = BlinkExportSession.Resolve(root);
             Assert.That(resolved.ConfiguredByDescriptor, Is.True);
-            Assert.That(Shapes(resolved, 0), Is.EqualTo(new[] { "closed_eyes" }));
+            Assert.That(Shapes(resolved, 0), Is.EquivalentTo(new[] { "closed_eyes_L", "closed_eyes_R" }));
             Assert.That(Shapes(resolved, 1), Is.EqualTo(new[] { "closed_eyes_L" }));
             Assert.That(Shapes(resolved, 2), Is.EqualTo(new[] { "closed_eyes_R" }));
         }

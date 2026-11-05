@@ -121,7 +121,7 @@ namespace VRVlog.LilToonExporter.Tests
             var version = System.Text.RegularExpressions.Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value;
             Assert.That(version, Is.Not.Empty);
             Assert.That(ExporterWindowHeader.Version, Is.EqualTo("v" + version));
-            Assert.That(LilToonExporterWindow.PackageVersion(), Is.EqualTo(version));
+            Assert.That(ExportEntry.PackageVersion(), Is.EqualTo(version));
 
             var error = Failure();
             var text = ExportDetailsText.Failure(error.Message, error.ToString(), Array.Empty<ExportRecoveryDiagnostic>(), version);

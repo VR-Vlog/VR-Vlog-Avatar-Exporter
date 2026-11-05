@@ -434,8 +434,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void RegisteredCustomCloneCannotBecomeANewSlotAndDistinctSameNamedCustomIsRetained()
         {
-            var registryType = InstalledType("nadena.dev.ndmf.ObjectRegistry");
-            if (registryType == null) Assert.Ignore("Install supported NDMF to verify public expression replacement provenance.");
+            var registryType = OptionalTools.Require("nadena.dev.ndmf.ObjectRegistry", "Install supported NDMF to verify public expression replacement provenance.");
             var registry = Activator.CreateInstance(registryType, new object[] { source.transform, null });
             var registryInterface = registryType.GetInterface("nadena.dev.ndmf.IObjectRegistry");
             var register = registryInterface.GetMethod("RegisterReplacedObject", new[] { typeof(Object), typeof(Object) });
@@ -648,6 +647,52 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void SuppressedRawNamesMatchTheRenamedRoutesTheOptimizerUsedBefore()
+        {
+            // Optimization merged two raw JawOpen routes into one mesh; an authored
+            // UE route and a broken one establish UE and warn.
+            Dictionary<string, object> Expression(long node, long index) => new Dictionary<string, object> {
+                ["morphTargetBinds"] = new List<object> { new Dictionary<string, object> { ["node"] = node, ["index"] = index, ["weight"] = .4 } },
+                ["isBinary"] = false
+            };
+            var names = new[] { "JawOpen", "JawOpen", "LipFunnelUpperLeft" };
+            var bytes = GlbDocument.Create(new Dictionary<string, object> {
+                ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
+                ["nodes"] = new List<object> { new Dictionary<string, object> { ["mesh"] = 0L } },
+                ["meshes"] = new List<object> { new Dictionary<string, object> {
+                    ["extras"] = new Dictionary<string, object> { ["targetNames"] = names.Cast<object>().ToList() },
+                    ["primitives"] = new List<object> { new Dictionary<string, object> { ["targets"] = names.Select(_ => (object)new Dictionary<string, object>()).ToList() } }
+                } },
+                ["extensions"] = new Dictionary<string, object> { ["VRMC_vrm"] = new Dictionary<string, object> {
+                    ["expressions"] = new Dictionary<string, object> { ["custom"] = new Dictionary<string, object> {
+                        ["UE/LipFunnelUpperLeft"] = Expression(0, 2), ["UE/MouthClosed"] = Expression(10, 0)
+                    } }
+                } }
+            }, Array.Empty<byte>()).Write();
+
+            // The optimizer used to hide every mesh name, run Add, then put the names back.
+            var input = GlbDocument.Read(bytes);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)((List<object>)input.Json["meshes"])[0])["extras"];
+            extras["targetNames"] = names.Select((_, shape) => (object)("__VRVlog_Optimized_" + shape)).ToList();
+            var oldWarnings = new List<string>();
+            var old = GlbDocument.Read(VrmUnifiedExpressions.Add(input.Write(), oldWarnings));
+            ((Dictionary<string, object>)((Dictionary<string, object>)((List<object>)old.Json["meshes"])[0])["extras"])["targetNames"] = names.Cast<object>().ToList();
+
+            var newWarnings = new List<string>();
+            var current = GlbDocument.Read(VrmUnifiedExpressions.Add(bytes, newWarnings, inferRawNames: false));
+            Dictionary<string, object> Custom(GlbDocument glb) => (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)
+                ((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"])["expressions"])["custom"];
+            Assert.That(Custom(current).Keys, Is.EquivalentTo(Custom(old).Keys));
+            Assert.That(newWarnings, Is.EqualTo(oldWarnings));
+            Assert.That(newWarnings, Is.Not.Empty);
+            Assert.That(current.Write(), Is.EqualTo(old.Write()));
+
+            var inferredWarnings = new List<string>();
+            VrmUnifiedExpressions.Add(bytes, inferredWarnings);
+            Assert.That(inferredWarnings.Any(message => message.Contains("JawOpen")), Is.True, "Without the flag the collapsed raw names are still read.");
+        }
+
         static byte[] Output(params string[] names) => GlbDocument.Create(new Dictionary<string, object> {
             ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
             ["nodes"] = new List<object> { new Dictionary<string, object> { ["mesh"] = 0L } },
@@ -658,18 +703,29 @@ namespace VRVlog.LilToonExporter.Tests
             ["extensions"] = new Dictionary<string, object> { ["VRMC_vrm"] = new Dictionary<string, object>() }
         }, Array.Empty<byte>()).Write();
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         void RequireInstalledAvatarOptimizer(string component)
         {
-            if (InstalledType("Anatawa12.AvatarOptimizer." + component) == null || InstalledType("nadena.dev.ndmf.BuildContext") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer." + component) == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported Avatar Optimizer and NDMF to run the optimizer integration fixture.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True, "The installed AAO adapter must compile and register.");
         }
 
+        // Without a platform component NDMF picks its generic platform, which Avatar
+        // Optimizer 1.8.16 does not run on (1.9.20 does), so give it what real avatars have.
+        void MakeSourceAVrChatAvatar()
+        {
+            source.AddComponent(OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for this optimizer fixture."));
+            source.AddComponent<Animator>();
+        }
+
+        // For a fixture that needs the generic platform itself: its FX is on the root Animator,
+        // or Avatar Optimizer 1.8.16 would stop on the VRChat platform with an error of its own.
+        static void RequireOptimizerOnGenericPlatform(string reason) =>
+            OptionalTools.IgnoreBelow("com.anatawa12.avatar-optimizer", new Version(1, 9), "Avatar Optimizer does not run on the generic platform before 1.9: " + reason);
+
         Component AddOptimizer(GameObject target, string name, int initializeVersion)
         {
-            var type = InstalledType("Anatawa12.AvatarOptimizer." + name);
+            var type = OptionalTools.Find("Anatawa12.AvatarOptimizer." + name);
             var initialize = type.GetMethod("Initialize", new[] { typeof(int) });
             if (initialize == null) Assert.Ignore("This AAO version does not expose the fixture's component configuration API.");
             var component = target.AddComponent(type);
@@ -680,8 +736,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InstalledNdmfRootUsesItsPublicEditorOnlyInterface()
         {
-            var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (rootType == null) Assert.Ignore("Install NDMF to verify its public editor-only component detection.");
+            var rootType = OptionalTools.Require("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot", "Install NDMF to verify its public editor-only component detection.");
             source.AddComponent(rootType);
             Assert.That(NdmfExportPreparation.NeedsProcessing(source), Is.True);
         }
@@ -736,6 +791,7 @@ namespace VRVlog.LilToonExporter.Tests
         void VerifyInstalledPreparedNeutral(bool preservePreparedNeutral)
         {
             RequireInstalledAvatarOptimizer("TraceAndOptimize");
+            RequireOptimizerOnGenericPlatform("this fixture's FX is on the root Animator.");
             var skin = Skin(source, "face", "Neutral opening");
             var mesh = skin.sharedMesh;
             mesh.AddBlendShapeFrame("Unconsumed zero", 100, Enumerable.Repeat(Vector3.right * .1f, 3).ToArray(), null, null);
@@ -746,9 +802,8 @@ namespace VRVlog.LilToonExporter.Tests
             skin.bones = new[] { bone }; skin.rootBone = bone;
             skin.sharedMaterial = Own(new Material(Shader.Find("Unlit/Color")));
             skin.SetBlendShapeWeight(0, 75);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
-            var folderName = "__AaoRebasedNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            var folder = TempAssetFolder.Create("__AaoRebasedNeutral_");
             var meshes = new List<Mesh>();
             ExportOptimizationBindings bindings = null;
             Vector3[] NativeVertices(SkinnedMeshRenderer renderer)
@@ -817,8 +872,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerMergeMapsSameNamedRawTrackingOnDestroyedRenderers()
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This rename-to-avoid-conflict fixture requires the AAO 1.8+ merge configuration API.");
+            MakeSourceAVrChatAvatar();
             var first = Skin(source, "first", "UE/JawOpen");
             var second = Skin(source, "second", "UE/JawOpen");
             var material = Own(new Material(Shader.Find("Unlit/Color")));
@@ -831,7 +887,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(add, Is.Not.Null, "The supported set API must expose Add.");
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             clone = Object.Instantiate(source);
             Assert.That(NdmfExportPreparation.NeedsProcessing(clone), Is.True, "AAO authoring alone must start the NDMF build.");
             var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
@@ -857,14 +913,21 @@ namespace VRVlog.LilToonExporter.Tests
         // A merge that renames to avoid conflicts prefixes every shape. The app
         // finds Blink and the visemes by name, so the output gives a renamed
         // one its name back unless another shape of that mesh has or takes it.
-        [TestCase("A", true)]
-        [TestCase("Blink", false)]
-        public void InstalledAvatarOptimizerMergeGivesAppDrivenShapesTheirNamesBack(string secondShape, bool restored)
+        [TestCase("Blink", "A", true)]
+        [TestCase("Blink", "eye_up", true)]
+        [TestCase("Blink", "Blink", false)]
+        // Different camera gaze names on two meshes both get their names back after the
+        // merge. The same name on both meshes cannot be named twice. Which set the app
+        // then picks is not checked here.
+        [TestCase("eye_up", "look_up", true)]
+        [TestCase("eye_up", "eye_up", false)]
+        public void InstalledAvatarOptimizerMergeGivesAppDrivenShapesTheirNamesBack(string firstShape, string secondShape, bool restored)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This rename-to-avoid-conflict fixture requires the AAO 1.8+ merge configuration API.");
-            var first = Skin(source, "first", "Blink");
+            MakeSourceAVrChatAvatar();
+            var first = Skin(source, "first", firstShape);
             var second = Skin(source, "second", secondShape);
             var material = Own(new Material(Shader.Find("Unlit/Color")));
             first.sharedMaterial = material; second.sharedMaterial = material;
@@ -875,7 +938,7 @@ namespace VRVlog.LilToonExporter.Tests
             var add = sources.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) });
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             clone = Object.Instantiate(source);
             var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
             var oldSecond = clone.transform.Find("second").GetComponent<SkinnedMeshRenderer>();
@@ -884,10 +947,10 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var preparation = NdmfExportPreparation.Prepare(source, clone, afterTransforming: _ => bindings = ExportOptimizationBindings.Capture(clone));
                 bindings.ValidateAndApply();
-                var firstRoute = bindings.MapMorph(oldFirst, "Blink");
+                var firstRoute = bindings.MapMorph(oldFirst, firstShape);
                 var secondRoute = bindings.MapMorph(oldSecond, secondShape);
                 Assert.That(firstRoute.Renderer != null && secondRoute.Renderer != null, Is.True, "The optimizer must keep the shapes the app drives.");
-                Assert.That(firstRoute.Shape, Is.Not.EqualTo("Blink"), "The installed optimizer must rename the merged shapes.");
+                Assert.That(firstRoute.Shape, Is.Not.EqualTo(firstShape), "The installed optimizer must rename the merged shapes.");
                 var mesh = firstRoute.Renderer.sharedMesh;
                 var renamed = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray();
                 bindings.BindNodes(renderer => renderer == firstRoute.Renderer ? 0 : -1);
@@ -895,17 +958,17 @@ namespace VRVlog.LilToonExporter.Tests
                 var names = (List<object>)((Dictionary<string, object>)((Dictionary<string, object>)((List<object>)GlbDocument.Read(bytes).Json["meshes"])[0])["extras"])["targetNames"];
                 if (restored)
                 {
-                    Assert.That(names, Is.EquivalentTo(new object[] { "Blink", "A" }));
+                    Assert.That(names, Is.EquivalentTo(new object[] { firstShape, secondShape }));
                     Assert.That(kept, Is.Empty);
-                    Assert.That(bindings.MapMorph(oldFirst, "Blink").Shape, Is.EqualTo("Blink"), "Later stages look the shape up by the name in the file.");
+                    Assert.That(bindings.MapMorph(oldFirst, firstShape).Shape, Is.EqualTo(firstShape), "Later stages look the shape up by the name in the file.");
                 }
                 else
                 {
-                    Assert.That(names, Is.EquivalentTo(renamed), "Two shapes cannot both be named Blink.");
-                    Assert.That(kept.Select(item => item.Source), Is.EqualTo(new[] { "Blink", "Blink" }));
+                    Assert.That(names, Is.EquivalentTo(renamed), "Two shapes cannot have the same name.");
+                    Assert.That(kept.Select(item => item.Source), Is.EqualTo(new[] { firstShape, firstShape }));
                     Assert.That(kept.Select(item => item.Output), Is.EquivalentTo(new[] { firstRoute.Shape, secondRoute.Shape }));
                 }
-                Assert.That(first.sharedMesh.GetBlendShapeName(0), Is.EqualTo("Blink"), "The source avatar keeps its names.");
+                Assert.That(first.sharedMesh.GetBlendShapeName(0), Is.EqualTo(firstShape), "The source avatar keeps its names.");
             }
             finally { bindings?.Dispose(); }
         }
@@ -914,8 +977,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerCoalescedTrackingShapesDoNotMultiplyProfileWeights(float weight)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This coalescing fixture requires the AAO 1.8+ merge configuration API.");
+            RequireOptimizerOnGenericPlatform("on VRChat it stops because the merged shapes are not animated alike.");
             var first = Skin(source, "first", "profile shape"); var second = Skin(source, "second", "profile shape");
             var material = Own(new Material(Shader.Find("Unlit/Color")));
             first.sharedMaterial = material; second.sharedMaterial = material;
@@ -927,7 +991,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(add, Is.Not.Null);
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             var profile = Own(ScriptableObject.CreateInstance<VrmTrackingProfile>());
             profile.expressions = VrmTrackingExpressions.Names.Select(name => new TrackingExpression { name = name,
                 morphs = new[] { new TrackingMorph { shape = "profile shape", weight = weight } } }).ToArray();
@@ -965,8 +1029,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerCoalescedAuthoredShapesDriveOnceOrStopOnConflictingWeights(float firstWeight, float secondWeight, bool conflict, bool custom)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
-            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
                 Assert.Ignore("This coalescing fixture requires the AAO 1.8+ merge configuration API.");
+            RequireOptimizerOnGenericPlatform("on VRChat it stops because the merged shapes are not animated alike.");
             var first = Skin(source, "first", "authored shape"); var second = Skin(source, "second", "authored shape");
             var firstMesh = first.sharedMesh; var secondMesh = second.sharedMesh;
             var material = Own(new Material(Shader.Find("Unlit/Color")));
@@ -983,7 +1048,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(add, Is.Not.Null);
             add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
             merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
-            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             clone = Object.Instantiate(source);
             var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
             var oldSecond = clone.transform.Find("second").GetComponent<SkinnedMeshRenderer>();

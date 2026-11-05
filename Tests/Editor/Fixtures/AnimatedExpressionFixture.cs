@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using VRVlog.Expressions;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -27,7 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
             channel.Points.Add(new ExpressionAnimationData.Point { Value = 50, Target = ExpressionAnimationData.TargetPrefix + "middle" });
             channel.Points.Add(new ExpressionAnimationData.Point { Value = 100, Target = ExpressionAnimationData.TargetPrefix + "high" });
             animation.Channels.Add(channel);
-            var encoded = JsonDom.Serialize(ExpressionAnimationData.Write(new[] { animation }));
+            var encoded = JsonDom.Serialize(SchemaOne(animation));
             var decoded = ExpressionAnimationData.Read(JsonDom.Parse(encoded))[0];
             check(decoded.Expression == animation.Expression && decoded.Loop && Math.Abs(decoded.TimeAt(2.25) - .25) < .00001,
                 "Animation names and loop timing round-trip through real JSON.");
@@ -37,13 +38,32 @@ namespace VRVlog.LilToonExporter.Tests
             check(decoded.TimeAt(2) == 1, "Non-looping expressions hold their final pose.");
             channel.Points[2].Value = 99;
             var rejected = false;
-            try { ExpressionAnimationData.Write(new[] { animation }); } catch (InvalidOperationException) { rejected = true; }
+            try { ExpressionAnimationData.Read(SchemaOne(animation)); } catch (InvalidOperationException) { rejected = true; }
             check(rejected, "An insufficient geometry range cannot silently clip the animated face.");
             channel.Points[2].Value = 100;
             channel.Points[1].Target = channel.Points[0].Target;
             rejected = false;
-            try { ExpressionAnimationData.Write(new[] { animation }); } catch (InvalidOperationException) { rejected = true; }
+            try { ExpressionAnimationData.Read(SchemaOne(animation)); } catch (InvalidOperationException) { rejected = true; }
             check(rejected, "Two animated channels cannot alias the same runtime morph target.");
         }
+
+        // A schema 1 extension, as the exporter wrote before it wrote schema 2
+        // only. Read and ReadDocument still read it; a point with a morph
+        // reference has no schema 1 form.
+        internal static Dictionary<string, object> SchemaOne(params ExpressionAnimationData[] animations) => new Dictionary<string, object>
+        {
+            ["schemaVersion"] = 1L,
+            ["animations"] = animations.Select(a => (object)new Dictionary<string, object>
+            {
+                ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
+                ["channels"] = a.Channels.Select(c => (object)new Dictionary<string, object>
+                {
+                    ["preWrap"] = c.Curve.PreWrap, ["postWrap"] = c.Curve.PostWrap,
+                    ["keys"] = c.Curve.Keys.Select(k => (object)new List<object> { k.Time, k.Value, k.InTangent, k.OutTangent, k.InWeight, k.OutWeight }).ToList(),
+                    ["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
+                        { ["value"] = p.Value, ["target"] = p.Morph == null ? p.Target : throw new InvalidOperationException("Schema 1 has no morph references.") }).ToList()
+                }).ToList()
+            }).ToList()
+        };
     }
 }

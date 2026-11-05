@@ -20,7 +20,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(vrm, Is.EqualTo(expected == "missing" ? null : expected));
             Assert.That(gltf, Is.EqualTo(expected == "missing" ? null : expected));
             Assert.That(DependencyDiagnostics.BackendReady, Is.True, DependencyDiagnostics.CreateReport());
-            Assert.That(DependencyPolicy.LilToonError(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon")), Is.Null);
+            Assert.That(DependencyPolicy.LilToonError(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon"), t => t), Is.Null);
             Assert.That(DependencyDiagnostics.Error(packages), Is.Null);
         }
     }

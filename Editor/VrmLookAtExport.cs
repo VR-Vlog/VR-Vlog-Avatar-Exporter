@@ -40,9 +40,9 @@ namespace VRVlog.LilToonExporter
             if (authoredLookAt != null && !IsUniVrmDefault(authoredLookAt)) return null;
             var animator = copy.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || !animator.isHuman) return null;
-            var head = animator.GetBoneTransform(HumanBodyBones.Head);
-            var left = animator.GetBoneTransform(HumanBodyBones.LeftEye);
-            var right = animator.GetBoneTransform(HumanBodyBones.RightEye);
+            var head = HumanoidBones.Resolve(animator, HumanBodyBones.Head);
+            var left = HumanoidBones.Resolve(animator, HumanBodyBones.LeftEye);
+            var right = HumanoidBones.Resolve(animator, HumanBodyBones.RightEye);
             if (head == null || left == null || right == null) return null;
             var offset = head.InverseTransformPoint((left.position + right.position) * .5f);
             if (!Finite(offset.x) || !Finite(offset.y) || !Finite(offset.z)) return null;
@@ -96,8 +96,7 @@ namespace VRVlog.LilToonExporter
         internal static bool TryMeasure(GameObject source, out bool authored, out float inner, out float outer, out float down, out float up)
         {
             authored = false; inner = outer = down = up = 0;
-            var descriptor = source.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(source);
             if (!(VrChatExpressionMenu.Member(descriptor, "enableEyeLook") is bool enabled) || !enabled) return false;
             authored = true;
             var settings = VrChatExpressionMenu.Member(descriptor, "customEyeLookSettings");

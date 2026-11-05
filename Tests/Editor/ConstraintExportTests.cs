@@ -668,9 +668,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AVrchatRotationConstraintIsReadWithoutTheSdkReference()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", "Real VRChat SDK integration test; Unity constraints are covered without it.");
             using var f = new Fixture();
             var component = f.B.gameObject.AddComponent(type);
             using (var settings = new SerializedObject(component))
@@ -694,9 +692,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ALocalSpaceRotationAcrossParentsComparesTheLocalRest()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", "Real VRChat SDK integration test; Unity constraints are covered without it.");
             using var f = new Fixture();
             var component = f.B.gameObject.AddComponent(type);
             using (var settings = new SerializedObject(component))
@@ -719,9 +715,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)][TestCase(false)]
         public void AnUnlockedVrchatConstraintIsConvertedUnlessOff(bool isActive)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", "Real VRChat SDK integration test; Unity constraints are covered without it.");
             using var f = new Fixture();
             var component = f.B.gameObject.AddComponent(type);
             using (var settings = new SerializedObject(component))
@@ -753,8 +747,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFullExportWritesTheNodeConstraint()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader);
             foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
@@ -769,7 +762,7 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] bytes;
             try
             {
-                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
             }
@@ -786,8 +779,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFullExportWritesAParentConstrainedPropUnderItsSource()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader);
             foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
@@ -806,7 +798,7 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] bytes;
             try
             {
-                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
             }
@@ -824,11 +816,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // The owned copy drops edit-mode scripts before activation; the
             // VRChat constraints must survive it to be converted.
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCRotationConstraint.");
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", "Install the real VRChat SDK with VRCRotationConstraint.");
+            var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader);
             foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
@@ -851,7 +840,7 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] bytes;
             try
             {
-                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
             }

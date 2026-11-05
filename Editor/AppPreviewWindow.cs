@@ -127,7 +127,7 @@ namespace VRVlog.LilToonExporter
             cancel = new CancellationTokenSource();
             loading = true; loadStarted = EditorApplication.timeSinceStartup;
             loadedStandardMToon = StandardMToon;
-            lilToonVersion = LilToonExporterWindow.InstalledLilToonVersion();
+            lilToonVersion = ExportEntry.InstalledLilToonVersion();
             IAppPreviewSession result = null;
             string failure = null, detail = null;
             try
@@ -205,7 +205,7 @@ namespace VRVlog.LilToonExporter
         {
             EditorApplication.update += OnEditorUpdate;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
-            lilToonVersion = LilToonExporterWindow.InstalledLilToonVersion();
+            lilToonVersion = ExportEntry.InstalledLilToonVersion();
             // After a script reload OnDisable has released the load; say so
             // instead of showing only the open button.
             if (fileName != null && load == null && !loading && errorText == null)
@@ -362,7 +362,7 @@ namespace VRVlog.LilToonExporter
             var inner = new Rect(rect.x, rect.y + 1, rect.width, rect.height - 2);
             GUI.Label(new Rect(6, inner.y, PaneWidth - 12, inner.height), new GUIContent(fileName ?? "", fileName), clipped);
             GUI.Label(new Rect(PaneWidth + 6, inner.y, Mathf.Max(0, rect.width - PaneWidth - versionWidth - 18), inner.height), ToolbarResult(), clipped);
-            exporterVersion ??= LilToonExporterWindow.PackageVersion();
+            exporterVersion ??= ExportEntry.PackageVersion();
             GUI.Label(new Rect(rect.xMax - versionWidth - 6, inner.y, versionWidth, inner.height), "v" + exporterVersion, right);
         }
 
@@ -396,7 +396,7 @@ namespace VRVlog.LilToonExporter
             }
             var ready = load != null && !loading;
 
-            if (Section("Material", T("材質")))
+            if (Section("Material", T("マテリアル")))
             {
                 using (new EditorGUI.DisabledScope(loading))
                 {
@@ -606,7 +606,7 @@ namespace VRVlog.LilToonExporter
             if (status == "failed-memory") return T("メモリが足りず読み込めません");
             if (status == "standard-mtoon" || status.Contains("low-power") || status.Contains("vrm0") ||
                 status.StartsWith("fallback", StringComparison.Ordinal)) return T("MToon で表示");
-            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("材質を判定できません") : status;
+            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("マテリアルを判定できません") : status;
         }
 
         // The left pane's line; the raw code is the tooltip.
@@ -625,7 +625,7 @@ namespace VRVlog.LilToonExporter
                 return standardMToon ? T("VRM の MToon で表示しています") : T("lilToon の追加データがありません");
             if (status.Contains("vrm0")) return T("VRM 0.x のため MToon で表示しています");
             if (status.StartsWith("fallback", StringComparison.Ordinal)) return T("lilToon を適用できず MToon で表示しています");
-            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("材質を判定できません") : status;
+            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("マテリアルを判定できません") : status;
         }
 
         internal static string ErrorText(string code)
