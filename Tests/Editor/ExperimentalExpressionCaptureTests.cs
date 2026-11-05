@@ -3211,6 +3211,8 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal static void ExpectFollowed() => LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("^" +
                 System.Text.RegularExpressions.Regex.Escape(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.FollowedSourceFormat).Split('{')[0])));
+            internal static void ExpectRetried() => LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("^" +
+                System.Text.RegularExpressions.Regex.Escape(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.RetriedOnSourceFormat).Split('{')[0])));
 
             internal void AssertKept()
             {
@@ -3358,12 +3360,16 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var board = new FollowBoard();
             var before = board.Session;
+            // A thumbnail drawn on the old copy goes with it.
+            var thumbnails = board.Get<System.Collections.Generic.Dictionary<string, Texture2D>>("thumbnails");
+            thumbnails["drawn before the edit"] = new Texture2D(1, 1);
             board.Edit();
             FollowBoard.ExpectFollowed();
             board.Choose(ExpressionPreset.sad, "Front");
             Assert.That(board.Session, Is.Not.SameAs(before));
             board.AssertKept();
             Assert.That(board.Session.Presets[ExpressionPreset.sad].Path, Is.EqualTo("Front"), "The choice itself is made.");
+            Assert.That(thumbnails.ContainsKey("drawn before the edit"), Is.False, "Thumbnails of the old copy are drawn again.");
         }
 
         // The files are checked again after an import or a change in the scene; an edit rebuilds the copy.
@@ -3569,7 +3575,8 @@ namespace VRVlog.LilToonExporter.Tests
             using var board = new FollowBoard();
             var target = board.Session;
             board.Edit();
-            FollowBoard.ExpectFollowed();
+            // It says it exported again, not that the board kept its choices: the board's copy stays as it was.
+            FollowBoard.ExpectRetried();
             var used = new System.Collections.Generic.List<ExperimentalExpressionCaptureSession>();
             var warnings = new System.Collections.Generic.List<string>();
             var bytes = ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceChecked) =>
