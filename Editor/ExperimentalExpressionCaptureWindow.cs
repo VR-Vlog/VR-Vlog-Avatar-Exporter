@@ -2628,10 +2628,12 @@ namespace VRVlog.LilToonExporter
             try { return export(target, sourceChecked); }
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
             {
-                Debug.Log(string.Format(ExporterLocalization.T(RetriedOnSourceFormat), changed.Detail ?? ""));
                 using var current = ExperimentalExpressionCaptureSession.Create(target.Source, target.ExcludedObjects, target.GimmickOptions);
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
-                return export(current, true);
+                var exported = export(current, true);
+                // Only once it is written: a failed retry shows its own error instead.
+                Debug.Log(string.Format(ExporterLocalization.T(RetriedOnSourceFormat), changed.Detail ?? ""));
+                return exported;
             }
         }
 

@@ -14,7 +14,7 @@ PR #603 のレビューでは、このほかに次の 2 件が挙がっていた
 
 ## 決定
 
-再試行では、今のアバターから書き出し直したことを書く別の文（`RetriedOnSourceFormat`）を使う。4 言語の訳も足した。
+再試行では、今のアバターから書き出し直したことを書く別の文（`RetriedOnSourceFormat`）を使う。4 言語の訳も足した。この文は書き出しが終わってから出す。再試行が失敗したときはその失敗のエラーだけが出る。
 
 サムネイルは、作り直しが毎回通る `Cleanup` が `ClearThumbnails` を呼んでいて、今のコードでは残らない。テスト（`AChoiceAfterAnEditOfTheSourceRunsOnARebuiltCopy`）で、追従の前に描いたサムネイルが消えることを確かめるようにした。
 
@@ -22,4 +22,4 @@ PR #603 のレビューでは、このほかに次の 2 件が挙がっていた
 
 ## 確認
 
-`ExperimentalExpressionCaptureTests` を Unity 2022.3.22f1 で回す。再試行のテストは新しい文が出ることを、追従のテストはサムネイルが消えることを確かめる。
+`ExperimentalExpressionCaptureTests` を Unity 2022.3.22f1 で回す。再試行のテストは新しい文が出ること・再試行が失敗したときは出ないことを、追従のテストはサムネイルが消えることを確かめる。

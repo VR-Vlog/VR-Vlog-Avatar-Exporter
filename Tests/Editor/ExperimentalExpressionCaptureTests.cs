@@ -3593,6 +3593,22 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() =>
                 ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, true, warnings, (from, sourceChecked) =>
                     { if (from != target) Assert.Fail("Only a retry rebuilds."); throw new ExperimentalExpressionCaptureSession.SourceChangedException("m", "d"); }));
+            // A retry that fails shows its own error and does not say it exported again.
+            var retried = ExporterLocalization.T(ExperimentalExpressionCaptureWindow.RetriedOnSourceFormat).Split('{')[0];
+            var logged = new System.Collections.Generic.List<string>();
+            void Collect(string message, string stack, LogType type) => logged.Add(message);
+            Application.logMessageReceived += Collect;
+            try
+            {
+                Assert.Throws<InvalidOperationException>(() =>
+                    ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceChecked) =>
+                    {
+                        if (from == target) throw new ExperimentalExpressionCaptureSession.SourceChangedException("m", "d");
+                        throw new InvalidOperationException("The retry failed.");
+                    }));
+            }
+            finally { Application.logMessageReceived -= Collect; }
+            Assert.That(logged.Where(message => message.StartsWith(retried, StringComparison.Ordinal)), Is.Empty);
         }
 
         // Leaving objects out rebuilds the copy from the avatar. Nothing of the
