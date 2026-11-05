@@ -14,7 +14,7 @@ namespace VRVlog.LilToonExporter
     internal sealed class FacialProjectionScope
     {
         internal readonly HashSet<EditorCurveBinding> Morphs = new HashSet<EditorCurveBinding>();
-        internal const string Notice = "表情は顔の形状変化だけを保存します。材質・オブジェクトの切り替えと顔以外の変形は、書き出し用コピーの見た目を保持します。";
+        internal const string Notice = "表情は顔の形状変化だけを保存します。マテリアル・オブジェクトの切り替えと顔以外の変形は、書き出し用コピーの見た目を保持します。";
 
         // Analyze reads one prepared geometry snapshot. The session is removed
         // before endpoint creation/baking or optimizer passes can mutate it.

@@ -231,7 +231,7 @@ namespace VRVlog.LilToonExporter
                 var descriptions = plan.PreservedMorphs.OrderBy(binding => binding.path, StringComparer.Ordinal)
                     .ThenBy(binding => binding.propertyName, StringComparer.Ordinal).Select(binding =>
                         binding.path + " / " + binding.propertyName + " (" + plan.reasons[binding] + ")").ToArray();
-                warnings?.Add(ExporterLocalization.T("FXの衣装・髪・材質・ギミックに連動するBlendShapeは、書き出し用コピーの現在の見た目を保持しました: ") +
+                warnings?.Add(ExporterLocalization.T("FXの衣装・髪・マテリアル・ギミックに連動するBlendShapeは、書き出し用コピーの現在の見た目を保持しました: ") +
                     string.Join(", ", descriptions.Take(8)) + (descriptions.Length > 8 ? " ほか" + (descriptions.Length - 8) + "件" : ""));
             }
             return plan;

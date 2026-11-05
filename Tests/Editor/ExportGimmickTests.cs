@@ -97,9 +97,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => findings = ExportGimmickDetection.Analyze(avatar));
             var finding = findings.Single(f => f.Renderer == renderer);
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
-            Assert.That(finding.Reason, Is.EqualTo("メッシュまたは材質が不足しているため自動判定できません。"));
+            Assert.That(finding.Reason, Is.EqualTo("メッシュまたはマテリアルが不足しているため自動判定できません。"));
             Assert.That(ExportGimmickDetection.PettingSystemUnsafeReason(avatar, renderer.transform, _ => false),
-                Is.EqualTo("メッシュまたは材質が不足しているため、システム全体は残します。"));
+                Is.EqualTo("メッシュまたはマテリアルが不足しているため、システム全体は残します。"));
         }
 
         [Test] public void InactiveAndDisabledRenderersAreNotCandidates()

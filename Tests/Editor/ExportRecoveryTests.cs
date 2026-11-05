@@ -622,15 +622,15 @@ namespace VRVlog.LilToonExporter.Tests
             fixture.Material.SetFloat("_UseAudioLink", 1);
             var failure = AudioLinkFailure(fixture.Material);
             var report = reportKind == "missing" ? null : reportKind == "empty"
-                ? new ExportRecoveryReport { Stage = "材質保存" }
-                : ExportRecoveryReport.FromException(fixture.Source, failure, "材質保存");
+                ? new ExportRecoveryReport { Stage = "マテリアル保存" }
+                : ExportRecoveryReport.FromException(fixture.Source, failure, "マテリアル保存");
             var calls = 0;
             var session = ExportRecoverySession.FromFailedExport(fixture.Source, "unused.vrm",
                 (options, nextReport, warnings) => { calls++; return new byte[] { 1 }; }, failure, report);
             Assert.That(calls, Is.Zero, "Opening diagnostics must not repeat the failed normal export.");
             Assert.That(session.Failure, Is.SameAs(failure));
             if (reportKind == "existing") Assert.That(session.Report, Is.SameAs(report));
-            if (report != null) Assert.That(session.Report.Stage, Is.EqualTo("材質保存"));
+            if (report != null) Assert.That(session.Report.Stage, Is.EqualTo("マテリアル保存"));
             Assert.That(session.Report.Succeeded, Is.False);
             Assert.That(session.AvailableDiagnostics.Single().Action.Material, Is.SameAs(fixture.Material));
             Assert.That(session.SelectedOptions.Actions, Is.Empty);
