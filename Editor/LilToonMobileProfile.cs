@@ -48,17 +48,6 @@ namespace VRVlog.LilToonExporter
         public static readonly IReadOnlyCollection<string> SupportedCullModes =
             Array.AsReadOnly(new[] { "off", "front", "back" });
 
-        public static readonly IReadOnlyCollection<string> RejectedShaderFamilies =
-            Array.AsReadOnly(new[]
-            {
-                "fur",
-                "refraction",
-                "gem",
-                "tessellation",
-                "audioLink",
-                "custom"
-            });
-
         public static bool IsSupportedFeature(string feature)
         {
             if (string.IsNullOrWhiteSpace(feature)) return false;

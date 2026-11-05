@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -259,8 +260,6 @@ namespace VRVlog.LilToonExporter
             return meaningful;
         }
 
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
-        private static bool Finite(Vector3 value) => Finite(value.x) && Finite(value.y) && Finite(value.z);
         private static bool Nonzero(Vector3 value) => value.x != 0f || value.y != 0f || value.z != 0f;
 
         // Returns the shapes whose frames cannot be evaluated. They are copied as

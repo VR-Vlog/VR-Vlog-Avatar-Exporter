@@ -325,25 +325,13 @@ namespace VRVlog.LilToonExporter
 
         internal void RebindPrepared(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> replacement)
         {
-            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
-            var mapped = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
-            SkinnedMeshRenderer Resolve(SkinnedMeshRenderer old)
-            {
-                if (!mapped.TryGetValue(old, out var current)) mapped.Add(old, current = replacement(old));
-                return current;
-            }
-            SkinnedMeshRenderer Map(SkinnedMeshRenderer old)
-            {
-                var current = Resolve(old);
-                if (current == null) throw new InvalidOperationException(NdmfExportPreparation.UnknownRendererRelocation);
-                return current;
-            }
+            var map = new PreparedRendererMap(replacement);
             Dictionary<SkinnedMeshRenderer, string[]> Remap(Dictionary<SkinnedMeshRenderer, string[]> values)
             {
                 var result = new Dictionary<SkinnedMeshRenderer, string[]>();
                 foreach (var pair in values)
                 {
-                    var current = Map(pair.Key);
+                    var current = map.Require(pair.Key);
                     result[current] = result.TryGetValue(current, out var previous)
                         ? previous.Concat(pair.Value).Distinct(StringComparer.Ordinal).ToArray() : pair.Value;
                 }
@@ -354,7 +342,7 @@ namespace VRVlog.LilToonExporter
             var nextRaw = new Dictionary<SkinnedMeshRenderer, Dictionary<string, string>>();
             foreach (var pair in selectedRawRoutes)
             {
-                var current = Resolve(pair.Key);
+                var current = map.Find(pair.Key);
                 if (current == null) continue;
                 if (!nextRaw.TryGetValue(current, out var routes))
                     nextRaw.Add(current, routes = new Dictionary<string, string>(StringComparer.Ordinal));
@@ -378,7 +366,7 @@ namespace VRVlog.LilToonExporter
             foreach (var pair in capturedWeights)
             {
                 if (!preserveBaselines || !baselineChannels.Contains(pair.Key)) continue;
-                var current = Resolve(pair.Key.Renderer);
+                var current = map.Find(pair.Key.Renderer);
                 if (current == null) continue;
                 var key = (current, pair.Key.Shape);
                 if (nextWeights.TryGetValue(key, out var weight) && !weight.Equals(pair.Value))
@@ -386,12 +374,12 @@ namespace VRVlog.LilToonExporter
                 nextWeights[key] = pair.Value;
             }
             var nextAuthored = new HashSet<(string Canonical, SkinnedMeshRenderer Renderer, string Shape, float Weight)>(
-                effectiveAuthoredRoutes.Select(route => (route.Canonical, Map(route.Renderer), route.Shape, route.Weight)));
-            Renderer MaterialTarget(Renderer renderer) => renderer is SkinnedMeshRenderer skin ? Map(skin) : renderer;
+                effectiveAuthoredRoutes.Select(route => (route.Canonical, map.Require(route.Renderer), route.Shape, route.Weight)));
+            Renderer MaterialTarget(Renderer renderer) => renderer is SkinnedMeshRenderer skin ? map.Require(skin) : renderer;
             var nextMaterialScopes = materialScopes.ToDictionary(pair => pair.Key, pair => {
                 var scope = pair.Value;
                 // An unselected omitted material scope does not require relocation.
-                var current = scope.Renderer is SkinnedMeshRenderer skin ? Resolve(skin) : null;
+                var current = scope.Renderer is SkinnedMeshRenderer skin ? map.Find(skin) : null;
                 return current != null ? (Renderer: (Renderer)current, scope.Slot) : scope;
             }, StringComparer.Ordinal);
             var nextReferencedScopes = new HashSet<(string Material, Renderer Renderer, int Slot)>(
@@ -399,16 +387,12 @@ namespace VRVlog.LilToonExporter
 
             // Publish only once every original route has a compatible destination.
             // Equal baselines can share one final channel; conflicting origins cannot.
-            void Replace<TKey, TValue>(Dictionary<TKey, TValue> target, Dictionary<TKey, TValue> values)
-            {
-                target.Clear(); foreach (var pair in values) target.Add(pair.Key, pair.Value);
-            }
-            Replace(required, nextRequired); Replace(effectiveRaw, nextEffectiveRaw);
-            Replace(selectedRawRoutes, nextRaw); Replace(capturedWeights, nextWeights);
-            baselineChannels.Clear(); baselineChannels.UnionWith(nextWeights.Keys);
-            effectiveAuthoredRoutes.Clear(); effectiveAuthoredRoutes.UnionWith(nextAuthored);
-            Replace(materialScopes, nextMaterialScopes);
-            referencedMaterialScopes.Clear(); referencedMaterialScopes.UnionWith(nextReferencedScopes);
+            PreparedRendererMap.Publish(required, nextRequired); PreparedRendererMap.Publish(effectiveRaw, nextEffectiveRaw);
+            PreparedRendererMap.Publish(selectedRawRoutes, nextRaw); PreparedRendererMap.Publish(capturedWeights, nextWeights);
+            PreparedRendererMap.Publish(baselineChannels, nextWeights.Keys);
+            PreparedRendererMap.Publish(effectiveAuthoredRoutes, nextAuthored);
+            PreparedRendererMap.Publish(materialScopes, nextMaterialScopes);
+            PreparedRendererMap.Publish(referencedMaterialScopes, nextReferencedScopes);
         }
 
 

@@ -302,7 +302,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     EditorGUILayout.Space(8);
                     var rect = EditorGUILayout.GetControlRect(false, 20);
                     EditorGUI.ProgressBar(rect, (float)session.Transferred / Math.Max(1, session.UploadSize),
-                        string.Format(ExporterLocalization.T("{0:N0} / {1:N0} バイト（暗号化済み）"), session.Transferred, session.UploadSize));
+                        string.Format(ExporterLocalization.T("{0}（暗号化済み）"), TransferSizeText.Progress(session.Transferred, session.UploadSize)));
                 }
                 if (qrTexture != null)
                 {

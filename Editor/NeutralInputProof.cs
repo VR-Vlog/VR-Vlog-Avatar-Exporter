@@ -15,15 +15,21 @@ namespace VRVlog.LilToonExporter
         const string ParametersType = "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters";
         const string MenuType = "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu";
 
-        internal static void Read(GameObject avatar, VrChatExpressionMenu.Source source)
+        internal const string UnreadableWarning = "Expressions MenuとExpression Parametersを読み取れなかったため、どのパラメーターもメニューで変わりうるものとして通常時の表情を評価しました: ";
+
+        internal static void Read(GameObject avatar, VrChatExpressionMenu.Source source, ICollection<string> warnings = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            source.NeutralInputInventoryComplete = false;
-            source.MenuInputs.Clear();
-            source.MenuValues.Clear();
-            source.MenuContinuous.Clear();
-            source.ParameterPersistence.Clear();
-            source.ExpressionParameterTypes.Clear();
+            void Unknown()
+            {
+                source.NeutralInputInventoryComplete = false;
+                source.MenuInputs.Clear();
+                source.MenuValues.Clear();
+                source.MenuContinuous.Clear();
+                source.ParameterPersistence.Clear();
+                source.ExpressionParameterTypes.Clear();
+            }
+            Unknown();
             if (avatar == null) return;
             var descriptors = avatar.GetComponents<Component>().Where(component => component != null &&
                 component.GetType().FullName == DescriptorType).ToArray();
@@ -47,16 +53,13 @@ namespace VRVlog.LilToonExporter
                 if (!Is(menu, SerializedPropertyType.ObjectReference) || menu.objectReferenceValue == null) return;
                 source.NeutralInputInventoryComplete = ReadMenus(menu.objectReferenceValue, source);
             }
-            catch (Exception)
+            catch (Exception error)
             {
                 // A missing/incompatible SDK schema or unreadable Unity asset
                 // cannot prove a transient internal input. Keep it unknown.
-                source.NeutralInputInventoryComplete = false;
-                source.MenuInputs.Clear();
-                source.MenuValues.Clear();
-                source.MenuContinuous.Clear();
-                source.ParameterPersistence.Clear();
-                source.ExpressionParameterTypes.Clear();
+                Unknown();
+                var warning = ExporterLocalization.T(UnreadableWarning) + error.Message;
+                if (warnings != null && !warnings.Contains(warning)) warnings.Add(warning);
             }
         }
 

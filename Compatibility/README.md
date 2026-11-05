@@ -487,7 +487,8 @@ python3 Tools/run-unity-compatibility.py --profile exporter-integration --unity 
 ```
 
 It additionally requires `InstalledNdmfNeutralExportTests`,
-`InstalledAaoNeutralEndpointExportTests`, `NdmfBlinkPreparationTests` and
+`InstalledAaoNeutralEndpointExportTests`, `NdmfBlinkPreparationTests`,
+`NdmfLostMorphFollowTests` and
 `PhysBoneSpringExportTests`. These
 exercise the installed processors, moved/replaced renderers, mesh deletion and
 merge, endpoint remapping, and the difference between callback-free preview and

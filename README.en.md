@@ -1,4 +1,4 @@
-> Stable **1.5.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
+> Stable **1.8.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）｜Send to App (Quick)...** / **アプリに転送（通常）｜Send to App...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
 
 # VR Vlog lilToon VRM Exporter
 
@@ -15,6 +15,7 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 
 - Export lilToon material settings and textures for VR Vlog's dedicated renderer, with a standard MToon fallback for other VRM viewers.
 - Preserve supported expressions, blinking, tracking morphs and appearance prepared by Modular Avatar / NDMF.
+- Export one-eye blinks. When only the both-eyes blink is known by name, the exporter looks on the same face mesh for two shapes that each close only the left or the right eye and together match the both-eyes blink, and uses them as the left and right blinks. When the two sides together match the both-eyes blink, the blink closes both of them at 100%; otherwise it keeps the both-eyes shape.
 - Save the face and body shapes that the FX layer holds constant in its normal state, such as a mouth or eyes kept open by the idle FX, as the VRM's neutral. Shapes that change over time keep the export copy's values.
 - Convert supported PhysBones to VRM SpringBones, with diagnostics for approximations and unsupported settings.
 - Set a bone-type VRM 1.0 look-at from the midpoint of the eyes when both eye bones exist. Its range comes from the Avatar Descriptor's Eye Look poses when they can be measured; otherwise UniVRM's default range is used. A VRM 1.0 look-at already edited in the avatar's Vrm10Instance settings is kept.
@@ -24,7 +25,15 @@ The exporter does not reproduce every shader effect, Animator behavior or VRChat
 
 Materials on shaders other than lilToon are replaced with official lilToon. For toon shaders with a lighting type (`_LightingMode`) and switchable sections, each section is mapped onto the lilToon item with the same role: shadows (border and blur per lighting type, shadow colors, a second shadow), the light limits, color adjustment (hue, saturation, brightness, gamma, gradation), two matcaps, rim light, outline, emission (including blinking), alpha mask and stencil. Sections official lilToon does not have (decals, dissolve, glitter, AudioLink and others) are not exported; the material and section names are listed before saving. Hue (when the source rotates it in OKLab), saturation and ramp-texture shadows are close approximations, not exact.
 
+Materials on Silent's Cel Shading (Crosstone, Lightramp and their outline variants) carry the rendering mode (opaque, cutout, fade, transparent), the transparency settings, the tint and its HSV adjustment, the shading (Crosstone's first and second tone with their step and feather, Lightramp's ramp image), the outline, rim light, matcaps, emission and specular over to the lilToon items with the same role, approximating the original look. Back faces of double-sided materials are lit like their front, as in the original. Detail maps, hatching, AudioLink, subsurface scattering, the fur layers and similar effects are not exported and are listed before saving. Lightramp shading fits the ramp image to lilToon's shadow border and blur, so a ramp with three or more steps or a colored ramp does not match the original exactly. The hue shift, a rotation in YIQ, is approximated with lilToon's HSV, and the tint mask is not carried over.
+
+Materials on Unity-chan Toon Shader (UTS2, UTS3), Arktoon and Xiexe XSToon also carry the shade colors and images, borders and blur, rim light, matcap and outline to the official lilToon properties with the same role. XSToon also carries its rendering mode, shade ramp and color adjustment, and Arktoon its Plan B shade, shadow cap and back face brightness.
+
 Materials on official VRChat SDK shaders (Toon Standard, Mobile, Standard Lite, Sprites, UI, Video, Panosphere, Mirror and others) are mapped per shader onto the lilToon items with the same role: shadows, specular, matcap, rim light, detail, outline, and additive or multiply blending carry over, and hue and color masks are baked into the main texture. Projection (Panosphere), cubemaps and mirror reflections are not exported and are listed before saving. The Toon Standard ramp color is read as grey, baked images are at most 2048 px, and vertex colors are not applied.
+
+Materials on Mochie Standard (Standard, Lite and Mobile) carry the blending mode (opaque, cutout, fade, transparent), a mask chosen as the alpha source, the normal map strength, emission (color, strength and mask), and metallic and roughness (separate maps and the channels of a packed map) over to the lilToon items with the same role, and bake the filtering (hue, saturation, contrast and brightness) into the main texture with Mochie's formula (except the Oklab hue). On Mobile the alpha source and the emission mask are not read, as in the shader. Emission and post filtering, parallax, detail, rain, triplanar mapping, wind, subsurface scattering, AudioLink and similar effects are not exported and are listed before saving. Shading is approximated with lilToon's shadow border and blur, so the light falloff does not match the original exactly.
+
+Materials on orels Toon (the `orels1/Toon/` and `orels1/Toon/v2/` shaders) carry the rendering mode (Main, Cutout and Transparent in the shader name), the ramp shading, the hue, saturation and value adjustment (baked into the main texture with the shader's formula), the alpha scale and the separate alpha texture, the outline, emission, rim light, matcaps (up to two on v2), and metallic and smoothness over to the lilToon items with the same role. Rim shadow, specular, occlusion, detail normals, decals, AudioLink, LTCGI and similar effects are not exported and are listed before saving. The ramp is approximated with one shadow border and blur, so a ramp with several steps does not match the original exactly.
 
 With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, which is the default, the export leaves out what does nothing in a VRM:
 
@@ -59,7 +68,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 1.5.0** from the stable versions. **Show pre-release packages** is not needed.
+3. Install **VR Vlog lilToon VRM Exporter 1.8.0** from the stable versions. **Show pre-release packages** is not needed.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -83,10 +92,10 @@ Stable 1.0.0 and later include QR transfer through **アプリに転送**, as di
 
 ## Quick start
 
-The steps below describe stable 1.5.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
+The steps below describe stable 1.8.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
 
 1. Open your avatar in Unity. Enable the avatar, its parents and the outfit you want to export.
-2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.
+2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）｜Send to App...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.
 3. The expression board opens and runs **書き出しを準備** for the selected avatar. To switch avatars, press **変更** next to the **アバター** field on page 1.
 4. Every expression found on the avatar starts in **その他の表情**, which is exported as VRM custom expressions. Drag a face onto one of the five VRM expression slots (happy, angry, sad, relaxed, surprised), or right-click it to move it. Move faces you do not want into **書き出さない表情**. Click a face to preview it. Drop more .anim files from Project onto **その他の表情**. Expressions are optional; model-only export is supported.
 5. Slots filled from names are marked **自動**; confirm them all with **自動の候補○件を確定**. A slot's header menu also offers a BlendShape or **なし**, and × clears a slot. Unassigned slots stay empty.
@@ -98,7 +107,7 @@ The author is a required VRM field. While it is empty or only spaces, **VRMを�
 
 See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for file support and capture ranges. To send the VRM to the phone, press **QRコードを作る** on page 3 (or use **アプリに転送（かんたん）**), then **QRを表示**, and scan the QR with the phone's camera. See the [cloud transfer guide](Documentation~/CloudTransfer.md) for requirements and transfer limits. Consent persists between sessions; opening the transfer window never uploads automatically. Android receiving remains disabled.
 
-Right-click the avatar root in the Hierarchy and choose one of two entries under **VR Vlog**. The **VR Vlog** menu in the menu bar has the same entries and transfers the avatar selected in the Hierarchy. Both are greyed out unless exactly one avatar root is selected. Both menus list **アプリに転送（かんたん）...** and **アプリに転送（通常）...**. To only save a VRM file, press **VRMを保存** on the third page of **アプリに転送（通常）**.
+Right-click the avatar root in the Hierarchy and choose one of two entries under **VR Vlog**. The **VR Vlog** menu in the menu bar has the same entries and transfers the avatar selected in the Hierarchy. Both are greyed out unless exactly one avatar root is selected. Both menus list **アプリに転送（かんたん）｜Send to App (Quick)...** and **アプリに転送（通常）｜Send to App...**. To only save a VRM file, press **VRMを保存** on the third page of **アプリに転送（通常）**.
 
 - **アプリに転送（かんたん）** (quick): confirm the name, author and terms consent, then press **QRコードを作る**. The name and author start from the last transfer of this avatar. It exports exactly what the normal flow exports when nothing on the expression board is changed (the expressions last assigned on the board for this avatar, automatic where none, and the objects excluded earlier); the only difference is that the export result list is not shown. Problems that stop an export still stop it with the reason. **表情とオブジェクトを選ぶ** switches to the normal flow.
 - **アプリに転送（通常）** (normal): the expression board opens and prepares the avatar. Assign expressions, press **次へ：除外するオブジェクト** and add objects to leave out, then press **次へ：VRMの保存と転送** (the exclusions are applied to the preview first). The transfer form appears on the board's third page, 「3 VRMの保存と転送」; press **QRコードを作る** there (it is the blue button; **VRMを保存** to its left saves the same VRM). **戻る** at the left of the buttons returns to the second page. While uploading or showing the QR, **戻る** first asks "このQRコードは使えなくなります" (this QR code will stop working): **中止して移動** cancels the transfer and leaves, **転送を続ける** stays. Closing the board cancels the transfer in progress without asking.

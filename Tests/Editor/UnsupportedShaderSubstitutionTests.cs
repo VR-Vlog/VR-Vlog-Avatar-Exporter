@@ -26,12 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
         Texture2D Texture(string name) => Own(new Texture2D(4, 4) { name = name });
         Material Standard(string name = "Plain") => Own(new Material(Shader.Find("Standard")) { name = name });
 
-        Material Substitute(Material source)
-        {
-            var output = UnsupportedShaderSubstitution.Create(source);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source) => TestObjects.Substitute(owned, source, null, out _, out _, out _);
 
         [Test] public void AStandardMaterialKeepsItsMainImageColorNormalAndEmission()
         {
@@ -264,6 +259,68 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_Cull"), Is.EqualTo(0f));
         }
 
+        Material Marked(string name) => Own(new Material(Shader.Find("Hidden/VRVlogTests/MarkedMainProbe")) { name = name });
+
+        [Test] public void TheMarkedMainTextureAndColorComeBeforeTheCommonNames()
+        {
+            var main = Texture("main"); var other = Texture("other"); var normal = Texture("normal");
+            var source = Marked("Marked");
+            source.SetTexture("_BaseTexture", main);
+            source.SetTextureScale("_BaseTexture", new Vector2(2, 1)); source.SetTextureOffset("_BaseTexture", new Vector2(.25f, 0));
+            source.SetTexture("_MainTex", other); source.SetColor("_Tint", Color.red);
+            source.SetTexture("_NormalMap", normal); source.SetFloat("_NormalScale", .5f);
+            source.SetInt("_Cull", 0);
+
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo("lilToon"));
+            Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
+            Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(new Vector2(2, 1)));
+            Assert.That(output.GetTextureOffset("_MainTex"), Is.EqualTo(new Vector2(.25f, 0)));
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.red));
+            Assert.That(output.GetTexture("_BumpMap"), Is.SameAs(normal));
+            Assert.That(output.GetFloat("_BumpScale"), Is.EqualTo(.5f));
+            Assert.That(output.GetFloat("_Cull"), Is.EqualTo(0f));
+        }
+
+        // Opaque, cutout and transparent as a shader that keeps its mode in
+        // blend factors and the queue sets them; transparent stays below 2500.
+        [TestCase(-1, BlendMode.One, BlendMode.Zero, "lilToon")]
+        [TestCase(2450, BlendMode.One, BlendMode.Zero, "Hidden/lilToonCutout")]
+        [TestCase(2460, BlendMode.SrcAlpha, BlendMode.OneMinusSrcAlpha, "Hidden/lilToonTransparent")]
+        [TestCase(3000, BlendMode.SrcAlpha, BlendMode.OneMinusSrcAlpha, "Hidden/lilToonTransparent")]
+        public void BlendFactorsAndTheQueueChooseTheRenderingMode(int queue, BlendMode source, BlendMode destination, string expected)
+        {
+            var material = Marked("Mode");
+            material.SetTexture("_BaseTexture", Texture("main")); material.SetFloat("_Cutoff", .3f);
+            material.SetInt("_SrcBlend", (int)source); material.SetInt("_DstBlend", (int)destination);
+            material.renderQueue = queue;
+            var output = Substitute(material);
+            Assert.That(output.shader.name, Is.EqualTo(expected));
+            Assert.That(output.GetTexture("_MainTex"), Is.Not.Null);
+            if (expected == "Hidden/lilToonCutout") Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.3f).Within(1e-6));
+        }
+
+        [Test] public void TheMToonDefaultReadsTheMarkedMainTextureAndColor()
+        {
+            var main = Texture("main");
+            var source = Marked("Marked");
+            source.SetTexture("_BaseTexture", main); source.SetTexture("_MainTex", Texture("other")); source.SetColor("_Tint", Color.red);
+            var created = new List<Material>();
+            var output = UniVrmOneClickExporter.CreateMToonDefault(source, created);
+            owned.AddRange(created);
+            Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.red));
+
+            // An empty marked texture falls back to the common names, as the substitution does.
+            var other = Texture("other");
+            var empty = Marked("Empty");
+            empty.SetTexture("_MainTex", other);
+            var fallback = new List<Material>();
+            Assert.That(UniVrmOneClickExporter.CreateMToonDefault(empty, fallback).GetTexture("_MainTex"), Is.SameAs(other));
+            owned.AddRange(fallback);
+            Assert.That(Substitute(empty).GetTexture("_MainTex"), Is.SameAs(other));
+        }
+
         [Test] public void EmissionStrengthScalesTheLinearColor()
         {
             var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionStrengthProbe")) { name = "Glow" });
@@ -429,6 +486,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.yellow));
         }
 
+        [Test] public void AMissingShaderWithABaseTextureKeepsItsMainImage()
+        {
+            var main = Texture("main");
+            var source = Marked("Missing");
+            source.SetTexture("_BaseTexture", main);
+            source.shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(source.HasProperty("_BaseTexture"), Is.False);
+            Assert.That(Substitute(source).GetTexture("_MainTex"), Is.SameAs(main));
+        }
+
         Material MissingDerived(int declared)
         {
             var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/lilToonDerivedProbe")) { name = "MissingDerived" });
@@ -474,12 +541,7 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly Vector4 NeutralTone = new Vector4(0, 1, 1, 1);
         Material ColorProbe(string name = "Adjusted") => Own(new Material(Shader.Find("Hidden/VRVlogTests/ToonColorAdjustProbe")) { name = name });
 
-        Material Substitute(Material source, out bool colorSkipped)
-        {
-            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source, out bool colorSkipped) => TestObjects.Substitute(owned, source, null, out colorSkipped, out _, out _);
 
         static void AssertTone(Material output, Vector4 expected) =>
             Assert.That(Vector4.Distance(output.GetVector("_MainTexHSVG"), expected), Is.LessThan(1e-6f), output.GetVector("_MainTexHSVG").ToString("F4"));
@@ -687,7 +749,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in skins.Skip(1)) skin.sharedMaterial = plain;
             var report = new ExportRecoveryReport();
             var warnings = new List<string>();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Substituted", "Tests", warnings,
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Substituted", "Tests", warnings: warnings,
                 exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
             var glb = GlbDocument.Read(bytes);
@@ -711,7 +773,7 @@ namespace VRVlog.LilToonExporter.Tests
             skins[0].sharedMaterial = official;
             foreach (var skin in skins.Skip(1)) skin.sharedMaterial = screen;
             var report = new ExportRecoveryReport();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", new List<string>(),
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", warnings: new List<string>(),
                 exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
             var glb = GlbDocument.Read(bytes);

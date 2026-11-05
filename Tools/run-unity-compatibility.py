@@ -137,14 +137,16 @@ BEHAVIOR_CASES = {
         'ARealExportWithAMissingShaderSavesAndWarnsOnce': 1,
         'AStageIsNamedWithItsPhase': 1,
         'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
-        'AnExportWithoutFallbacksNeverAsks': 1,
+        'AnExportWithoutFallbacksOpensNoList': 1,
         'BatchModeSavesWithoutTheList': 1,
         'EveryShippedLocaleTranslatesTheResultWords': 1,
         'KeptItemsAreListedOnceWithoutAsking': 1,
         'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,
         'TargetsAreFoundAgainOnTheAvatarByPath': 1,
         'TheListShowsEveryFallbackWithItsTargets': 1,
-        'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
+        'TheListOpensAfterTheFileIsWritten': 1,
+        'ATransferOpensTheListWhenItHasEnded': 1,
+        'AFailedWriteOpensNoList': 1,
         'TheSavedTitleWarnsOnlyWhenAShaderIsMissing': 1,
         'TwoMaterialsWithTheSameNameCountAsTwo': 1,
     },
@@ -157,13 +159,31 @@ BEHAVIOR_CASES = {
         'AvatarWithoutLilToonStillProducesASnapshot': 1,
         'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
     },
+    'PhysBoneMotionMappingTests': {
+        'ABoneStraightAgainstStrongGravitySettlesHanging': 2,
+        'AdvancedStiffnessOnlyRemovesMomentum': 1,
+        'AllMotionImmobileRaisesForceByTheHiddenShareUpToTheHoldingForce': 1,
+        'FalloffRaisesTheForceWithoutMovingWhereTheBoneSettles': 2,
+        'FalloffSettlesWhereGravityWeakenedByTheAngleMeetsThePull': 2,
+        'ForceAtItsCeilingKeepsTheBalanceWithGravity': 1,
+        'ForceGrowsWithTheBoneLengthAndDragDoesNot': 1,
+        'FullFalloffLeavesABoneHangingAtRestUntouched': 1,
+        'HighSpringIsLimitedByPull': 4,
+        'NegativeGravityPullsUp': 1,
+        'NewGravityTurnsTheRestDirectionWhateverThePull': 1,
+        'OldGravityCompetesWithPull': 2,
+        'OldGravityFalloffStrengthensAHangingBoneWithoutMovingIt': 1,
+        'OldGravityKeepsItsAngleWhenTheForceHitsTheCeiling': 1,
+        'ZeroPullHasNoForceAndNoMomentum': 1,
+    },
     'PhysBoneSpringExportTests': {
+        'ALastBoneScaledToZeroGetsNoFollowingTail': 1,
         'AParentTailCannotShareTheChildOwnersFirstJoint': 1,
         'AbsentSdkAndRigidModelsRemainValidWithoutInventedSprings': 1,
         'ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance': 1,
         'ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal': 3,
-        'AllMotionImmobileDragNeverExceedsOne': 1,
-        'AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp': 2,
+        'ARealLastBoneGetsAShortTailThatFollowsItsParent': 1,
+        'AllMotionImmobileRaisesStiffnessWhileWorldIsLeftToTheApp': 2,
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,
@@ -171,15 +191,29 @@ BEHAVIOR_CASES = {
         'EmptyOrTruncatedSerializedSpringsPreventSaving': 1,
         'ExistingTerminalFieldsAndVerificationBaselinesAreProtected': 1,
         'ExistingVrmSettingsWinAndRemovedExplicitRootsDoNotAnimateTheBody': 1,
+        'FullAllMotionImmobileStopsAtTheHoldingForce': 1,
         'GeneratedEndpointsDoNotTurnAnInertNestedPhysBoneIntoAnotherDriver': 1,
+        'GeneratedEndpointsGetUniqueDeterministicNamesWithoutRenamingTheAvatar': 1,
+        'AHumanoidRootThatNeverMovedDoesNotWarn': 1,
+        'BonesBetweenHumanoidBonesStayOutOfChains': 2,
+        'HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings': 1,
         'IgnoredSubtreesDisabledBonesAndOverlappingOwnersAreExplicit': 1,
         'InactiveExplicitRootsChildrenAndColliderRootsAreSkipped': 1,
+        'AnInsideCapsuleWithoutLengthGoesOutAsASphere': 5,
+        'InsideColliderRadiusComesBackFromTheFileUnchanged': 1,
+        'InsideCollidersKeepTheirWorldSizeOnAScaledRootTransform': 4,
+        'InsideCollidersUseTheScaleOfTheirRootTransform': 1,
         'MalformedPhysBoneDataStillStopsConversion': 3,
+        'MeshOnInactiveChildPassesSourceMeshCheck': 1,
+        'MeshRendererWithoutMeshFilterSourceStopsBeforeExport': 1,
         'NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal': 2,
+        'NonHumanoidSourceStopsBeforeExportAndNamesMissingBones': 1,
+        'NullSkinnedMeshSourceStopsBeforeExport': 1,
         'PreexistingVrmImplicitJointsAndTerminalsWinWhileDisjointSegmentsSurvive': 1,
         'PreparedCopyWithoutRequiredHumanBonesOrRootAnimatorStopsAndNamesThem': 1,
         'PreparedCopyWithBonesOutOfHumanoidOrderStopsAndNamesThem': 1,
         'OutputWithBonesOutOfHumanoidOrderIsRejected': 1,
+        'OutputWithoutMeshIsRejected': 1,
         'SameRootPrefersAttachedComponentThenStableComponentOrder': 2,
         'ZeroLengthPairsKeepBonesAndOriginalDepthForTheRemainingChain': 1,
     },
@@ -297,6 +331,7 @@ BEHAVIOR_CASES = {
         'SavedExposedUnprovedOrWrittenCustomSignalRetainsItsAppearanceAlternatives': 17,
         'TransientOwnershipProofRetainsUnknownMetadataAndExplicitOrRemoteInputs': 5,
         'CompleteMenuInputInventoryHandlesSharedCyclicAndEmptyOptionalSdkInputs': 3,
+        'UnreadableMenuInventoryStaysUnprovedAndWarnsOnceWithItsReason': 1,
         'AmbiguousOptionalMorphTargetIsRejectedBeforeIgnoringItsMissingShape': 1,
         'AppearanceCoupledStartupKeepsItsEntirePreparedConfiguration': 2,
         'AuthoredEndpointObligationUsesItsFirstBindingAndRetainsDisabledZeroCoverage': 2,
@@ -661,6 +696,9 @@ BEHAVIOR_CASES = {
         'PluginPackagesComeFromExportsPluginAndSkipTheExporter': 1,
         'VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf': 1,
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
+        'NdmfOutputIsSavedEarlyOnlyForVrcFury': 1,
+        'ToolKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
+        'VrcFuryKeepsItsObjectFromBeforeTheBuildAndLosesTheOneItMadeDuringTheBuild': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
         'VrcFuryIsNotAppliedWithoutAnAvatarDescriptor': 1,
         'VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting': 1,
@@ -735,6 +773,7 @@ BEHAVIOR_CASES = {
         'IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport': 1,
         'TwentyAnimDropRemainsUsable': 1,
         'UnsupportedDropIsRejectedAndClosingCancelsPendingWork': 1,
+        'WindowClosesWhenItsAvatarIsGone': 1,
     },
     'SelectedScalarDominanceTests': {
         'ExactUpperScalarDominanceRetainsIndependentRestAndSelectedCallbacks': 2,
@@ -751,6 +790,7 @@ BEHAVIOR_CASES = {
         'AutomaticAliasRequiresUniqueExactMeaningAndCompleteNonInertGeometry': 9,
         'CoexistingKnownBlinkFamiliesAllKeepTheirAutomaticOwnership': 1,
         'UnownedRandomRecoveryIsPreservedWithoutRecapturingItsStationaryReset': 2,
+        'HeldProbeReportsTheUnownedRandomRestOnce': 1,
         'HeldProbeRunsTheSelectionAnalysesOnce': 1,
         'ReadOnlyRandomGateProducersKeepTheirNativeSelectedCallbacks': 2,
         'ReadOnlyRandomGateCannotConcealMalformedTypedProducerOperations': 3,
@@ -829,6 +869,8 @@ BEHAVIOR_CASES = {
         'ExplicitHeadOrNeckMotionIsIncludedWhileEyeAndJawTracksStayOutsideTheContract': 2,
         'ExplicitMovingHeadAndNeckMusclesMatchNativeHumanoidInterpolation': 2,
         'ManualStartAndLoopArePreservedWithoutAnAdditionalStaticSnapshot': 1,
+        'OnlyTheFrameCountDecidesWhetherAMovingPoseFits': 1,
+        'AMovingPoseOverTheDataLimitIsLeftOutWithItsReason': 1,
         'MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement': 1,
         'MovingHumanoidClipKeepsLoopPoseSettingsAndNonMatchingAuthoredEndpoints': 2,
         'MovingHumanoidRootChannelsMatchNativeBodyCoordinatesWithoutSceneRootMotion': 3,
@@ -870,6 +912,20 @@ BEHAVIOR_CASES = {
     },
 }
 INTEGRATION_CASES = {
+    'NdmfLostMorphFollowTests': {
+        'LenientExportFollowsShapesAfterAPassBeyondModularAvatar': 3,
+        'LenientExportDoesNotFollowAShapeIntoAnotherMeshWithTheSameName': 1,
+        'LenientExportFollowsLipSyncToTheRenamedOrMergedFace': 2,
+        'LenientExportKeepsTheOtherMouthShapesWhenAPassStripsOne': 1,
+        'StrictExportStillStopsWhenTheFaceIsMerged': 1,
+        'BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes': 1,
+        'AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport': 1,
+        'AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer': 1,
+        'ABoardWhoseBuildPassesFailIsMadeWithoutThem': 1,
+    },
+    'NdmfSharedObjectTests': {
+        'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
+    },
     # The integration project must install the official MeshDeleterWithTexture
     # package. Synthetic sharedMesh replacement alone is not its integration
     # evidence, and an absent optional package must fail this explicit profile.
@@ -935,6 +991,18 @@ def compatibility_counts():
             'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
+def table_cases():
+    # A method in both tables would keep only one of its two counts, so the
+    # other could never be compared with the result.
+    cases = {suite: dict(methods) for suite, methods in BEHAVIOR_CASES.items()}
+    for suite, methods in INTEGRATION_CASES.items():
+        repeated = sorted(set(cases.get(suite, {})) & set(methods))
+        if repeated:
+            raise SystemExit('A test method is in both case tables: ' + suite + '.' + ', '.join(repeated))
+        cases.setdefault(suite, {}).update(methods)
+    return cases
+
+
 def required_regressions(profile):
     if profile not in PROFILES:
         raise SystemExit('Unknown Unity validation profile: ' + profile)
@@ -943,10 +1011,10 @@ def required_regressions(profile):
         'DependencyStartupTests': {'MenuResolvesBackendWithoutInitializationRegistration': 1},
         'DependencyRoundTripTests': {'SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport': 2},
     }
-    if profile != 'compatibility':
+    if profile == 'exporter-behavior':
         required.update(BEHAVIOR_CASES)
     if profile == 'exporter-integration':
-        for suite, methods in INTEGRATION_CASES.items():
+        for suite, methods in table_cases().items():
             required[suite] = {**required.get(suite, {}), **methods}
     return required
 

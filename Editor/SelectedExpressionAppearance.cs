@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -12,17 +13,26 @@ namespace VRVlog.LilToonExporter
     // Read only prepared values; never instantiate or edit source materials.
     internal static class SelectedExpressionAppearance
     {
+        // Every Transform under avatar by its animation path, built once per
+        // avatar for the checks below instead of a walk per binding. Objects
+        // sharing a path keep the order a full walk returns.
+        internal static Dictionary<string, Transform[]> TransformsByPath(GameObject avatar)
+            => avatar.GetComponentsInChildren<Transform>(true).GroupBy(transform =>
+                AnimationUtility.CalculateTransformPath(transform, avatar.transform), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+
         // Native sampling runs after authoring/build passes on the committed
         // hierarchy. A Transform curve whose target is actually absent
         // cannot affect that graph, regardless of layer weight or blending.
         // This does not authorize a direct authoring clip before preparation,
         // nor an Animator parameter output without a root Animator component.
-        internal static bool IsUnboundTransform(GameObject prepared, AnimationClip clip, EditorCurveBinding binding)
+        // targets: TransformsByPath(prepared).
+        internal static bool IsUnboundTransform(GameObject prepared, IReadOnlyDictionary<string, Transform[]> targets,
+            AnimationClip clip, EditorCurveBinding binding)
         {
             if (prepared == null || clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
                 binding.path == null || binding.propertyName == null) return false;
-            if (prepared.GetComponentsInChildren<Transform>(true).Any(transform =>
-                AnimationUtility.CalculateTransformPath(transform, prepared.transform) == binding.path)) return false;
+            if (targets.ContainsKey(binding.path)) return false;
             if (AnimationUtility.GetAnimatedObject(prepared, binding) != null) return false;
             // Only the neutral probe asks, and it never reads a Transform value.
             VrChatExpressionSampler.ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(clip, binding),
@@ -44,7 +54,10 @@ namespace VRVlog.LilToonExporter
                         values: !probe || NeutralShapePlan.ChecksCurveValues(binding));
         }
 
-        internal static bool IsUnchanged(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
+        // targets: TransformsByPath(avatar) when the caller has one; without
+        // it the hierarchy is walked for this binding.
+        internal static bool IsUnchanged(GameObject avatar, AnimationClip clip, EditorCurveBinding binding,
+            IReadOnlyDictionary<string, Transform[]> targets = null)
         {
             if (avatar == null || clip == null || binding.path == null || binding.propertyName == null || binding.isPPtrCurve) return false;
             var activation = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
@@ -55,8 +68,9 @@ namespace VRVlog.LilToonExporter
             if (!ConstantValue(clip, binding, out var value)) return false;
             if ((activation || enabled) && value != 0 && value != 1) return false;
 
-            var matches = avatar.GetComponentsInChildren<Transform>(true).Where(transform =>
-                AnimationUtility.CalculateTransformPath(transform, avatar.transform) == binding.path).ToArray();
+            var matches = targets == null ? avatar.GetComponentsInChildren<Transform>(true).Where(transform =>
+                    AnimationUtility.CalculateTransformPath(transform, avatar.transform) == binding.path).ToArray()
+                : targets.TryGetValue(binding.path, out var found) ? found : Array.Empty<Transform>();
             if (matches.Length == 0) return true; // Unity cannot bind an absent prepared target.
             if (matches.Length != 1)
                 throw new InvalidOperationException("表情の見た目の対象を一意に指定できません: " + clip.name + " / " + binding.path);
@@ -130,7 +144,7 @@ namespace VRVlog.LilToonExporter
                 var curve = AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis));
                 // NaN never equals itself, so IsConstant alone would call such
                 // a curve moving. Invalid data is not motion of the channel.
-                return curve != null && VrChatExpressionSampler.IsValidNativeCurve(curve) && !VrChatExpressionSampler.IsConstant(curve);
+                return curve != null && VrChatExpressionSampler.IsValidNativeCurve(curve) && !CurveChecks.Constant(curve);
             });
         }
 
@@ -139,15 +153,9 @@ namespace VRVlog.LilToonExporter
             value = 0;
             var curve = AnimationUtility.GetEditorCurve(clip, binding);
             VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.path + " / " + binding.propertyName);
-            if (curve == null || curve.length == 0) return false;
-            var keys = curve.keys; value = keys[0].value;
-            if (keys.Any(key => key.value != keys[0].value)) return false;
             // Unused first-in/last-out tangents cannot change a segment. Active
             // nonzero tangents could overshoot despite equal endpoint values.
-            for (var i = 0; i + 1 < keys.Length; i++)
-                if (keys[i].outTangent != 0 && !float.IsInfinity(keys[i].outTangent) ||
-                    keys[i + 1].inTangent != 0 && !float.IsInfinity(keys[i + 1].inTangent)) return false;
-            return true;
+            return CurveChecks.Constant(curve, out value, emptyIsConstant: false, endTangents: false);
         }
 
         private static bool MatchesMaterialValue(Material material, string property, float value)

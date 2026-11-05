@@ -56,5 +56,18 @@ namespace VRVlog.LilToonExporter
                 if (renderer.enabled && ActiveUnder(renderer.gameObject, avatar.transform))
                     yield return renderer;
         }
+
+        // The renderers UniVRM writes as glTF meshes: skinned and mesh renderers
+        // of Enumerate whose mesh has geometry. Particle, trail and line
+        // renderers and empty meshes are not exported.
+        internal static IEnumerable<Renderer> ExportedMeshRenderers(GameObject avatar)
+        {
+            foreach (var renderer in Enumerate(avatar))
+            {
+                var filter = renderer.GetComponent<MeshFilter>();
+                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
+                if (HasGeometry(mesh)) yield return renderer;
+            }
+        }
     }
 }

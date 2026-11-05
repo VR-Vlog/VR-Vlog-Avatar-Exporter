@@ -15,25 +15,25 @@ namespace VRVlog.LilToonExporter
     internal static class NeutralRandomRest
     {
         internal static HashSet<int> Preserve(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source metadata,
-            NeutralShapePlan plan, Func<string, bool> excludedPath, FixedExpressionContext fixedContext, ICollection<string> warnings = null)
+            NeutralShapePlan plan, Func<string, bool> excludedPath, FixedExpressionContext fixedContext, ICollection<string> warnings = null, FxAnalysis analysis = null)
         {
             var result = new HashSet<int>();
             var unknown = new List<string>();
             var layers = ExpressionDependencies.Inspect(runtime, excludedPath,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true, analysis: analysis);
             if (unknown.Count != 0) return result;
-            var fixedValues = ExpressionDependencies.FixedNeutralValues(runtime, metadata, layers, excludedPath, fixedContext);
+            var fixedValues = ExpressionDependencies.FixedNeutralValues(runtime, metadata, layers, excludedPath, fixedContext, analysis: analysis);
             var reachable = ExpressionDependencies.Inspect(runtime, excludedPath,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues);
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues, analysis: analysis);
             var other = new List<ExpressionDependencies.Layer>();
             foreach (var controller in metadata.OtherControllers.Where(value => value != null))
                 other.AddRange(ExpressionDependencies.Inspect(controller, null,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
-                    typedConditions: true, fxLayerCount: layers.Length));
+                    typedConditions: true, fxLayerCount: layers.Length, analysis: analysis));
             if (unknown.Count != 0) return result;
             var original = ExpressionDependencies.Controller(runtime);
             var definitions = original.layers;
-            var stationary = ExpressionDependencies.StationaryLayers(runtime, excludedPath);
+            var stationary = ExpressionDependencies.StationaryLayers(runtime, excludedPath, analysis: analysis);
             bool Dominated(int lower, EditorCurveBinding binding)
             {
                 foreach (var pair in stationary.Where(pair => pair.Key > lower))
@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
                     var upper = definitions[pair.Key];
                     if (upper.blendingMode != AnimatorLayerBlendingMode.Override || upper.defaultWeight != 1 || upper.avatarMask != null) continue;
                     var curve = AnimationUtility.GetEditorCurve(pair.Value, binding);
-                    if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) continue;
+                    if (!CurveChecks.Constant(curve, emptyIsConstant: false)) continue;
                     VrChatGestureExpressions.ReadCurve(curve);
                     return true;
                 }
@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter
                         if (!PoseSampling.IsBlendShape(binding)) { safe = false; break; }
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
                         VrChatGestureExpressions.ReadCurve(curve);
-                        changing |= active.Clips.Contains(clip) && !VrChatExpressionSampler.IsConstant(curve);
+                        changing |= active.Clips.Contains(clip) && !CurveChecks.Constant(curve);
                     }
                 }
                 if (!safe || !changing) continue;

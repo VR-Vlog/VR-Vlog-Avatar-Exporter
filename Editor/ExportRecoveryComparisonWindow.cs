@@ -18,6 +18,7 @@ namespace VRVlog.LilToonExporter
         private PreviewRenderUtility vrmRender;
         private IDisposable lilToonPreview;
         private Vrm10Instance imported;
+        private Object[] importedResources = new Object[0];
         private CancellationTokenSource loading;
         private Vector3 vrmCenter;
         private float vrmDistance = 3, yaw;
@@ -78,8 +79,8 @@ namespace VRVlog.LilToonExporter
             var token = loading.Token;
             try
             {
-                // UniVRM owns the loaded meshes/materials/textures through its
-                // RuntimeGltfInstance. Destroying this root releases them too.
+                // The loaded meshes, materials, textures, avatar and VRM settings are
+                // listed in its RuntimeGltfInstance; DestroyLoaded releases them.
                 var loaded = await Vrm10.LoadBytesAsync(attempt.Bytes, canLoadVrm0X: false,
                     awaitCaller: new ImmediateCaller(), ct: token,
                     controlRigGenerationOption: ControlRigGenerationOption.None);
@@ -87,10 +88,15 @@ namespace VRVlog.LilToonExporter
                     throw new InvalidOperationException(ExporterLocalization.T("VRMの再読み込み結果を取得できませんでした。"));
                 if (token.IsCancellationRequested || this == null || revision != previewRevision || session.CheckForChanges())
                 {
-                    Object.DestroyImmediate(loaded.gameObject);
+                    DestroyLoaded(loaded.gameObject, LoadedResources(loaded));
                     return;
                 }
                 imported = loaded;
+                importedResources = LoadedResources(loaded);
+                // Opening a scene destroys the editor objects no scene keeps, such as the
+                // loaded avatar, VRM settings and expressions. The window keeps them until
+                // ReleasePreview.
+                foreach (var resource in importedResources) resource.hideFlags |= HideFlags.DontSave;
                 // Restore the saved lilToon payload onto the reloaded VRM.
                 // Never substitute a copy of the source avatar for the output.
                 lilToonPreview = ExportVrmLilToonPreview.Apply(attempt.Bytes, imported.gameObject);
@@ -135,15 +141,7 @@ namespace VRVlog.LilToonExporter
         {
             var preview = new PreviewRenderUtility();
             preview.AddSingleGO(copy);
-            preview.camera.fieldOfView = 30;
-            preview.camera.nearClipPlane = .01f;
-            preview.camera.farClipPlane = 100;
-            preview.camera.clearFlags = CameraClearFlags.SolidColor;
-            preview.camera.backgroundColor = new Color(.18f, .18f, .2f);
-            preview.lights[0].intensity = 1;
-            preview.lights[0].transform.rotation = Quaternion.Euler(30, 150, 0);
-            preview.lights[1].intensity = .5f;
-            preview.ambientColor = Color.gray;
+            PreviewRendering.Apply(preview);
             return preview;
         }
 
@@ -337,8 +335,19 @@ namespace VRVlog.LilToonExporter
         {
             vrmRender?.Cleanup(); vrmRender = null;
             lilToonPreview?.Dispose(); lilToonPreview = null;
-            if (imported != null) Object.DestroyImmediate(imported.gameObject);
-            imported = null;
+            DestroyLoaded(imported != null ? imported.gameObject : null, importedResources);
+            imported = null; importedResources = new Object[0];
+        }
+
+        private static Object[] LoadedResources(Vrm10Instance loaded) =>
+            loaded.GetComponent<RuntimeGltfInstance>().RuntimeResources.Select(value => value.Item2)
+                .Where(value => value != null && !EditorUtility.IsPersistent(value)).ToArray();
+
+        // RuntimeGltfInstance destroys them in OnDestroy, which Unity does not call in Edit mode.
+        private static void DestroyLoaded(GameObject root, Object[] resources)
+        {
+            if (root != null) Object.DestroyImmediate(root);
+            foreach (var resource in resources) if (resource != null) Object.DestroyImmediate(resource);
         }
     }
 }

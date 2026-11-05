@@ -130,19 +130,19 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             string written = null;
             try
             {
-                var entryType = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic);
-                var entry = Activator.CreateInstance(entryType, true);
-                Func<UnityEngine.GameObject, string, string, Action, string> export = (target, name, destination, saved) =>
+                var entry = new StubAppTransferExport
                 {
-                    written = destination;
-                    File.WriteAllBytes(destination, new byte[] { 1, 2, 3 });
-                    if (outcome == "thrown") throw new IOException("fixture");
-                    return outcome == "canceled" ? null : "fixture failure";
+                    Export = (target, name, destination, saved) =>
+                    {
+                        written = destination;
+                        File.WriteAllBytes(destination, new byte[] { 1, 2, 3 });
+                        if (outcome == "thrown") throw new IOException("fixture");
+                        return outcome == "canceled" ? null : "fixture failure";
+                    },
+                    SelectAvatar = _ => { },
+                    HasAuthor = () => true,
+                    TermsKey = () => "fixture terms",
                 };
-                entryType.GetField("Export", field | BindingFlags.Public).SetValue(entry, export);
-                entryType.GetField("SelectAvatar", field | BindingFlags.Public).SetValue(entry, (Action<UnityEngine.GameObject>)(_ => { }));
-                entryType.GetField("HasAuthor", field | BindingFlags.Public).SetValue(entry, (Func<bool>)(() => true));
-                entryType.GetField("TermsKey", field | BindingFlags.Public).SetValue(entry, (Func<string>)(() => "fixture terms"));
                 typeof(AppTransferPanel).GetField("exporter", field).SetValue(window, entry);
                 typeof(AppTransferPanel).GetField("exporterResolved", field).SetValue(window, true);
                 typeof(AppTransferPanel).GetField("avatar", field).SetValue(window, avatar);

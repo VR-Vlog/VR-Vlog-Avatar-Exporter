@@ -12,11 +12,13 @@ namespace VRVlog.LilToonExporter
         internal static Transform Resolve(Animator animator, HumanBodyBones bone)
         {
             if (animator == null || bone < 0 || bone >= HumanBodyBones.LastBone) return null;
+            // GetBoneTransform throws without a valid humanoid Avatar, and callers
+            // measuring what they can (blink sides) expect "no bone" there.
+            var avatar = animator.avatar;
+            if (avatar == null || !avatar.isValid || !avatar.isHuman) return null;
             var found = animator.GetBoneTransform(bone);
             // A bound Animator already answered; null there means unmapped or lost.
             if (found != null || animator.isInitialized) return found;
-            var avatar = animator.avatar;
-            if (avatar == null || !avatar.isValid || !avatar.isHuman) return null;
             var humanName = HumanTrait.BoneName[(int)bone];
             string boneName = null;
             foreach (var human in avatar.humanDescription.human)

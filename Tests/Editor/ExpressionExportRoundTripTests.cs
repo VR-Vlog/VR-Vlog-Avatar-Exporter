@@ -15,17 +15,13 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExpressionExportRoundTripTests
     {
-        private static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
-
         [TestCase(false)]
         [TestCase(true)]
         public async Task DriverMenuAndAnimatedGestureSurviveRealExportAndReimport(bool fullLilToon)
         {
-            var descriptorType = SdkType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__ExpressionRoundTrip_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ExpressionRoundTrip_");
             Vrm10Instance imported = null;
             try
             {
@@ -58,7 +54,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var smile = State(machine, "Smile", smileClip); Transition(neutral, smile, "Face", 1);
                 var animation = State(machine, "Animated gesture", animatedClip); Transition(neutral, animation, "GestureRight", 2);
 
-                var menu = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -68,7 +64,7 @@ namespace VRVlog.LilToonExporter.Tests
                     item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Menu";
                     item.FindPropertyRelative("value").floatValue = 1; data.ApplyModifiedPropertiesWithoutUndo();
                 }
-                var parameters = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+                var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
                 AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
                 using (var data = new SerializedObject(parameters))
                 {
@@ -93,11 +89,11 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 var warnings = new List<string>();
                 var before = fixture.Mesh.vertices;
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Expression regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Expression regression", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "expression-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Face / Smile", smileClip, 0f), ("Animated gesture", animatedClip, 0f) });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
+                Assert.That(MenuExpressionFixture.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
                 var glb = GlbDocument.Read(bytes);
                 var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
                 var animations = document.Animations;

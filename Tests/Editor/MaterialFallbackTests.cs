@@ -53,8 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void OutlineKeepsAuthoredColorInsteadOfMultiplyingByAlbedo()
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon to read its default outline lighting.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon to read its default outline lighting.");
             var source = new Material(shader);
             var created = new List<Material>();
             try
@@ -277,8 +276,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(0f, .5f)]
         public void GradatedEmissionUsesTheAverageOfTheGradation(float speed, float expected)
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the gradation properties.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the gradation properties.");
             var source = new Material(shader);
             var image = new Texture2D(2, 2);
             var gradation = new Texture2D(8, 4, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point };
@@ -317,8 +315,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // lilToon 2.3.4 multiplies fluorescent emission by its inverse
             // lighting, which is 0 under normal light; MToon cannot vary it.
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the fluorescence property.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the fluorescence property.");
             var source = new Material(shader);
             var image = new Texture2D(2, 2);
             var created = new List<Material>();

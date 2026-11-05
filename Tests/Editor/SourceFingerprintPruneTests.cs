@@ -21,15 +21,15 @@ namespace VRVlog.LilToonExporter.Tests
             var parent = new GameObject("Folder");
             try
             {
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 fixture.Source.transform.position = new Vector3(3, 0, -2);
                 fixture.Source.transform.rotation = Quaternion.Euler(0, 140, 0);
-                Assert.That(session.HasCurrentSource, Is.True, "The copy is exported at the origin facing forward.");
+                Assert.That(session.SourceDifference(), Is.Null, "The copy is exported at the origin facing forward.");
                 parent.transform.position = Vector3.left * 5;
                 fixture.Source.transform.SetParent(parent.transform, true);
-                Assert.That(session.HasCurrentSource, Is.True, "A parent with no scale only places the avatar.");
+                Assert.That(session.SourceDifference(), Is.Null, "A parent with no scale only places the avatar.");
                 parent.transform.localScale = Vector3.one * 1.5f;
-                Assert.That(session.HasCurrentSource, Is.False, "The root's world scale is moved into the VRM.");
+                Assert.That(session.SourceDifference(), Is.Not.Null, "The root's world scale is moved into the VRM.");
             }
             finally { if (fixture.Source != null) fixture.Source.transform.SetParent(null, true); Object.DestroyImmediate(parent); }
         }
@@ -44,8 +44,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 texture.SetPixels(Enumerable.Repeat(Color.white, 4).ToArray()); texture.Apply();
                 front.sharedMaterial.SetTexture("_MainTex", texture);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
-                Assert.That(session.HasCurrentSource, Is.True);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
+                Assert.That(session.SourceDifference(), Is.Null);
                 switch (change)
                 {
                     case "mesh": fixture.Mesh.vertices = fixture.Mesh.vertices.Select(v => v + Vector3.up * .001f).ToArray(); break;
@@ -56,7 +56,7 @@ namespace VRVlog.LilToonExporter.Tests
                     case "bone": fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head).localPosition += Vector3.forward * .001f; break;
                     case "rootScale": fixture.Source.transform.localScale = Vector3.one * 1.1f; break;
                 }
-                Assert.That(session.HasCurrentSource, Is.False, change);
+                Assert.That(session.SourceDifference(), Is.Not.Null, change);
             }
             finally { Object.DestroyImmediate(texture); }
         }
@@ -64,8 +64,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void PartialVrcRotationNoiseKeepsTheBoardCurrent()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", false)).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("The VRC constraint SDK is not installed.");
+            var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint", "The VRC constraint SDK is not installed.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var anchor = new GameObject("Authored input").transform; anchor.SetParent(fixture.Source.transform, false);
             var target = new GameObject("Partially driven target").transform; target.SetParent(fixture.Source.transform, false);
@@ -82,13 +81,13 @@ namespace VRVlog.LilToonExporter.Tests
             }
             target.localRotation = Quaternion.Euler(10, 20, 30);
             var original = target.localRotation;
-            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
             var reencoded = original;
             reencoded.x = BitConverter.Int32BitsToSingle(BitConverter.SingleToInt32Bits(reencoded.x) + 1);
             target.localRotation = reencoded;
-            Assert.That(session.HasCurrentSource, Is.True, "The solver re-encoding a partial rotation is not an edit.");
+            Assert.That(session.SourceDifference(), Is.Null, "The solver re-encoding a partial rotation is not an edit.");
             target.localRotation = original * Quaternion.Euler(.001f, 0, 0);
-            Assert.That(session.HasCurrentSource, Is.False, "A real rotation change still stops the board.");
+            Assert.That(session.SourceDifference(), Is.Not.Null, "A real rotation change still stops the board.");
         }
 
         [TestCase("rotation", true)][TestCase("aim", false)]

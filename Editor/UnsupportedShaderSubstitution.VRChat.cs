@@ -15,10 +15,10 @@ namespace VRVlog.LilToonExporter
     {
         // Lambert: albedo × (light × N·L + ambient). Flat: albedo × (light +
         // ambient), the same on every side. Unlit: the albedo as it is.
-        enum VrcLight { Lambert, Flat, Unlit }
-        enum VrcBlend { Opaque, Alpha, Additive, Multiply }
+        internal enum VrcLight { Lambert, Flat, Unlit }
+        internal enum VrcBlend { Opaque, Alpha, Additive, Multiply }
 
-        sealed class VRChatRow
+        internal sealed class VRChatRow
         {
             internal readonly VrcLight Light;
             internal readonly VrcBlend Blend;
@@ -35,9 +35,7 @@ namespace VRVlog.LilToonExporter
 
         // Keyed by the exact shader name (VRChat SDK 3.10). Both shader files
         // named "Bumped Mapped Specular" read _SpecColor if declared, else white.
-        internal static IEnumerable<string> VRChatShaderNames => VRChatShaders.Keys;
-
-        static readonly Dictionary<string, VRChatRow> VRChatShaders = new Dictionary<string, VRChatRow>(StringComparer.Ordinal)
+        internal static readonly Dictionary<string, VRChatRow> VRChatShaders = new Dictionary<string, VRChatRow>(StringComparer.Ordinal)
         {
             ["VRChat/Mobile/Toon Standard"] = new VRChatRow(VrcLight.Lambert, VrcBlend.Opaque, features: VrcToonStandard),
             ["VRChat/Mobile/Toon Standard (Outline)"] = new VRChatRow(VrcLight.Lambert, VrcBlend.Opaque, outline: true, features: VrcToonStandard),
@@ -410,7 +408,7 @@ namespace VRVlog.LilToonExporter
                 var gamma = new Color(Mathf.Clamp01(mixed.r), Mathf.Clamp01(mixed.g), Mathf.Clamp01(mixed.b)).gamma;
                 pixels[i] = new Color(gamma.r, gamma.g, gamma.b, 1);
             }
-            return NewImage(main, "__VRVlog_Outline", size, pixels, textures);
+            return NewImage(main, "__VRVlog_Outline", size, size, pixels, textures, false);
         }
 
         // The source turns the hue in radians; a whole turn changes nothing.
@@ -513,7 +511,7 @@ namespace VRVlog.LilToonExporter
                         baked[i] = new Color(gamma.r, gamma.g, gamma.b, Mathf.Clamp01(c.a));
                     }
                 }
-                var image = baked == null ? null : NewImage(main, "__VRVlog_Albedo", size, baked, textures);
+                var image = baked == null ? null : NewImage(main, "__VRVlog_Albedo", size, size, baked, textures, false);
                 if (image == null)
                 {
                     if (albedoHue != 0) Drop(effects, "Hue Shift");
@@ -562,7 +560,7 @@ namespace VRVlog.LilToonExporter
                     var g = new Color(baked[i].x / scale, baked[i].y / scale, baked[i].z / scale).gamma;
                     stored[i] = new Color(g.r, g.g, g.b, 1);
                 }
-                var image = NewImage(emissionMap != null ? emissionMap : main, "__VRVlog_Emission", size, stored, textures);
+                var image = NewImage(emissionMap != null ? emissionMap : main, "__VRVlog_Emission", size, size, stored, textures, false);
                 if (image == null)
                 {
                     if (emissionHue != 0) Drop(effects, "Emission Hue Shift");
@@ -598,24 +596,6 @@ namespace VRVlog.LilToonExporter
                 albedo = Vector3.Lerp(albedo, target, Mathf.Clamp01(mask[i] * colors[i].a));
             }
             return albedo;
-        }
-
-        // An sRGB image owned by textures, with the wrap and filter of origin.
-        static Texture2D NewImage(Texture origin, string suffix, int size, Color[] pixels, List<Texture2D> textures)
-        {
-            if (textures == null) return null;
-            var image = new Texture2D(size, size, TextureFormat.RGBA32, false, false)
-            {
-                name = DeterministicNames.Unique((origin != null ? origin.name : "Color") + suffix,
-                    candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
-                wrapModeU = origin != null ? origin.wrapModeU : TextureWrapMode.Repeat,
-                wrapModeV = origin != null ? origin.wrapModeV : TextureWrapMode.Repeat,
-                filterMode = origin != null ? origin.filterMode : FilterMode.Bilinear,
-            };
-            image.SetPixels(pixels);
-            image.Apply(false, false);
-            textures.Add(image);
-            return image;
         }
     }
 }

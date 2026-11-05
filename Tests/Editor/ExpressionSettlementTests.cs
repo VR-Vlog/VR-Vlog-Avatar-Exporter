@@ -24,8 +24,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__ExpressionSettlement_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__ExpressionSettlement_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
             controller.AddParameter("Face", AnimatorControllerParameterType.Int);
@@ -41,18 +40,6 @@ namespace VRVlog.LilToonExporter.Tests
         public void TearDown()
         {
             Object.DestroyImmediate(avatar); Object.DestroyImmediate(mesh); AssetDatabase.DeleteAsset(folder);
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip motion = null)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
-        }
-
-        private AnimatorStateMachine Layer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers;
-            layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
         }
 
         private static void Transition(AnimatorState from, AnimatorState to, string parameter, float value, float duration = 0)
@@ -83,8 +70,8 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimatorState Selected(AnimationClip clip, float duration = 0)
         {
             var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Idle"); machine.defaultState = idle;
-            var selected = State(machine, "Selected", clip); Transition(idle, selected, "Menu", 1, duration); return selected;
+            var idle = FxGraph.State(machine, "Idle"); machine.defaultState = idle;
+            var selected = FxGraph.State(machine, "Selected", clip); Transition(idle, selected, "Menu", 1, duration); return selected;
         }
 
         private static Dictionary<string, float> Menu(float value = 1) => new Dictionary<string, float> { ["Menu"] = value };
@@ -99,8 +86,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void NativeClocksMatchTheSettlementConversion(float speed, bool fixedDuration)
         {
             var machine = controller.layers[0].stateMachine;
-            var a = State(machine, "A", Clip("A", 0, 2)); a.speed = speed; machine.defaultState = a;
-            var b = State(machine, "B", Clip("B", 60));
+            var a = FxGraph.State(machine, "A", Clip("A", 0, 2)); a.speed = speed; machine.defaultState = a;
+            var b = FxGraph.State(machine, "B", Clip("B", 60));
             Timed(a, b, .5f, fixedDuration ? .25f : .5f, fixedDuration);
             var graph = PlayableGraph.Create("Settlement clock probe");
             try
@@ -140,7 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AStateReachedByALateExitTimeIsFollowed(float duration, bool fixedDuration)
         {
             var a = Selected(Clip("A", 0));
-            Timed(a, State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5, duration, fixedDuration);
+            Timed(a, FxGraph.State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5, duration, fixedDuration);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(60).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
@@ -161,7 +148,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void CyclicExitTimesStopAtTheFirstRevisitedState()
         {
             var a = Selected(Clip("A", 10));
-            var b = State(controller.layers[0].stateMachine, "B", Clip("B", 30));
+            var b = FxGraph.State(controller.layers[0].stateMachine, "B", Clip("B", 30));
             Timed(a, b, 3); Timed(b, a, 3);
             var messages = new List<string>();
             // A is left at 3 s and B is left at 6 s, back into A. A is the
@@ -179,7 +166,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("Later", AnimatorControllerParameterType.Trigger);
             var smile = Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
-            var edge = Timed(smile, State(controller.layers[0].stateMachine, "Later", Clip("Later", 30)), 5);
+            var edge = Timed(smile, FxGraph.State(controller.layers[0].stateMachine, "Later", Clip("Later", 30)), 5);
             edge.AddCondition(AnimatorConditionMode.If, 0, "Later");
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(100).Within(.01));
@@ -201,9 +188,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var a = Selected(Clip("A", 0));
             var machine = controller.layers[0].stateMachine;
-            var toB = Timed(a, State(machine, "B", Clip("B", 60)), 5, 1);
+            var toB = Timed(a, FxGraph.State(machine, "B", Clip("B", 60)), 5, 1);
             toB.interruptionSource = TransitionInterruptionSource.Source; toB.orderedInterruption = false;
-            Timed(a, State(machine, "C", Clip("C", 30)), 5.3f);
+            Timed(a, FxGraph.State(machine, "C", Clip("C", 30)), 5.3f);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(30).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
@@ -224,10 +211,10 @@ namespace VRVlog.LilToonExporter.Tests
             }
             else Timed(wait, wait, .5f);
             ParameterDriverExpressionTests.Driver(wait, ParameterDriverExpressionTests.Op("Add", "Face", 1));
-            var face = Layer("Face layer");
-            var neutral = State(face, "Neutral", Clip("Neutral", 0)); face.defaultState = neutral;
-            var smile = State(face, "Smile", Clip("Smile", 75)); var other = State(face, "Other", Clip("Other", 40));
-            var third = State(face, "Third", Clip("Third", 10));
+            var face = FxGraph.Layer(controller, "Face layer");
+            var neutral = FxGraph.State(face, "Neutral", Clip("Neutral", 0)); face.defaultState = neutral;
+            var smile = FxGraph.State(face, "Smile", Clip("Smile", 75)); var other = FxGraph.State(face, "Other", Clip("Other", 40));
+            var third = FxGraph.State(face, "Third", Clip("Third", 10));
             Transition(neutral, smile, "Face", 1); Transition(smile, other, "Face", 2); Transition(other, third, "Face", 3);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(40).Within(.01));
@@ -269,10 +256,10 @@ namespace VRVlog.LilToonExporter.Tests
             var previous = Selected(Clip("Step 0", 0));
             for (var index = 1; index <= 40; index++)
             {
-                var next = State(machine, "Step " + index, Clip("Step " + index, index));
+                var next = FxGraph.State(machine, "Step " + index, Clip("Step " + index, index));
                 Timed(previous, next, 1); previous = next;
             }
-            var eyes = Layer("Eyes");
+            var eyes = FxGraph.Layer(controller, "Eyes");
             AnimatorState before = null;
             for (var index = 0; index <= 40; index++)
             {
@@ -280,7 +267,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
                     AnimationCurve.Constant(0, 1, index));
                 AssetDatabase.AddObjectToAsset(clip, controller);
-                var state = State(eyes, "Eyes " + index, clip);
+                var state = FxGraph.State(eyes, "Eyes " + index, clip);
                 if (before == null) eyes.defaultState = state; else Timed(before, state, 1);
                 before = state;
             }
@@ -298,7 +285,7 @@ namespace VRVlog.LilToonExporter.Tests
             Selected(Clip("Smile", 30));
             for (var chain = 0; chain < 6; chain++)
             {
-                var machine = Layer("Chain " + chain);
+                var machine = FxGraph.Layer(controller, "Chain " + chain);
                 AnimatorState before = null;
                 for (var index = 0; index <= 60; index++)
                 {
@@ -306,7 +293,7 @@ namespace VRVlog.LilToonExporter.Tests
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
                         AnimationCurve.Constant(0, 1 + chain * .05f, index));
                     AssetDatabase.AddObjectToAsset(clip, controller);
-                    var state = State(machine, "Chain " + chain + " " + index, clip);
+                    var state = FxGraph.State(machine, "Chain " + chain + " " + index, clip);
                     if (before == null) machine.defaultState = state; else Timed(before, state, 1);
                     before = state;
                 }
@@ -323,7 +310,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AZeroDurationSelfTransitionOfAJustEnteredStateIsReported()
         {
             var a = Selected(Clip("A", 0));
-            var b = State(controller.layers[0].stateMachine, "B", Clip("B", 60, 10));
+            var b = FxGraph.State(controller.layers[0].stateMachine, "B", Clip("B", 60, 10));
             Timed(a, b, 2); Timed(b, b, .3f);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(60).Within(.01));
@@ -337,16 +324,16 @@ namespace VRVlog.LilToonExporter.Tests
         public void ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey(bool drivesParameter)
         {
             Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
-            var hand = Layer("Left Hand");
+            var hand = FxGraph.Layer(controller, "Left Hand");
             var handIdle = HandIdle("Hands idle");
             if (drivesParameter)
             {
                 controller.AddParameter("Hand weight", AnimatorControllerParameterType.Float);
                 AnimationUtility.SetEditorCurve(handIdle, EditorCurveBinding.FloatCurve("", typeof(Animator), "Hand weight"), AnimationCurve.Constant(0, 1, 0));
             }
-            var idle = State(hand, "Idle", handIdle); hand.defaultState = idle;
+            var idle = FxGraph.State(hand, "Idle", handIdle); hand.defaultState = idle;
             Timed(idle, idle, .5f);
-            Transition(idle, State(hand, "Left smile", Clip("Left smile", 40)), "Face", 1);
+            Transition(idle, FxGraph.State(hand, "Left smile", Clip("Left smile", 40)), "Face", 1);
             var messages = new List<string>();
             if (drivesParameter)
             {
@@ -379,15 +366,15 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimatorState RestartingLayer(float duration = .25f)
         {
             controller.AddParameter("Toggle", AnimatorControllerParameterType.Bool);
-            var toggle = Layer("Toggle");
+            var toggle = FxGraph.Layer(controller, "Toggle");
             var clip = new AnimationClip { name = "Toggle off" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 0));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var off = State(toggle, "Off", clip); toggle.defaultState = off;
+            var off = FxGraph.State(toggle, "Off", clip); toggle.defaultState = off;
             var onClip = new AnimationClip { name = "Toggle on" };
             AnimationUtility.SetEditorCurve(onClip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 100));
             AssetDatabase.AddObjectToAsset(onClip, controller);
-            var on = State(toggle, "On", onClip);
+            var on = FxGraph.State(toggle, "On", onClip);
             foreach (var (target, mode) in new[] { (off, AnimatorConditionMode.IfNot), (on, AnimatorConditionMode.If) })
             {
                 var edge = toggle.AddAnyStateTransition(target); edge.hasExitTime = false; edge.duration = duration;
@@ -406,10 +393,10 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationCurve.Linear(0, 0, .7f, 100));
             var settings = AnimationUtility.GetAnimationClipSettings(blink); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(blink, settings);
             AssetDatabase.AddObjectToAsset(blink, controller);
-            var eyes = Layer("Eyes");
-            var open = State(eyes, "Open", Clip("Open", 0)); eyes.defaultState = open;
+            var eyes = FxGraph.Layer(controller, "Eyes");
+            var open = FxGraph.State(eyes, "Open", Clip("Open", 0)); eyes.defaultState = open;
             AnimationUtility.SetEditorCurve((AnimationClip)open.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Face size"), null);
-            Transition(open, State(eyes, "Blinking", blink), "Menu", 1);
+            Transition(open, FxGraph.State(eyes, "Blinking", blink), "Menu", 1);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(20).Within(1.01));
             Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.OverlappingLoops }));
@@ -424,7 +411,7 @@ namespace VRVlog.LilToonExporter.Tests
             var previous = Selected(Clip("Step 0", 0));
             for (var index = 1; index <= 70; index++)
             {
-                var next = State(machine, "Step " + index, Clip("Step " + index, index));
+                var next = FxGraph.State(machine, "Step " + index, Clip("Step " + index, index));
                 Timed(previous, next, 1); previous = next;
             }
             var error = Assert.Catch<InvalidOperationException>(() => Play(new List<string>()));
@@ -436,7 +423,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AFaceAfterMoreThanAMinuteIsReported(bool clip)
         {
             if (clip) Selected(Clip("Very slow face", AnimationCurve.Linear(0, 0, 90, 100)));
-            else Timed(Selected(Clip("A", 0)), State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 70);
+            else Timed(Selected(Clip("A", 0)), FxGraph.State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 70);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(clip ? 100 : 60).Within(.01));
             Assert.That(messages, Does.Contain(clip ? ExpressionSettlement.FinalKeyOfClip : ExpressionSettlement.FollowedTransitions));
@@ -481,16 +468,16 @@ namespace VRVlog.LilToonExporter.Tests
         public void AnAddDriverOnAnExitTimeTargetRunsOnce()
         {
             var wait = Selected(Clip("Wait", 0));
-            var done = State(controller.layers[0].stateMachine, "Done", Clip("Done", 0));
+            var done = FxGraph.State(controller.layers[0].stateMachine, "Done", Clip("Done", 0));
             Timed(wait, done, 4);
             ParameterDriverExpressionTests.Driver(done, ParameterDriverExpressionTests.Op("Add", "Face", 1));
             // The face is decided by layer 1; layer 0 writes the same morph
             // only before its rest, so give layer 0 no Face size curve.
             foreach (var clip in new[] { (AnimationClip)wait.motion, (AnimationClip)done.motion })
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Face size"), null);
-            var face = Layer("Face layer");
-            var neutral = State(face, "Neutral", Clip("Neutral", 0)); face.defaultState = neutral;
-            var smile = State(face, "Smile", Clip("Smile", 75)); var other = State(face, "Other", Clip("Other", 40));
+            var face = FxGraph.Layer(controller, "Face layer");
+            var neutral = FxGraph.State(face, "Neutral", Clip("Neutral", 0)); face.defaultState = neutral;
+            var smile = FxGraph.State(face, "Smile", Clip("Smile", 75)); var other = FxGraph.State(face, "Other", Clip("Other", 40));
             Transition(neutral, smile, "Face", 1); Transition(neutral, other, "Face", 2); Transition(smile, other, "Face", 2);
             var messages = new List<string>();
             Assert.That(Play(messages), Is.EqualTo(75).Within(.01));
@@ -521,7 +508,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void TheExperimentalPlayerFollowsALateExitTime()
         {
             var a = Selected(Clip("A", 0));
-            Timed(a, State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5, .5f);
+            Timed(a, FxGraph.State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5, .5f);
             var warnings = new List<string>();
             Assert.That(Play(warnings), Is.EqualTo(60).Within(.01));
             Assert.That(warnings, Does.Contain(ExpressionSettlement.FollowedTransitions));

@@ -16,8 +16,8 @@ namespace VRVlog.LilToonExporter
             ApplyUnchecked(pose);
         }
 
-        // The face of a file at its last frame, as the board previews it.
-        internal Pose ThumbnailFace(AnimationClip clip) => BuildClipPoseUnchecked(clip, clip.length, "プレビュー");
+        // The face of a file at its face time (ClipFaceTime), as the board previews it.
+        internal Pose ThumbnailFace(AnimationClip clip) => BuildClipPoseUnchecked(clip, FaceTime(clip), "プレビュー");
 
         // The neutral face with one BlendShape at 100, as a shape assignment exports it.
         internal Pose ThumbnailFace(string path, string shape)
