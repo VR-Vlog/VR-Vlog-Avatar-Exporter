@@ -367,7 +367,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Gamma", false, 1f)]
         public void MaterialColorAnimationMatchesActualRenderedPixels(string kind, bool linearBaseline, float intensity)
         {
-            Assert.That(QualitySettings.activeColorSpace, Is.EqualTo(UnityEngine.ColorSpace.Linear));
+            if (QualitySettings.activeColorSpace != UnityEngine.ColorSpace.Linear)
+                Assert.Ignore("The expected pixels are computed for a Linear project.");
             Assert.That(SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGBFloat), Is.True);
             var shader = Shader.Find("Hidden/VRVlogTests/AppearanceColorProbe");
             Assert.That(shader, Is.Not.Null); Assert.That(shader.isSupported, Is.True);

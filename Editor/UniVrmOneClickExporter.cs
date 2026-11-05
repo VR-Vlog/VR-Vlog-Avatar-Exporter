@@ -1258,8 +1258,8 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string MissingMaterialsError = "表示中のメッシュに材質が1つも割り当てられていないため、書き出せません。材質の参照が切れている可能性があります。元のアバターで材質を割り当ててください: ";
-        internal const string MaterialApproximatedWarning = "変換できなかった材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
-        internal const string NonLilToonWarning = "lilToon以外の材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
+        internal const string MaterialApproximatedWarning = "変換できなかったマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
+        internal const string NonLilToonWarning = "lilToon以外のマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
 
         static string MarkedProperty(Material material, UnityEngine.Rendering.ShaderPropertyFlags flag)
         {
