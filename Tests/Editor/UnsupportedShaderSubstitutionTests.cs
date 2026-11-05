@@ -310,6 +310,15 @@ namespace VRVlog.LilToonExporter.Tests
             owned.AddRange(created);
             Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
             Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.red));
+
+            // An empty marked texture falls back to the common names, as the substitution does.
+            var other = Texture("other");
+            var empty = Marked("Empty");
+            empty.SetTexture("_MainTex", other);
+            var fallback = new List<Material>();
+            Assert.That(UniVrmOneClickExporter.CreateMToonDefault(empty, fallback).GetTexture("_MainTex"), Is.SameAs(other));
+            owned.AddRange(fallback);
+            Assert.That(Substitute(empty).GetTexture("_MainTex"), Is.SameAs(other));
         }
 
         [Test] public void EmissionStrengthScalesTheLinearColor()
