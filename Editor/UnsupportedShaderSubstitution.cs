@@ -160,7 +160,7 @@ namespace VRVlog.LilToonExporter
         internal static Material Create(Material source, string shaderName, out bool colorSkipped, out Route route,
             out IReadOnlyList<string> dropped, List<Texture2D> textures = null)
         {
-            var values = new SourceValues(source);
+            var values = new SourceValues(source, shaderName);
             colorSkipped = false; route = Route.Generic; dropped = Array.Empty<string>();
             if (LooksLikeLilToon(source) || values.SavedLilToon(source)) return FromDerived(source, values);
             var approximation = ShaderApproximations.Find(shaderName == MissingShader ? null : shaderName, values);
@@ -860,7 +860,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Every slot the generic mapping fills is a 2D slot.
-        static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
+        internal static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
 
         internal static void Set(Material material, string name, float value)
@@ -888,7 +888,7 @@ namespace VRVlog.LilToonExporter
 
         // The pixels as a shader samples them, at the given size. Null when they
         // cannot be read (no graphics device).
-        static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
+        internal static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
 
         // The same through the image's tiling and offset: the pixels are laid
         // out in the mesh's UV space.
@@ -933,9 +933,12 @@ namespace VRVlog.LilToonExporter
             internal readonly int Queue;
             // Properties the live shader marks with [MainTexture] and [MainColor].
             internal readonly string MainTextureName, MainColorName;
+            // The name Create was given; null for a missing shader.
+            internal readonly string ShaderName;
 
-            internal SourceValues(Material material)
+            internal SourceValues(Material material, string shaderName)
             {
+                ShaderName = shaderName == MissingShader ? null : shaderName;
                 var shader = material.shader;
                 if (shader != null && shader.name != MissingShader)
                 {
