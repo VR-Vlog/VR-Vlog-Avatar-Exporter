@@ -23,8 +23,8 @@ namespace VRVlog.LilToonExporter
     internal static partial class UnsupportedShaderSubstitution
     {
         internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色のみ）: ";
-        internal const string KeptForExpressions = "表情で色や画像の位置を動かす材質は元のシェーダーのまま書き出しました: ";
-        internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
+        internal const string KeptForExpressions = "表情で色や画像の位置を動かすマテリアルは元のシェーダーのまま書き出しました: ";
+        internal const string Failed = "公式lilToonで近似できなかったマテリアルは元のまま書き出しました: ";
         internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
         internal const string ToonMapped = "他のトゥーンシェーダーの設定を公式lilToonの同じ役割の項目へ写しました（影・マットキャップ・リム・アウトライン・発光・ステンシルを含む）: ";
         internal const string VRChatMapped = "VRChatの公式シェーダーの設定を公式lilToonの同じ役割の項目へ写しました: ";

@@ -396,7 +396,7 @@ namespace VRVlog.LilToonExporter
             }
             var ready = load != null && !loading;
 
-            if (Section("Material", T("材質")))
+            if (Section("Material", T("マテリアル")))
             {
                 using (new EditorGUI.DisabledScope(loading))
                 {
@@ -606,7 +606,7 @@ namespace VRVlog.LilToonExporter
             if (status == "failed-memory") return T("メモリが足りず読み込めません");
             if (status == "standard-mtoon" || status.Contains("low-power") || status.Contains("vrm0") ||
                 status.StartsWith("fallback", StringComparison.Ordinal)) return T("MToon で表示");
-            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("材質を判定できません") : status;
+            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("マテリアルを判定できません") : status;
         }
 
         // The left pane's line; the raw code is the tooltip.
@@ -625,7 +625,7 @@ namespace VRVlog.LilToonExporter
                 return standardMToon ? T("VRM の MToon で表示しています") : T("lilToon の追加データがありません");
             if (status.Contains("vrm0")) return T("VRM 0.x のため MToon で表示しています");
             if (status.StartsWith("fallback", StringComparison.Ordinal)) return T("lilToon を適用できず MToon で表示しています");
-            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("材質を判定できません") : status;
+            return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("マテリアルを判定できません") : status;
         }
 
         internal static string ErrorText(string code)

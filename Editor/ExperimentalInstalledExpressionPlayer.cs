@@ -143,7 +143,7 @@ namespace VRVlog.LilToonExporter
                 var selectedAppearance = Appearance(copy);
                 var difference = selectedAppearance.Keys.Concat(appearance.Keys).Distinct().FirstOrDefault(key =>
                     !appearance.TryGetValue(key, out var neutralValue) || !selectedAppearance.TryGetValue(key, out var selectedValue) || neutralValue != selectedValue);
-                if (difference != null) throw new InvalidOperationException("材質・ボーン・表示切替を含む表情はこの固定形状収録へ部分的に取り込めません: " + difference);
+                if (difference != null) throw new InvalidOperationException("マテリアル・ボーン・表示切替を含む表情はこの固定形状収録へ部分的に取り込めません: " + difference);
                 if (result.Any(value => float.IsNaN(value.Weight) || float.IsInfinity(value.Weight)))
                     throw new InvalidOperationException("再生後の表情に不正な変形量があります。");
                 if (warnings != null)

@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter
                 }
             }
             else if (code == "audio-link" && target is Material audio && ContainsMaterial(source, audio) && Official(audio) && MobileMaterialMath.NonZero(audio, "_UseAudioLink"))
-                Add(code, audio, audio.name, "AudioLinkは外部連携のため今回の再現対象外です。", "変換用コピーで、この材質のAudioLinkをOFFにして試せます。",
+                Add(code, audio, audio.name, "AudioLinkは外部連携のため今回の再現対象外です。", "変換用コピーで、このマテリアルのAudioLinkをOFFにして試せます。",
                     "音に連動した発光・色・動きが失われます。", MaterialAction(audio, ExportRecoveryActionKind.DisableAudioLink));
             else if (code == "material-layer" && target is Material layerMaterial && ContainsMaterial(source, layerMaterial) && Official(layerMaterial) &&
                 (error.Data[ExportRecoveryFailure.LayerKey] as string == "2nd" || error.Data[ExportRecoveryFailure.LayerKey] as string == "3rd"))
@@ -217,7 +217,7 @@ namespace VRVlog.LilToonExporter
                 case "コピー作成": return "copy";
                 case "ビルド処理": return "preparation";
                 case "状態確定": return "appearance";
-                case "材質保存": return "material-snapshot";
+                case "マテリアル保存": return "material-snapshot";
                 case "揺れ物変換": return "physbone";
                 case "コンストレイント変換": return "constraint";
                 case "VRM変換": return "vrm";
@@ -360,11 +360,11 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             if (!ExportRecoveryReport.ContainsMaterial(source, action.Material))
-                throw new InvalidOperationException("対策の材質が選択アバターにありません。再検査してください。");
+                throw new InvalidOperationException("対策のマテリアルが選択アバターにありません。再検査してください。");
             if (action.Kind == ExportRecoveryActionKind.DisableAudioLink && !ExportRecoveryReport.Official(action.Material))
-                throw new InvalidOperationException("公式lilToonと確認できない材質のAudioLinkは自動変更できません。");
+                throw new InvalidOperationException("公式lilToonと確認できないマテリアルのAudioLinkは自動変更できません。");
             if ((action.Kind == ExportRecoveryActionKind.OmitSecondLayer || action.Kind == ExportRecoveryActionKind.OmitThirdLayer) && !LilToonMaterialReader.IsLilToon(action.Material))
-                throw new InvalidOperationException("この材質のレイヤー省略は適用できません。");
+                throw new InvalidOperationException("このマテリアルのレイヤー省略は適用できません。");
             if (!Enum.IsDefined(typeof(ExportRecoveryActionKind), action.Kind)) throw new InvalidOperationException("未対応の対策です。");
         }
 

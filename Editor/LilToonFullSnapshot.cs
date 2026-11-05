@@ -412,12 +412,12 @@ namespace VRVlog.LilToonExporter
                 var group = converter.Nodes[renderer.gameObject].MeshGroup;
                 var meshIndex = model.MeshGroups.IndexOf(group);
                 var gltfMesh = storage.Gltf.meshes[meshIndex];
-                if (gltfMesh.primitives.Count != entry.Value.Length) throw new InvalidOperationException("材質スロットとprimitiveの対応が一致しません。");
+                if (gltfMesh.primitives.Count != entry.Value.Length) throw new InvalidOperationException("マテリアルスロットとprimitiveの対応が一致しません。");
                 var materialIndices = new List<object>();
                 var originalIds = new List<int>();
                 for (var slot = 0; slot < entry.Value.Length; slot++)
                 {
-                    var index = gltfMesh.primitives[slot].material ?? throw new InvalidDataException("出力primitiveに材質番号がありません。");
+                    var index = gltfMesh.primitives[slot].material ?? throw new InvalidDataException("出力primitiveにマテリアル番号がありません。");
                     materialIndices.Add(index);
                     if (entry.Value[slot] != null && records.TryGetValue(entry.Value[slot], out var record))
                     {

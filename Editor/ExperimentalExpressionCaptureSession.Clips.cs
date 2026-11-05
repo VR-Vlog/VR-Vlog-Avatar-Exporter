@@ -402,7 +402,7 @@ namespace VRVlog.LilToonExporter
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
                 throw new InvalidOperationException((blendShapesOnly
-                    ? ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ")
+                    ? ExporterLocalization.T("顔の変形以外の変更を含みます。マテリアル・ボーン・表示切替は追加対応が必要です: ")
                     : ExporterLocalization.T("顔の変形・ボーン・表示切替以外の変更を含みます: ")) +
                     unsupported[0].path + " / " + unsupported[0].propertyName);
             if (bindings.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("このクリップにはBlendShapeの表情がありません。全身ポーズはポーズ欄へ追加してください。"));

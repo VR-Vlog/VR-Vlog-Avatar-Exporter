@@ -304,7 +304,7 @@ namespace VRVlog.LilToonExporter
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
         internal const string ApproximatedLilToonReason = "lilToon 2.3.4とプロパティが合わないためMToonで近似します";
-        internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
+        internal const string StandardMaterialLimitWarning = "標準VRMのマテリアルが{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
         internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
 
         // A file without the lilToon extension is not checked against the app's
@@ -317,7 +317,7 @@ namespace VRVlog.LilToonExporter
             {
                 var reason = string.Format(ExporterLocalization.T(StandardMaterialLimitWarning), materials, LilToonMobileProfile.MaximumMaterials);
                 warnings?.Add(reason);
-                report.Fallbacks.Record(ExportOutcome.Kept, category, ExporterLocalization.T("標準VRMの材質"), reason, materials);
+                report.Fallbacks.Record(ExportOutcome.Kept, category, ExporterLocalization.T("標準VRMのマテリアル"), reason, materials);
             }
             if (textures > LilToonMobileProfile.MaximumTextures)
             {
@@ -744,7 +744,7 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 DropEmptySubmeshes(clone, temporaryMeshes, warnings);
-                recoveryReport.Stage = "材質保存";
+                recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
                 // below would hide which materials had lost their shader.
@@ -779,7 +779,7 @@ namespace VRVlog.LilToonExporter
                 if (withoutLilToon && !guard.ContinueOnFailure &&
                     ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
                         .Any(material => LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)))
-                    throw new InvalidOperationException("公式lilToon材質が見つかりません。");
+                    throw new InvalidOperationException("公式lilToonマテリアルが見つかりません。");
                 if (withoutLilToon && guard.ContinueOnFailure)
                     foreach (var material in ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
                                  .Where(material => material != null && LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)).Distinct())
@@ -810,7 +810,7 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
-                recoveryReport.Stage = "材質保存";
+                recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // MToon's outline width does not follow the renderer scale that lilToon's
                 // does. Measured here because texture baking swaps every lilToon slot for
@@ -1257,7 +1257,7 @@ namespace VRVlog.LilToonExporter
             return converted;
         }
 
-        internal const string MissingMaterialsError = "表示中のメッシュに材質が1つも割り当てられていないため、書き出せません。材質の参照が切れている可能性があります。元のアバターで材質を割り当ててください: ";
+        internal const string MissingMaterialsError = "表示中のメッシュにマテリアルが1つも割り当てられていないため、書き出せません。マテリアルの参照が切れている可能性があります。元のアバターでマテリアルを割り当ててください: ";
         internal const string StageOmittedWarning = "書き出しの一部を省略しました";
         internal const string MaterialApproximatedWarning = "変換できなかったマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
         internal const string NonLilToonWarning = "lilToon以外のマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
