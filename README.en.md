@@ -1,4 +1,4 @@
-> Stable **1.7.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）｜Send to App (Quick)...** / **アプリに転送（通常）｜Send to App...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
+> Stable **1.7.1** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）｜Send to App (Quick)...** / **アプリに転送（通常）｜Send to App...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
 
 # VR Vlog lilToon VRM Exporter
 
@@ -24,6 +24,8 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 The exporter does not reproduce every shader effect, Animator behavior or VRChat gimmick. See the [detailed scope and limitations in Japanese](README.md#対応範囲と制限).
 
 Materials on shaders other than lilToon are replaced with official lilToon. For toon shaders with a lighting type (`_LightingMode`) and switchable sections, each section is mapped onto the lilToon item with the same role: shadows (border and blur per lighting type, shadow colors, a second shadow), the light limits, color adjustment (hue, saturation, brightness, gamma, gradation), two matcaps, rim light, outline, emission (including blinking), alpha mask and stencil. Sections official lilToon does not have (decals, dissolve, glitter, AudioLink and others) are not exported; the material and section names are listed before saving. Hue (when the source rotates it in OKLab), saturation and ramp-texture shadows are close approximations, not exact.
+
+Materials on Silent's Cel Shading (Crosstone, Lightramp and their outline variants) carry the rendering mode (opaque, cutout, fade, transparent), the transparency settings, the tint and its HSV adjustment, the shading (Crosstone's first and second tone with their step and feather, Lightramp's ramp image), the outline, rim light, matcaps, emission and specular over to the lilToon items with the same role, approximating the original look. Back faces of double-sided materials are lit like their front, as in the original. Detail maps, hatching, AudioLink, subsurface scattering, the fur layers and similar effects are not exported and are listed before saving. Lightramp shading fits the ramp image to lilToon's shadow border and blur, so a ramp with three or more steps or a colored ramp does not match the original exactly. The hue shift, a rotation in YIQ, is approximated with lilToon's HSV, and the tint mask is not carried over.
 
 Materials on official VRChat SDK shaders (Toon Standard, Mobile, Standard Lite, Sprites, UI, Video, Panosphere, Mirror and others) are mapped per shader onto the lilToon items with the same role: shadows, specular, matcap, rim light, detail, outline, and additive or multiply blending carry over, and hue and color masks are baked into the main texture. Projection (Panosphere), cubemaps and mirror reflections are not exported and are listed before saving. The Toon Standard ramp color is read as grey, baked images are at most 2048 px, and vertex colors are not applied.
 
@@ -62,7 +64,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 1.7.0** from the stable versions. **Show pre-release packages** is not needed.
+3. Install **VR Vlog lilToon VRM Exporter 1.7.1** from the stable versions. **Show pre-release packages** is not needed.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -86,7 +88,7 @@ Stable 1.0.0 and later include QR transfer through **アプリに転送**, as di
 
 ## Quick start
 
-The steps below describe stable 1.7.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
+The steps below describe stable 1.7.1. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
 
 1. Open your avatar in Unity. Enable the avatar, its parents and the outfit you want to export.
 2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）｜Send to App...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.

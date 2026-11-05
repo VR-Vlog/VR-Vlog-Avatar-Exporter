@@ -317,7 +317,7 @@ namespace VRVlog.LilToonExporter
             return multiply && (useBase || map != null);
         }
 
-        static Color Ratio(Color value, Color basis)
+        internal static Color Ratio(Color value, Color basis)
         {
             float Channel(float v, float b) => Mathf.Clamp01(b > .0001f ? v / b : v);
             return new Color(Channel(value.r, basis.r), Channel(value.g, basis.g), Channel(value.b, basis.b), value.a);
@@ -367,7 +367,7 @@ namespace VRVlog.LilToonExporter
         // to 1. lilToon's single edge is placed where the brightness is halfway
         // between the dark and the lit end, with the blur from its 10% and 90%
         // points. Returns false when the samples do not change.
-        static bool FitShadowEdge(float[] brightness, Material material)
+        internal static bool FitShadowEdge(float[] brightness, Material material)
         {
             var steps = brightness.Length - 1;
             var dark = brightness[0];

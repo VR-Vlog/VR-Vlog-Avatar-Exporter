@@ -274,8 +274,9 @@ namespace VRVlog.LilToonExporter.Tests
         internal static void AddRule(GameObject root, string componentName, string listName, string itemName, GameObject target, params (string name, object value)[] values)
         {
             const string prefix = "nadena.dev.modular_avatar.core.";
+            var componentType = OptionalTools.Require(prefix + componentName, "Install Modular Avatar.");
             var node = new GameObject(componentName); node.transform.SetParent(root.transform, false);
-            var component = node.AddComponent(OptionalTools.Find(prefix + componentName));
+            var component = node.AddComponent(componentType);
             var itemType = OptionalTools.Find(prefix + itemName);
             var item = Activator.CreateInstance(itemType);
             var referenceType = OptionalTools.Find(prefix + "AvatarObjectReference");
