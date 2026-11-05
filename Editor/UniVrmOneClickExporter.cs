@@ -1261,15 +1261,29 @@ namespace VRVlog.LilToonExporter
         internal const string MaterialApproximatedWarning = "変換できなかった材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
         internal const string NonLilToonWarning = "lilToon以外の材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
 
+        static string MarkedProperty(Material material, UnityEngine.Rendering.ShaderPropertyFlags flag)
+        {
+            var shader = material.shader;
+            for (var i = 0; shader != null && i < shader.GetPropertyCount(); i++)
+                if ((shader.GetPropertyFlags(i) & flag) != 0) return shader.GetPropertyName(i);
+            return null;
+        }
+
         internal static Material CreateMToonDefault(Material source, List<Material> created)
         {
             var shader = Shader.Find(MToon10Meta.UnityShaderName);
             if (shader == null) throw new InvalidOperationException("UniVRMのMToon10シェーダーを利用できません。");
             var material = new Material(shader) { name = source.name };
             created.Add(material);
-            var mainName = source.HasProperty("_MainTex") ? "_MainTex" : source.HasProperty("_BaseMap") ? "_BaseMap" : null;
-            var main = mainName != null ? source.GetTexture(mainName) as Texture2D : null;
-            var color = source.HasProperty("_Color") ? source.GetColor("_Color") : source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") : UnityEngine.Color.white;
+            // The properties the shader marks with [MainTexture]/[MainColor] come
+            // first; an empty mark falls back to the common names, as the
+            // substitution does.
+            Texture2D main = null; string mainName = null;
+            foreach (var name in new[] { MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainTexture), "_MainTex", "_BaseMap" })
+                if (name != null && source.HasProperty(name) && (main = source.GetTexture(name) as Texture2D) != null) { mainName = name; break; }
+            var colorName = MarkedProperty(source, UnityEngine.Rendering.ShaderPropertyFlags.MainColor) ??
+                (source.HasProperty("_Color") ? "_Color" : source.HasProperty("_BaseColor") ? "_BaseColor" : null);
+            var color = colorName != null ? source.GetColor(colorName) : UnityEngine.Color.white;
             // Flat toon: the shade color equals the base color, so no shading band appears.
             var shaderName = source.shader != null ? source.shader.name : "";
             var cutout = shaderName.IndexOf("Cutout", StringComparison.OrdinalIgnoreCase) >= 0 ||

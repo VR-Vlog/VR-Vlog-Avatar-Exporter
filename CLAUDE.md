@@ -7,4 +7,4 @@
 ## テスト
 
 - EditMode テストは `Tests/Editor` にあり、Unity 2022.3 で回す。
-- `Tools/run-unity-compatibility.py` の `BEHAVIOR_CASES`・`INTEGRATION_CASES` に載せたクラスは、そのクラスのテストメソッドをすべてどちらかの表にケース数つきで書く。クラス単位で回した結果と突き合わせるので、メソッドを足す・消す・名前を変えるときはここも直し、`Tools/test-compatibility-tooling.py` を回す。
+- `Tools/run-unity-compatibility.py` の `BEHAVIOR_CASES`・`INTEGRATION_CASES` に載せたクラスは、そのクラスのテストメソッドをすべて、どちらか一方の表にケース数つきで書く（両方に書くと止まる）。`exporter-integration` はクラス単位で回した結果と突き合わせる。`exporter-behavior` は両方の表に載るクラスをメソッド名で選んで回すので、表に無いメソッドはそこでは動かず、結果との突き合わせでは見つからない。`Tools/test-compatibility-tooling.py` がソースと表を比べて見つけるので、メソッドを足す・消す・名前を変えるときはここも直し、これを回す。

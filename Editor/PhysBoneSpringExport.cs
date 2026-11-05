@@ -424,6 +424,10 @@ namespace VRVlog.LilToonExporter
                     {
                         var offset = rotation * Vector3.up * Mathf.Max(0, Number(collider, "height", 0) * .5f - converted.Radius);
                         converted.Tail = converted.Offset + offset; converted.Offset -= offset;
+                        // A capsule no longer than its diameter has no length. The solver's
+                        // inside capsule divides by that length, gets NaN and never collides,
+                        // so it goes out as the sphere it is.
+                        if (inside && converted.Tail == converted.Offset) converted.ColliderType = VRM10SpringBoneColliderTypes.SphereInside;
                     }
                     if (shape == 2) converted.Normal = rotation * Vector3.up;
                     // The solver multiplies an outer collider's radius by the node's world
