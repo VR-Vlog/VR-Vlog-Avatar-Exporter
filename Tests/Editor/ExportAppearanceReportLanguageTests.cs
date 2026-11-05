@@ -62,13 +62,22 @@ namespace VRVlog.LilToonExporter.Tests
                 // As UniVrmOneClickExporter.RecordOmissions, NdmfExportPreparation and UnsupportedShaderSubstitution write them.
                 var notes = new[]
                 {
-                    ExporterLocalization.T("書き出しの一部を省略しました") + ": Expressions — reason",
+                    ExporterLocalization.T(UniVrmOneClickExporter.StageOmittedWarning) + ": Expressions — reason",
                     ExporterLocalization.T(NdmfExportPreparation.LostGeneratedMorphs) + "Body/Smile",
                     ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Hair",
                     ExporterLocalization.T(UnsupportedShaderSubstitution.Failed) + "Skirt",
                 };
                 var other = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + "Face";
                 Assert.That(ExportAppearanceReport.Changes(notes.Append(other)), Is.EqualTo(notes), locale);
+                // Chinese shares 省略 and 近似 with Japanese; in English and Korean only the translated
+                // sentence can find a note, and only where the note starts.
+                if (locale == "en" || locale == "ko")
+                {
+                    var words = new[] { "省略", "近似", "縮小", "調整して", "自動除外せず保持" };
+                    foreach (var note in notes) Assert.That(words.Any(word => note.Contains(word)), Is.False, locale + ": " + note);
+                    var quoting = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + ExporterLocalization.T(UnsupportedShaderSubstitution.Warning);
+                    Assert.That(ExportAppearanceReport.Changes(new[] { quoting }), Is.Empty, locale);
+                }
             }
             finally
             {
