@@ -930,7 +930,6 @@ class ApiTests(unittest.TestCase):
             root = Path(folder); target = root / sync.PREFLIGHT_FILENAME
             sync.save_preflight_evidence(evidence)
             self.assertEqual(json.loads(target.read_bytes()), evidence)
-            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
             before = target.read_bytes()
             with patch.object(sync.os, "replace", side_effect=OSError("private-marker")):
                 with self.assertRaises(OSError):
@@ -942,6 +941,13 @@ class ApiTests(unittest.TestCase):
             with self.assertRaisesRegex(sync.SyncError, "regular task file"):
                 sync.save_preflight_evidence(evidence)
             self.assertEqual(elsewhere.read_text(), "Keep")
+
+    @unittest.skipUnless(os.name == "posix", "Windows has no owner-only permission bits; CI (Linux) runs this")
+    def test_preflight_evidence_is_owner_only(self):
+        evidence = {"schema": 1, "publisher": publisher(), "official": None}
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"RUNNER_TEMP": folder}, clear=True):
+            sync.save_preflight_evidence(evidence)
+            self.assertEqual((Path(folder) / sync.PREFLIGHT_FILENAME).stat().st_mode & 0o777, 0o600)
 
     def test_publisher_context_requires_approved_ci_workflow_and_source_checkout(self):
         valid = ci_environment()

@@ -77,13 +77,8 @@ namespace VRVlog.LilToonExporter
                     {
                         if (!values.TryGetValue(parameter.name, out var value)) continue;
                         if (float.IsNaN(value) || float.IsInfinity(value)) throw new InvalidOperationException("表情入力の値が不正です。");
-                        switch (parameter.type)
-                        {
-                            case AnimatorControllerParameterType.Bool: playable.SetBool(parameter.name, value != 0); break;
-                            case AnimatorControllerParameterType.Int: playable.SetInteger(parameter.name, Mathf.RoundToInt(value)); break;
-                            case AnimatorControllerParameterType.Float: playable.SetFloat(parameter.name, value); break;
-                            default: throw new InvalidOperationException("Trigger入力はこの表情収録では再現できません。");
-                        }
+                        if (!AnimatorProbe.Write(playable, parameter.type, parameter.name, value))
+                            throw new InvalidOperationException("Trigger入力はこの表情収録では再現できません。");
                     }
                 }
                 List<VrChatExpressionMenu.MorphValue> Read() => ExportRendererSelection.Enumerate(copy).OfType<SkinnedMeshRenderer>()
@@ -148,7 +143,7 @@ namespace VRVlog.LilToonExporter
                 var selectedAppearance = Appearance(copy);
                 var difference = selectedAppearance.Keys.Concat(appearance.Keys).Distinct().FirstOrDefault(key =>
                     !appearance.TryGetValue(key, out var neutralValue) || !selectedAppearance.TryGetValue(key, out var selectedValue) || neutralValue != selectedValue);
-                if (difference != null) throw new InvalidOperationException("材質・ボーン・表示切替を含む表情はこの固定形状収録へ部分的に取り込めません: " + difference);
+                if (difference != null) throw new InvalidOperationException("マテリアル・ボーン・表示切替を含む表情はこの固定形状収録へ部分的に取り込めません: " + difference);
                 if (result.Any(value => float.IsNaN(value.Weight) || float.IsInfinity(value.Weight)))
                     throw new InvalidOperationException("再生後の表情に不正な変形量があります。");
                 if (warnings != null)
@@ -215,7 +210,7 @@ namespace VRVlog.LilToonExporter
                     if (!stateInfo.loop && stateInfo.normalizedTime >= 1 && currentState.speed > 0 &&
                         !currentState.speedParameterActive && !currentState.timeParameterActive &&
                         controller.GetStateEffectiveMotion(currentState, layer) == clip && !clip.isLooping) continue;
-                    var varyingCurves = AnimationUtility.GetCurveBindings(clip).Where(Needed).Where(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))).ToArray();
+                    var varyingCurves = AnimationUtility.GetCurveBindings(clip).Where(Needed).Where(binding => !CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding))).ToArray();
                     var varying = varyingCurves.Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip).Where(Needed).Where(binding => AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(key => key.value).Distinct().Count() > 1)).ToArray();
                     // A settled face keeps the clip's final key or loop start.
                     // Parameter and object reference curves and parameter-driven

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -15,6 +16,7 @@ namespace VRVlog.LilToonExporter.Tests
         readonly List<Object> owned = new List<Object>();
         GameObject avatar;
         Material hidden, normal, unspecified;
+        string storePath, previousPath;
 
         [SetUp] public void SetUp()
         {
@@ -22,11 +24,16 @@ namespace VRVlog.LilToonExporter.Tests
             hidden = Own(new Material(Shader.Find("VRVlogTests/UnsupportedHiddenFallback")));
             normal = Own(new Material(Shader.Find("Hidden/VRVlogTests/lilToon")));
             unspecified = Own(new Material(Shader.Find("Hidden/VRVlogTests/ShadowSphere")));
+            previousPath = ExportSettingsStore.PathOverride;
+            storePath = Path.Combine(Path.GetTempPath(), "vrvlog-gimmick-choices-" + Guid.NewGuid().ToString("N") + ".json");
+            ExportSettingsStore.PathOverride = storePath;
         }
         [TearDown] public void TearDown()
         {
             for (var i = owned.Count - 1; i >= 0; i--) if (owned[i] != null) Object.DestroyImmediate(owned[i]);
             owned.Clear();
+            ExportSettingsStore.PathOverride = previousPath;
+            if (File.Exists(storePath)) File.Delete(storePath);
         }
         T Own<T>(T item) where T : Object { owned.Add(item); return item; }
         GameObject Child(string name, Transform parent = null)
@@ -90,9 +97,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => findings = ExportGimmickDetection.Analyze(avatar));
             var finding = findings.Single(f => f.Renderer == renderer);
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
-            Assert.That(finding.Reason, Is.EqualTo("メッシュまたは材質が不足しているため自動判定できません。"));
+            Assert.That(finding.Reason, Is.EqualTo("メッシュまたはマテリアルが不足しているため自動判定できません。"));
             Assert.That(ExportGimmickDetection.PettingSystemUnsafeReason(avatar, renderer.transform, _ => false),
-                Is.EqualTo("メッシュまたは材質が不足しているため、システム全体は残します。"));
+                Is.EqualTo("メッシュまたはマテリアルが不足しているため、システム全体は残します。"));
         }
 
         [Test] public void InactiveAndDisabledRenderersAreNotCandidates()
@@ -216,8 +223,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ModularAvatarBoneProxy", "subPath")]
         public void MaPathBasedConnectionsProtectTheHierarchy(string componentName, string pathProperty)
         {
-            var type = FindType("nadena.dev.modular_avatar.core." + componentName);
-            var descriptor = FindType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var type = OptionalTools.Find("nadena.dev.modular_avatar.core." + componentName);
+            var descriptor = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (type == null || descriptor == null) Assert.Ignore("Installed MA and VRChat SDK are required for this connection regression.");
             avatar.AddComponent(descriptor);
             var root = Child("system"); var effect = Render("effect", hidden, root.transform);
@@ -273,7 +280,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(only.Error, Is.Not.Null);
         }
 
-        static Type FindType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static bool PettingSystemRoot(GameObject target) =>
             ExportGimmickDetection.Matches(ExportGimmickRules.All.First(rule => rule.Id == ExportGimmickRules.PettingSystem), target.transform);
 
@@ -444,8 +450,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void UnpackedPettingSystemIsFoundByItsContacts()
         {
-            var receiver = FindType("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver");
-            if (receiver == null) Assert.Ignore("Installed VRChat SDK is required for contact receivers.");
+            var receiver = OptionalTools.Require("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver", "Installed VRChat SDK is required for contact receivers.");
             var root = Child("renamed"); Child("HeadSystem", root.transform); Child("Proxies", root.transform);
             void Contact(string path, string parameter)
             {
@@ -488,6 +493,35 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(list.NoticeCount, Is.Zero);
         }
 
+        // The board's warnings join the export's, so the board does not repeat
+        // the export's line about an omitted or kept gimmick.
+        [Test] public void BoardSessionLeavesGimmickLinesToTheExport()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            var finding = Matched().Single();
+            var warnings = new List<string>();
+            using (var session = ExperimentalExpressionCaptureSession.Create(avatar))
+            {
+                Assert.That(session.Copy.transform.Find("gimmick"), Is.Null);
+                warnings.AddRange(session.Warnings);
+            }
+            Assert.That(warnings.Where(GimmickLine), Is.Empty);
+            var report = new ExportRecoveryReport();
+            UniVrmOneClickExporter.RecordOmittedGimmick(avatar, finding, warnings, report);
+            var list = ExportResultList.Build(report.Fallbacks, warnings);
+            Assert.That(list.Rows.Count(row => row.Outcome == ExportOutcome.Omitted), Is.EqualTo(1));
+            Assert.That(list.Rows.Where(row => row.Outcome == null && GimmickLine(row.Content)), Is.Empty);
+
+            var skin = Skin("body", normal); skin.bones = new[] { gimmick.transform.Find("prop") };
+            Assert.That(Matched().Single().Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            using (var session = ExperimentalExpressionCaptureSession.Create(avatar))
+            {
+                Assert.That(session.Copy.transform.Find("gimmick"), Is.Not.Null);
+                Assert.That(session.Warnings.Where(GimmickLine), Is.Empty);
+            }
+        }
+        static bool GimmickLine(string line) => line.StartsWith("補助ギミックを省略", StringComparison.Ordinal) || line.StartsWith("自動除外せず保持", StringComparison.Ordinal);
+
         [Test] public void MeshReferencePruningKeepsBoneSpringAndOriginalVrmSettings()
         {
             var renderer = Skin("effect", hidden);
@@ -511,12 +545,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(1));
         }
 
-        static Type MaType(string fullName)
-        {
-            var type = FindType(fullName);
-            if (type == null) Assert.Ignore("Installed MA is required for the structural gimmick rules.");
-            return type;
-        }
+        static Type MaType(string fullName) =>
+            OptionalTools.Require(fullName, "Installed MA is required for the structural gimmick rules.");
         Material Plain() => Own(new Material(Shader.Find("Unlit/Texture")));
 
         // A menu or animator entry with a prop that is not drawn like the
@@ -675,7 +705,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void EmptyObjectsLeaveTheVrmOnlyWithTheAutomaticOption()
         {
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var f = new AttachmentConnectionTests.Fixture();
             foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = shader;
             Child("empty holder", Child("empty branch", f.Source.transform).transform);
@@ -818,6 +848,85 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(finding.Target, Is.SameAs(tool));
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
             Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.SkeletonTakeoverReason));
+        }
+
+        // The gimmick list of the export windows: the "VRMに入れる" choice saved
+        // in the avatar's export settings.
+        [Test] public void ChoiceRoundTripsThroughTheSavedSettings()
+        {
+            var effect = Render("effect", hidden).gameObject;
+            var finding = ExportGimmickChoices.Groups(ExportGimmickChoices.Analyze(avatar, null)).Single().Findings.Single();
+            Assert.That(finding.Target, Is.SameAs(effect));
+            var settings = ExportSettingsStore.Load(avatar);
+            Assert.That(ExportGimmickChoices.Kept(finding, settings), Is.False);
+            var revision = ExportSettingsStore.Revision;
+            ExportGimmickChoices.SetKept(finding, settings, true);
+            ExportGimmickChoices.SetKept(finding, settings, true);
+            ExportSettingsStore.Save(avatar, settings);
+            Assert.That(ExportSettingsStore.Revision, Is.GreaterThan(revision));
+            var loaded = ExportSettingsStore.Load(avatar);
+            Assert.That(loaded.IncludedGimmicks, Is.EqualTo(new[] { effect }));
+            Assert.That(ExportGimmickChoices.Kept(finding, loaded), Is.True);
+            Assert.That(ExportGimmickChoices.Removed(new[] { finding }, loaded.Gimmicks()), Is.Empty);
+            ExportGimmickChoices.SetKept(finding, loaded, false);
+            ExportSettingsStore.Save(avatar, loaded);
+            loaded = ExportSettingsStore.Load(avatar);
+            Assert.That(loaded.IncludedGimmicks, Is.Empty);
+            Assert.That(ExportGimmickChoices.Removed(new[] { finding }, loaded.Gimmicks()), Is.EqualTo(new[] { finding }));
+        }
+
+        [Test] public void ComponentChoiceKeepsOnlyItsComponents()
+        {
+            var holder = Child("settings"); var probe = holder.AddComponent<GimmickSettingsProbe>();
+            Child("part", holder.transform);
+            var findings = ExportGimmickDetection.Analyze(avatar, new[] { AnchorRule() }, null);
+            var finding = ExportGimmickChoices.Groups(findings).Single().Findings.Single();
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Component));
+            Assert.That(ExportGimmickChoices.GroupName(finding), Is.EqualTo(ExportGimmickChoices.OtherGroup));
+            Assert.That(ExportGimmickChoices.RowName(finding), Is.EqualTo("settings／Gimmick Settings Probe"));
+            Assert.That(ExportGimmickChoices.PathOf(finding, avatar), Is.EqualTo("avatar/settings"));
+            var settings = new ExportSettings();
+            Assert.That(ExportGimmickChoices.Removed(findings, settings.Gimmicks()), Is.EqualTo(new[] { finding }));
+            ExportGimmickChoices.SetKept(finding, settings, true);
+            Assert.That(settings.IncludedGimmickComponents, Is.EqualTo(new Component[] { probe }));
+            Assert.That(settings.IncludedGimmicks, Is.Empty);
+            Assert.That(ExportGimmickChoices.Removed(findings, settings.Gimmicks()), Is.Empty);
+        }
+
+        [Test] public void ParentChoiceIsInheritedByTheRowsBelow()
+        {
+            var container = Child("container");
+            var effect = Render("effect", hidden, container.transform).gameObject;
+            var finding = ExportGimmickChoices.Groups(ExportGimmickChoices.Analyze(avatar, null)).Single().Findings.Single();
+            var settings = new ExportSettings();
+            settings.IncludedGimmicks.Add(container);
+            Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.Not.Null);
+            Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.EqualTo(container));
+            // The row names the nearest kept parent.
+            var inner = Child("inner", container.transform);
+            effect.transform.SetParent(inner.transform, false);
+            settings.IncludedGimmicks.Add(inner);
+            Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.EqualTo(inner));
+            settings.IncludedGimmicks.Remove(inner);
+            effect.transform.SetParent(container.transform, false);
+            Assert.That(ExportGimmickChoices.Kept(finding, settings), Is.False);
+            Assert.That(ExportGimmickChoices.Removed(new[] { finding }, settings.Gimmicks()), Is.Empty);
+            // Objects left out by hand are not listed again.
+            Assert.That(ExportGimmickChoices.Groups(ExportGimmickChoices.Analyze(avatar, new[] { container })), Is.Empty);
+            Assert.That(effect, Is.Not.Null);
+        }
+
+        [Test] public void SameGimmicksComparesTheChoicesAsSets()
+        {
+            var a = Child("a"); var b = Child("b"); var probe = Child("c").AddComponent<GimmickSettingsProbe>();
+            var saved = new ExportGimmickOptions { IncludedObjects = new[] { a, b, null }, IncludedComponents = new Component[] { probe } };
+            var preview = new ExportGimmickOptions { IncludedObjects = new[] { b, a }, IncludedComponents = new Component[] { probe } };
+            Assert.That(ExportGimmickChoices.SameGimmicks(saved, preview), Is.True);
+            preview.IncludedComponents = Array.Empty<Component>();
+            Assert.That(ExportGimmickChoices.SameGimmicks(saved, preview), Is.False);
+            preview.IncludedComponents = new Component[] { probe };
+            preview.AutoExclude = false;
+            Assert.That(ExportGimmickChoices.SameGimmicks(saved, preview), Is.False);
         }
     }
 }

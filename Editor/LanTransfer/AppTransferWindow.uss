@@ -2,6 +2,10 @@
    wraps instead, and its height depends only on the window width and the language.
    Colours: neutral greys, the one accent (#3D7DD9), amber for why the button is disabled, red for an expired QR and the QR notice. */
 
+:root {
+    --accent: rgb(61, 125, 217);
+}
+
 .app-transfer {
     flex-grow: 1;
 }
@@ -324,7 +328,7 @@
     font-size: 12px;
     -unity-font-style: bold;
     color: rgb(255, 255, 255);
-    background-color: rgb(61, 125, 217);
+    background-color: var(--accent);
 }
 
 .primary:hover {
@@ -441,7 +445,7 @@
     position: absolute;
     width: 22px;
     height: 22px;
-    border-color: rgb(61, 125, 217);
+    border-color: var(--accent);
 }
 
 .qr-corner--top {
@@ -668,7 +672,7 @@
     left: 0;
     top: 0;
     bottom: 0;
-    background-color: rgb(61, 125, 217);
+    background-color: var(--accent);
 }
 
 /* The sound choice shares the lifetime line, so the QR screen keeps its height. */

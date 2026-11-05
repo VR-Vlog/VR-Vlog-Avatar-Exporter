@@ -47,17 +47,22 @@ namespace VRVlog.LilToonExporter
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
                 inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource)};
             var selected = new List<(Renderer renderer, Material[] materials)>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
+            // Materials of renderers UniVRM does not write as meshes must not
+            // create bindings to absent glTF meshes. Their transforms and bones
+            // stay intact.
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(avatar))
             {
-                // UniVRM exports mesh primitives, not particle/trail/line systems.
-                // Their materials must not create bindings to absent glTF meshes.
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                // The pinned ModelExporter omits meshes without vertices or
-                // indices. They cannot have a full binding to an output mesh.
-                // Keep their transforms/bones and every nonempty mesh intact.
-                if(!ExportRendererSelection.HasGeometry(mesh))continue;
-                selected.Add((renderer, renderer.sharedMaterials));
+                // An empty slot exports a primitive without a material, which no
+                // binding can name. That renderer keeps its standard VRM materials;
+                // the rest of the avatar keeps lilToon.
+                var slots = renderer.sharedMaterials;
+                if (slots.Any(material => material == null))
+                {
+                    if (slots.Any(material => material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)))
+                        warnings?.Add(renderer.name + ": マテリアルが空のスロットがあるため、この表示物のlilToonは標準VRMのマテリアルで書き出しました。");
+                    continue;
+                }
+                selected.Add((renderer, slots));
             }
             // Before any material registers a shared texture, so its size does
             // not depend on which material reads it first.
@@ -248,7 +253,7 @@ namespace VRVlog.LilToonExporter
             if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
             else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
+                warnings?.Add(ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
                 {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},
@@ -407,12 +412,12 @@ namespace VRVlog.LilToonExporter
                 var group = converter.Nodes[renderer.gameObject].MeshGroup;
                 var meshIndex = model.MeshGroups.IndexOf(group);
                 var gltfMesh = storage.Gltf.meshes[meshIndex];
-                if (gltfMesh.primitives.Count != entry.Value.Length) throw new InvalidOperationException("材質スロットとprimitiveの対応が一致しません。");
+                if (gltfMesh.primitives.Count != entry.Value.Length) throw new InvalidOperationException("マテリアルスロットとprimitiveの対応が一致しません。");
                 var materialIndices = new List<object>();
                 var originalIds = new List<int>();
                 for (var slot = 0; slot < entry.Value.Length; slot++)
                 {
-                    var index = gltfMesh.primitives[slot].material ?? throw new InvalidDataException("出力primitiveに材質番号がありません。");
+                    var index = gltfMesh.primitives[slot].material ?? throw new InvalidDataException("出力primitiveにマテリアル番号がありません。");
                     materialIndices.Add(index);
                     if (entry.Value[slot] != null && records.TryGetValue(entry.Value[slot], out var record))
                     {

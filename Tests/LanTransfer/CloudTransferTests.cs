@@ -13,6 +13,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 {
     public sealed partial class CloudTransferTests
     {
+        // The session's wait before it retries, without the real seconds. It
+        // still ends with the caller's cancellation as the real wait does. The
+        // tests that use it check the attempts and the outcome, not the time.
+        static readonly Func<TimeSpan, CancellationToken, Task> NoWait = (duration, token) => Task.Delay(TimeSpan.Zero, token);
+
         [Test]
         public void CloudDevelopmentAvailabilityRequiresBothEditorAndExplicitDevelopmentDefine()
         {
@@ -76,7 +81,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             try
             {
                 string before;
-                using (var hash = SHA256.Create()) before = LanTransferProtocol.Hex(hash.ComputeHash(File.ReadAllBytes(original)));
+                using (var hash = SHA256.Create()) before = CloudTransferProtocol.Hex(hash.ComputeHash(File.ReadAllBytes(original)));
                 using (var snapshot = CloudDevelopmentSnapshot.CopySavedVrm(original))
                 {
                     snapshotPath = snapshot.SnapshotPath;
@@ -96,7 +101,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 }
                 Assert.That(File.Exists(snapshotPath), Is.False);
                 Assert.That(File.ReadAllBytes(original), Is.EqualTo(bytes));
-                using (var hash = SHA256.Create()) Assert.That(LanTransferProtocol.Hex(hash.ComputeHash(File.ReadAllBytes(original))), Is.EqualTo(before));
+                using (var hash = SHA256.Create()) Assert.That(CloudTransferProtocol.Hex(hash.ComputeHash(File.ReadAllBytes(original))), Is.EqualTo(before));
             }
             finally { if (snapshotPath != null) TransferTempDirectory.TryDelete(snapshotPath); File.Delete(original); }
         }
@@ -177,7 +182,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(DecryptUploaded(fixture.Transport, session.Qr), Is.EqualTo(fixture.Bytes));
                 Assert.That(fixture.Transport.Parts.Select(part => part.Length).ToArray(), Is.EqualTo(new[] { CloudTransferProtocol.PartSize, 72 }));
                 Assert.That(session.Transferred, Is.EqualTo(CloudEncryptedSnapshot.WireSize(fixture.Source.Size)));
-                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(CloudTransferProtocol.QrPrefix.Length));
                 fields.Exact("v", "id", "token", "name", "size", "sha256", "expiresAt", "key");
                 Assert.That(fields.Number("v"), Is.EqualTo(3L));
                 Assert.That(fields.Text("name"), Is.EqualTo("テストアバター.vrm"));
@@ -200,11 +205,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 Assert.That(fixture.Source.Name, Is.EqualTo("衣装-夜-昼.vrm"));
                 using (var hash = SHA256.Create())
-                    Assert.That(fixture.Source.FileHash, Is.EqualTo(LanTransferProtocol.Hex(hash.ComputeHash(fixture.Bytes))));
+                    Assert.That(fixture.Source.FileHash, Is.EqualTo(CloudTransferProtocol.Hex(hash.ComputeHash(fixture.Bytes))));
                 await session.UploadAsync();
                 Assert.That(DecryptUploaded(fixture.Transport, session.Qr), Is.EqualTo(fixture.Bytes));
                 Assert.That(File.ReadAllBytes(fixture.Path), Is.EqualTo(fixture.Bytes));
-                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(CloudTransferProtocol.QrPrefix.Length));
                 Assert.That(fields.Text("name"), Is.EqualTo("衣装-夜-昼.vrm"));
                 Assert.That(fields.Text("sha256"), Is.EqualTo(fixture.Source.FileHash));
             }
@@ -219,14 +224,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(display, Is.EqualTo(name.Substring(0, 256)));
             Assert.That(CloudTransferProtocol.DisplayName("a\ud800b\udc00c"), Is.EqualTo("abc"), "Lone surrogates are dropped.");
             var quoted = CloudTransferProtocol.Qr(LinkId, LinkToken, "a\"\\b", 1, LinkHash, 1791910000, LinkKey);
-            Assert.That(CloudTransferProtocol.Fields.Read(quoted.Substring(LanTransferProtocol.QrPrefix.Length)).Text("name"), Is.EqualTo("a\"\\b"));
+            Assert.That(CloudTransferProtocol.Fields.Read(quoted.Substring(CloudTransferProtocol.QrPrefix.Length)).Text("name"), Is.EqualTo("a\"\\b"));
             var qr = CloudTransferProtocol.Qr(new string('0', 32), new string('A', 43), display, CloudTransferProtocol.MaximumSize, new string('0', 64), 2147483647, new string('A', 86));
             Assert.That(Encoding.UTF8.GetByteCount(qr), Is.LessThanOrEqualTo(4096));
         }
 
         private const string LinkId = "0123456789abcdef0123456789abcdef";
-        private static readonly string LinkToken = LanTransferProtocol.Base64Url(Enumerable.Range(0, 32).Select(index => (byte)index).ToArray());
-        private static readonly string LinkKey = LanTransferProtocol.Base64Url(Enumerable.Range(0, 64).Select(index => (byte)index).ToArray());
+        private static readonly string LinkToken = CloudTransferProtocol.Base64Url(Enumerable.Range(0, 32).Select(index => (byte)index).ToArray());
+        private static readonly string LinkKey = CloudTransferProtocol.Base64Url(Enumerable.Range(0, 64).Select(index => (byte)index).ToArray());
         private static readonly string LinkHash = string.Concat(Enumerable.Repeat("ab", 32));
         private static string Link(string name) => CloudTransferProtocol.ImportLink(LinkId, LinkToken, name, 1234567, LinkHash, 1791910000, LinkKey);
 
@@ -256,7 +261,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             var name = "衣装-夜 昼.vrm";
             var link = Link(name);
-            var qr = CloudTransferProtocol.Fields.Read(CloudTransferProtocol.Qr(LinkId, LinkToken, name, 1234567, LinkHash, 1791910000, LinkKey).Substring(LanTransferProtocol.QrPrefix.Length));
+            var qr = CloudTransferProtocol.Fields.Read(CloudTransferProtocol.Qr(LinkId, LinkToken, name, 1234567, LinkHash, 1791910000, LinkKey).Substring(CloudTransferProtocol.QrPrefix.Length));
             Assert.That(link.StartsWith("vrvlog://import#v=3&id=", StringComparison.Ordinal), Is.True);
             Assert.That(link.Substring(CloudTransferProtocol.ImportLinkPrefix.Length).Split('&').Select(pair => pair.Substring(0, pair.IndexOf('='))).ToArray(),
                 Is.EqualTo(new[] { "v", "id", "token", "name", "size", "sha256", "exp", "key" }));
@@ -315,7 +320,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 fixture.Transport.BeforePublish = () => Assert.That(session.ImportLink == null, Is.True);
                 Assert.That(session.ImportLink == null, Is.True);
                 await session.UploadAsync();
-                var qr = CloudTransferProtocol.Fields.Read(session.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                var qr = CloudTransferProtocol.Fields.Read(session.Qr.Substring(CloudTransferProtocol.QrPrefix.Length));
                 var link = ImportLinkFields(session.ImportLink, out _);
                 foreach (var member in new[] { "id", "token", "name", "sha256", "key" }) Assert.That(link[member], Is.EqualTo(qr.Text(member)));
                 Assert.That(link["name"], Is.EqualTo(fixture.Source.Name));
@@ -367,7 +372,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public async Task UploadFailuresNeverExposeQrAndCleanCreatedTransfer(string failure)
         {
             using (var fixture = new Fixture(17))
-            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, delay: NoWait))
             {
                 fixture.Transport.Failure = failure;
                 try { await session.UploadAsync(); Assert.That(false, Is.True); }
@@ -401,8 +406,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 {
                     await second.UploadAsync();
                     Assert.That(second.Qr != oldQr, Is.True);
-                    var oldFields = CloudTransferProtocol.Fields.Read(oldQr.Substring(LanTransferProtocol.QrPrefix.Length));
-                    var fields = CloudTransferProtocol.Fields.Read(second.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                    var oldFields = CloudTransferProtocol.Fields.Read(oldQr.Substring(CloudTransferProtocol.QrPrefix.Length));
+                    var fields = CloudTransferProtocol.Fields.Read(second.Qr.Substring(CloudTransferProtocol.QrPrefix.Length));
                     Assert.That(fields.Text("key") == oldFields.Text("key"), Is.False);
                     Assert.That(fixture.Transport.Parts.SelectMany(part => part).Skip(8).Take(16).SequenceEqual(oldEnvelope.Skip(8).Take(16)), Is.False);
                     Assert.That(DecryptUploaded(fixture.Transport, second.Qr), Is.EqualTo(fixture.Bytes));
@@ -480,7 +485,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 fixture.Transport.BeforePart = () => currentTime += 60;
                 await session.UploadAsync();
                 var expectedDeadline = createdAt + serverLifetimeSeconds;
-                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(CloudTransferProtocol.QrPrefix.Length));
                 Assert.That(session.ExpiresAt, Is.EqualTo(expectedDeadline));
                 Assert.That(fields.Number("expiresAt"), Is.EqualTo(expectedDeadline));
                 Assert.That(session.ExpiresAt - currentTime, Is.EqualTo((long)serverLifetimeSeconds - 60));
@@ -619,7 +624,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
             {
                 await session.UploadAsync();
-                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                var fields = CloudTransferProtocol.Fields.Read(session.Qr.Substring(CloudTransferProtocol.QrPrefix.Length));
                 var envelope = fixture.Transport.Parts.SelectMany(part => part).ToArray();
                 var key = DecodeKey(fields.Text("key")); var name = fields.Text("name"); var hash = fields.Text("sha256");
                 if (target == "key") key[0] ^= 1;
@@ -660,7 +665,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(first.Length, Is.EqualTo(encrypted.Size));
                 Assert.That(first.ReadByte(), Is.EqualTo(second.ReadByte()));
                 using (var digest = SHA256.Create())
-                { second.Position = 0; Assert.That(LanTransferProtocol.Hex(digest.ComputeHash(second)), Is.EqualTo(encrypted.FileHash)); }
+                { second.Position = 0; Assert.That(CloudTransferProtocol.Hex(digest.ComputeHash(second)), Is.EqualTo(encrypted.FileHash)); }
                 // .NET on Unix does not enforce Windows FileShare exclusions.
                 // Keep the required writer exclusion assertion on Windows CI.
                 if (Environment.OSVersion.Platform == PlatformID.Win32NT)
@@ -675,7 +680,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public async Task SafeFailureMessagesIdentifyCauseAndStageWithoutPrivateDetails(string kind, string reason, string stage)
         {
             using (var fixture = new Fixture(17))
-            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, delay: NoWait))
             {
                 fixture.Transport.Failure = kind;
                 try { await session.UploadAsync(); Assert.That(false, Is.True, "Must fail"); }
@@ -709,7 +714,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
                 using (var fixture = new Fixture(17))
-                using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+                using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, delay: NoWait))
                 {
                     fixture.Transport.Failure = kind;
                     try { await session.UploadAsync(); Assert.That(false, Is.True, "Must fail"); }
@@ -824,7 +829,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             using (var encrypted = await CloudEncryptedSnapshot.CreateAsync(source, CancellationToken.None, Unhex(vector.Text("keyHex")), Unhex(vector.Text("ivHex"))))
             {
                 Assert.That(source.FileHash, Is.EqualTo(vector.Text("sha256")));
-                Assert.That(LanTransferProtocol.Hex(CloudEncryptedSnapshot.Aad(source.Name, source.Size, source.FileHash)), Is.EqualTo(vector.Text("aadHex")));
+                Assert.That(CloudTransferProtocol.Hex(CloudEncryptedSnapshot.Aad(source.Name, source.Size, source.FileHash)), Is.EqualTo(vector.Text("aadHex")));
                 Assert.That(encrypted.Size, Is.EqualTo(vector.Number("wireSize")));
                 Assert.That(encrypted.FileHash, Is.EqualTo(vector.Text("envelopeSha256")));
                 Assert.That(encrypted.KeyForQr(), Is.EqualTo(vector.Text("key")));
@@ -832,8 +837,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 byte[] envelope;
                 using (var reader = encrypted.OpenRead())
                 using (var copy = new MemoryStream()) { reader.CopyTo(copy); envelope = copy.ToArray(); }
-                Assert.That(LanTransferProtocol.Hex(envelope.Skip(envelope.Length - 32).ToArray()), Is.EqualTo(vector.Text("tagHex")));
-                if (size <= 257) Assert.That(LanTransferProtocol.Hex(envelope), Is.EqualTo(vector.Text("envelopeHex")));
+                Assert.That(CloudTransferProtocol.Hex(envelope.Skip(envelope.Length - 32).ToArray()), Is.EqualTo(vector.Text("tagHex")));
+                if (size <= 257) Assert.That(CloudTransferProtocol.Hex(envelope), Is.EqualTo(vector.Text("envelopeHex")));
                 Assert.That(AuthenticatedDecrypt(envelope, Unhex(vector.Text("keyHex")), source.Name, source.Size, source.FileHash), Is.EqualTo(plain));
             }
         }
@@ -844,7 +849,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         private static byte[] DecodeKey(string key) => Convert.FromBase64String(key.Replace('-', '+').Replace('_', '/') + "==");
         private static byte[] DecryptUploaded(FakeTransport transport, string qr)
         {
-            var fields = CloudTransferProtocol.Fields.Read(qr.Substring(LanTransferProtocol.QrPrefix.Length));
+            var fields = CloudTransferProtocol.Fields.Read(qr.Substring(CloudTransferProtocol.QrPrefix.Length));
             return AuthenticatedDecrypt(transport.Parts.SelectMany(part => part).ToArray(), DecodeKey(fields.Text("key")), fields.Text("name"), fields.Number("size"), fields.Text("sha256"));
         }
         private static byte[] AuthenticatedDecrypt(byte[] envelope, byte[] key, string name, long size, string hash)
@@ -877,7 +882,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             using (var fixture = new Fixture(29))
             {
                 var transport = new InterruptedTransport(fixture.Transport, publish, failure, false);
-                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, delay: NoWait))
                 {
                     await session.UploadAsync();
                     Assert.That(session.State, Is.EqualTo(CloudTransferState.Ready));
@@ -897,7 +902,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             using (var fixture = new Fixture(29))
             {
                 var transport = new InterruptedTransport(fixture.Transport, false, failure, true);
-                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, delay: NoWait))
                 {
                     try { await session.UploadAsync(); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
                     Assert.That(session.State, Is.EqualTo(CloudTransferState.Failed));
@@ -1105,7 +1110,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), start = current;
             using (var fixture = new Fixture(29))
-            using (var session = new CloudVrmTransferSession(fixture.Source, loseResponse ? (ICloudTransferTransport)new InterruptedTransport(fixture.Transport, true, "lost-response", false) : fixture.Transport, () => current))
+            using (var session = new CloudVrmTransferSession(fixture.Source, loseResponse ? (ICloudTransferTransport)new InterruptedTransport(fixture.Transport, true, "lost-response", false) : fixture.Transport, () => current, NoWait))
             {
                 fixture.Transport.ExtendedUploads = true;
                 fixture.Transport.Now = () => current;
@@ -1208,8 +1213,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         private sealed class FakeTransport : ICloudTransferTransport
         {
             private readonly CloudVrmTransferSource source;
-            internal readonly string ReadToken = LanTransferProtocol.Base64Url(new byte[32]);
-            internal readonly string UploadToken = LanTransferProtocol.Base64Url(Enumerable.Repeat((byte)1, 32).ToArray());
+            internal readonly string ReadToken = CloudTransferProtocol.Base64Url(new byte[32]);
+            internal readonly string UploadToken = CloudTransferProtocol.Base64Url(Enumerable.Repeat((byte)1, 32).ToArray());
             internal readonly List<byte[]> Parts = new List<byte[]>();
             internal readonly List<string> RequestTokens = new List<string>();
             internal string Metadata;
@@ -1290,7 +1295,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     if (CreatePath == "/v3/uploads" && PublishCalls == 1) expiry = Now() + PublicationLifetimeSeconds;
                     AfterPublish?.Invoke();
                     var hash = Failure == "publish-mismatch" ? new string('f', 64) : wireHash;
-                    using (var digest = SHA256.Create()) Assert.That(LanTransferProtocol.Hex(digest.ComputeHash(Parts.SelectMany(part => part).ToArray())), Is.EqualTo(wireHash));
+                    using (var digest = SHA256.Create()) Assert.That(CloudTransferProtocol.Hex(digest.ComputeHash(Parts.SelectMany(part => part).ToArray())), Is.EqualTo(wireHash));
                     return new CloudTransferResponse(200, "{\"v\":" + (Failure == "legacy-publish" ? 2 : 3) + ",\"id\":\"" + id + "\",\"token\":\"" + ReadToken + "\",\"name\":\"encrypted-avatar.bin\",\"size\":" + wireSize + ",\"sha256\":\"" + hash + "\",\"expiresAt\":" + expiry + "}");
                 }
                 Assert.That(method, Is.EqualTo("GET"));

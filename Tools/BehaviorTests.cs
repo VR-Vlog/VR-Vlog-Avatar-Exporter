@@ -33,18 +33,15 @@ public static class ExporterBehaviorTests
     public static string Run()
     {
         _assertions = 0;
-        var plum = GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("eye_close", "vrc.Blink", "eye_blink_1"))));
-        var plumBinds = (List<object>)((Dictionary<string, object>)Presets(plum.Json)["blink"])["morphTargetBinds"];
-        Check((long)((Dictionary<string, object>)plumBinds[0])["index"] == 1L,
+        // The blink itself is chosen in Unity (BlinkExportSession) from these names.
+        Check(BlinkShapeNames.Resolve(new[] { "eye_close", "vrc.Blink", "eye_blink_1" })[0] == 1,
             "Plum blink must close eyelids (vrc.Blink), never move the eyes together (eye_close).");
-        foreach (var shapes in new[] { new[] { "Blink_L" }, new[] { "Blink_R" }, new[] { "Blink", "BLINK" } })
+        Check(BlinkShapeNames.Resolve(new[] { "Blink", "BLINK" }).All(index => index == -2), "Duplicate closing names are ambiguous.");
+        foreach (var shapes in new[] { new[] { "Blink_L" }, new[] { "Blink_R" } })
         {
-            var multi = Fixture("Blink", "vrc.v.aa");
-            ((List<object>)multi["nodes"]).Add(Obj("mesh", 1L));
-            ((List<object>)multi["meshes"]).Add(((List<object>)Fixture(shapes)["meshes"])[0]);
-            var inferred = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(multi))).Json);
-            Check(!inferred.ContainsKey("blink") && inferred.ContainsKey("aa"),
-                "Incomplete or ambiguous eyelash renderers cannot be omitted behind another renderer's blink.");
+            var resolved = BlinkShapeNames.Resolve(shapes);
+            Check(resolved[0] < 0 && resolved[1] == BlinkShapeNames.PartialPair && resolved[2] == BlinkShapeNames.PartialPair,
+                "One side of a closing pair is reported, not exported as a blink.");
         }
 
         VRVlog.LilToonExporter.Tests.BaseShapeFixture.Run(Check);
@@ -68,15 +65,11 @@ public static class ExporterBehaviorTests
         var output = VrmExpressionBindings.AddMissing(original);
         var result = GlbDocument.Read(output);
         var presets = Presets(result.Json);
-        Check(presets.Count == 4, "Export bilateral blink and available mouth presets only.");
+        Check(presets.Count == 1, "Export available mouth presets only; blink names are left to the blink export.");
         Check(result.Binary.SequenceEqual(new byte[] { 7, 8, 9, 10 }), "Never rewrite mesh or image bytes.");
-        foreach (var item in new[] { ("blink", 1L), ("blinkLeft", 2L), ("blinkRight", 3L), ("aa", 5L) })
-        {
-            var expression = (Dictionary<string, object>)presets[item.Item1];
-            var binding = (Dictionary<string, object>)((List<object>)expression["morphTargetBinds"])[0];
-            Check((long)binding["node"] == 1L && (long)binding["index"] == item.Item2 && Convert.ToDouble(binding["weight"]) == 1.0,
-                "Bindings use final node and target indices, with VRChat viseme preference.");
-        }
+        var mouthBinding = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)presets["aa"])["morphTargetBinds"])[0];
+        Check((long)mouthBinding["node"] == 1L && (long)mouthBinding["index"] == 5L && Convert.ToDouble(mouthBinding["weight"]) == 1.0,
+            "Bindings use final node and target indices, with VRChat viseme preference.");
         Check(VrmExpressionBindings.AddMissing(output).SequenceEqual(output), "Reprocessing is idempotent.");
         var authored = Fixture("eye_close", "eye_close_left", "eye_close_right");
         var vrm = (Dictionary<string, object>)((Dictionary<string, object>)authored["extensions"])["VRMC_vrm"];
@@ -88,15 +81,13 @@ public static class ExporterBehaviorTests
         var warnings = new List<string>();
         var unknown = Encode(Fixture("eye_close_extra", "previewBlink", "mouth_anger"));
         Check(VrmExpressionBindings.AddMissing(unknown, warnings).SequenceEqual(unknown), "Do not guess from substrings.");
-        Check(warnings.Any(x => x.Contains("Blink")), "Report when blink could not be configured.");
-        var duplicate = Encode(Fixture("Blink_L", "BLINK_L", "Blink_R"));
-        Check(VrmExpressionBindings.AddMissing(duplicate, warnings).SequenceEqual(duplicate), "Reject ambiguous duplicate aliases.");
-        var invalid = Fixture("eye_close");
+        Check(BlinkShapeNames.Resolve(new[] { "Blink_L", "BLINK_L", "Blink_R" }).All(index => index == -2), "Reject ambiguous duplicate aliases.");
+        var invalid = Fixture("vrc.v_aa");
         ((Dictionary<string, object>)((List<object>)invalid["nodes"])[1])["mesh"] = 999L;
         bool threw = false;
         try { VrmExpressionBindings.AddMissing(Encode(invalid)); } catch (InvalidOperationException) { threw = true; }
         Check(threw, "Reject invalid node/mesh indices.");
-        var split = Fixture("Blink_L", "Blink_R");
+        var split = Fixture("vrc.v_aa");
         var mesh = (Dictionary<string, object>)((List<object>)split["meshes"])[0];
         ((List<object>)mesh["primitives"]).Add(Obj("targets", Arr()));
         threw = false;
@@ -106,11 +97,11 @@ public static class ExporterBehaviorTests
         return $"Exporter behavior checks passed ({_assertions} assertions).";
     }
 
-    // Shapes in DescriptorVisemes.Slots order: aa, ee, ih, oh, ou.
+    // Shapes in ExpressionPresetGroups.VisemeSlots order: aa, ee, ih, oh, ou.
     private static VrmExpressionBindings.DescriptorVisemes Visemes(int node, params string[] shapes)
     {
         var result = new VrmExpressionBindings.DescriptorVisemes { Node = node };
-        for (var i = 0; i < shapes.Length; i++) result.Shapes[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset] = shapes[i];
+        for (var i = 0; i < shapes.Length; i++) result.Shapes[ExpressionPresetGroups.VisemeSlots[i].Preset.ToString()] = shapes[i];
         return result;
     }
     private static Dictionary<string, object> FirstBind(Dictionary<string, object> presets, string preset) =>
@@ -122,54 +113,54 @@ public static class ExporterBehaviorTests
         {
             var warnings = new List<string>();
             var bytes = Encode(Fixture(new[] { "lip_sil" }.Concat(names).ToArray()));
-            var presets = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false,
+            var presets = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(bytes, warnings,
                 descriptor: Visemes(1, names))).Json);
             for (var i = 0; i < names.Length; i++)
             {
-                var bind = FirstBind(presets, VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset);
+                var bind = FirstBind(presets, ExpressionPresetGroups.VisemeSlots[i].Preset.ToString());
                 Check((long)bind["node"] == 1L && (long)bind["index"] == i + 1L,
                     "Descriptor visemes bind their own shapes even when the names are not known aliases.");
             }
             Check(warnings.Count == 0, "Descriptor visemes that all bind add no warning.");
         }
         var both = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("vrc.v_aa", "merged__vrc.v_aa")),
-            inferBlink: false, descriptor: Visemes(1, "merged__vrc.v_aa"))).Json);
+            descriptor: Visemes(1, "merged__vrc.v_aa"))).Json);
         Check((long)FirstBind(both, "aa")["index"] == 1L, "The descriptor shape beats the alias guess.");
         var authored = Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou");
         ((Dictionary<string, object>)((Dictionary<string, object>)authored["extensions"])["VRMC_vrm"])["expressions"] =
             Obj("preset", Obj("aa", Obj()));
-        var kept = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(authored), inferBlink: false,
+        var kept = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(authored),
             descriptor: Visemes(1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"))).Json);
         Check(((Dictionary<string, object>)kept["aa"]).Count == 0 && kept.ContainsKey("ou"),
             "An authored preset, even an empty one, wins over the descriptor.");
         var missingWarnings = new List<string>();
         var missing = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh")),
-            missingWarnings, inferBlink: false, descriptor: Visemes(1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"))).Json);
+            missingWarnings, descriptor: Visemes(1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"))).Json);
         Check(missing.Count == 4 && !missing.ContainsKey("ou") && missingWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning),
             "Report a declared viseme that is not in the output.");
         var notExported = new List<string>();
         var fallback = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou")),
-            notExported, inferBlink: false, descriptor: Visemes(-1, "vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou"))).Json);
+            notExported, descriptor: Visemes(-1, "vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou"))).Json);
         Check(fallback.Count == 5 && !notExported.Contains(VrmExpressionBindings.UnboundVisemeWarning) &&
             !notExported.Contains(VrmExpressionBindings.UnexportedVisemeMeshWarning),
             "Known aliases still bind when the descriptor renderer has no output node.");
         var emptySlots = new List<string>();
         var partial = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee")),
-            emptySlots, inferBlink: false, descriptor: Visemes(1, "lip_aa"))).Json);
+            emptySlots, descriptor: Visemes(1, "lip_aa"))).Json);
         Check(partial.Count == 1 && partial.ContainsKey("aa") && emptySlots.Count == 0,
             "Empty Lip Sync slots without aliases stay silent.");
         var unexported = new List<string>();
-        VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou")), unexported, inferBlink: false,
+        VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou")), unexported,
             descriptor: Visemes(-1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"));
         Check(unexported.Contains(VrmExpressionBindings.UnexportedVisemeMeshWarning) && !unexported.Contains(VrmExpressionBindings.UnboundVisemeWarning),
             "A Face Mesh that was not exported gets its own warning.");
         var lostWarnings = new List<string>();
         var lost = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou")),
-            lostWarnings, inferBlink: false, descriptor: Visemes(1, "lip_aa", null, "lip_ih", "lip_oh", "lip_ou"))).Json);
+            lostWarnings, descriptor: Visemes(1, "lip_aa", null, "lip_ih", "lip_oh", "lip_ou"))).Json);
         Check(lost.Count == 4 && !lost.ContainsKey("ee") && lostWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning),
             "A named shape that the optimizer could not follow is reported, not guessed.");
         var noneWarnings = new List<string>();
-        VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa")), noneWarnings, inferBlink: false);
+        VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa")), noneWarnings);
         Check(!noneWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning), "Without a descriptor, keep the previous warnings only.");
     }
 
@@ -234,7 +225,7 @@ public static class ExporterBehaviorTests
         Check(before.Binary.SequenceEqual(after.Binary), "Fixture geometry/textures changed.");
         var presets = Presets(after.Json);
         var previous = Presets(before.Json);
-        foreach (var name in BlinkShapeNames.Presets)
+        foreach (var name in ExpressionPresetGroups.Blinks.Select(preset => preset.ToString()))
         {
             if (!presets.ContainsKey(name)) continue;
             if (previous.ContainsKey(name))
@@ -249,7 +240,7 @@ public static class ExporterBehaviorTests
                 var mesh = (Dictionary<string, object>)((List<object>)after.Json["meshes"])[(int)(long)node["mesh"]];
                 var names = (List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"];
                 var candidates = BlinkShapeNames.Resolve(names.Cast<string>().ToArray());
-                var slot = Array.IndexOf(BlinkShapeNames.Presets, name);
+                var slot = Array.FindIndex(ExpressionPresetGroups.Blinks, preset => preset.ToString() == name);
                 var index = (int)(long)binding["index"];
                 Check(index == candidates[slot] || slot == 0 && candidates[0] < 0 &&
                     (index == candidates[1] || index == candidates[2]), "Fixture binding resolves to the wrong shape.");

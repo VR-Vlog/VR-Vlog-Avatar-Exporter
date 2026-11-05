@@ -24,21 +24,6 @@ namespace VRVlog.LilToonExporter.Tests
         const string Missing = "Mouth missing";
         const string Stripped = "Mouth stripped";
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
-        static void SetFx(Component descriptor, RuntimeAnimatorController controller)
-        {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         static AnimatorController DefaultController(string asset)
         {
             var controller = AnimatorController.CreateAnimatorControllerAtPath(asset);
@@ -68,8 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
             // gets each non-null one except Missing, which only the descriptor names.
             internal Scene(string mode, Type descriptorType, Type proxyType, string[] visemes = null)
             {
-                var folderName = "__NdmfLostMorph_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", folderName); Folder = "Assets/" + folderName;
+                Folder = TempAssetFolder.Create("__NdmfLostMorph_");
                 var source = Fixture.Source;
                 Front = source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 Back = source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
@@ -87,7 +71,7 @@ namespace VRVlog.LilToonExporter.Tests
                     skin.sharedMaterial.shader = Shader.Find("lilToon");
                 }
                 var descriptor = source.AddComponent(descriptorType);
-                SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
+                VrcAvatar.SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
                 if (visemes != null)
                 {
                     var lipSync = descriptorType.GetField("lipSync");
@@ -119,7 +103,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
                 blink.Both.Add(new BlinkShapeBinding { Renderer = Front, Shape = "Face blink", Weight = 100 });
-                return UniVrmOneClickExporter.Export(Fixture.Source, "NDMF lost morph", "Tests", warnings,
+                return UniVrmOneClickExporter.Export(Fixture.Source, "NDMF lost morph", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: blink, recoveryReport: report, descriptorVisemes: visemes);
             }
 
@@ -132,7 +116,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The test pass stays inert outside these tests.
-        static void Arm(bool armed) => InstalledType(PluginType)?.GetField("Armed")?.SetValue(null, armed);
+        static void Arm(bool armed) => OptionalTools.Find(PluginType)?.GetField("Armed")?.SetValue(null, armed);
 
         [SetUp]
         public void SetUp() => Arm(true);
@@ -142,9 +126,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         static (Type Descriptor, Type Proxy) RequireInstalled()
         {
-            var descriptorType = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var proxyType = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
-            if (descriptorType == null || proxyType == null || InstalledType(PluginType) == null)
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            if (descriptorType == null || proxyType == null || OptionalTools.Find(PluginType) == null)
                 Assert.Ignore("Install the real VRChat SDK, Modular Avatar and NDMF to run their real processing pipeline.");
             return (descriptorType, proxyType);
         }
@@ -421,7 +405,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(exportCopy); }
 
-            using var session = new ExperimentalExpressionCaptureSession(source, false);
+            using var session = new ExperimentalExpressionCaptureSession(source);
             Assert.That(session.ClipError(smile, 0), Is.Null);
             var front = session.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
             var shape = front.sharedMesh.GetBlendShapeIndex("Face smile");
@@ -444,7 +428,7 @@ namespace VRVlog.LilToonExporter.Tests
             var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
             Assert.That(failure.ToString(), Does.Contain("The failing optimizer test pass failed."),
                 "The failing test pass must be what stops a strict export.");
-            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source, false))
+            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source))
                 Assert.That(session.Copy, Is.Not.Null);
             Vrm10Instance imported = null;
             try
@@ -480,7 +464,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var attempts = 0;
-                UniVrmOneClickExporter.ConversionFaultInjection = copy =>
+                ExportTestHooks.ConversionFaultInjection = copy =>
                 {
                     if (++attempts == 1) throw new InvalidOperationException("The optimized copy cannot be converted.");
                 };
@@ -497,7 +481,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Is.EqualTo("Hips/Spine/Chest/Neck/Head"), "The MA Bone Proxy must still be applied.");
 
                 attempts = 0;
-                UniVrmOneClickExporter.ConversionFaultInjection = copy =>
+                ExportTestHooks.ConversionFaultInjection = copy =>
                 {
                     attempts++;
                     throw new InvalidOperationException("The copy cannot be converted.");
@@ -509,7 +493,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                UniVrmOneClickExporter.ConversionFaultInjection = null;
+                ExportTestHooks.ConversionFaultInjection = null;
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
             }
         }
@@ -525,16 +509,15 @@ namespace VRVlog.LilToonExporter.Tests
             using var scene = new Scene(LostMorphTestPluginTransformFail, installed.Descriptor, installed.Proxy);
             // NDMF logs the failing pass to the Console.
             UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
-            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
-            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var previous = ExportTestHooks.ContinueByDefault;
             try
             {
-                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, false);
-                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false).Dispose());
+                ExportTestHooks.ContinueByDefault = false;
+                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source).Dispose());
                 Assert.That(failure.ToString(), Does.Contain("The failing mesh tool test pass failed."));
 
-                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, true);
-                using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false))
+                ExportTestHooks.ContinueByDefault = true;
+                using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source))
                 {
                     Assert.That(session.Copy, Is.Not.Null);
                     Assert.That(session.Warnings, Does.Contain(ExporterLocalization.T(ExperimentalExpressionCaptureSession.WithoutBuildPassesWarning)));
@@ -548,8 +531,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
-                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+                ExportTestHooks.ContinueByDefault = previous;
             }
         }
 

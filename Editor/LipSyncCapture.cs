@@ -24,8 +24,7 @@ namespace VRVlog.LilToonExporter
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             try
             {
-                var descriptor = clone.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                    c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                var descriptor = VrChatExpressionMenu.Descriptor(clone);
                 if (VrChatExpressionMenu.Member(descriptor, "lipSync")?.ToString() != "VisemeParameterOnly") return null;
                 var fx = VrChatExpressionMenu.Read(clone, new VrChatMenuImportPolicy { SkipPlayback = true }).Controller;
                 var data = new LipSyncData { DominantViseme = true, TransitionSeconds = fx == null ? 0f : TransitionSeconds(ExpressionDependencies.Controller(fx)) };
@@ -79,11 +78,7 @@ namespace VRVlog.LilToonExporter
             if (data == null) return bytes;
             var extension = LipSyncData.Write(data);
             var document = GlbDocument.Read(bytes);
-            if (!document.Json.TryGetValue("extensions", out var rawExtensions)) document.Json["extensions"] = rawExtensions = new Dictionary<string, object>();
-            ((Dictionary<string, object>)rawExtensions)[LipSyncData.Extension] = extension;
-            if (!document.Json.TryGetValue("extensionsUsed", out var rawUsed)) document.Json["extensionsUsed"] = rawUsed = new List<object>();
-            var used = (List<object>)rawUsed;
-            if (!used.Contains(LipSyncData.Extension)) used.Add(LipSyncData.Extension);
+            document.PlaceExtension(LipSyncData.Extension, extension);
             return document.Write();
         }
     }

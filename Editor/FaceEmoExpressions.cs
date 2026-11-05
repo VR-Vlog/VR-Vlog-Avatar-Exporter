@@ -18,15 +18,6 @@ namespace VRVlog.LilToonExporter
         // Read the prepared clip after NDMF has retargeted its object paths, then
         // map those paths back to the source menu's renderer identities.
         internal static void ApplyPreparedDefaultFace(GameObject prepared, VrChatExpressionMenu.Source source,
-            Func<string, string> toAuthoringPath, Func<string, bool> excludedPath = null)
-        {
-            ApplyPreparedDefaultFace(prepared, source, path => {
-                var original = toAuthoringPath?.Invoke(path) ?? (toAuthoringPath == null ? path : null);
-                return original == null ? Array.Empty<string>() : new[] { original };
-            }, null, excludedPath);
-        }
-
-        internal static void ApplyPreparedDefaultFace(GameObject prepared, VrChatExpressionMenu.Source source,
             PreparedExpressionBindings bindings, Func<string, bool> excludedPath = null, BindingSnapshot registeredBindings = null)
         {
             if (bindings == null) throw new ArgumentNullException(nameof(bindings));
@@ -40,7 +31,7 @@ namespace VRVlog.LilToonExporter
             Func<string, string[]> toAuthoringPaths, Func<string, SkinnedMeshRenderer> toPreparedRenderer,
             Func<string, bool> excludedPath, bool composeValues = true)
         {
-            var entries = source.Entries.Where(entry => entry.Error == null && entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true).ToArray();
+            var entries = source.Entries.Where(entry => entry.Error == null && entry.Source == VRVlog.Expressions.ExpressionSource.FaceEmo).ToArray();
             if (entries.Length == 0) return;
             var metadata = VrChatExpressionMenu.Read(prepared, new VrChatMenuImportPolicy { SkipAll = true });
             if (metadata.Controller == null) return;
@@ -82,22 +73,6 @@ namespace VRVlog.LilToonExporter
         // Explicit branch channels win across every authoring alias; defaults
         // never inherit the alternative mode state's pose. Validate all plans
         // before publishing any values into the source menu.
-        internal static void ComposeCommonValues(GameObject prepared, VrChatExpressionMenu.Source source,
-            IEnumerable<VrChatExpressionMenu.MorphValue> underlay, PreparedExpressionBindings bindings)
-        {
-            var entries = source.Entries.Where(entry => entry.Error == null && entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true).ToArray();
-            ComposeCommonValues(prepared, entries, underlay, bindings.AuthoringPaths, path => bindings.Get(path)?.Renderer);
-        }
-
-        private sealed class BranchChannel
-        {
-            internal SkinnedMeshRenderer Renderer;
-            internal string Shape;
-            internal float Weight;
-            internal bool HasValue;
-            internal VRVlog.Expressions.ExpressionAnimationData.Curve Curve;
-        }
-
         private static void ComposeCommonValues(GameObject prepared, VrChatExpressionMenu.Entry[] entries,
             IEnumerable<VrChatExpressionMenu.MorphValue> underlay, Func<string, string[]> toAuthoringPaths,
             Func<string, SkinnedMeshRenderer> toPreparedRenderer)
@@ -128,45 +103,16 @@ namespace VRVlog.LilToonExporter
             var plans = new List<(VrChatExpressionMenu.Entry Entry, List<VrChatExpressionMenu.MorphValue> Values)>();
             foreach (var entry in entries)
             {
-                var channels = new Dictionary<(string Path, string Shape), BranchChannel>();
-                BranchChannel Channel(string path, string shape)
+                // A path the prepared bindings cannot place falls back to the
+                // common face's renderer; one neither knows is never compared.
+                var explicitChannels = new HashSet<(SkinnedMeshRenderer Renderer, string Shape)>();
+                foreach (var channel in ExpressionChannelMerge.Groups(entry, path =>
                 {
-                    var key = (path, shape);
-                    if (channels.TryGetValue(key, out var known)) return known;
                     var renderer = toPreparedRenderer?.Invoke(path);
                     if (renderer == null) origins.TryGetValue(path, out renderer);
-                    var channel = new BranchChannel { Renderer = renderer, Shape = shape };
-                    channels.Add(key, channel); return channel;
-                }
-                foreach (var value in entry.Values)
-                {
-                    var channel = Channel(value.Path, value.Shape);
-                    if (channel.HasValue && !channel.Weight.Equals(value.Weight) && channel.Renderer != null) throw Conflict(channel.Renderer, channel.Shape);
-                    channel.HasValue = true; channel.Weight = value.Weight;
-                }
-                foreach (var animated in entry.Animation)
-                {
-                    var channel = Channel(animated.Path, animated.Shape);
-                    if (channel.Curve != null && !VrChatExpressionBaker.SameCurve(channel.Curve, animated.Curve) && channel.Renderer != null)
-                        throw Conflict(channel.Renderer, channel.Shape);
-                    channel.Curve = animated.Curve;
-                }
-                foreach (var channel in channels.Values.Where(channel => channel.Renderer != null && channel.Curve != null))
-                {
-                    var initial = (float)channel.Curve.Evaluate(0);
-                    if (channel.HasValue && !channel.Weight.Equals(initial)) throw Conflict(channel.Renderer, channel.Shape);
-                    channel.Weight = initial;
-                }
-                var explicitChannels = new HashSet<(SkinnedMeshRenderer Renderer, string Shape)>();
-                foreach (var group in channels.Values.Where(channel => channel.Renderer != null).GroupBy(channel => (channel.Renderer, channel.Shape)))
-                {
-                    var first = group.First();
-                    foreach (var other in group.Skip(1))
-                        if (!first.Weight.Equals(other.Weight) || !(VrChatExpressionBaker.SameCurve(first.Curve, other.Curve) ||
-                            VrChatExpressionBaker.ConstantAt(first.Curve, first.Weight) && VrChatExpressionBaker.ConstantAt(other.Curve, other.Weight)))
-                            throw Conflict(first.Renderer, first.Shape);
-                    explicitChannels.Add(group.Key);
-                }
+                    return new ExpressionChannelMerge.Channel { Renderer = renderer };
+                }, merged => Conflict(merged.Renderer, merged.Shape), skipUnresolved: true))
+                    explicitChannels.Add((channel.Renderer, channel.Shape));
                 var values = new List<VrChatExpressionMenu.MorphValue>(entry.Values);
                 foreach (var pair in defaults.Where(pair => !explicitChannels.Contains(pair.Key)))
                     foreach (var path in pair.Value.Paths.OrderBy(path => path, StringComparer.Ordinal))
@@ -353,15 +299,9 @@ namespace VRVlog.LilToonExporter
                 // NDMF records committed animator clips against the original
                 // asset. Read that existing provenance without creating a
                 // reference; augmented clips need not have identical curves.
-                var contract = objectRegistry.GetType().GetInterfaces().FirstOrDefault(type =>
-                    type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-                var method = contract?.GetMethod("GetReference", new[] { typeof(UnityEngine.Object), typeof(bool) });
-                if (method == null) return false;
                 try
                 {
-                    var reference = method.Invoke(objectRegistry, new object[] { clip, false });
-                    var origin = reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)
-                        ?.GetValue(reference) as UnityEngine.Object;
+                    var origin = NdmfExportPreparation.RegisteredOriginal(objectRegistry, clip);
                     return origin != null && (origin == registered || origin == isolatedCopyOf?.Invoke(registered));
                 }
                 catch (TargetInvocationException) { return false; }
@@ -419,7 +359,7 @@ namespace VRVlog.LilToonExporter
             }
 
             internal PlayerSelection ReadClip(GameObject avatar, AnimationClip original, VrChatExpressionMenu.Entry entry,
-                RuntimeAnimatorController runtime = null, VrChatExpressionMenu.Source metadata = null)
+                RuntimeAnimatorController runtime = null, FxAnalysis analysis = null)
             {
                 if (avatar != clone) throw new InvalidOperationException("FaceEmoの表情参照は書き出し用コピーと一致していません。");
                 if (!targets.TryGetValue(original, out var paths))
@@ -480,7 +420,7 @@ namespace VRVlog.LilToonExporter
                     // its additional synchronized channels are part of the
                     // prepared expression, not optional matching evidence.
                     var read = selected.ReadPreparedMotion ? selected.Motion : clip;
-                    VrChatGestureExpressions.ReadClip(avatar, read, entry, PreparedExcludedPath, metadata);
+                    VrChatGestureExpressions.ReadClip(avatar, read, entry, PreparedExcludedPath, analysis);
                     if (entry.Animation.Count > 0)
                     {
                         if (read.length <= 0 || read.length > 600)
@@ -550,10 +490,10 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool IsRepository(Component component) => component != null &&
-            component.GetType().FullName == "Suzuryg.FaceEmo.Components.Data.MenuRepositoryComponent";
+            component.GetType().FullName == ExportTypeNames.FaceEmoMenuRepository;
 
         private static bool IsLauncher(Component component) => component != null &&
-            component.GetType().FullName == "Suzuryg.FaceEmo.Components.FaceEmoLauncherComponent";
+            component.GetType().FullName == ExportTypeNames.FaceEmoLauncher;
 
         internal static bool TargetsAvatar(GameObject avatar, object settings)
         {
@@ -643,21 +583,21 @@ namespace VRVlog.LilToonExporter
         }
 
         // The list-only export reads a listed clip FaceEmo registers through
-        // here too, so its permanent overrides and, for an entry whose Id
-        // starts with "faceemo/", the common DEFAULT FACE apply as they do here.
+        // here too, so its permanent overrides and, for an entry whose Source
+        // is FaceEmo, the common DEFAULT FACE apply as they do here.
         internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry, VrChatExpressionMenu.Source source,
-            Func<string, bool> excludedPath, BindingSnapshot bindings)
+            Func<string, bool> excludedPath, BindingSnapshot bindings, FxAnalysis analysis = null)
         {
             PlayerSelection selected;
             if (bindings == null)
             {
-                VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source);
+                VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, analysis);
                 selected = ResolvePlayer(source.Controller, clip, clip);
             }
-            else selected = bindings.ReadClip(avatar, clip, entry, source.Controller, source);
+            else selected = bindings.ReadClip(avatar, clip, entry, source.Controller, analysis);
             if (bindings?.DeferPermanentOverrides == true) bindings.Defer(entry, selected);
             else VrChatExpressionSampler.ApplyPermanentOverrides(avatar, source.Controller, entry, selected.Layer, selected.WriteDefaults,
-                excludedPath: bindings == null ? excludedPath : bindings.PreparedExcludedPath, metadata: source, sourceState: selected.State);
+                excludedPath: bindings == null ? excludedPath : bindings.PreparedExcludedPath, metadata: source, sourceState: selected.State, analysis: analysis);
         }
 
         private static AnimationClip Resolve(object animation)

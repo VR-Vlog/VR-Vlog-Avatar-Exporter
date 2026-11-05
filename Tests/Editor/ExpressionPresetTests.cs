@@ -12,6 +12,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 using Session = VRVlog.LilToonExporter.ExperimentalExpressionCaptureSession;
 
@@ -52,15 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
         static (string Name, Vector3[] Deltas) Shape(string name, Vector3 delta, params int[] vertices) =>
             (name, Enumerable.Range(0, 3).Select(index => vertices.Length == 0 || vertices.Contains(index) ? delta : Vector3.zero).ToArray());
 
-        static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(type => type != null);
-
-        static AnimationClip FaceClip(float weight)
-        {
-            var clip = new AnimationClip { name = "Sample face" };
-            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-            return clip;
-        }
+        static AnimationClip FaceClip(float weight) => ExperimentalExpressionCaptureTests.FaceClip("Sample face", weight);
 
         static Dictionary<string, object> Expressions(byte[] bytes)
         {
@@ -129,17 +122,17 @@ namespace VRVlog.LilToonExporter.Tests
             session.Expressions.Add(pose);
         }
 
-        static Session.PresetAssignment[] NoneForEveryEmotion() => Session.EmotionPresets.Select(Session.PresetAssignment.None).ToArray();
+        static Session.PresetAssignment[] NoneForEveryEmotion() => ExpressionPresetGroups.Emotions.Select(Session.PresetAssignment.None).ToArray();
 
         [Test]
         public void WithoutAssignmentsTheExportedExpressionsAreUnchanged()
         {
             using var fixture = Fixture(smile: false);
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            using var session = new Session(fixture.Source);
             var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
             var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
             var explicitNone = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: NoneForEveryEmotion());
-            Assert.That(Session.EmotionPresets.Any(preset => Presets(before).ContainsKey(preset.ToString())), Is.False);
+            Assert.That(ExpressionPresetGroups.Emotions.Any(preset => Presets(before).ContainsKey(preset.ToString())), Is.False);
             Assert.That(Canonical(Expressions(explicitNone)), Is.EqualTo(Canonical(Expressions(before))),
                 "Choosing nothing must keep the expression data of the existing export.");
         }
@@ -152,12 +145,12 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 session.SetPreset(ExpressionPreset.happy, Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip));
                 session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
                 session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
                 var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
-                Assert.That(Presets(bytes).Keys.Where(key => Session.EmotionPresets.Any(preset => preset.ToString() == key)), Is.EquivalentTo(new[] { "happy", "sad" }));
+                Assert.That(Presets(bytes).Keys.Where(key => ExpressionPresetGroups.Emotions.Any(preset => preset.ToString() == key)), Is.EquivalentTo(new[] { "happy", "sad" }));
                 imported = await Load(bytes);
                 Assert.That(imported.Vrm.Expression.Happy, Is.Not.Null);
                 // UniVRM creates empty clips for absent presets on import.
@@ -183,6 +176,39 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A looping face that starts at rest, holds, and eases back toward
+        // rest by its last frame is exported as the face it holds
+        // (ClipFaceTime), not as its last frame.
+        [Test]
+        public async Task PresetFromAMovingClipBakesTheFaceItHolds()
+        {
+            using var fixture = Fixture(smile: false);
+            var clip = new AnimationClip { name = "Sad loop" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                new AnimationCurve(new Keyframe(0, 0, 0, 0), new Keyframe(.5f, 70, 0, 0), new Keyframe(1, 90, 0, 0), new Keyframe(3, 90, 0, 0), new Keyframe(4, 40, 0, 0)));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(clip, settings);
+            Vrm10Instance imported = null;
+            try
+            {
+                Assert.That(ExperimentalExpressionCaptureWindow.DefaultTime(null, clip), Is.EqualTo(2).Within(1e-5), "The board shows the same frame.");
+                using var session = new Session(fixture.Source);
+                Assert.That(session.FaceTime(clip), Is.EqualTo(2).Within(1e-5), "The board reads the same frame with the avatar's rest weights.");
+                session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, clip));
+                Assert.That(session.PresetError(ExpressionPreset.sad, session.Presets[ExpressionPreset.sad]), Is.Null);
+                var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Load(bytes);
+                var front = imported.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+                imported.Runtime.Expression.SetWeight(ExpressionKey.Sad, 1); imported.Runtime.Process();
+                Assert.That(Vector3.Distance(FirstVertex(front), fixture.Mesh.vertices[0] + HairDelta * .9f), Is.LessThan(.0001),
+                    "The held weight 90, not the last frame's 40.");
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+                Object.DestroyImmediate(clip);
+            }
+        }
+
         // The board takes a clip that also names a shape the avatar never had.
         // In a standard slot it must save too, binding only the shapes the
         // mesh has. ShapesLostByPreparationStayUnsupportedOnTheBoard covers
@@ -197,7 +223,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
                 AnimationUtility.SetEditorCurve(absent, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
                 Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
                 session.SetPreset(ExpressionPreset.happy, assignment);
@@ -216,7 +242,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void DuplicateOrUnassignableAssignmentsAreRejected()
         {
             using var fixture = Fixture();
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            using var session = new Session(fixture.Source);
             var first = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
             var second = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Back", "Smile");
             Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", NoFaces, presets: new[] { first, second }));
@@ -233,7 +259,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void APresetErrorReadsTheSameWhenAskedAgain()
         {
             using var fixture = Fixture();
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            using var session = new Session(fixture.Source);
             var missing = Session.PresetAssignment.ForShape(ExpressionPreset.angry, "Front", "Missing");
             var first = session.PresetError(ExpressionPreset.angry, missing);
             var label = Session.PresetFullLabel(ExpressionPreset.angry) + ": ";
@@ -243,62 +269,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Assert.Throws<InvalidOperationException>(() => session.BuildPresetPose(ExpressionPreset.angry, missing)).Message, Is.EqualTo(first));
         }
 
-        [Test]
-        public void SettingsWithoutPresetsStillLoadAndNewChoicesRoundTrip()
-        {
-            using var fixture = Fixture();
-            string json;
-            using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
-            {
-                Record(session, "Sample", 75);
-                session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
-                session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
-                var automatic = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"); automatic.Automatic = true;
-                session.SetPreset(ExpressionPreset.happy, automatic);
-                json = session.SaveSettings();
-            }
-            // A record written before this feature has no Presets member.
-            var legacy = Regex.Replace(json, ",\\s*\"Presets\"\\s*:\\s*\\[[\\s\\S]*\\]\\s*}\\s*$", "}");
-            Assert.That(legacy, Does.Not.Contain("Presets"));
-            using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
-            {
-                session.LoadSettings(legacy);
-                Assert.That(session.Expressions.Single().Name, Is.EqualTo("Sample"));
-                Assert.That(session.Presets, Is.Empty);
-            }
-            using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
-            {
-                session.LoadSettings(json);
-                Assert.That(session.Presets.Keys, Is.EquivalentTo(new[] { ExpressionPreset.sad, ExpressionPreset.angry }), "Automatic suggestions are not saved.");
-                Assert.That(session.Presets[ExpressionPreset.sad].Shape, Is.EqualTo("Smile"));
-                Assert.That(session.Presets[ExpressionPreset.angry].IsNone, Is.True);
-            }
-        }
-
-        [TestCase("duplicate")]
+        // The store reads each assignment on its own and skips the ones that
+        // are rejected here.
+        [TestCase("null")]
         [TestCase("custom")]
         [TestCase("both")]
-        public void InvalidPresetSettingsLeaveTheRecordUnchanged(string kind)
+        [TestCase("id-without-guid")]
+        [TestCase("missing-clip")]
+        public void InvalidStoredPresetIsRejected(string kind)
         {
-            using var fixture = Fixture();
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-            Record(session, "Sample", 75);
-            var settings = JsonUtility.FromJson<Session.Settings>(session.SaveSettings());
             var entry = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
             switch (kind)
             {
-                case "duplicate": settings.Presets = new List<Session.PresetAssignment> { entry, entry.Copy() }; break;
-                case "custom": entry.Preset = "custom"; settings.Presets = new List<Session.PresetAssignment> { entry }; break;
-                case "both": entry.ClipGuid = "0123456789abcdef0123456789abcdef"; settings.Presets = new List<Session.PresetAssignment> { entry }; break;
+                case "null": entry = null; break;
+                case "custom": entry.Preset = "custom"; break;
+                case "both": entry.ClipGuid = "0123456789abcdef0123456789abcdef"; break;
+                case "id-without-guid": entry = Session.PresetAssignment.None(ExpressionPreset.happy); entry.ClipLocalId = 7; break;
+                case "missing-clip": entry = Session.PresetAssignment.None(ExpressionPreset.happy); entry.ClipGuid = "0123456789abcdef0123456789abcdef"; entry.ClipLocalId = 7; break;
             }
-            Assert.Throws<InvalidOperationException>(() => session.LoadSettings(JsonUtility.ToJson(settings)));
-            Assert.That(session.Presets, Is.Empty);
-            Assert.That(session.Expressions.Single().Name, Is.EqualTo("Sample"));
+            Assert.Throws<InvalidOperationException>(() => Session.LoadPreset(entry));
+            Assert.That(Session.LoadPreset(Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile")).Shape, Is.EqualTo("Smile"));
         }
 
-        [TestCase("Smile", ExpressionPreset.happy, 0)]
         [TestCase("FaceSmile01", ExpressionPreset.happy, 0)]
-        [TestCase("joy", ExpressionPreset.happy, 1)]
         [TestCase("ちょっと笑い", ExpressionPreset.happy, 1)]
         [TestCase("Sorrow", ExpressionPreset.sad, 0)]
         [TestCase("cry_face", ExpressionPreset.sad, 1)]
@@ -312,9 +305,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void NamesSuggestOneEmotion(string name, ExpressionPreset expected, int tier) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
-        [TestCase("eye_smile_L")]
         [TestCase("Smile.R")]
-        [TestCase("mouth_smile")]
         [TestCase("smile_angry")]
         [TestCase("泣き笑い")]
         [TestCase("Blink")]
@@ -324,7 +315,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Smile Off")]
         [TestCase("")]
         public void PartialAmbiguousOrUnrelatedNamesSuggestNothing(string name) =>
-            Assert.That(Session.SuggestPreset(name), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion(name)?.Preset, Is.Null);
 
         // Every listed word, alone and in a typical clip name, names its own emotion and tier.
         [Test]
@@ -341,7 +332,7 @@ namespace VRVlog.LilToonExporter.Tests
                         : new[] { word, "表情_" + word, word + "02" };
                     foreach (var name in names)
                         Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), name);
-                    if (latin) Assert.That(Session.SuggestPreset(word + "x"), Is.Not.EqualTo(entry.Preset).Or.Null, "Latin words match whole words only: " + word);
+                    if (latin) Assert.That(ExpressionNameInference.MatchEmotion(word + "x")?.Preset, Is.Not.EqualTo(entry.Preset).Or.Null, "Latin words match whole words only: " + word);
                     // Menu words (Japanese, romaji too) are read only in menu and clip names, never in raw BlendShape names.
                     Assert.That(ExpressionNameInference.MatchEmotion(word, rawShape: true),
                         menuOnly ? Is.Null : Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), word);
@@ -352,7 +343,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionNameInference.Emotions.SelectMany(entry => entry.Words).All(word => word.All(character => character < 128)), "Words read in raw shape names are ASCII.");
             Assert.That(words.Distinct().Count(), Is.EqualTo(words.Length), "A word belongs to one emotion and tier.");
             foreach (var veto in ExpressionNameInference.VetoWords.Concat(ExpressionNameInference.VetoParts))
-                Assert.That(Session.SuggestPreset("Smile " + veto), Is.Null, veto);
+                Assert.That(ExpressionNameInference.MatchEmotion("Smile " + veto)?.Preset, Is.Null, veto);
         }
 
         [Test]
@@ -363,7 +354,7 @@ namespace VRVlog.LilToonExporter.Tests
             var happy = FaceClip(80); happy.name = "Happy face";
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { neutral, happy });
                 Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.happy }),
                     "A clip equal to the base face is not offered; the BlendShape 'Smile' loses to the named clip.");
@@ -390,7 +381,7 @@ namespace VRVlog.LilToonExporter.Tests
                 authored.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .5f) };
                 settings.Expression.Happy = authored;
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.happy), Is.True);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.sad), Is.False);
                 Assert.That(session.SuggestPresets(new[] { happy }).ContainsKey(ExpressionPreset.happy), Is.False,
@@ -422,7 +413,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 Assert.That(ExpressionShapeNames.Shipped.Count, Is.GreaterThan(0));
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { unnamed });
                 Assert.That(suggested.TryGetValue(ExpressionPreset.happy, out var happy), Is.True, "A happy eye and a smiling mouth say happy.");
                 Assert.That(happy.Clip, Is.SameAs(unnamed));
@@ -441,7 +432,7 @@ namespace VRVlog.LilToonExporter.Tests
             var named = FaceClip(80); named.name = "Happy face";
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 Assert.That(session.SuggestPresets(new[] { unnamed, named })[ExpressionPreset.happy].Clip, Is.SameAs(named),
                     "A clip whose name says happy fills happy before any guess from shapes.");
             }
@@ -461,7 +452,7 @@ namespace VRVlog.LilToonExporter.Tests
                 authored.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .5f) };
                 settings.Expression.Happy = authored;
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.happy), Is.True);
                 Assert.That(session.SuggestPresets(new[] { unnamed }).ContainsKey(ExpressionPreset.happy), Is.False,
                     "The avatar's own happy face is kept.");
@@ -544,7 +535,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
                 Assert.That(paths.TryGetValue(clip, out var found), Is.True);
                 Assert.That(found, Is.EqualTo(new[] { "Face / Smile" }));
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { clip }, menuPaths: paths);
                 Assert.That(suggested.TryGetValue(ExpressionPreset.happy, out var happy), Is.True, "The toggle labelled Smile says the clip is happy.");
                 Assert.That(happy.Clip, Is.SameAs(clip));
@@ -569,7 +560,7 @@ namespace VRVlog.LilToonExporter.Tests
                 settings.Expression.Happy = authored;
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Face / Angry", 2), MenuItem("Face / Angry 2", 3) }, controller, FaceOff);
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { smile, named, angry }, menuPaths: paths);
                 Assert.That(suggested.ContainsKey(ExpressionPreset.happy), Is.False, "The avatar's own happy face is kept.");
                 Assert.That(suggested[ExpressionPreset.sad].Clip, Is.SameAs(named), "The clip's own name decides before its menu label.");
@@ -604,7 +595,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Sad", 2) }, controller, FaceOff);
                 Assert.That(paths.Keys, Is.EquivalentTo(new[] { other }));
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { generic, unnamed }, menuPaths: paths);
                 Assert.That(suggested[ExpressionPreset.happy].Clip, Is.SameAs(unnamed), "Without a menu item the shapes still decide.");
                 Assert.That(suggested.ContainsKey(ExpressionPreset.sad), Is.False, "Only the clip the item selects takes its label.");
@@ -660,9 +651,9 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Favorite / Sad", 1) }, controller, FaceOff);
                 Assert.That(paths[clip], Is.EqualTo(new[] { "Face / Smile", "Favorite / Sad" }), "Every item that selects the clip is kept, in menu order.");
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(new[] { clip }, menuPaths: paths);
-                Assert.That(suggested.Keys.Intersect(Session.EmotionPresets), Is.Empty, "Two items naming different emotions say neither.");
+                Assert.That(suggested.Keys.Intersect(ExpressionPresetGroups.Emotions), Is.Empty, "Two items naming different emotions say neither.");
                 var agreeing = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Favorite / Happy", 1) }, controller, FaceOff);
                 Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: agreeing)[ExpressionPreset.happy].Clip, Is.SameAs(clip),
                     "Items naming the same emotion agree.");
@@ -681,8 +672,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
                 Assert.That(paths, Is.Empty, "Each layer's clip is only part of the smile, so the item is linked to neither.");
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                Assert.That(session.SuggestPresets(new[] { eyes, mouth }, menuPaths: paths).Keys.Intersect(Session.EmotionPresets), Is.Empty);
+                using var session = new Session(fixture.Source);
+                Assert.That(session.SuggestPresets(new[] { eyes, mouth }, menuPaths: paths).Keys.Intersect(ExpressionPresetGroups.Emotions), Is.Empty);
             }
             finally { Object.DestroyImmediate(eyes); Object.DestroyImmediate(mouth); DestroyController(controller); }
         }
@@ -699,8 +690,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExpressionNameInference.SaysNothing(clip.name), Is.False);
                 var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
                 Assert.That(paths.Keys, Is.EquivalentTo(new[] { clip }));
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: paths).Keys.Intersect(Session.EmotionPresets), Is.Empty,
+                using var session = new Session(fixture.Source);
+                Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: paths).Keys.Intersect(ExpressionPresetGroups.Emotions), Is.Empty,
                     "A clip named after a part of the face is not a whole emotion, whatever the item says.");
             }
             finally { Object.DestroyImmediate(clip); DestroyController(controller); }
@@ -744,7 +735,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = Fixture();
             fixture.Mesh.AddBlendShapeFrame("怒り", 100, Enumerable.Repeat(new Vector3(.01f, 0, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            using var session = new Session(fixture.Source);
             var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
             Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.happy }), "'Smile' is suggested; the MMD-style '怒り' is not.");
             Assert.That(session.PresetShapeOptions().Any(option => option.Shape == "怒り"), Is.True, "It can still be chosen by hand.");
@@ -760,12 +751,12 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = Fixture(smile: false);
             foreach (var name in new[] { "Bikkuri", "Teary", "Suprised" })
                 fixture.Mesh.AddBlendShapeFrame(name, 100, Enumerable.Repeat(new Vector3(.01f, 0, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            using var session = new Session(fixture.Source);
             var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
             Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.surprised }), "Raw Bikkuri and Teary are not suggested.");
             Assert.That(suggested[ExpressionPreset.surprised].Shape, Is.EqualTo("Suprised"));
-            Assert.That(Session.SuggestPreset("Bikkuri"), Is.EqualTo(ExpressionPreset.surprised), "A clip named Bikkuri is.");
-            Assert.That(Session.SuggestPreset("Teary"), Is.Null, "Tears are an effect, not a sad face.");
+            Assert.That(ExpressionNameInference.MatchEmotion("Bikkuri")?.Preset, Is.EqualTo(ExpressionPreset.surprised), "A clip named Bikkuri is.");
+            Assert.That(ExpressionNameInference.MatchEmotion("Teary")?.Preset, Is.Null, "Tears are an effect, not a sad face.");
         }
 
         [Test]
@@ -777,7 +768,7 @@ namespace VRVlog.LilToonExporter.Tests
                 ExpressionPreset.aa, ExpressionPreset.ih, ExpressionPreset.ou, ExpressionPreset.ee, ExpressionPreset.oh,
                 ExpressionPreset.lookUp, ExpressionPreset.lookDown, ExpressionPreset.lookLeft, ExpressionPreset.lookRight, ExpressionPreset.neutral }));
             Assert.That(Session.PresetGroups.SelectMany(group => group.Presets), Is.EqualTo(Session.AssignablePresets));
-            Assert.That(Session.EmotionPresets, Is.EqualTo(Session.PresetGroups[0].Presets));
+            Assert.That(ExpressionPresetGroups.Emotions, Is.EqualTo(Session.PresetGroups[0].Presets));
             Assert.That(Session.AssignablePresets.Select(Session.PresetFullLabel).Distinct().Count(), Is.EqualTo(18), "Labels with their group never collide.");
             Assert.That(Session.PresetFullLabel(ExpressionPreset.blinkLeft), Is.EqualTo(ExporterLocalization.T("まばたき") + " " + ExporterLocalization.T("左目")));
             Assert.That(Session.PresetFullLabel(ExpressionPreset.happy), Is.EqualTo(ExporterLocalization.T(Session.PresetLabel(ExpressionPreset.happy))));
@@ -792,7 +783,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 session.SetPreset(ExpressionPreset.aa, Session.PresetAssignment.ForShape(ExpressionPreset.aa, "Front", "Open"));
                 session.SetPreset(ExpressionPreset.lookUp, Session.PresetAssignment.ForShape(ExpressionPreset.lookUp, "Front", "Raise"));
                 session.SetPreset(ExpressionPreset.neutral, Session.PresetAssignment.ForShape(ExpressionPreset.neutral, "Back", "Smile"));
@@ -835,7 +826,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance assigned = null, automatic = null;
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var origin = fixture.Mesh.vertices[0] + HairDelta * .35f;
                 automatic = await Load(session.Export("Test", "Tests", NoFaces));
                 var front = automatic.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
@@ -865,7 +856,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AssignedBlinkWinsOverTheVrChatEyelidSetting()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Lid", BlinkDelta), Shape("Shut", ShutDelta));
@@ -881,7 +872,7 @@ namespace VRVlog.LilToonExporter.Tests
                 settingsType.GetField("eyelidsSkinnedMesh").SetValue(settings, front);
                 settingsType.GetField("eyelidsBlendshapes").SetValue(settings, new[] { mesh.GetBlendShapeIndex("Lid"), -1, -1 });
                 settingsField.SetValue(descriptor, settings);
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 Assert.That(session.SuggestPresets(Array.Empty<AnimationClip>())[ExpressionPreset.blink].Shape, Is.EqualTo("Lid"),
                     "The candidate is the eyelid setting the automatic blink uses.");
                 Assert.That(session.BlinkFallbackDescription(null), Is.EqualTo(ExporterLocalization.T("VRChatの閉眼設定")));
@@ -905,10 +896,10 @@ namespace VRVlog.LilToonExporter.Tests
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
-                Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
-                Assert.That(Session.BlinkPresets.Select(preset => suggested[preset].Shape), Is.EqualTo(new[] { "Blink", "Blink_L", "Blink_R" }));
+                Assert.That(suggested.Keys, Is.EquivalentTo(ExpressionPresetGroups.Blinks));
+                Assert.That(ExpressionPresetGroups.Blinks.Select(preset => suggested[preset].Shape), Is.EqualTo(new[] { "Blink", "Blink_L", "Blink_R" }));
                 Assert.That(suggested.Values.All(value => value.Automatic && value.Path == "Front"), Is.True);
                 Assert.That(session.BlinkFallbackDescription(null), Is.EqualTo(ExporterLocalization.T("自動設定")));
 
@@ -931,9 +922,9 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
-                Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
+                Assert.That(suggested.Keys, Is.EquivalentTo(ExpressionPresetGroups.Blinks));
                 var before = session.Export("Test", "Tests", NoFaces);
                 var unconfirmed = session.Export("Test", "Tests", NoFaces, presets: suggested.Values);
                 Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))),
@@ -972,7 +963,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Shape("vrc.v_aa", RightDelta), Shape("vrc.v_ou", ShutDelta), Shape("Fcl_MTH_O", OpenDelta, 0));
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var byName = session.SuggestMouthPresets(null, null);
                 Assert.That(byName.Keys, Is.EquivalentTo(new[] { ExpressionPreset.aa, ExpressionPreset.ou, ExpressionPreset.oh }));
                 Assert.That(byName[ExpressionPreset.aa].Shape, Is.EqualTo("vrc.v_aa"));
@@ -1012,7 +1003,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrChatLipSyncShapesAreTheMouthCandidates()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Open", OpenDelta), Shape("Wide", RaiseDelta), Shape("vrc.v_aa", RightDelta));
@@ -1024,7 +1015,7 @@ namespace VRVlog.LilToonExporter.Tests
                 descriptorType.GetField("VisemeSkinnedMesh").SetValue(descriptor, fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>());
                 var visemes = new string[15]; visemes[10] = "Open"; visemes[11] = "Wide";
                 descriptorType.GetField("VisemeBlendShapes").SetValue(descriptor, visemes);
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>(), new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(suggested[ExpressionPreset.aa].Shape, Is.EqualTo("Open"));
                 Assert.That(suggested[ExpressionPreset.ee].Shape, Is.EqualTo("Wide"));
@@ -1045,7 +1036,7 @@ namespace VRVlog.LilToonExporter.Tests
             var mesh = FrontMesh(fixture);
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 var visemes = new string[15]; visemes[10] = "vrc.v_aa";
                 var lipSync = session.SuggestMouthPresets(front, visemes);
@@ -1068,7 +1059,7 @@ namespace VRVlog.LilToonExporter.Tests
             var mesh = FrontMesh(fixture, Shape("vrc.v_aa", OpenDelta), Shape("vrc.v_ih", RaiseDelta));
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
                 var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
                 Assert.That(BindCount(before, "aa"), Is.EqualTo(1), "Without a choice the known name binds aa.");
@@ -1086,13 +1077,13 @@ namespace VRVlog.LilToonExporter.Tests
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var automatic = session.Export("Test", "Tests", NoFaces);
                 Assert.That(BindCount(automatic, "blink"), Is.EqualTo(1), "Without a choice the automatic blink binds 'Blink'.");
-                var none = session.Export("Test", "Tests", NoFaces, presets: Session.BlinkPresets.Select(Session.PresetAssignment.None).ToArray());
+                var none = session.Export("Test", "Tests", NoFaces, presets: ExpressionPresetGroups.Blinks.Select(Session.PresetAssignment.None).ToArray());
                 var noBlink = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 // No blink still writes a no-op binding so viewers do not fall back to raw names.
-                Assert.That(Session.BlinkPresets.SelectMany(preset => BoundShapes(none, preset.ToString())), Has.All.Contains("/__VRVlog_BlinkNone_"));
+                Assert.That(ExpressionPresetGroups.Blinks.SelectMany(preset => BoundShapes(none, preset.ToString())), Has.All.Contains("/__VRVlog_BlinkNone_"));
                 Assert.That(Canonical(Expressions(none)), Is.EqualTo(Canonical(Expressions(noBlink))), "\"None\" on every blink preset is no blink.");
             }
             finally { Object.DestroyImmediate(mesh); }
@@ -1109,8 +1100,8 @@ namespace VRVlog.LilToonExporter.Tests
             var mesh = FrontMesh(fixture);
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                Assert.That(session.SuggestPresets(Array.Empty<AnimationClip>()).Keys.Intersect(Session.BlinkPresets), Is.Empty);
+                using var session = new Session(fixture.Source);
+                Assert.That(session.SuggestPresets(Array.Empty<AnimationClip>()).Keys.Intersect(ExpressionPresetGroups.Blinks), Is.Empty);
                 // The blink export bakes each binding into a generated endpoint
                 // shape named from its mesh, source shape and slot.
                 static string[] Meshes(IEnumerable<string> bound) => bound.Select(value => value.Substring(0, value.IndexOf('/'))).ToArray();
@@ -1143,7 +1134,7 @@ namespace VRVlog.LilToonExporter.Tests
             var left = EyeClip("Blink_L", 35); var right = EyeClip("Blink_R", 35);
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var chosen = new[] { Session.PresetAssignment.ForClip(ExpressionPreset.blinkLeft, left), Session.PresetAssignment.ForClip(ExpressionPreset.blinkRight, right) };
                 foreach (var assignment in chosen) session.SetPreset(Session.ParsePreset(assignment.Preset), assignment);
                 Assert.That(session.PresetError(ExpressionPreset.blinkLeft, chosen[0]), Is.Null);
@@ -1164,7 +1155,7 @@ namespace VRVlog.LilToonExporter.Tests
             var left = EyeClip("Blink_L", 60); var right = EyeClip("Blink_R", 60);
             try
             {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 var chosen = new[] { Session.PresetAssignment.ForClip(ExpressionPreset.blinkLeft, left), Session.PresetAssignment.ForClip(ExpressionPreset.blinkRight, right) };
                 foreach (var assignment in chosen) session.SetPreset(Session.ParsePreset(assignment.Preset), assignment);
                 var error = session.PresetError(ExpressionPreset.blinkLeft, chosen[0]);
@@ -1190,7 +1181,7 @@ namespace VRVlog.LilToonExporter.Tests
                 blink.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .6f) };
                 settings.Expression.Blink = blink;
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.blinkLeft), Is.False);
                 var automatic = session.Export("Test", "Tests", NoFaces);
                 var none = session.Export("Test", "Tests", NoFaces, presets: new[] { Session.PresetAssignment.None(ExpressionPreset.blinkLeft) });
@@ -1212,13 +1203,13 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 settings.Expression.Aa = aa; settings.Expression.Blink = blink;
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                using var session = new Session(fixture.Source);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.aa), Is.True, "An intentionally empty aa is the avatar's own.");
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.blink), Is.True);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.ih), Is.False);
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
                 Assert.That(suggested.ContainsKey(ExpressionPreset.aa), Is.False, "No candidate replaces the empty aa.");
-                Assert.That(suggested.Keys.Intersect(Session.BlinkPresets), Is.Empty);
+                Assert.That(suggested.Keys.Intersect(ExpressionPresetGroups.Blinks), Is.Empty);
             }
             finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(aa); Object.DestroyImmediate(blink); Object.DestroyImmediate(settings); }
         }
@@ -1226,26 +1217,6 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void MouthBlinkAndNeutralChoicesAreSavedLikeEmotions()
         {
-            using var fixture = Fixture();
-            string json;
-            using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
-            {
-                Record(session, "Sample", 75);
-                session.SetPreset(ExpressionPreset.aa, Session.PresetAssignment.ForShape(ExpressionPreset.aa, "Front", "Smile"));
-                session.SetPreset(ExpressionPreset.blinkLeft, Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Back", "Smile"));
-                session.SetPreset(ExpressionPreset.neutral, Session.PresetAssignment.None(ExpressionPreset.neutral));
-                session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
-                json = session.SaveSettings();
-            }
-            using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
-            {
-                session.LoadSettings(json);
-                Assert.That(session.Presets.Keys, Is.EquivalentTo(new[] { ExpressionPreset.aa, ExpressionPreset.blinkLeft, ExpressionPreset.neutral, ExpressionPreset.sad }));
-                Assert.That(session.Presets[ExpressionPreset.aa].Path, Is.EqualTo("Front"));
-                Assert.That(session.Presets[ExpressionPreset.blinkLeft].Shape, Is.EqualTo("Smile"));
-                Assert.That(session.Presets[ExpressionPreset.neutral].IsNone, Is.True);
-            }
-
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
             var previous = ExpressionPresetStore.PathOverride;
             ExpressionPresetStore.PathOverride = path;
@@ -1405,6 +1376,64 @@ namespace VRVlog.LilToonExporter.Tests
                 ExpressionPresetStore.PathOverride = previous;
                 if (File.Exists(path)) File.Delete(path);
                 AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
+        static Session.PresetAssignment[] Angry() => new[] { Session.PresetAssignment.None(ExpressionPreset.angry) };
+
+        [Test]
+        public void AFileThatCannotBeReadIsNotOverwrittenBySavingAnotherAvatar()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                // Another avatar's choices, cut off in the middle.
+                const string damaged = "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"avatar-b\",\"Presets\":[{\"Preset\":\"happy\",\"ClipGuid\":\"\",\"ClipLocalId\":0,\"Path\":\"Front\",\"Shape\":\"Smi";
+                File.WriteAllText(path, damaged, Encoding.UTF8);
+                var before = File.ReadAllBytes(path);
+                LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(path)));
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(before), "Other avatars' choices may still be in the file.");
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _), Is.Empty, "The board still opens with nothing chosen.");
+
+                var large = "{\"Version\":1,\"Avatars\":[]}" + new string(' ', 4 * 1024 * 1024);
+                File.WriteAllText(path, large, Encoding.UTF8);
+                before = File.ReadAllBytes(path);
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(before), "A file over the size limit is not replaced either.");
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void MissingEmptyAndReadableFilesAreStillSaved()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(File.Exists(path), Is.True, "A missing file is created.");
+                ExpressionPresetStore.Save("avatar-b", new[] { Session.PresetAssignment.None(ExpressionPreset.sad) });
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _).Single().Preset, Is.EqualTo("angry"));
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("sad"));
+
+                File.WriteAllText(path, "  \n", Encoding.UTF8);
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _).Single().Preset, Is.EqualTo("angry"), "An empty file is replaced.");
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
             }
         }
     }

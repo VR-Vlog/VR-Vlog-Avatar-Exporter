@@ -111,6 +111,48 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(staging); }
         }
 
+        // Whether a moving pose fits is decided by its frames, not by how long
+        // the analysis takes, so a busy PC exports the same poses as an idle one.
+        // 80 seconds at 60 frames per second is 4,801 frames; 137 is 8,221, over the 8,192.
+        [Test]
+        public void OnlyTheFrameCountDecidesWhetherAMovingPoseFits()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var fits = Moving(fixture.Source, AnimationCurve.Linear(0, 0, 80, 90));
+            var over = Moving(fixture.Source, AnimationCurve.Linear(0, 0, 137, 90));
+            try
+            {
+                Assert.That(PoseSampling.SampleAnimation(fixture.Source, Candidate(fits)).Frames.Count, Is.EqualTo(4801));
+                Assert.Throws<PoseFrameLimitException>(() => PoseSampling.SampleAnimation(fixture.Source, Candidate(over)));
+            }
+            finally { Object.DestroyImmediate(fits); Object.DestroyImmediate(over); }
+        }
+
+        // A pose under 8,192 frames can still be over the 16MB data limit. It has
+        // to reach the limit check, which names the reason, not fail while sampling.
+        [Test]
+        public void AMovingPoseOverTheDataLimitIsLeftOutWithItsReason()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var clip = Moving(fixture.Source, AnimationCurve.Linear(0, 0, 136, 90));
+            try
+            {
+                var options = new PoseExportOptions(); options.Manual.Add(new ManualPose { Clip = clip });
+                using var session = new PoseExportSession(fixture.Source, options);
+                var warnings = new List<string>(); session.CollectPrepared(fixture.Copy, warnings);
+                var row = session.Entries.Single();
+                Assert.That(row.Error, Is.Null);
+                Assert.That(row.Animation.Frames.Count, Is.LessThan(HumanoidAnimationData.MaximumFramesPerAnimation));
+                Assert.Throws<InvalidOperationException>(() => HumanoidAnimationData.Write(new[] { row.Animation }));
+                using (new PoseLimitChooser.Scope(fixture.Source, false))
+                    PoseLimitChooser.Apply(session, warnings, null);
+                Assert.That(session.SelectedAnimations(), Is.Empty);
+                Assert.That(warnings, Does.Contain(ExporterLocalization.T(PoseLimitChooser.TooLargeReason)));
+                Assert.That(warnings, Has.None.Contains("Animation extension is invalid"));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         [Test]
         public void MovingHipsTransformMatchesNativeMetersIndependentlyOfScenePlacement()
         {
@@ -737,16 +779,10 @@ namespace VRVlog.LilToonExporter.Tests
                         weight.boneIndex2 == index && weight.weight2 > 0 || weight.boneIndex3 == index && weight.weight3 > 0);
                 }).ToArray();
                 Assert.That(headSkins.Length, Is.GreaterThan(0), "The imported fixture must contain vertices weighted to its real humanoid head.");
-                Vector3[] WorldVertices(SkinnedMeshRenderer skin)
-                {
-                    var baked = new Mesh();
-                    try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-                    finally { Object.DestroyImmediate(baked); }
-                }
-                var beforeSkin = headSkins.Select(WorldVertices).ToArray(); var headRest = importedHead.rotation;
+                var beforeSkin = headSkins.Select(TestObjects.WorldVertices).ToArray(); var headRest = importedHead.rotation;
                 importedHead.rotation = PoseSampling.Reflect(At(headAnimation, "head", .5)) * headRest;
                 for (var skin = 0; skin < headSkins.Length; skin++)
-                    Assert.That(beforeSkin[skin].Zip(WorldVertices(headSkins[skin]), Vector3.Distance).Max(), Is.GreaterThan(.005f),
+                    Assert.That(beforeSkin[skin].Zip(TestObjects.WorldVertices(headSkins[skin]), Vector3.Distance).Max(), Is.GreaterThan(.005f),
                         "The saved head animation must visibly deform the reimported fixture mesh.");
                 importedHead.rotation = headRest;
                 var fixturePath = Environment.GetEnvironmentVariable("VRVLOG_ANIMATION_FIXTURE");

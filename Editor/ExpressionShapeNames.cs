@@ -20,7 +20,6 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExpressionShapeNames
     {
         internal const string AssetName = "ExpressionShapeNames";
-        static readonly string[] Emotions = { "happy", "angry", "sad", "relaxed", "surprised" };
 
         readonly Dictionary<string, string> parts = new Dictionary<string, string>(StringComparer.Ordinal);
         // Shapes below this weight (0-100) are a hint, not part of the face.
@@ -157,6 +156,6 @@ namespace VRVlog.LilToonExporter
         }
 
         static (ExpressionPreset Preset, int Support)? Preset(string name, int support) =>
-            Emotions.Contains(name) && Enum.TryParse<ExpressionPreset>(name, out var preset) ? (preset, support) : ((ExpressionPreset, int)?)null;
+            ExpressionPresetGroups.Emotions.Where(preset => preset.ToString() == name).Select(preset => ((ExpressionPreset, int)?)(preset, support)).FirstOrDefault();
     }
 }

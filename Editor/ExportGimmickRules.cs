@@ -86,7 +86,7 @@ namespace VRVlog.LilToonExporter
             new ExportGimmickRule
             {
                 Id = LightLimitSettings,
-                Reason = "ライトの明るさを制限する設定です。書き出す材質に効果が残らないよう、書き出し用のコピーから外します。",
+                Reason = "ライトの明るさを制限する設定です。書き出すマテリアルに効果が残らないよう、書き出し用のコピーから外します。",
                 AnchorTypes = new[] { "LightLimitChangerSettings" },
                 DedicatedTypes = new[] { MenuInstaller },
             },

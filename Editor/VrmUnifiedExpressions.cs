@@ -66,7 +66,9 @@ namespace VRVlog.LilToonExporter
         internal static int RawPriority(string name, string canonical) => UnifiedExpressionRegistry.IsExplicit(name) ? 0 :
             string.Equals(name, canonical, StringComparison.OrdinalIgnoreCase) ? 1 : 2;
 
-        internal static byte[] Add(byte[] bytes, ICollection<string> warnings = null)
+        // inferRawNames false keeps authored declarations only: a caller that
+        // already bound the raw routes itself must not let mesh names add more.
+        internal static byte[] Add(byte[] bytes, ICollection<string> warnings = null, bool inferRawNames = true)
         {
             var glb = GlbDocument.Read(bytes);
             var nodes = Array(glb.Json, "nodes");
@@ -80,9 +82,9 @@ namespace VRVlog.LilToonExporter
             // Shared ARKit names join UE only after the avatar establishes UE.
             var referencedMeshes = nodes.OfType<Dictionary<string, object>>()
                 .Where(node => node.ContainsKey("mesh")).Select(node => Index(node["mesh"], meshes.Count, "mesh")).Distinct().ToArray();
-            var supportsUnified = HasEvidence(referencedMeshes.SelectMany(index =>
+            var supportsUnified = HasEvidence((inferRawNames ? referencedMeshes.SelectMany(index =>
                 Array(Object(meshes[index] as Dictionary<string, object>, "extras"), "targetNames") ?? new List<object>()).OfType<string>()
-                .Concat(custom?.Keys ?? Enumerable.Empty<string>()));
+                : Enumerable.Empty<string>()).Concat(custom?.Keys ?? Enumerable.Empty<string>()));
             if (!supportsUnified) return bytes;
             var authoredKeys = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             var retainedKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -123,7 +125,7 @@ namespace VRVlog.LilToonExporter
                 var names = Array(Object(mesh, "extras"), "targetNames");
                 if (!meshCandidates.TryGetValue(meshIndex, out var rawCandidates))
                 {
-                    rawCandidates = names == null ? new Dictionary<string, int>() :
+                    rawCandidates = names == null || !inferRawNames ? new Dictionary<string, int>() :
                         ResolveRaw(names.Select(name => name as string).ToArray(), warnings, "mesh " + meshIndex, supportsUnified, reserved);
                     meshCandidates.Add(meshIndex, rawCandidates);
                 }

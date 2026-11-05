@@ -15,6 +15,9 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class MeshDeleterIntegrationTests
     {
+        // A morph the app drives: one nothing uses is left out of the VRM.
+        const string DrivenMorph = "JawOpen";
+
         // The tool remains optional: call its real public implementation only
         // when installed, without adding an assembly or package dependency.
         [TestCase(false, false)]
@@ -26,16 +29,12 @@ namespace VRVlog.LilToonExporter.Tests
             MethodInfo remove = null;
             if (useInstalledMeshDeleter)
             {
-                var deleter = AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(a => a.GetType("Gatosyocora.MeshDeleterWithTexture.MeshDeleter"))
-                    .FirstOrDefault(t => t != null);
-                if (deleter == null) Assert.Ignore("Install the official MeshDeleterWithTexture package for this integration test.");
+                var deleter = OptionalTools.Require("Gatosyocora.MeshDeleterWithTexture.MeshDeleter", "Install the official MeshDeleterWithTexture package for this integration test.");
                 remove = deleter.GetMethod("RemoveTriangles", BindingFlags.Public | BindingFlags.Static, null,
                     new[] { typeof(Mesh), typeof(bool[]), typeof(Vector2Int), typeof(List<int>), typeof(bool) }, null);
                 Assert.That(remove, Is.Not.Null, "Requires the public MeshDeleterWithTexture 0.10.5 RemoveTriangles API.");
             }
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
 
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folder = "Assets/__MeshDeleterRoundTrip_" + Guid.NewGuid().ToString("N");
@@ -43,6 +42,7 @@ namespace VRVlog.LilToonExporter.Tests
             var original = Object.Instantiate(fixture.Mesh);
             Mesh deleted = null;
             var material = new Material(shader);
+            var face = new AnimationClip { name = "Hair detail face" };
             Vrm10Instance imported = null;
             try
             {
@@ -60,7 +60,7 @@ namespace VRVlog.LilToonExporter.Tests
                 original.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 6).ToArray();
                 original.bindposes = fixture.Mesh.bindposes;
                 var deltas = Enumerable.Range(0, 6).Select(i => new Vector3(.01f * (i + 1), .02f, 0)).ToArray();
-                original.AddBlendShapeFrame("Hair detail", 100, deltas, new Vector3[6], new Vector3[6]);
+                original.AddBlendShapeFrame(DrivenMorph, 100, deltas, new Vector3[6], new Vector3[6]);
                 AssetDatabase.CreateAsset(original, folder + "/Original.asset");
 
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
@@ -90,7 +90,7 @@ namespace VRVlog.LilToonExporter.Tests
                     deleted.normals = original.normals.Skip(3).ToArray();
                     deleted.boneWeights = original.boneWeights.Skip(3).ToArray();
                     deleted.bindposes = original.bindposes;
-                    deleted.AddBlendShapeFrame("Hair detail", 100, deltas.Skip(3).ToArray(), new Vector3[3], new Vector3[3]);
+                    deleted.AddBlendShapeFrame(DrivenMorph, 100, deltas.Skip(3).ToArray(), new Vector3[3], new Vector3[3]);
                 }
                 Assert.That(deleted, Is.Not.Null);
                 Assert.That(deleted.vertexCount, Is.EqualTo(3), "The externally deleted mesh must contain only the surviving triangle.");
@@ -110,11 +110,14 @@ namespace VRVlog.LilToonExporter.Tests
                 var originalTriangles = original.triangles;
                 var deletedVertices = deleted.vertices;
                 var warnings = new List<string>();
+                // Unused BlendShapes are left out of the VRM: a list face binds
+                // the morph on the edited mesh so it stays in the round trip.
+                AnimationUtility.SetEditorCurve(face, EditorCurveBinding.FloatCurve(front.name, typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 100));
 
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MeshDeleter regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MeshDeleter regression", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "meshdeleter-regression" : null,
                     lilToonVersion: fullLilToon ? "2.3.4" : null,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: new[] { (face.name, face, 0f) });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
                 imported.Runtime.Process();
@@ -124,7 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(importedFront.sharedMesh.vertexCount, Is.EqualTo(3));
                 Assert.That(importedFront.sharedMesh.triangles.Length, Is.EqualTo(3));
                 Assert.That(importedBack.sharedMesh.triangles.Length, Is.EqualTo(6), "The unaffected renderer retains both triangles.");
-                var morph = importedFront.sharedMesh.GetBlendShapeIndex("Hair detail");
+                var morph = importedFront.sharedMesh.GetBlendShapeIndex(DrivenMorph);
                 Assert.That(morph, Is.GreaterThanOrEqualTo(0));
                 var reloadedDeltas = new Vector3[importedFront.sharedMesh.vertexCount];
                 importedFront.sharedMesh.GetBlendShapeFrameVertices(morph, 0, reloadedDeltas, null, null);
@@ -160,6 +163,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (original != null && !EditorUtility.IsPersistent(original)) Object.DestroyImmediate(original);
                 if (deleted != null && !EditorUtility.IsPersistent(deleted)) Object.DestroyImmediate(deleted);
                 Object.DestroyImmediate(material);
+                Object.DestroyImmediate(face);
             }
         }
 

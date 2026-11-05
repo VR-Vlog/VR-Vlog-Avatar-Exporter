@@ -167,24 +167,29 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(names & excluded)
         self.assertTrue(package.ROOT_FILES <= names)
 
-    def test_stable_optional_entry_exception_is_one_exact_literal_in_the_window(self):
+    def test_stable_editor_names_no_transfer_type_in_any_file(self):
         self.version("0.11.12")
         name = "Editor/LilToonExporterWindow.cs"
-        literal = package.OPTIONAL_TRANSFER_TYPE_LITERAL
-        self.write(name, "var entry = Type.GetType(" + literal + ", false);")
-        self.git("add", name)
-        self.assertIn(name, package.build(self.root, self.root / "optional.zip"))
-        for text in (literal + literal, literal + " CloudVrmTransferSession", '"VRVlog.LanTransfer.Editor"',
-                     r"Cloud\u0056rmTransferSession", "GUID:b15e228f27f843bdbdd4c2335be4354b"):
-            with self.subTest(text=text):
-                self.write(name, text)
-                with self.assertRaisesRegex(ValueError, "QR transfer dependency"):
-                    package.build(self.root, self.root / "rejected.zip")
         self.write(name, "ordinary exporter")
-        self.write("Editor/Elsewhere.cs", literal)
-        self.git("add", ".")
-        with self.assertRaisesRegex(ValueError, "QR transfer dependency"):
-            package.build(self.root, self.root / "wrong-path.zip")
+        self.git("add", name)
+        self.assertIn(name, package.build(self.root, self.root / "plain.zip"))
+        literal = '"VRVlog.LilToonExporter.LanTransfer.CloudVrmTransferWindow, VRVlog.LanTransfer.Editor"'
+        for text in (literal, "CloudVrmTransferSession", '"VRVlog.LanTransfer.Editor"',
+                     r"Cloud\u0056rmTransferSession", "GUID:b15e228f27f843bdbdd4c2335be4354b"):
+            for path in (name, "Editor/Elsewhere.cs"):
+                with self.subTest(text=text, path=path):
+                    self.write(name, "ordinary exporter")
+                    self.write(path, text)
+                    self.git("add", ".")
+                    with self.assertRaisesRegex(ValueError, "QR transfer dependency"):
+                        package.build(self.root, self.root / "rejected.zip")
+
+    def test_repository_editor_without_transfer_names_no_transfer_type(self):
+        repository = Path(__file__).resolve().parents[1]
+        names = [name for name in package.tracked_files(repository) if package.included(name, transfer=False)]
+        self.assertIn("Editor/AppTransferBoardPage.cs", names)
+        self.assertFalse([name for name in names if name.startswith("Editor/LanTransfer/")])
+        package.verify_no_transfer_dependencies({name: (repository / name).read_bytes() for name in names})
 
     def test_excludes_tracked_development_and_untracked_inputs(self):
         excluded = ["work/report.md", ".env", ".github/workflows/example.yml", "Tools/debug.py", "Tools/test-aao-vertex-buffer-patch.py", "Tools/test-aao-vertex-buffer-patch.py.meta", "Documentation~/DependencyPatches/debug.patch", "Tests/Editor/Test.cs", "Docs/ReleaseVerification.md", "Editor/private.vrm", "Editor/error.log", "Editor/private.cs.disabled", "Editor/Locales/private.json"]

@@ -51,7 +51,7 @@ namespace VRVlog.LilToonExporter
                     var slots = renderer.sharedMaterials;
                     var ids = F.List(spec, "materials");
                     if (slots.Length != ids.Count || original.subMeshCount != ids.Count)
-                        throw Invalid("読み込んだVRMの材質スロットがlilToon拡張の記録と一致しません。");
+                        throw Invalid("読み込んだVRMのマテリアルスロットがlilToon拡張の記録と一致しません。");
                     for (var index = 0; index < slots.Length; index++)
                         if (materials.TryGetValue(F.Integer(ids[index]), out var material)) slots[index] = material;
                     var vertexIds = ReadChunk(document, root, F.Int(spec, "vertexIds"));

@@ -9,7 +9,6 @@ namespace VRVlog.LilToonExporter
     internal static class BlinkShapeNames
     {
         internal const int PartialPair = -3;
-        internal static readonly string[] Presets = { "blink", "blinkLeft", "blinkRight" };
         static readonly string[] Both = { "vrc.Blink", "Blink", "Fcl_EYE_Close", "まばたき", "eye_blink_1", "eye_blink_2" };
         static readonly (string Left, string Right)[] Pairs = {
             ("Blink_L", "Blink_R"), ("BlinkLeft", "BlinkRight"),
@@ -66,17 +65,8 @@ namespace VRVlog.LilToonExporter
         // read as a blink. Root is the name without its side marker.
         internal static int NamedClosure(string name, out string root)
         {
-            root = name ?? "";
-            var side = NotClosing;
-            var match = SideSuffix.Match(root);
-            if (!match.Success) match = SidePrefix.Match(root);
-            if (match.Success)
-            {
-                var marker = match.Groups["side"].Value.ToLowerInvariant();
-                side = marker == "l" || marker == "left" || marker == "左" ? ClosingLeft : ClosingRight;
-                // 左目閉じ reads as 左 + 目閉じ.
-                root = match.Groups["eye"].Value + match.Groups["root"].Value;
-            }
+            // 左目閉じ reads as 左 + 目閉じ.
+            var side = MarkedSide(name, out root);
             if (JapaneseClosings.Contains(Regex.Replace(root, @"[ ._-]", "")))
                 return side == NotClosing ? ClosingBoth : side;
             var words = Words.Split(root).Where(word => word.Length > 0).Select(word => word.ToLowerInvariant()).ToArray();
@@ -84,6 +74,19 @@ namespace VRVlog.LilToonExporter
             var rest = words.Where(word => !EyeWords.Contains(word)).ToArray();
             if (rest.Length != 1 || rest[0] != "blink") return NotClosing;
             return side == NotClosing ? ClosingBoth : side;
+        }
+
+        // The side a name marks (ClosingLeft / ClosingRight) whatever it
+        // closes, or NotClosing for none. Root is the name without it.
+        internal static int MarkedSide(string name, out string root)
+        {
+            root = name ?? "";
+            var match = SideSuffix.Match(root);
+            if (!match.Success) match = SidePrefix.Match(root);
+            if (!match.Success) return NotClosing;
+            var marker = match.Groups["side"].Value.ToLowerInvariant();
+            root = match.Groups["eye"].Value + match.Groups["root"].Value;
+            return marker == "l" || marker == "left" || marker == "左" ? ClosingLeft : ClosingRight;
         }
 
         internal static int PartialFamily(string shape, bool left)
@@ -94,9 +97,6 @@ namespace VRVlog.LilToonExporter
                 canonical == (left ? "EyeClosedLeft" : "EyeClosedRight")) return Pairs.Length;
             return -1;
         }
-
-        internal static bool CompatiblePartials(string left, string right) =>
-            PartialFamily(left, true) >= 0 && PartialFamily(left, true) == PartialFamily(right, false);
 
         // Automatic ownership includes coexisting exact semantic families.
         // Resolve still chooses one family with its established preset priority.

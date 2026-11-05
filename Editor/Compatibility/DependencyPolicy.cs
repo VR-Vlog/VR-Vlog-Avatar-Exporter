@@ -61,8 +61,6 @@ namespace VRVlog.LilToonExporter.Compatibility
         static readonly int[] ModularAvatarLow = ParseRelease(ModularAvatarMinimum) ?? throw new InvalidOperationException("Invalid ModularAvatarMinimum.");
         static readonly int[] ModularAvatarHigh = ParseRelease(ModularAvatarBelow) ?? throw new InvalidOperationException("Invalid ModularAvatarBelow.");
 
-        public static string ModularAvatarAppearanceError(string version) => ModularAvatarAppearanceError(version, text => text);
-
         // translate receives the Japanese format and returns the localized
         // format; {0} is the installed version and {1}..{2} the supported range.
         // A readable version outside the range stops here, including an
@@ -80,8 +78,6 @@ namespace VRVlog.LilToonExporter.Compatibility
         // X.Y.Z-pre counts as read: its X.Y.Z part is checked.
         public static bool ModularAvatarVersionUnknown(string version) =>
             version == null || ParseRelease(version.Split(new[] { '-' }, 2)[0]) == null;
-
-        public static string ModularAvatarUnknownVersionError(string version) => ModularAvatarUnknownVersionError(version, text => text);
 
         // Shown when the version could not be read and MA's API then failed.
         public static string ModularAvatarUnknownVersionError(string version, Func<string, string> translate)
@@ -109,13 +105,9 @@ namespace VRVlog.LilToonExporter.Compatibility
 
         public static bool AcceptsLilToon(string version) => ClassifyLilToon(version) != LilToonSupport.Missing;
 
-        public static string LilToonError(string version) => LilToonError(version, text => text);
-
         // translate receives the Japanese text and returns the localized one.
         public static string LilToonError(string version, Func<string, string> translate) =>
             AcceptsLilToon(version) ? null : translate("lilToonが見つかりません（VCC／ALCOMでlilToonを追加）");
-
-        public static string LilToonWarning(string version) => LilToonWarning(version, text => text);
 
         // Shown in the export result when the installed lilToon is not the
         // catalogue version. {0} is the installed version, {1} the catalogue.

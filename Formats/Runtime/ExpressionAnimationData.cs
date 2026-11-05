@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VRVlog.AvatarFormats;
 
 // Shared by the exporter and player through VRVlog.AvatarFormats. No Unity/Editor dependency.
 namespace VRVlog.Expressions
@@ -134,17 +135,6 @@ namespace VRVlog.Expressions
             static bool Wrap(string value) => value == "clamp" || value == "loop" || value == "pingPong";
         }
 
-        public static Dictionary<string, object> Write(IList<ExpressionAnimationData> animations)
-        {
-            var result = new Dictionary<string, object>
-            {
-                ["schemaVersion"] = 1L,
-                ["animations"] = WriteAnimations(animations, WriteName)
-            };
-            Read(result); // The exporter and runtime enforce the same contract.
-            return result;
-        }
-
         // Writes schema 2 only. Schema 1 files are still read by Read and ReadDocument.
         public static Dictionary<string, object> WriteDocument(ExpressionAnimationDocument document)
         {
@@ -154,7 +144,7 @@ namespace VRVlog.Expressions
                 ["schemaVersion"] = 2L,
                 ["expressions"] = document.Expressions.Select(e => (object)new Dictionary<string, object>
                     { ["expression"] = e.Expression, ["source"] = e.Source }).ToList(),
-                ["animations"] = WriteAnimations(document.Animations, WriteMorph)
+                ["animations"] = WriteAnimations(document.Animations)
             };
             // Omitted when empty, so avatars without bone or visibility keys
             // keep the bytes they had before transforms existed.
@@ -163,7 +153,7 @@ namespace VRVlog.Expressions
             return result;
         }
 
-        static List<object> WriteAnimations(IEnumerable<ExpressionAnimationData> animations, Func<Point, object> target) =>
+        static List<object> WriteAnimations(IEnumerable<ExpressionAnimationData> animations) =>
             animations.Select(a => (object)new Dictionary<string, object>
             {
                 ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
@@ -171,7 +161,7 @@ namespace VRVlog.Expressions
                 {
                     var channel = WriteCurve(c.Curve);
                     channel["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
-                        { ["value"] = p.Value, ["target"] = target(p) }).ToList();
+                        { ["value"] = p.Value, ["target"] = WriteMorph(p) }).ToList();
                     return (object)channel;
                 }).ToList()
             }).ToList();
@@ -195,13 +185,6 @@ namespace VRVlog.Expressions
                 }).ToList()
             }).ToList();
 
-        static object WriteName(Point point)
-        {
-            // Schema 1 has no node/index references; dropping one would leave the morph unmoved.
-            if (point.Morph != null) Bad();
-            return point.Target;
-        }
-
         static object WriteMorph(Point point)
         {
             // Schema 2 has no morph names; a named point belongs to schema 1.
@@ -212,9 +195,9 @@ namespace VRVlog.Expressions
 
         public static List<ExpressionAnimationData> Read(object value)
         {
-            var root = Obj(value);
-            if (Number(root["schemaVersion"]) != 1) Bad();
-            var array = Arr(root["animations"]);
+            var root = Json.Obj(value);
+            if (Json.Number(root["schemaVersion"]) != 1) Bad();
+            var array = Json.Arr(root["animations"]);
             if (array.Count == 0 || array.Count > 512) Bad();
             return ReadAnimations(array, 1);
         }
@@ -223,8 +206,8 @@ namespace VRVlog.Expressions
         // and its points use Target instead of Morph.
         public static ExpressionAnimationDocument ReadDocument(object value)
         {
-            var root = Obj(value);
-            var version = Number(root["schemaVersion"]);
+            var root = Json.Obj(value);
+            var version = Json.Number(root["schemaVersion"]);
             var document = new ExpressionAnimationDocument();
             if (version == 1)
             {
@@ -233,14 +216,14 @@ namespace VRVlog.Expressions
                 return document;
             }
             if (version != 2) Bad();
-            var expressions = Arr(root["expressions"]);
-            var array = Arr(root["animations"]);
+            var expressions = Json.Arr(root["expressions"]);
+            var array = Json.Arr(root["animations"]);
             if (expressions.Count > 1024 || array.Count > 512 || expressions.Count == 0 && array.Count == 0) Bad();
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var raw in expressions)
             {
-                var obj = Obj(raw);
-                var expression = new ExpressionSource { Expression = Text(obj["expression"]), Source = Text(obj["source"]) };
+                var obj = Json.Obj(raw);
+                var expression = new ExpressionSource { Expression = Json.Text(obj["expression"]), Source = Json.Text(obj["source"]) };
                 if (!names.Add(expression.Expression) || !ExpressionSource.IsKnown(expression.Source)) Bad();
                 document.Expressions.Add(expression);
             }
@@ -256,26 +239,26 @@ namespace VRVlog.Expressions
             var channelCount = 0; var keyCount = 0; var pointCount = 0;
             foreach (var raw in array)
             {
-                var obj = Obj(raw);
-                var animation = new ExpressionAnimationData { Expression = Text(obj["expression"]), Duration = Number(obj["duration"]) };
+                var obj = Json.Obj(raw);
+                var animation = new ExpressionAnimationData { Expression = Json.Text(obj["expression"]), Duration = Json.Number(obj["duration"]) };
                 var targets = new HashSet<string>(StringComparer.Ordinal);
                 var morphs = new HashSet<(int, int)>();
                 if (!(obj["loop"] is bool)) Bad();
                 animation.Loop = (bool)obj["loop"];
                 if (!names.Add(animation.Expression) || animation.Duration <= 0 || animation.Duration > 600) Bad();
-                foreach (var rawChannel in Arr(obj["channels"]))
+                foreach (var rawChannel in Json.Arr(obj["channels"]))
                 {
                     if (++channelCount > 1024) Bad();
-                    var c = Obj(rawChannel);
+                    var c = Json.Obj(rawChannel);
                     var channel = new Channel { Curve = ReadCurve(c, ref keyCount) };
-                    foreach (var rawPoint in Arr(c["points"]))
+                    foreach (var rawPoint in Json.Arr(c["points"]))
                     {
                         if (++pointCount > 4096) Bad();
-                        var p = Obj(rawPoint);
-                        var point = new Point { Value = Number(p["value"]) };
+                        var p = Json.Obj(rawPoint);
+                        var point = new Point { Value = Json.Number(p["value"]) };
                         if (version == 1)
                         {
-                            point.Target = p["target"] == null ? null : Text(p["target"]);
+                            point.Target = p["target"] == null ? null : Json.Text(p["target"]);
                             // Null is the zero residual at the animation's first
                             // pose. Identical basis morphs may be shared between
                             // mutually exclusive animations, never within one face.
@@ -286,8 +269,8 @@ namespace VRVlog.Expressions
                         {
                             // Null moves no morph at this value. A morph is written
                             // by at most one point of one animation.
-                            var t = Obj(p["target"]);
-                            point.Morph = new MorphReference { Node = NonNegative(t["node"]), Index = NonNegative(t["index"]) };
+                            var t = Json.Obj(p["target"]);
+                            point.Morph = new MorphReference { Node = Json.NonNegative(t["node"]), Index = Json.NonNegative(t["index"]) };
                             if (!morphs.Add((point.Morph.Node, point.Morph.Index))) Bad();
                         }
                         if (point.Value < -10000 || point.Value > 10000 ||
@@ -307,15 +290,15 @@ namespace VRVlog.Expressions
 
         static Curve ReadCurve(Dictionary<string, object> c, ref int keyCount)
         {
-            var curve = new Curve { PreWrap = Text(c["preWrap"]), PostWrap = Text(c["postWrap"]) };
-            foreach (var rawKey in Arr(c["keys"]))
+            var curve = new Curve { PreWrap = Json.Text(c["preWrap"]), PostWrap = Json.Text(c["postWrap"]) };
+            foreach (var rawKey in Json.Arr(c["keys"]))
             {
                 if (++keyCount > 16384) Bad();
-                var k = Arr(rawKey);
+                var k = Json.Arr(rawKey);
                 if (k.Count != 6) Bad();
-                curve.Keys.Add(new Key { Time = Number(k[0]), Value = Number(k[1]),
-                    InTangent = k[2] == null ? (double?)null : Number(k[2]), OutTangent = k[3] == null ? (double?)null : Number(k[3]),
-                    InWeight = Number(k[4]), OutWeight = Number(k[5]) });
+                curve.Keys.Add(new Key { Time = Json.Number(k[0]), Value = Json.Number(k[1]),
+                    InTangent = k[2] == null ? (double?)null : Json.Number(k[2]), OutTangent = k[3] == null ? (double?)null : Json.Number(k[3]),
+                    InWeight = Json.Number(k[4]), OutWeight = Json.Number(k[5]) });
             }
             curve.Validate();
             return curve;
@@ -328,19 +311,19 @@ namespace VRVlog.Expressions
         // exception here and keeps the document.
         public static List<ExpressionTransformAnimation> ReadTransforms(object value, ExpressionAnimationDocument document)
         {
-            var root = Obj(value);
+            var root = Json.Obj(value);
             var result = new List<ExpressionTransformAnimation>();
             if (!root.TryGetValue("transforms", out var rawTransforms)) return result;
             if (document == null || document.SchemaVersion != 2) Bad();
-            var array = Arr(rawTransforms);
+            var array = Json.Arr(rawTransforms);
             if (array.Count == 0 || array.Count > 512) Bad();
             var listed = new HashSet<string>(document.Expressions.Select(e => e.Expression), StringComparer.Ordinal);
             var names = new HashSet<string>(StringComparer.Ordinal);
             var trackCount = 0; var keyCount = 0;
             foreach (var raw in array)
             {
-                var obj = Obj(raw);
-                var animation = new ExpressionTransformAnimation { Expression = Text(obj["expression"]), Duration = Number(obj["duration"]) };
+                var obj = Json.Obj(raw);
+                var animation = new ExpressionTransformAnimation { Expression = Json.Text(obj["expression"]), Duration = Json.Number(obj["duration"]) };
                 if (!(obj["loop"] is bool)) Bad();
                 animation.Loop = (bool)obj["loop"];
                 if (!listed.Contains(animation.Expression) || !names.Add(animation.Expression) ||
@@ -350,20 +333,20 @@ namespace VRVlog.Expressions
                 var blendShapes = document.Animations.FirstOrDefault(a => a.Expression == animation.Expression);
                 if (blendShapes != null && (blendShapes.Duration != animation.Duration || blendShapes.Loop != animation.Loop)) Bad();
                 var owners = new HashSet<(int, string)>();
-                foreach (var rawTrack in Arr(obj["tracks"]))
+                foreach (var rawTrack in Json.Arr(obj["tracks"]))
                 {
                     if (++trackCount > 1024) Bad();
-                    var t = Obj(rawTrack);
-                    var track = new ExpressionTransformAnimation.Track { Node = NonNegative(t["node"]), Property = Text(t["property"]) };
+                    var t = Json.Obj(rawTrack);
+                    var track = new ExpressionTransformAnimation.Track { Node = Json.NonNegative(t["node"]), Property = Json.Text(t["property"]) };
                     var components = ExpressionTransformAnimation.Components(track.Property);
                     // euler and rotation both write the node's rotation.
                     var owner = track.Property == ExpressionTransformAnimation.Euler ? ExpressionTransformAnimation.Rotation : track.Property;
                     if (components == 0 || !owners.Add((track.Node, owner))) Bad();
-                    var curves = Arr(t["curves"]);
+                    var curves = Json.Arr(t["curves"]);
                     if (curves.Count != components) Bad();
                     foreach (var rawCurve in curves)
                     {
-                        var curve = ReadCurve(Obj(rawCurve), ref keyCount);
+                        var curve = ReadCurve(Json.Obj(rawCurve), ref keyCount);
                         curve.Range(out var minimum, out var maximum);
                         if (track.Property == ExpressionTransformAnimation.Active && (minimum < 0 || maximum > 1)) Bad();
                         track.Curves.Add(curve);
@@ -377,23 +360,9 @@ namespace VRVlog.Expressions
         }
 
         static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
-        static Dictionary<string, object> Obj(object value) => value as Dictionary<string, object> ?? throw new InvalidOperationException("Invalid expression animation object.");
-        static List<object> Arr(object value) => value as List<object> ?? throw new InvalidOperationException("Invalid expression animation array.");
-        static string Text(object value) => value is string s && s.Length > 0 && s.Length <= 1024 ? s : throw new InvalidOperationException("Invalid expression animation name.");
-        static double Number(object value)
-        {
-            if (!(value is double) && !(value is float) && !(value is long) && !(value is int)) Bad();
-            var number = Convert.ToDouble(value);
-            if (!Finite(number)) Bad();
-            return number;
-        }
-        static int NonNegative(object value)
-        {
-            var number = Number(value);
-            if (number < 0 || number > int.MaxValue || number != Math.Floor(number)) Bad();
-            return (int)number;
-        }
-        static void Bad() => throw new InvalidOperationException("Expression animation data is invalid or exceeds the supported limits.");
+        static readonly ContractJson Json = new ContractJson("Expression animation data is invalid or exceeds the supported limits.",
+            "Invalid expression animation object.", "Invalid expression animation array.", "Invalid expression animation name.");
+        static void Bad() => throw Json.Bad();
     }
 
     // A whole VRVLOG_expression_animations extension. Schema 2 lists every custom
@@ -458,5 +427,64 @@ namespace VRVlog.Expressions
         public string Source;
 
         public static bool IsKnown(string source) => source == Menu || source == Gesture || source == FaceEmo;
+    }
+}
+
+namespace VRVlog.AvatarFormats
+{
+    // The strict JSON readers of the contract types in this folder. Each type
+    // makes one with its own exception text, so the texts stay as they were;
+    // ExpressionAnimationData also has its own text for objects, arrays and
+    // names. It lives in this file because the tools that compile
+    // ExpressionAnimationData.cs on its own must find it.
+    internal sealed class ContractJson
+    {
+        readonly string invalid, invalidObject, invalidArray, invalidText;
+
+        internal ContractJson(string invalid, string invalidObject = null, string invalidArray = null, string invalidText = null)
+        {
+            this.invalid = invalid;
+            this.invalidObject = invalidObject ?? invalid;
+            this.invalidArray = invalidArray ?? invalid;
+            this.invalidText = invalidText ?? invalid;
+        }
+
+        internal InvalidOperationException Bad() => new InvalidOperationException(invalid);
+
+        // With keys, the object carries exactly those keys; without, any keys.
+        internal Dictionary<string, object> Obj(object value, params string[] keys) =>
+            value is Dictionary<string, object> obj && (keys.Length == 0 || obj.Count == keys.Length && keys.All(obj.ContainsKey))
+                ? obj : throw new InvalidOperationException(invalidObject);
+
+        internal List<object> Arr(object value, int minimum = 0, int maximum = int.MaxValue) =>
+            value is List<object> array && array.Count >= minimum && array.Count <= maximum ? array : throw new InvalidOperationException(invalidArray);
+
+        // 1 to 1024 characters of any kind.
+        internal string Text(object value) => value is string s && s.Length > 0 && s.Length <= 1024 ? s : throw new InvalidOperationException(invalidText);
+
+        // A finite number, fractions included.
+        internal double Number(object value)
+        {
+            if (!(value is double) && !(value is float) && !(value is long) && !(value is int)) throw Bad();
+            var number = Convert.ToDouble(value);
+            if (double.IsNaN(number) || double.IsInfinity(number)) throw Bad();
+            return number;
+        }
+
+        // A whole number from -1000000 to 1000000.
+        internal int Integer(object value)
+        {
+            var number = Number(value);
+            if (number != Math.Floor(number) || Math.Abs(number) > 1000000) throw Bad();
+            return (int)number;
+        }
+
+        // A whole number from 0 to int.MaxValue.
+        internal int NonNegative(object value)
+        {
+            var number = Number(value);
+            if (number != Math.Floor(number) || number < 0 || number > int.MaxValue) throw Bad();
+            return (int)number;
+        }
     }
 }
