@@ -417,7 +417,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // channel 0-3 is R, G, B, A and 4 the BT.709 luminance of RGB.
-        internal static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures)
+        internal static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures, float scale = 1)
         {
             if (textures == null) return null;
             var fit = Mathf.Min(1, 2048f / Mathf.Max(mask.width, mask.height));
@@ -430,7 +430,7 @@ namespace VRVlog.LilToonExporter
             for (var i = 0; i < pixels.Length; i++)
             {
                 var p = pixels[i];
-                var v = Mathf.Clamp01(channel == 4 ? p.r * .2126f + p.g * .7152f + p.b * .0722f : p[channel]);
+                var v = Mathf.Clamp01((channel == 4 ? p.r * .2126f + p.g * .7152f + p.b * .0722f : p[channel]) * scale);
                 if (inverted) v = 1 - v;
                 pixels[i] = new Color(v, v, v, 1);
             }
