@@ -58,7 +58,10 @@ namespace VRVlog.LilToonExporter.Tests
             var source = Source(blendMode);
             source.SetFloat("_Cutoff", .3f);
             source.SetFloat("_Culling", 0);
+            var flip = blendMode == 3 ? 1f : 0f;
+            source.SetFloat("_FlipBackfaceNormals", flip);
             var output = Substitute(source, Name, out var route, out var dropped);
+            Assert.That(output.GetFloat("_FlipNormal"), Is.EqualTo(flip), "back faces are flipped only when the source flips them");
             Assert.That(route, Is.EqualTo(UnsupportedShaderSubstitution.Route.Approximated));
             Assert.That(output.shader.name, Is.EqualTo(expected));
             Assert.That(output.GetTexture("_MainTex"), Is.SameAs(source.GetTexture("_MainTex")));

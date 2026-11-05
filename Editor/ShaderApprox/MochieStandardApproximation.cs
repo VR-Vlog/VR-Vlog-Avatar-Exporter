@@ -39,6 +39,8 @@ namespace VRVlog.LilToonExporter
         {
             ApplyAlpha(values, material, textures, dropped);
             ApplyNormal(values, material);
+            // Both turn the normal toward the viewer on back faces.
+            S.Set(material, "_FlipNormal", values.Float("_FlipBackfaceNormals", 0) >= .5f ? 1 : 0);
             ApplyFiltering(values, material, dropped);
             ApplyEmission(values, material, textures, dropped);
             ApplyLambert(material);

@@ -14,7 +14,7 @@ Mochie Standard は Unity の Standard に近い PBR のシェーダーで、描
 - 見分け方: シェーダー名が `Mochie/Standard` で始まる（Standard・Lite・Mobile）。シェーダーが見つからないマテリアルは、Mochie Standard にしかない `_PrimaryWorkflow` と `_PrimarySampleMode` が両方あるもの。
 - 描画モード: `_BlendMode` 0 不透明・1 カットアウト・2 フェード・3 透過。2 と 3 はどちらも公式 lilToon の半透明にする。
 - アルファ: `_AlphaSource` 1 はアルファのマスクの選んだチャンネルをアルファに置き換える（Mochie の式 `alpha = mask[channel] * opacity`）。公式 lilToon のアルファマスクの置き換えのモードで同じ式になる。頂点カラーのアルファ（2）は表示だけ。
-- 法線: `_NORMALMAP_ON` があるときだけ法線マップを使い、強さは `_NormalStrength`。
+- 法線: `_NORMALMAP_ON` があるときだけ法線マップを使い、強さは `_NormalStrength`。裏面で法線を反転する `_FlipBackfaceNormals` は公式 lilToon の `_FlipNormal` に写す。
 - 発光: `_EMISSION_ON` があるとき、Mochie と同じく `pow(_EmissionColor, 2.2) * _EmissionStrength` を発光の色にし、マスクの選んだチャンネルを公式 lilToon の発光マスクに焼く。
 - 反射: メタリックと粗さはワークフロー（メタリック・まとめた画像・スペキュラー）ごとに読む。粗さは `1 - roughness` を滑らかさとして焼く。`_SmoothnessToggle` が有効なら画像を滑らかさとしてそのまま使う。スペキュラーのワークフローはメタリック 0 にし、スペキュラー色を表示する。
 - 色調補正: `_Filtering` が有効なとき、色相・彩度・明るさを公式 lilToon の `_MainTexHSVG` に写す。コントラストと発光の色調補正は式が無いので表示する。
