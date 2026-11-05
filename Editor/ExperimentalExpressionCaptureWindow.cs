@@ -328,6 +328,9 @@ namespace VRVlog.LilToonExporter
 
         internal const string HiddenFaceFormat = "元のアバターで「{0}」が非表示になっています。表示に戻すか、「変更」からアバターを指定し直してください。";
         internal const string FollowedSourceFormat = "元のアバターがプレビューのコピーと違っていたため、表情ボードの選択を残したままコピーを作り直しました。違っていた値: {0}";
+        // A retry from the recovery window exports a copy of its own and leaves the board's copy, so
+        // it does not say the board was rebuilt (the board may be closed by then).
+        internal const string RetriedOnSourceFormat = "元のアバターが表情ボードで準備したときと違っていたため、同じ選択のまま今のアバターから書き出し直しました。違っていた値: {0}";
 
         // The copy no longer matches the avatar: a change in the scene, an
         // import, or a value that reads differently after a reload. Everything
@@ -2625,10 +2628,12 @@ namespace VRVlog.LilToonExporter
             try { return export(target, sourceChecked); }
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
             {
-                Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), changed.Detail ?? ""));
                 using var current = ExperimentalExpressionCaptureSession.Create(target.Source, target.ExcludedObjects, target.GimmickOptions);
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
-                return export(current, true);
+                var exported = export(current, true);
+                // Only once it is written: a failed retry shows its own error instead.
+                Debug.Log(string.Format(ExporterLocalization.T(RetriedOnSourceFormat), changed.Detail ?? ""));
+                return exported;
             }
         }
 
