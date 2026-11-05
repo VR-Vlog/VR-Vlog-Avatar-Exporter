@@ -124,6 +124,8 @@ namespace VRVlog.LilToonExporter
             Set(material, "_RimMainStrength", 0);
             Set(material, "_RimEnableLighting", values.Float("_Is_LightColor_RimLight", 1) > .5f ? 1 : 0);
             Set(material, "_RimNormalStrength", values.Float("_Is_NormalMapToRimLight", 0) > .5f ? 1 : 0);
+            // lilToon's default hides half the rim in shade; the source does not.
+            Set(material, "_RimShadowMask", 0);
             // The source subtracts (1 - half-Lambert) + level from the rim, which
             // keeps it on the side facing the light whether or not it is in
             // shade. lilToon scales the rim by half-Lambert moved by the range.
