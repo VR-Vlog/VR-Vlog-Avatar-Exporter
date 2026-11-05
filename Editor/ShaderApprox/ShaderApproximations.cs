@@ -10,6 +10,7 @@ namespace VRVlog.LilToonExporter
         internal static readonly IShaderApproximation[] All =
         {
             new NonToonApproximation(),
+            new MochieStandardApproximation(),
             new SilentCelShadingApproximation(),
             new UtsApproximation(),
             new ArktoonApproximation(),
