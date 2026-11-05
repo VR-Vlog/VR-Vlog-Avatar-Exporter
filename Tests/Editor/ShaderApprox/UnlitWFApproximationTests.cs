@@ -158,7 +158,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_TS_1stTex", Image("shade", new Color(.5f, 1, 1, 1)));
             var output = Substitute(source);
             var image = output.GetTexture("_ShadowColorTex") as Texture2D;
-            if (NoGraphics) { Assert.That(image, Is.Null); return; }
+            if (NoGraphics) { Assert.That(output.GetTexture("_ShadowColorTex"), Is.Null); return; }
             Assert.That(image, Is.Not.Null);
             // The image holds the color itself, read in the same space as the main image.
             Assert.That(image.GetPixel(0, 0).r, Is.EqualTo(.5f).Within(.02f));
@@ -278,7 +278,13 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_HL_Enable", 1);
             source.SetTexture("_HL_MatcapTex", Image("cap", new Color(.1f, .1f, .1f)));
             var output = Substitute(source, Opaque, out var dropped);
-            if (NoGraphics) { Assert.That(dropped, Does.Contain("Matcap")); return; }
+            if (NoGraphics)
+            {
+                Assert.That(dropped, Does.Contain("Matcap"));
+                Assert.That(output.GetFloat("_UseMatCap"), Is.EqualTo(0f));
+                Assert.That(output.GetFloat("_UseMatCap2nd"), Is.EqualTo(0f));
+                return;
+            }
             Assert.That(output.GetFloat("_MatCapBlendMode"), Is.EqualTo(1f));
             Assert.That(((Texture2D)output.GetTexture("_MatCapTex")).GetPixel(0, 0).r, Is.EqualTo(0f).Within(.02f));
             Assert.That(output.GetFloat("_UseMatCap2nd"), Is.EqualTo(1f));
@@ -450,8 +456,9 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_TL_Enable", 1);
             source.SetTexture("_MainTex", Image("main", new Color(1, 0, 0, .25f)));
             source.SetColor("_TL_LineColor", new Color(0, 0, 1));
-            var image = Substitute(source, OutlineCutout, out var dropped).GetTexture("_OutlineTex") as Texture2D;
-            if (NoGraphics) { Assert.That(image, Is.Null); Assert.That(dropped, Does.Contain("Outline Color Image")); return; }
+            var output = Substitute(source, OutlineCutout, out var dropped);
+            if (NoGraphics) { Assert.That(output.GetTexture("_OutlineTex"), Is.Null); Assert.That(dropped, Does.Contain("Outline Color Image")); return; }
+            var image = output.GetTexture("_OutlineTex") as Texture2D;
             Assert.That(image, Is.Not.Null);
             AssertColor(image.GetPixel(0, 0), 0, 0, 1, .25f, .02f);
         }
@@ -463,8 +470,9 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_TL_BlendBase", 1);
             source.SetTexture("_MainTex", Image("main", new Color(1, 0, 0, 1)));
             source.SetColor("_TL_LineColor", new Color(0, 0, 1));
-            var image = Substitute(source, OutlineOpaque, out var dropped).GetTexture("_OutlineTex") as Texture2D;
-            if (NoGraphics) { Assert.That(image, Is.Null); Assert.That(dropped, Does.Contain("Outline Color Image")); return; }
+            var output = Substitute(source, OutlineOpaque, out var dropped);
+            if (NoGraphics) { Assert.That(output.GetTexture("_OutlineTex"), Is.Null); Assert.That(dropped, Does.Contain("Outline Color Image")); return; }
+            var image = output.GetTexture("_OutlineTex") as Texture2D;
             AssertColor(image.GetPixel(0, 0), 1, 0, 0, 1, .02f);
         }
 
