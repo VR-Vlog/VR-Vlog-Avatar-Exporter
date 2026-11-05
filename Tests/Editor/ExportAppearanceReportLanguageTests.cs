@@ -41,8 +41,9 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The notes of a left-out stage, lost BlendShapes and a substituted shader are written in the
-        // language of the Editor too, and an English summary used to drop them.
+        // The notes of a left-out stage, lost BlendShapes, a substituted shader or material and a
+        // skipped expression setup are written in the language of the Editor too, and an English
+        // summary used to drop them.
         [TestCase("ja")]
         [TestCase("en")]
         [TestCase("ko")]
@@ -59,16 +60,28 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 localeField.SetValue(null, locale);
                 messagesField.SetValue(null, null);
-                // As UniVrmOneClickExporter.RecordOmissions, NdmfExportPreparation and UnsupportedShaderSubstitution write them.
+                // As UniVrmOneClickExporter, NdmfExportPreparation, UnsupportedShaderSubstitution and
+                // VrmExpressionBindings write them.
                 var notes = new[]
                 {
                     ExporterLocalization.T(UniVrmOneClickExporter.StageOmittedWarning) + ": Expressions — reason",
                     ExporterLocalization.T(NdmfExportPreparation.LostGeneratedMorphs) + "Body/Smile",
                     ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Hair",
                     ExporterLocalization.T(UnsupportedShaderSubstitution.Failed) + "Skirt",
+                    ExporterLocalization.Format(UniVrmOneClickExporter.LostMorphOmittedWarning, "Smile", "mouth_a"),
+                    ExporterLocalization.Format(UniVrmOneClickExporter.LostExpressionOmittedWarning, "Smile"),
+                    ExporterLocalization.T(UniVrmOneClickExporter.LostTrackingWarning) + " (detail)",
+                    ExporterLocalization.Format(VrmExpressionBindings.DuplicateExpressionFormat, "Happy", 2),
+                    ExporterLocalization.T(UniVrmOneClickExporter.MaterialApproximatedWarning) + "Body — " +
+                        ExporterLocalization.T(UniVrmOneClickExporter.ApproximatedLilToonReason),
                 };
-                var other = ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + "Face";
-                Assert.That(ExportAppearanceReport.Changes(notes.Append(other)), Is.EqualTo(notes), locale);
+                var others = new[]
+                {
+                    ExporterLocalization.T(UnsupportedShaderSubstitution.KeptForExpressions) + "Face",
+                    ExporterLocalization.T(UniVrmOneClickExporter.MaterialApproximatedWarning) + "Face — " +
+                        ExporterLocalization.T(UniVrmOneClickExporter.UnofficialLilToonReason),
+                };
+                Assert.That(ExportAppearanceReport.Changes(notes.Concat(others)), Is.EqualTo(notes), locale);
                 // Chinese shares 省略 and 近似 with Japanese; in English and Korean only the translated
                 // sentence can find a note, and only where the note starts.
                 if (locale == "en" || locale == "ko")
