@@ -287,7 +287,8 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_OutlineAlbedoTint", 1);
             source.SetColor("_Color", new Color(.5f, .5f, .5f));
             var output = Substitute(source, Outlined, out _, out _);
-            Assert.That(output.GetColor("_OutlineColor").g, Is.EqualTo(.15f).Within(1e-4f));
+            var expected = Mathf.LinearToGammaSpace(Mathf.GammaToLinearSpace(.3f) * Mathf.GammaToLinearSpace(.5f));
+            Assert.That(output.GetColor("_OutlineColor").g, Is.EqualTo(expected).Within(1e-3f));
             Assert.That(output.GetColor("_OutlineColor").a, Is.EqualTo(1));
             Assert.That(output.GetTexture("_OutlineTex"), Is.SameAs(source.GetTexture("_MainTex")));
         }

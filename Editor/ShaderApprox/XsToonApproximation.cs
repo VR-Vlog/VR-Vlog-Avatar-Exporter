@@ -189,7 +189,7 @@ namespace VRVlog.LilToonExporter
             if (values.Float("_OutlineAlbedoTint", 0) > .5f)
             {
                 SetTexture(material, "_OutlineTex", material.GetTexture("_MainTex"), material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"));
-                color *= material.GetColor("_Color");
+                color = (color.linear * material.GetColor("_Color").linear).gamma;
                 color.a = 1;
             }
             material.SetColor("_OutlineColor", color);
