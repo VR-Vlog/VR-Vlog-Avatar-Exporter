@@ -14,8 +14,10 @@ namespace VRVlog.LilToonExporter
     // alpha source, the normal strength, the emission the shader turns on with
     // a keyword, the color filtering, metallic and roughness, and reports the
     // effects lilToon has no counterpart for.
-    // The Mobile shader declares the alpha mask and the emission mask but does
-    // not read them; its inspector does not show them, so they stay unset.
+    // The Mobile shader declares the same properties but is built with
+    // STANDARD_MOBILE, which skips _AlphaSource, the emission mask and the
+    // pulse; only its name tells it apart, so a missing shader is read as
+    // Standard.
     internal sealed class MochieStandardApproximation : IShaderApproximation
     {
         // A missing shader is known by the two workflow properties only these
@@ -37,12 +39,13 @@ namespace VRVlog.LilToonExporter
 
         public void Apply(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
-            ApplyAlpha(values, material, textures, dropped);
+            var mobile = values.ShaderName == "Mochie/Standard Mobile";
+            if (!mobile) ApplyAlpha(values, material, textures, dropped);
             ApplyNormal(values, material);
             // Both turn the normal toward the viewer on back faces.
             S.Set(material, "_FlipNormal", values.Float("_FlipBackfaceNormals", 0) >= .5f ? 1 : 0);
             ApplyFiltering(values, material, dropped);
-            ApplyEmission(values, material, textures, dropped);
+            ApplyEmission(values, material, textures, dropped, mobile);
             ApplyLambert(material);
             ApplyReflection(values, material, textures, dropped);
             ApplyUV(values, dropped);
@@ -102,6 +105,11 @@ namespace VRVlog.LilToonExporter
             if (values.Float("_MonoTint", 0) > .5f) { S.Drop(dropped, "Mono Tint"); shifted = false; }
             if (shifted && values.Float("_HueMode", 0) > .5f) { S.Drop(dropped, "Hue (Oklab)"); shifted = false; }
             if (values.Float("_Contrast", 1) != 1) S.Drop(dropped, "Contrast");
+            // The lit color is filtered again with the Post values (and ACES);
+            // MToon has no counterpart.
+            var post = values.Float("_HuePost", 0);
+            if ((post > 0 && post < 1) || values.Float("_SaturationPost", 1) != 1 || values.Float("_BrightnessPost", 1) != 1 ||
+                values.Float("_ContrastPost", 1) != 1 || values.Float("_ACES", 0) != 0) S.Drop(dropped, "Post Filtering");
             var hsvg = new Vector4(shifted ? hue : 0, Mathf.Max(0, values.Float("_Saturation", 1)), Mathf.Max(0, values.Float("_Brightness", 1)), 1);
             if (Finite(hsvg) && hsvg != new Vector4(0, 1, 1, 1)) material.SetVector("_MainTexHSVG", hsvg);
         }
@@ -111,7 +119,7 @@ namespace VRVlog.LilToonExporter
         // _EMISSION_ON. The color reaches the shader linear and is raised to
         // 2.2 again; lilToon reads its color linear, so the result is saved in
         // gamma.
-        static void ApplyEmission(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
+        static void ApplyEmission(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped, bool mobile)
         {
             if (!values.TryVector("_EmissionColor", out var vector) || !values.TryFloat("_EmissionStrength", out var strength)) return;
             if (!values.Keyword("_EMISSION_ON") || !Finite(vector))
@@ -142,8 +150,11 @@ namespace VRVlog.LilToonExporter
             material.SetColor("_EmissionColor", new Color(gamma.r, gamma.g, gamma.b, 1));
             if (values.Texture("_EmissionMap", out var map, out var scale, out var offset) && S.Flat(map)) S.SetTexture(material, "_EmissionMap", map, scale, offset);
             else S.Reset(material, "_EmissionMap");
-            S.CopyMask(values, material, "_EmissionMask", "_EmissionMaskChannel", "", "_EmissionBlendMask", "_UseEmission", textures, dropped, "Emission Mask");
-            if (values.Float("_EmissionPulseWave", 0) > .5f) S.Drop(dropped, "Emission Pulse");
+            if (!mobile)
+            {
+                S.CopyMask(values, material, "_EmissionMask", "_EmissionMaskChannel", "", "_EmissionBlendMask", "_UseEmission", textures, dropped, "Emission Mask");
+                if (values.Float("_EmissionPulseWave", 0) > .5f) S.Drop(dropped, "Emission Pulse");
+            }
             if (values.Keyword("_AUDIOLINK_ON")) S.Drop(dropped, "Audio Link");
         }
 

@@ -79,6 +79,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonCutout"));
         }
 
+        // Mobile is built with STANDARD_MOBILE, which skips _AlphaSource, the
+        // emission mask and the pulse.
+        [Test] public void TheMobileShaderSkipsTheAlphaSourceAndTheEmissionMask()
+        {
+            var source = Source(2);
+            source.SetFloat("_AlphaSource", 1);
+            source.SetTexture("_AlphaMask", Solid("mask", Color.grey));
+            source.EnableKeyword("_EMISSION_ON");
+            source.SetColor("_EmissionColor", Color.white);
+            source.SetTexture("_EmissionMask", Solid("emission mask", new Color(.5f, 0, 0, 1)));
+            source.SetFloat("_EmissionPulseWave", 1);
+            var output = Substitute(source, "Mochie/Standard Mobile", out _, out var dropped);
+            Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(0f));
+            Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_EmissionBlendMask"), Is.Not.EqualTo(source.GetTexture("_EmissionMask")));
+            Assert.That(dropped, Is.Empty);
+
+            source.SetFloat("_AlphaSource", 2);
+            Substitute(source, "Mochie/Standard Mobile", out _, out dropped);
+            Assert.That(dropped, Does.Not.Contain("Vertex Color Alpha"));
+        }
+
         [Test] public void TheAlphaMaskChannelReplacesTheAlphaAtItsOwnTiling()
         {
             var source = Source(2);
@@ -181,6 +203,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(hsvg.z, Is.EqualTo(.8f).Within(1e-6f));
             Assert.That(hsvg.w, Is.EqualTo(1f));
             Assert.That(dropped, Does.Contain("Contrast"));
+            Assert.That(dropped, Does.Not.Contain("Post Filtering"));
+
+            // The lit color is filtered again by the Post values.
+            source.SetFloat("_BrightnessPost", .5f);
+            Substitute(source, Name, out _, out dropped);
+            Assert.That(dropped, Does.Contain("Post Filtering"));
         }
 
         [Test] public void FilteringOffLeavesTheColorAlone()

@@ -61,6 +61,11 @@ Shader "Hidden/VRVlogTests/MochieStandardProbe"
         _ContrastEmiss ("Contrast", Float) = 1
         _SaturationEmiss ("Saturation", Float) = 1
         _BrightnessEmiss ("Brightness", Float) = 1
+        _HuePost ("Hue", Range(0,1)) = 0
+        _ContrastPost ("Contrast", Float) = 1
+        _SaturationPost ("Saturation", Float) = 1
+        _BrightnessPost ("Brightness", Float) = 1
+        _ACES ("ACES", Float) = 0
         _VertexBaseColor ("Vertex Base Color", Int) = 0
         _Culling ("Cull", Int) = 2
         _FlipBackfaceNormals ("Flip Backface Normals", Int) = 0
