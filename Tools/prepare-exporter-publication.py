@@ -33,8 +33,9 @@ PREFLIGHT_FILE = "vpm-mirror-preflight.json"
 REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter",)
 MAX_FILE_BYTES = 4 * 1024 * 1024
 # Read-only, never through a symlink in the final component, never blocking on a
-# special file. Windows has no O_NOFOLLOW or O_NONBLOCK (the lstat checks before
-# each open still reject symlinks there) and needs O_BINARY for raw bytes.
+# special file. Windows has no O_NOFOLLOW or O_NONBLOCK, so there only the lstat
+# check before each open rejects a symlink, not one swapped in after it; publishing
+# runs on Linux CI. O_BINARY keeps the bytes raw on Windows.
 SAFE_READ_FLAGS = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
                    | getattr(os, "O_BINARY", 0))
 MAX_PUBLICATION_BYTES = 8 * 1024 * 1024

@@ -240,18 +240,29 @@ class PublicationTests(unittest.TestCase):
         alias.symlink_to(self.source, target_is_directory=True)
         self.assert_rejected_unchanged("roots cannot be symlinks", source=alias)
 
-    def test_special_file_and_unsafe_paths_are_rejected(self):
-        if hasattr(os, "mkfifo"):  # Windows has no FIFOs; CI (Linux) covers this part
-            fifo = self.source / "pipe"
-            os.mkfifo(fifo)
-            self.assert_rejected_unchanged("non-regular")
-            fifo.unlink()
-        # Windows cannot create these names; CI (Linux) covers them.
-        for name in ("bad\\path", "bad\npath") if os.name == "posix" else ():
+    def test_safe_read_flags_keep_raw_bytes(self):
+        # Without O_BINARY, Windows would turn CRLF into LF and stop at 0x1A.
+        path = self.root / "raw.bin"
+        data = b"line\r\nend\x1amore"
+        path.write_bytes(data)
+        with os.fdopen(os.open(path, publication.SAFE_READ_FLAGS), "rb") as stream:
+            self.assertEqual(stream.read(), data)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "Windows has no FIFOs; CI (Linux) runs this")
+    def test_special_file_is_rejected(self):
+        fifo = self.source / "pipe"
+        os.mkfifo(fifo)
+        self.assert_rejected_unchanged("non-regular")
+
+    @unittest.skipUnless(os.name == "posix", "Windows cannot create these names; CI (Linux) runs this")
+    def test_unsafe_file_names_are_rejected(self):
+        for name in ("bad\\path", "bad\npath"):
             path = self.source / name
             path.write_bytes(b"invalid name")
             self.assert_rejected_unchanged("Invalid publication path")
             path.unlink()
+
+    def test_git_directory_is_rejected(self):
         (self.source / ".git").mkdir()
         self.assert_rejected_unchanged("Invalid publication directory")
 
@@ -598,11 +609,12 @@ class PublicationTests(unittest.TestCase):
         path.symlink_to(self.source / "index.json")
         with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
             publication.read_preflight(environment, self.publisher)
-        path.unlink()
-        if hasattr(os, "mkfifo"):  # Windows has no FIFOs; CI (Linux) covers this part
-            os.mkfifo(path)
-            with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
-                publication.read_preflight(environment, self.publisher)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "Windows has no FIFOs; CI (Linux) runs this")
+    def test_preflight_reader_rejects_special_file(self):
+        os.mkfifo(self.root / publication.PREFLIGHT_FILE)
+        with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
+            publication.read_preflight(self.ci_environment(), self.publisher)
 
     def test_cli_refuses_missing_preflight_and_succeeds_with_matching_ci_proof(self):
         command = [sys.executable, str(Path(__file__).with_name("prepare-exporter-publication.py")),
