@@ -19,4 +19,4 @@ Unity と lilToon の画面は Material を「マテリアル」と書く。Expo
 
 ## 確かめたこと
 
-`Tools/validate.py`（ロケールの重複・訳の欠け）と `Tools/test-compatibility-tooling.py` が通る。ロケールの表の 4 言語とも、`source` に「材質」が残っていないことと訳文が変わっていないことを機械で確かめた。文言の変わるテストのクラスを Unity 2022.3.22f1 の EditMode で回した。
+`Tools/validate.py`（ロケールの重複・訳の欠け）と `Tools/test-compatibility-tooling.py` が通る。ロケールの表の 4 言語とも、`source` に「材質」が残っていないことと訳文が「マテリアル」の英訳のほかは変わっていないことを機械で確かめた。文言の変わるテストのクラスを Unity 2022.3.22f1 の EditMode で回した。
