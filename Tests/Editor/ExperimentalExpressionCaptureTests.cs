@@ -805,11 +805,12 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The blink button of the result list opens the blink settings of the
         // board showing the avatar, also after the board made its copy again
-        // (changing the objects left out); once the board left the avatar it does nothing.
+        // (changing the objects left out); once the board moved to another avatar or left it, it does nothing.
         [Test]
         public void TheResultListBlinkButtonStillOpensAfterARebuild()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
+            using var other = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
             var window = BoardHarness.Create();
@@ -836,6 +837,13 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(window.Session(), Is.Not.Null.And.Not.SameAs(exported), "The board made its copy again.");
                 openBlinkSettings();
                 Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") != null, Is.True, "The button opens the blink settings.");
+                // Another avatar on the board: the setting of the exported one is not opened.
+                foreach (var shown in Resources.FindObjectsOfTypeAll<BlinkConfigurationWindow>()) shown.Close();
+                window.SetField("blinkConfiguration", null);
+                window.SetField("source", other.Source);
+                window.PrepareWithoutBlink();
+                openBlinkSettings();
+                Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") == null, Is.True, "Another avatar opens nothing.");
                 window.Call("ChangeAvatar");
                 openBlinkSettings();
                 Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") == null, Is.True, "A board without the avatar opens nothing.");
