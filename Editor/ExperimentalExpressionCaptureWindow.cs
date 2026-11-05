@@ -2608,7 +2608,9 @@ namespace VRVlog.LilToonExporter
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
-                openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); },
+                // The blink setting belongs to the avatar, so the button still opens it
+                // after the board made its copy again; not once the board left the avatar.
+                openBlinkSettings: () => { if (this != null && session != null && source == target.Source) ShowBlinkConfiguration(); },
                 diagnosticsKind: diagnosticsKind,
                 resultAfterTransfer: written != null ? open => transferResult = open : (Action<Action<string, string>>)null);
             if (recovery != null)

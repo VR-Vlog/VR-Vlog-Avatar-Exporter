@@ -803,6 +803,55 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The blink button of the result list opens the blink settings of the
+        // board showing the avatar, also after the board made its copy again
+        // (changing the objects left out); once the board left the avatar it does nothing.
+        [Test]
+        public void TheResultListBlinkButtonStillOpensAfterARebuild()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            var texture = new RenderTexture(16, 16, 0);
+            var window = BoardHarness.Create();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-blink-button-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var previous = ExportTestHooks.ContinueByDefault;
+            var originalDialog = ExportFallbackConfirmation.Dialog;
+            var originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
+            Action openBlinkSettings = null;
+            try
+            {
+                ExportFallbackConfirmation.Dialog = (result, avatar, heading, note, diagnostics, open) => openBlinkSettings = open;
+                ExportFallbackConfirmation.IsBatchMode = () => false;
+                ExportTestHooks.ContinueByDefault = true;
+                // A stage left out, so the transfer has a result list to open.
+                material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                window.SetField("source", fixture.Source);
+                window.PrepareWithoutBlink();
+                Assert.That(window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => { }), Is.Null);
+                window.LastResult.Invoke(ExportResultWindow.SavedTitle, null);
+                Assert.That(openBlinkSettings, Is.Not.Null);
+                var exported = window.Session();
+                Assert.That(window.Call("RebuildKeepingAssignments", Array.Empty<GameObject>(), null), Is.Null);
+                Assert.That(window.Session(), Is.Not.Null.And.Not.SameAs(exported), "The board made its copy again.");
+                openBlinkSettings();
+                Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") != null, Is.True, "The button opens the blink settings.");
+                window.Call("ChangeAvatar");
+                openBlinkSettings();
+                Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") == null, Is.True, "A board without the avatar opens nothing.");
+            }
+            finally
+            {
+                ExportFallbackConfirmation.Dialog = originalDialog;
+                ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
+                ExportTestHooks.ContinueByDefault = previous;
+                foreach (var blink in Resources.FindObjectsOfTypeAll<BlinkConfigurationWindow>()) blink.Close();
+                foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);
+                Object.DestroyImmediate(window); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
         // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
         // moves one, or is entered by a gesture (the gesture route exports it) stays a face. A controller
