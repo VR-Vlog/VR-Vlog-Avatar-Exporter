@@ -328,7 +328,58 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.shader.name, Does.Contain("Outline"));
             Assert.That(output.GetFloat("_OutlineWidth"), Is.EqualTo(.2f).Within(1e-4f));
             AssertColor(output, "_OutlineColor", new Color(.2f, .1f, .3f));
-            Assert.That(output.GetTexture("_OutlineWidthMask"), Is.Not.Null);
+            if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.That(output.GetTexture("_OutlineWidthMask"), Is.Not.Null);
+        }
+
+        // The source multiplies in linear space, which differs in the dark.
+        [Test] public void TheOutlineTakesTheBaseColorInLinearSpace()
+        {
+            var source = Source();
+            source.SetFloat("_Outline_Width", 2);
+            source.SetFloat("_Is_BlendBaseColor", 1);
+            source.SetColor("_Outline_Color", Color.white);
+            source.SetColor("_BaseColor", new Color(.2f, .2f, .2f));
+            var linear = Mathf.GammaToLinearSpace(.2f);
+            Assert.That(Substitute(source).GetColor("_OutlineColor").g, Is.EqualTo(Mathf.LinearToGammaSpace(linear * linear)).Within(1e-3f));
+        }
+
+        // A power of 0 draws nothing, and the default high color is not an effect lost.
+        [Test] public void AHighColorWithoutPowerIsNotReported()
+        {
+            var source = Source();
+            source.SetColor("_HighColor", Color.white);
+            Substitute(source, out var dropped);
+            Assert.That(dropped, Does.Not.Contain("High Color"));
+            source.SetFloat("_Is_SpecularToHighColor", 1);
+            Substitute(source, out dropped);
+            Assert.That(dropped, Does.Contain("High Color"));
+        }
+
+        // Main image × color is the source's shade; the ratio would stop at 1.
+        [Test] public void AShadeBrighterThanTheBaseTakesTheMainImage()
+        {
+            var source = Source();
+            source.SetFloat("_Use_BaseAs1st", 1);
+            source.SetColor("_BaseColor", new Color(.2f, .2f, .2f));
+            source.SetColor("_1st_ShadeColor", new Color(.8f, .8f, .8f));
+            var main = Image("main");
+            source.SetTexture("_MainTex", main);
+            var output = Substitute(source);
+            Assert.That(output.GetTexture("_ShadowColorTex"), Is.SameAs(main));
+            Assert.That(output.GetColor("_ShadowColor").g, Is.EqualTo(.8f).Within(1e-3f));
+        }
+
+        [Test] public void AShadeDarkerThanTheBaseStaysARatio()
+        {
+            var source = Source();
+            source.SetFloat("_Use_BaseAs1st", 1);
+            source.SetColor("_BaseColor", new Color(.8f, .8f, .8f));
+            source.SetColor("_1st_ShadeColor", new Color(.4f, .4f, .4f));
+            source.SetTexture("_MainTex", Image("main"));
+            var output = Substitute(source);
+            Assert.That(output.GetTexture("_ShadowColorTex"), Is.Null);
+            Assert.That(output.GetColor("_ShadowColor").g, Is.EqualTo(.5f).Within(1e-3f));
         }
 
         [Test] public void TheOutlineCanTakeAnImageOrTheBase()
@@ -348,6 +399,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var source = Source();
             source.SetColor("_HighColor", Color.white);
+            source.SetFloat("_HighColor_Power", .5f);
             source.SetFloat("_AngelRing", 1);
             Substitute(source, out var dropped);
             Assert.That(dropped, Does.Contain("High Color"));
