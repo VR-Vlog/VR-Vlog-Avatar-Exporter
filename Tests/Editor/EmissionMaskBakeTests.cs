@@ -131,6 +131,78 @@ namespace VRVlog.LilToonExporter.Tests
             finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); Object.DestroyImmediate(mask); Object.DestroyImmediate(material); }
         }
 
+        // An sRGB mask counts with its linear value, as in a Linear project
+        // and in the app, also in a Gamma project; a linear one as it is.
+        [TestCase(true, .5f * .214f + .1f)]
+        [TestCase(false, .5f * .5f + .1f)]
+        public void AnAlphaMaskIsReadInLinearValues(bool srgb, float expected)
+        {
+            var shader = Shader.Find("lilToonTransparent");
+            if (shader == null) shader = Shader.Find("Hidden/lilToonTransparent");
+            Assert.That(shader, Is.Not.Null, "Install supported lilToon.");
+            var material = new Material(shader);
+            var source = new Texture2D(2,2,TextureFormat.RGBA32,false,false);
+            var mask = new Texture2D(2,2,TextureFormat.RGBA32,false,!srgb);
+            var owned = new List<Texture2D>();
+            try
+            {
+                var color = new Color(.5f,.6f,.7f,1);
+                source.SetPixels(new[] { color,color,color,color }); source.Apply();
+                mask.SetPixels(new[] { Color.gray,Color.gray,Color.gray,Color.gray }); mask.Apply();
+                material.SetTexture("_MainTex",source); material.SetTexture("_AlphaMask",mask);
+                material.SetColor("_Color",Color.white);
+                material.SetFloat("_AlphaMaskMode",1); material.SetFloat("_AlphaMaskScale",.5f); material.SetFloat("_AlphaMaskValue",.1f);
+                AlphaMaskBaker.Bake(material,owned,null);
+                Assert.That(owned, Has.Count.EqualTo(1));
+                // Without a graphics device the read-back pixels are undefined,
+                // and the baker has no fallback for it.
+                if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the bake needs a graphics device.");
+                var pixel = owned[0].GetPixel(0,0);
+                Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f));
+                // The sRGB main image is written back as it was.
+                Assert.That(pixel.r, Is.EqualTo(.5f).Within(.01f));
+                Assert.That(pixel.b, Is.EqualTo(.7f).Within(.01f));
+            }
+            finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); Object.DestroyImmediate(mask); Object.DestroyImmediate(material); }
+        }
+
+        // A black and white mask blended up to a larger main image: an sRGB one
+        // is decoded before the blend, as in a Linear project, so its edge
+        // lies where the same mask imported as linear data puts it.
+        [Test]
+        public void AnSrgbMaskEdgeIsBlendedInLinearValues()
+        {
+            var shader = Shader.Find("lilToonCutout");
+            if (shader == null) shader = Shader.Find("Hidden/lilToonCutout");
+            Assert.That(shader, Is.Not.Null, "Install supported lilToon.");
+            var owned = new List<Texture2D>();
+            var created = new List<Object>();
+            try
+            {
+                float[] Alpha(bool srgb)
+                {
+                    var source = new Texture2D(8, 1, TextureFormat.RGBA32, false, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                    source.SetPixels(Enumerable.Repeat(Color.white, 8).ToArray()); source.Apply();
+                    var mask = new Texture2D(2, 1, TextureFormat.RGBA32, false, !srgb);
+                    mask.SetPixels(new[] { Color.black, Color.white }); mask.Apply();
+                    var material = new Material(shader);
+                    created.Add(source); created.Add(mask); created.Add(material);
+                    material.SetTexture("_MainTex", source); material.SetTexture("_AlphaMask", mask);
+                    material.SetColor("_Color", Color.white);
+                    material.SetFloat("_AlphaMaskMode", 1); material.SetFloat("_AlphaMaskScale", 1); material.SetFloat("_AlphaMaskValue", 0);
+                    AlphaMaskBaker.Bake(material, owned, null);
+                    Assert.That(owned, Has.Count.GreaterThan(0));
+                    if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the bake needs a graphics device.");
+                    return owned[owned.Count - 1].GetPixels().Select(pixel => pixel.a).ToArray();
+                }
+                var linear = Alpha(false);
+                var decoded = Alpha(true);
+                Assert.That(linear.Any(a => a > .2f && a < .8f), Is.True, "The edge is blended over several texels.");
+                Assert.That(decoded, Is.EqualTo(linear).Within(.012f));
+            }
+            finally { foreach (var texture in owned) Object.DestroyImmediate(texture); foreach (var value in created) Object.DestroyImmediate(value); }
+        }
+
         // The factor is in linear values: an sRGB image is decoded and one
         // imported as linear data is read as it is, in a Gamma project too.
         [TestCase(false)]
