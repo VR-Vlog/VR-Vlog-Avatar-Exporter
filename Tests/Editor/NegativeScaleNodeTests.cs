@@ -112,7 +112,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Mirrored outfit", "Test", new List<string>(),
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Mirrored outfit", "Test",
                     exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(body.localScale, Is.EqualTo(new Vector3(x, y, z) * .2f));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller(),
