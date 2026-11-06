@@ -731,6 +731,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(), Is.Empty);
         }
 
+        [Test] public void ClipThatShowsTheRootButHidesTheMeshDoesNotCount()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var clip = controller.animationClips[0];
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("prop", typeof(MeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 0));
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void ClipWhoseOnChangesOverTimeDoesNotCount()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var clip = controller.animationClips[0];
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(GameObject), "m_IsActive"),
+                new AnimationCurve(new Keyframe(0, 1), new Keyframe(1, 0)));
+            Assert.That(Matched(), Is.Empty);
+        }
+
         [Test] public void FolderShownByAGimmickInsideItStays()
         {
             var folder = Child("folder"); folder.AddComponent(MaType(ExportGimmickRules.MenuInstaller));

@@ -182,7 +182,7 @@ namespace VRVlog.LilToonExporter
                          .OrderBy(Depth).ToArray())
             {
                 if (Skipped(candidate)) continue;
-                var none = new HashSet<UnityEngine.Object>();
+                var none = new Dictionary<UnityEngine.Object, bool>();
                 if (Shown(candidate.gameObject, source.transform, none) && VrChatOnly(source, candidate, excluded, none, out var review))
                 {
                     Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
@@ -192,9 +192,9 @@ namespace VRVlog.LilToonExporter
                 // it in one clip. A prop with its own toggle stays and exports
                 // as a toggle; one with a camera leaves, as it does when shown.
                 if (!candidate.GetComponentsInChildren<Camera>(true).Any(c => !excluded(c.transform))) continue;
-                foreach (var turnedOn in TurnedOn(source.transform, candidate))
-                    if (Shown(candidate.gameObject, source.transform, turnedOn) &&
-                        VrChatOnly(source, candidate, excluded, turnedOn, out review) && review == null)
+                foreach (var clipState in ClipStates(source.transform, candidate))
+                    if (Shown(candidate.gameObject, source.transform, clipState) &&
+                        VrChatOnly(source, candidate, excluded, clipState, out review) && review == null)
                     {
                         Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, null);
                         break;
@@ -202,20 +202,24 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Every object up to the avatar is on now or turned on by the
-        // gimmick's own animator.
-        static bool Shown(GameObject target, Transform avatarRoot, HashSet<UnityEngine.Object> turnedOn)
+        // Every object up to the avatar is on, now or in the clip's state.
+        static bool Shown(GameObject target, Transform avatarRoot, Dictionary<UnityEngine.Object, bool> clipState)
         {
             for (var t = target.transform; t != null && t != avatarRoot; t = t.parent)
-                if (!t.gameObject.activeSelf && !turnedOn.Contains(t.gameObject)) return false;
+                if (!On(t.gameObject, t.gameObject.activeSelf, clipState)) return false;
             return true;
         }
 
-        // For each clip of the animators merged from the candidate itself, the
-        // objects and renderers inside it that the clip turns on, with paths
-        // resolved the way MA reads them. An animator further down may belong
-        // to another gimmick in the same folder.
-        static IEnumerable<HashSet<UnityEngine.Object>> TurnedOn(Transform avatarRoot, Transform candidate)
+        static bool On(UnityEngine.Object target, bool now, Dictionary<UnityEngine.Object, bool> clipState) =>
+            clipState.TryGetValue(target, out var on) ? on : now;
+
+        // For each clip of the animators merged from the candidate itself that
+        // turns something on, the on or off it holds the objects and renderers
+        // inside the candidate at, with paths resolved the way MA reads them.
+        // A clip whose value changes over time is skipped: what shows together
+        // is unknown. An animator further down may belong to another gimmick
+        // in the same folder.
+        static IEnumerable<Dictionary<UnityEngine.Object, bool>> ClipStates(Transform avatarRoot, Transform candidate)
         {
             foreach (var merge in candidate.GetComponents<Component>()
                          .Where(c => c != null && IsType(c, new[] { ExportGimmickRules.MergeAnimator })))
@@ -232,19 +236,22 @@ namespace VRVlog.LilToonExporter
                 if (root == null) root = merge.transform;
                 foreach (var clip in Clips(controller).Distinct())
                 {
-                    var found = new HashSet<UnityEngine.Object>();
+                    var found = new Dictionary<UnityEngine.Object, bool>();
+                    var steady = true;
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
                         var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
                         if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
                         var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
                         if (target == null || !target.IsChildOf(candidate)) continue;
-                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                        if (curve == null || !curve.keys.Any(key => key.value > 0.5f)) continue;
-                        if (active) found.Add(target.gameObject);
-                        else if (target.TryGetComponent(binding.type, out var renderer)) found.Add(renderer);
+                        var keys = AnimationUtility.GetEditorCurve(clip, binding)?.keys;
+                        if (keys == null || keys.Length == 0) continue;
+                        var on = keys[0].value > 0.5f;
+                        if (keys.Any(key => key.value > 0.5f != on)) { steady = false; break; }
+                        if (active) found[target.gameObject] = on;
+                        else if (target.TryGetComponent(binding.type, out var renderer)) found[renderer] = on;
                     }
-                    if (found.Count > 0) yield return found;
+                    if (steady && found.ContainsValue(true)) yield return found;
                 }
             }
         }
@@ -415,7 +422,7 @@ namespace VRVlog.LilToonExporter
         // A menu or animator entry with its own shown mesh that is neither
         // bound to the body nor drawn like it. review is null when VRChat-only
         // parts (camera, sound, particles, contacts, constraints) prove it.
-        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, HashSet<UnityEngine.Object> turnedOn, out string review)
+        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, Dictionary<UnityEngine.Object, bool> clipState, out string review)
         {
             review = null;
             bool Inside(Transform t) => t == candidate || t.IsChildOf(candidate);
@@ -424,7 +431,7 @@ namespace VRVlog.LilToonExporter
             var renderers = candidate.GetComponentsInChildren<Renderer>(true).Where(r => !excluded(r.transform)).ToArray();
             var meshes = renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).ToArray();
             // Without a mesh it is settings: expression and pose import read them.
-            if (!meshes.Any(r => (r.enabled || turnedOn.Contains(r)) && MeshOf(r) != null && Shown(r.gameObject, source.transform, turnedOn))) return false;
+            if (!meshes.Any(r => On(r, r.enabled, clipState) && MeshOf(r) != null && Shown(r.gameObject, source.transform, clipState))) return false;
             // Bound to the body: an outfit, whatever its menu does.
             var components = candidate.GetComponentsInChildren<Component>(true).Where(c => c != null && !excluded(c.transform)).ToArray();
             if (meshes.OfType<SkinnedMeshRenderer>().Any(skin => skin.bones.Length > 0) || components.Any(c => IsType(c, BoundTypes))) return false;
