@@ -399,7 +399,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var measurements = TexelDensity.Measurements;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Lightweight", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Lightweight", "Tests", warnings: warnings,
                     exporterVersion: "tests", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     autoLightweight: on);
                 Assert.That(TexelDensity.Measurements - measurements, Is.EqualTo(on ? 1 : 0));

@@ -199,7 +199,7 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.bindposes = bindposes;
                 mesh.AddBlendShapeFrame("Hair detail", 100, Enumerable.Repeat(new Vector3(.02f, .01f, 0), count).ToArray(), new Vector3[count], new Vector3[count]);
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vertex data", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vertex data", "Tests", warnings: warnings,
                     exporterVersion: "tests", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     autoLightweight: on);
                 var glb = GlbDocument.Read(bytes);

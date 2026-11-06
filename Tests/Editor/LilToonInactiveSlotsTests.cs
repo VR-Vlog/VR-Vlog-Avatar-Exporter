@@ -232,7 +232,7 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetFloat("_UseEmission", 0);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Inactive slots", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Inactive slots", "Tests", warnings: warnings,
                     exporterVersion: "tests", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     autoLightweight: on);
                 var glb = GlbDocument.Read(bytes);
