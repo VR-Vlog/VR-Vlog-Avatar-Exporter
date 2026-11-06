@@ -42,14 +42,18 @@ namespace VRVlog.LilToonExporter
                 .Distinct().ToArray();
         }
 
-        // The first ones are shown until all are asked for.
+        // The first ones, each cut to a line or two, are shown until all are asked for.
         internal const int Shown = 3;
+        const int Longest = 110;
+
+        // Whether the summary leaves something out until all are shown.
+        internal static bool Shortened(IReadOnlyCollection<string> changes) => changes.Count > Shown || changes.Any(item => item.Length > Longest);
 
         internal static string Summary(IEnumerable<string> changes, bool all = false)
         {
             var items = changes.ToArray();
             var shown = all ? items.Length : Math.Min(Shown, items.Length);
-            return string.Join("\n", items.Take(shown).Select(item => "・" + (item.Length <= 110 ? item : item.Substring(0, 107) + "…"))) +
+            return string.Join("\n", items.Take(shown).Select(item => "・" + (all || item.Length <= Longest ? item : item.Substring(0, Longest - 3) + "…"))) +
                 (items.Length > shown ? "\n" + ExporterLocalization.Format("ほか{0}件", items.Length - shown) : "");
         }
     }

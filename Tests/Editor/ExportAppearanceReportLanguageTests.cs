@@ -160,6 +160,13 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExportAppearanceReport.Summary(changes), Is.EqualTo("・a\n・b\n・c\n" + rest));
                 Assert.That(ExportAppearanceReport.Summary(changes, true), Is.EqualTo("・a\n・b\n・c\n・d\n・e"));
                 Assert.That(ExportAppearanceReport.Summary(changes.Take(3)), Is.EqualTo("・a\n・b\n・c"));
+                Assert.That(ExportAppearanceReport.Shortened(changes), Is.True);
+                Assert.That(ExportAppearanceReport.Shortened(changes.Take(3).ToArray()), Is.False);
+                // A long change is cut until all are shown.
+                var longer = new[] { new string('x', 120) };
+                Assert.That(ExportAppearanceReport.Summary(longer), Is.EqualTo("・" + new string('x', 107) + "…"));
+                Assert.That(ExportAppearanceReport.Summary(longer, true), Is.EqualTo("・" + longer[0]));
+                Assert.That(ExportAppearanceReport.Shortened(longer), Is.True);
             }
             finally
             {

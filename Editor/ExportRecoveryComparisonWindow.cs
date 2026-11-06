@@ -225,7 +225,7 @@ namespace VRVlog.LilToonExporter
             if (changes.Length > 0)
             {
                 EditorGUILayout.HelpBox(ExporterLocalization.T("見た目の変更: ") + ExportAppearanceReport.Summary(changes, showAllChanges), MessageType.Warning);
-                if (changes.Length > ExportAppearanceReport.Shown)
+                if (ExportAppearanceReport.Shortened(changes))
                     showAllChanges = EditorGUILayout.Foldout(showAllChanges, ExporterLocalization.T("すべて表示"), true);
             }
             }
