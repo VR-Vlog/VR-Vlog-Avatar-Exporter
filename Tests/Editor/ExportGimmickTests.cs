@@ -668,6 +668,41 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(), Is.Empty);
         }
 
+        // The gimmick's merged animator turns on what it names (relative to
+        // the animator's object, as MA reads it) with a key of 1.
+        void TurnsOn(GameObject gimmick, string path, Type type, string property)
+        {
+            var clip = Own(new AnimationClip());
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, type, property), AnimationCurve.Constant(0, 1, 1));
+            var controller = Own(new AnimatorController());
+            controller.AddLayer("FX");
+            controller.layers[0].stateMachine.AddState("on").motion = clip;
+            var merge = gimmick.GetComponent(MaType(ExportGimmickRules.MergeAnimator));
+            using var serialized = new SerializedObject(merge);
+            serialized.FindProperty("animator").objectReferenceValue = controller;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        [Test] public void GimmickHiddenUntilItsOwnAnimatorShowsItLeavesAsAWhole()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            Assert.That(Matched(), Is.Empty);
+            TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var finding = Matched().Single();
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.VrChatOnlyStructure));
+            Assert.That(finding.Target, Is.SameAs(gimmick));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+        }
+
+        [Test] public void MeshTheGimmickAnimatorEnablesCountsAsShown()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.transform.Find("prop").GetComponent<Renderer>().enabled = false;
+            TurnsOn(gimmick, "prop", typeof(MeshRenderer), "m_Enabled");
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+        }
+
         const string VrChatPlatform = "nadena.dev.ndmf.vrchat.avatar3";
         const string GenericPlatform = "nadena.dev.ndmf.generic";
 

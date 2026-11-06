@@ -178,12 +178,69 @@ namespace VRVlog.LilToonExporter
             foreach (var (tool, ruleId, reason) in PoseTools(source, excluded))
                 if (!Skipped(tool)) Add(tool, ruleId, reason, null);
             foreach (var candidate in source.GetComponentsInChildren<Transform>(true)
-                         .Where(t => t != source.transform && !excluded(t) && ExportRendererSelection.ActiveUnder(t.gameObject, source.transform) &&
-                                     t.GetComponents<Component>().Any(c => IsType(c, StructuralEntryTypes)))
+                         .Where(t => t != source.transform && !excluded(t) && t.GetComponents<Component>().Any(c => IsType(c, StructuralEntryTypes)))
                          .OrderBy(Depth).ToArray())
-                if (!Skipped(candidate) && VrChatOnly(source, candidate, excluded, out var review))
+            {
+                if (Skipped(candidate)) continue;
+                var turnedOn = TurnedOn(source.transform, candidate, excluded);
+                if (Shown(candidate.gameObject, source.transform, turnedOn) && VrChatOnly(source, candidate, excluded, turnedOn, out var review))
                     Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
+            }
         }
+
+        // Shown now, or turned on by the gimmick's own animator: a gimmick
+        // that stays hidden until its menu is used is still one, and MA merges
+        // its animator into the avatar's either way.
+        static bool Shown(GameObject target, Transform avatarRoot, HashSet<UnityEngine.Object> turnedOn)
+        {
+            for (var t = target.transform; t != null && t != avatarRoot; t = t.parent)
+                if (!t.gameObject.activeSelf && !turnedOn.Contains(t.gameObject)) return false;
+            return true;
+        }
+
+        // Objects and renderers that the animators merged from inside the
+        // candidate can turn on, resolved the way MA reads their paths.
+        static HashSet<UnityEngine.Object> TurnedOn(Transform avatarRoot, Transform candidate, Func<Transform, bool> excluded)
+        {
+            var found = new HashSet<UnityEngine.Object>();
+            foreach (var merge in candidate.GetComponentsInChildren<Component>(true)
+                         .Where(c => c != null && !excluded(c.transform) && IsType(c, new[] { ExportGimmickRules.MergeAnimator })))
+            {
+                using var serialized = new SerializedObject(merge);
+                var controller = serialized.FindProperty("animator")?.objectReferenceValue;
+                var relative = (serialized.FindProperty("pathMode")?.intValue ?? 0) == 0;
+                var reference = serialized.FindProperty("relativePathRoot.targetObject")?.objectReferenceValue as GameObject;
+                var referencePath = serialized.FindProperty("relativePathRoot.referencePath")?.stringValue;
+                var root = !relative ? avatarRoot : reference != null ? reference.transform :
+                    !string.IsNullOrEmpty(referencePath) ? avatarRoot.Find(referencePath) : merge.transform;
+                if (root == null) continue;
+                foreach (var clip in Clips(controller).Distinct())
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+                    if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
+                    var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                    var curve = target != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;
+                    if (curve == null || !curve.keys.Any(key => key.value > 0.5f)) continue;
+                    if (active) found.Add(target.gameObject);
+                    else if (target.TryGetComponent(binding.type, out var renderer)) found.Add(renderer);
+                }
+            }
+            return found;
+        }
+
+        static IEnumerable<AnimationClip> Clips(UnityEngine.Object value) => value switch
+        {
+            AnimationClip clip => new[] { clip },
+            AnimatorOverrideController overrides => Clips(overrides.runtimeAnimatorController).Concat(OverrideClips(overrides)),
+            UnityEditor.Animations.AnimatorController controller => controller.layers.SelectMany(layer =>
+                States(layer.stateMachine).Select(state => state.motion).Concat(
+                    layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < controller.layers.Length
+                        ? States(controller.layers[layer.syncedLayerIndex].stateMachine).Select(layer.GetOverrideMotion)
+                        : Enumerable.Empty<Motion>())).SelectMany(Clips),
+            UnityEditor.Animations.BlendTree tree => tree.children.SelectMany(child => Clips(child.motion)),
+            _ => Enumerable.Empty<AnimationClip>()
+        };
 
         internal const string PoseMotionReason = "体の姿勢を動かすポーズ用のアニメーションを持つ仕組みです。ポーズはアプリで付けます。";
         internal const string SkeletonTakeoverReason = "書き出しの前の処理で体の骨を別の場所へ付け替える仕組みです。VRMで体の骨の親子が崩れ、ポーズが付かなくなります。";
@@ -330,7 +387,7 @@ namespace VRVlog.LilToonExporter
         // A menu or animator entry with its own shown mesh that is neither
         // bound to the body nor drawn like it. review is null when VRChat-only
         // parts (camera, sound, particles, contacts, constraints) prove it.
-        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, out string review)
+        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, HashSet<UnityEngine.Object> turnedOn, out string review)
         {
             review = null;
             bool Inside(Transform t) => t == candidate || t.IsChildOf(candidate);
@@ -339,7 +396,7 @@ namespace VRVlog.LilToonExporter
             var renderers = candidate.GetComponentsInChildren<Renderer>(true).Where(r => !excluded(r.transform)).ToArray();
             var meshes = renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).ToArray();
             // Without a mesh it is settings: expression and pose import read them.
-            if (!meshes.Any(r => r.enabled && MeshOf(r) != null && ExportRendererSelection.ActiveUnder(r.gameObject, source.transform))) return false;
+            if (!meshes.Any(r => (r.enabled || turnedOn.Contains(r)) && MeshOf(r) != null && Shown(r.gameObject, source.transform, turnedOn))) return false;
             // Bound to the body: an outfit, whatever its menu does.
             var components = candidate.GetComponentsInChildren<Component>(true).Where(c => c != null && !excluded(c.transform)).ToArray();
             if (meshes.OfType<SkinnedMeshRenderer>().Any(skin => skin.bones.Length > 0) || components.Any(c => IsType(c, BoundTypes))) return false;
