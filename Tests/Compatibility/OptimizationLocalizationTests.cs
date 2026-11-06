@@ -74,5 +74,38 @@ namespace VRVlog.LilToonExporter.Tests
                 messagesField.SetValue(null, previousMessages);
             }
         }
+
+        // The export and transfer windows show these; the not-ready text carries a reason after it,
+        // which must not keep the text from translating.
+        [TestCase("en")]
+        [TestCase("ko")]
+        [TestCase("zh-Hans")]
+        [TestCase("zh-Hant")]
+        public void ExporterNotReadyTextsTranslateWithTheReasonAfterThem(string locale)
+        {
+            var localeField = typeof(ExporterLocalization).GetField("_locale", BindingFlags.NonPublic | BindingFlags.Static);
+            var messagesField = typeof(ExporterLocalization).GetField("_messages", BindingFlags.NonPublic | BindingFlags.Static);
+            var previousLocale = localeField.GetValue(null);
+            var previousMessages = messagesField.GetValue(null);
+            try
+            {
+                localeField.SetValue(null, locale);
+                messagesField.SetValue(null, null);
+                foreach (var text in new[] { Compatibility.DependencyDiagnostics.BusyText, Compatibility.DependencyDiagnostics.CompileErrorText, Compatibility.DependencyDiagnostics.NotReadyText })
+                {
+                    var translated = ExporterLocalization.T(text);
+                    Assert.That(translated, Is.Not.EqualTo(text), locale + ": missing translation");
+                    Assert.That(translated.Split('\n').Length, Is.EqualTo(text.Split('\n').Length), locale + ": lines differ from the Japanese");
+                }
+                const string reason = "Missing method";
+                Assert.That(ExporterLocalization.T(Compatibility.DependencyDiagnostics.NotReadyText + "\n" + reason),
+                    Is.EqualTo(ExporterLocalization.T(Compatibility.DependencyDiagnostics.NotReadyText) + "\n" + reason));
+            }
+            finally
+            {
+                localeField.SetValue(null, previousLocale);
+                messagesField.SetValue(null, previousMessages);
+            }
+        }
     }
 }
