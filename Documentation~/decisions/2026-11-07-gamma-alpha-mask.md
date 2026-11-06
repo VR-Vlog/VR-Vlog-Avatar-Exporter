@@ -13,19 +13,23 @@ Linear のプロジェクトでは、sRGB のマスクはサンプルすると�
 
 ## 決定
 
-- Gamma のプロジェクトで、マスクが sRGB の画像（`isDataSRGB`）のときだけ、焼き込みのシェーダーがマスクの値を `GammaToLinearSpaceExact` で Linear の値に直してから透明度を作る。
-- 主画像の色はこれまでどおり手を加えずに書き戻す。Gamma では sRGB の値のまま読んでそのまま書き、Linear では GPU が読むときと書くときに直すので、どちらも元の画素と同じ値になる。
+- Gamma のプロジェクトで、マスクが sRGB の画像（`isDataSRGB`）のときだけ、先にマスクと同じ大きさの Linear の一時画像（ARGBHalf）へ、画素ごとに `GammaToLinearSpaceExact` で直して描く。焼き込みはこの一時画像を読むので、主画像の大きさへ広げるときの補間も Linear の値どうしで起き、Linear のプロジェクトと同じになる。
+- 焼き込みのシェーダーの中で、補間した後の値を直す形は採らなかった。白黒のマスクを広げた境目では、補間した後に直すと Linear のプロジェクトより暗い側へずれ、カットアウトの輪郭が変わる（直す前の Gamma は、白黒のマスクでは Linear と同じだった）。
+- 主画像の色はこれまでどおり手を加えずに書き戻す。主画像と同じ大きさで焼くときは、Gamma では sRGB の値のまま読んでそのまま書き、Linear では GPU が読むときと書くときに直すので、どちらも元の画素と同じ値になる。
 - Linear のプロジェクトと、Linear のデータとして読み込んだマスクの結果は変わらない。
 
 ## 確かめたこと
 
-lilToon 2.3.4 と Exporter だけを入れた最小のプロジェクトを Gamma と Linear で作り、Unity 2022.3.22f1 の batchmode で `EmissionMaskBakeTests` を回した。sRGB と Linear のデータのマスクで同じ期待値になることを確かめるテスト（`AnAlphaMaskIsReadInLinearValues`）を足した。
+lilToon 2.3.4 と Exporter だけを入れた最小のプロジェクトを Gamma と Linear で作り、Unity 2022.3.22f1 の batchmode で `EmissionMaskBakeTests` を回した。灰色のマスクの透明度が Linear の値で計算した値になることを確かめるテスト（`AnAlphaMaskIsReadInLinearValues`）と、白黒の 2 画素のマスクを 8 画素の主画像へ広げたとき、sRGB のマスクの透明度が Linear のデータのマスクと画素ごとに同じになることを確かめるテスト（`AnSrgbMaskEdgeIsBlendedInLinearValues`）を足した。
 
 - 修正前の Gamma: sRGB のマスクのケースが失敗した（期待 0.207 に対して 0.349）。
-- 修正後: Gamma・Linear とも 12 件すべて成功した。
+- 補間の後で直す最初の版の Gamma: 白黒の境目のテストが失敗した（境目の画素が 0.125 に対して 0.016）。
+- 修正後: `EmissionMaskBakeTests` と `LayerAlphaTests` の 27 件が Gamma・Linear ともすべて成功した。
 
 ## 残したもの
 
-2026-11-05 と 2026-11-06 の記録と同じく、GPU が補間したあとで Linear の値に直すので、値の違う画素どうしを補間するところ（縮小・境目）は Linear のプロジェクトと少し違う。
+マスクの縮小（タイリングを 2 以上にしたとき）は、一時画像から作り直したミップマップを読むので、元の画像のミップマップを読む Linear のプロジェクトと少し違うことがある。
+
+主画像より大きいマスクに合わせて主画像を広げるときは、主画像の色を Gamma では sRGB の値のまま、Linear では Linear の値で補間するので、広げた画素の色が少し違う。これは前からの違いで、この変更では変えていない。
 
 Linear のデータとして読み込んだ主画像の色は、Gamma と Linear で書き戻す値が違う（Linear では sRGB に直して書くので、アプリでは元と同じ Linear の値に見える。Gamma では値のまま書くので、アプリでは暗く見える）。主画像を Linear のデータとして読み込む作りはまれで、焼き込みを通らないときの扱いと合わせて決める必要があるので、この変更ではマスクだけを直した。
