@@ -144,6 +144,10 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetColor("_Color",Color.white);
                 material.SetFloat("_AlphaMaskMode",1); material.SetFloat("_AlphaMaskScale",.5f); material.SetFloat("_AlphaMaskValue",.1f);
                 AlphaMaskBaker.Bake(material,owned,null);
+                Assert.That(owned, Has.Count.EqualTo(1));
+                // Without a graphics device the read-back pixels are undefined,
+                // and the baker has no fallback for it.
+                if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the bake needs a graphics device.");
                 var pixel = owned[0].GetPixel(0,0);
                 Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f));
                 // The sRGB main image is written back as it was.
