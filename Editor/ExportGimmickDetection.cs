@@ -182,15 +182,25 @@ namespace VRVlog.LilToonExporter
                          .OrderBy(Depth).ToArray())
             {
                 if (Skipped(candidate)) continue;
-                var turnedOn = TurnedOn(source.transform, candidate, excluded);
-                if (Shown(candidate.gameObject, source.transform, turnedOn) && VrChatOnly(source, candidate, excluded, turnedOn, out var review))
+                var none = new HashSet<UnityEngine.Object>();
+                if (Shown(candidate.gameObject, source.transform, none) && VrChatOnly(source, candidate, excluded, none, out var review))
+                {
                     Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
+                    continue;
+                }
+                // Hidden until its own animator shows it. A prop with its own
+                // toggle stays and exports as a toggle; one with a camera,
+                // which draws the world and no prop needs, leaves.
+                if (!candidate.GetComponentsInChildren<Camera>(true).Any(c => !excluded(c.transform))) continue;
+                var turnedOn = TurnedOn(source.transform, candidate, excluded);
+                if (turnedOn.Count > 0 && Shown(candidate.gameObject, source.transform, turnedOn) &&
+                    VrChatOnly(source, candidate, excluded, turnedOn, out review) && review == null)
+                    Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, null);
             }
         }
 
-        // Shown now, or turned on by the gimmick's own animator: a gimmick
-        // that stays hidden until its menu is used is still one, and MA merges
-        // its animator into the avatar's either way.
+        // Every object up to the avatar is on now or turned on by the
+        // gimmick's own animator.
         static bool Shown(GameObject target, Transform avatarRoot, HashSet<UnityEngine.Object> turnedOn)
         {
             for (var t = target.transform; t != null && t != avatarRoot; t = t.parent)
@@ -198,8 +208,8 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        // Objects and renderers that the animators merged from inside the
-        // candidate can turn on, resolved the way MA reads their paths.
+        // Objects and renderers inside the candidate that the animators merged
+        // from it can turn on, resolved the way MA reads their paths.
         static HashSet<UnityEngine.Object> TurnedOn(Transform avatarRoot, Transform candidate, Func<Transform, bool> excluded)
         {
             var found = new HashSet<UnityEngine.Object>();
@@ -211,16 +221,19 @@ namespace VRVlog.LilToonExporter
                 var relative = (serialized.FindProperty("pathMode")?.intValue ?? 0) == 0;
                 var reference = serialized.FindProperty("relativePathRoot.targetObject")?.objectReferenceValue as GameObject;
                 var referencePath = serialized.FindProperty("relativePathRoot.referencePath")?.stringValue;
-                var root = !relative ? avatarRoot : reference != null ? reference.transform :
-                    !string.IsNullOrEmpty(referencePath) ? avatarRoot.Find(referencePath) : merge.transform;
-                if (root == null) continue;
+                // AvatarObjectReference.Get, falling back to the component.
+                var root = !relative ? avatarRoot : string.IsNullOrEmpty(referencePath) ? null :
+                    reference != null && reference.transform.IsChildOf(avatarRoot) ? reference.transform :
+                    referencePath == "$$$AVATAR_ROOT$$$" ? avatarRoot : avatarRoot.Find(referencePath);
+                if (root == null) root = merge.transform;
                 foreach (var clip in Clips(controller).Distinct())
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
                     var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
                     if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
                     var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
-                    var curve = target != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;
+                    if (target == null || !target.IsChildOf(candidate)) continue;
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
                     if (curve == null || !curve.keys.Any(key => key.value > 0.5f)) continue;
                     if (active) found.Add(target.gameObject);
                     else if (target.TryGetComponent(binding.type, out var renderer)) found.Add(renderer);
@@ -232,7 +245,8 @@ namespace VRVlog.LilToonExporter
         static IEnumerable<AnimationClip> Clips(UnityEngine.Object value) => value switch
         {
             AnimationClip clip => new[] { clip },
-            AnimatorOverrideController overrides => Clips(overrides.runtimeAnimatorController).Concat(OverrideClips(overrides)),
+            // Each original clip plays unless it is overridden.
+            AnimatorOverrideController overrides => PlayedClips(overrides),
             UnityEditor.Animations.AnimatorController controller => controller.layers.SelectMany(layer =>
                 States(layer.stateMachine).Select(state => state.motion).Concat(
                     layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < controller.layers.Length
@@ -365,6 +379,13 @@ namespace VRVlog.LilToonExporter
             layers.Any(layer => MovesBody(layer.stateMachine, motions) ||
                 layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < layers.Length &&
                 States(layers[layer.syncedLayerIndex].stateMachine).Any(state => MovesBody(layer.GetOverrideMotion(state), motions)));
+
+        static IEnumerable<AnimationClip> PlayedClips(AnimatorOverrideController overrides)
+        {
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrides.GetOverrides(pairs);
+            return pairs.Select(pair => pair.Value != null ? pair.Value : pair.Key).Where(clip => clip != null);
+        }
 
         static IEnumerable<AnimationClip> OverrideClips(AnimatorOverrideController overrides)
         {
