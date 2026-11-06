@@ -60,9 +60,12 @@ namespace VRVlog.LilToonExporter
                 // sampling below also blends linear values as theirs does.
                 if (QualitySettings.activeColorSpace == ColorSpace.Gamma && mask.isDataSRGB)
                 {
-                    decoded = new RenderTexture(new RenderTextureDescriptor(mask.width, mask.height, RenderTextureFormat.ARGBHalf, 0)
+                    var format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RHalf) ? RenderTextureFormat.RHalf : RenderTextureFormat.ARGBHalf;
+                    decoded = new RenderTexture(new RenderTextureDescriptor(mask.width, mask.height, format, 0)
                         { sRGB = false, useMipMap = mask.mipmapCount > 1, autoGenerateMips = true });
+                    var active = RenderTexture.active;
                     Graphics.Blit(mask, decoded, baker, 1);
+                    RenderTexture.active = active;
                 }
                 baker.SetTexture("_AlphaMask", decoded != null ? decoded : mask);
                 baker.SetTextureScale("_AlphaMask", material.GetTextureScale("_AlphaMask"));
