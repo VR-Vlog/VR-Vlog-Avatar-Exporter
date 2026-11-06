@@ -746,6 +746,13 @@ namespace VRVlog.LilToonExporter
         }
         internal static bool IsHumanoidChannel(EditorCurveBinding binding) => binding.type == typeof(Animator) && binding.path == "" &&
             !binding.isPPtrCurve && HumanoidChannels.Contains(binding.propertyName);
+        // A finger muscle of either hand, in either spelling ("LeftHand.Index.1 Stretched" or "Left Index 1 Stretched").
+        internal static bool IsFingerMuscle(EditorCurveBinding binding)
+        {
+            if (!IsHumanoidChannel(binding)) return false;
+            var property = MuscleProperty(binding.propertyName);
+            return property.StartsWith("LeftHand.", StringComparison.Ordinal) || property.StartsWith("RightHand.", StringComparison.Ordinal);
+        }
         internal static bool IsBlendShape(EditorCurveBinding binding) => binding.type == typeof(SkinnedMeshRenderer) &&
             binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal);
         internal static AvatarMaskBodyPart Part(string bone)

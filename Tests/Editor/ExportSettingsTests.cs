@@ -80,6 +80,7 @@ namespace VRVlog.LilToonExporter.Tests
             settings.Poses.Names["pose-b"] = "Renamed";
             settings.License.CopyrightInformation = "Sample copyright";
             settings.License.AllowRedistribution = true;
+            settings.AutoLightweight = true;
             return settings;
         }
 
@@ -96,6 +97,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(loaded.IncludedGimmicks, Is.EqualTo(new[] { fixture.Gimmick }));
             Assert.That(loaded.IncludedGimmickComponents, Is.EqualTo(new Component[] { fixture.RootSettings }), "A kept component on the root stays a component.");
             Assert.That(loaded.AutoExcludeGimmicks, Is.False);
+            Assert.That(loaded.AutoLightweight, Is.True);
             Assert.That(loaded.Blink.Mode, Is.EqualTo(BlinkExportMode.Manual));
             Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));
             Assert.That(loaded.Poses.Names["pose-b"], Is.EqualTo("Renamed"));

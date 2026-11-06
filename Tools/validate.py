@@ -199,7 +199,7 @@ assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_cli
 assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure)") == 2
 assert "new ExportAttachmentSession(source, clone, fixedRootJoints: fixedRootJoints)" in one_click
 assert one_click.index("Vrm10AppearanceExporter.Export(") < one_click.index("ExportSkinRoots.Repair(exported,")
-assert "new MobileTextureSerializer(warnings)" in one_click
+assert "new MobileTextureSerializer(warnings, lightweight == null ? null : new Func<Texture, int, int>(lightweight.Maximum))" in one_click
 assert "NdmfExportPreparation.InstantiateOwnedCopy(source)" in one_click
 assert "ReplaceLilToonMaterials(clone" in one_click
 assert "DestroyImmediate(clone)" in one_click
@@ -338,7 +338,7 @@ assert (root / "Tests/Editor/ExportRecoveryTests.cs").is_file()
 assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone)') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
-assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
+assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
 assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
 assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
@@ -389,6 +389,21 @@ for locale in ("en", "ko", "zh-Hans", "zh-Hant"):
     for source in recovery_sources:
         # Some short Chinese labels (for example 正面) are also valid Japanese.
         assert translations.get(source), locale + ": missing recovery translation"
+    # Machine-checkable breakage of a translation. Many sources are fragments joined to a name or a
+    # number, so the whitespace at the ends must survive. Japanese left in is the Unity test
+    # OptimizationLocalizationTests.TranslationsHoldNoJapaneseCharacters; the meaning itself needs a reader.
+    def breaks(text):
+        return len(text) - len(text.lstrip("\n")), len(text) - len(text.rstrip("\n"))
+    for source, translated in translations.items():
+        where = locale + ": " + json.dumps(source, ensure_ascii=False)
+        assert translated, where + ": empty translation"
+        assert sorted(re.findall(r"\{[^{}]*\}", source)) == sorted(re.findall(r"\{[^{}]*\}", translated)), where + ": placeholders differ"
+        assert breaks(source) == breaks(translated), where + ": line breaks at the ends differ"
+        if source.endswith(" "):
+            # A name follows; Chinese may end with full-width punctuation instead of the space.
+            assert translated[-1].isspace() or (locale.startswith("zh") and translated[-1] in "：，。、）」"), where + ": trailing space lost"
+        if locale == "en" and source.startswith(" "):
+            assert translated[0].isspace(), where + ": leading space lost"
 
 print("Exporter implementation, package, schema, UE and recovery locale checks passed.")
 

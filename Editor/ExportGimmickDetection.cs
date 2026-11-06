@@ -67,7 +67,7 @@ namespace VRVlog.LilToonExporter
             var finding = new ExportGimmickFinding { Target = renderer.gameObject, Renderer = renderer };
             if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
                 materials.Length == 0 || materials.Any(m => m == null || m.shader == null))
-                finding.Reason = "メッシュまたは材質が不足しているため自動判定できません。";
+                finding.Reason = "メッシュまたはマテリアルが不足しているため自動判定できません。";
             else if (materials.All(Portable)) return null;
             else if (materials.All(HiddenFallback))
             {
@@ -75,7 +75,7 @@ namespace VRVlog.LilToonExporter
                 finding.Reason = "未対応シェーダーに、代替表示では隠す指定があります（VRCFallback=Hidden）。";
             }
             else finding.Reason = materials.Any(HiddenFallback)
-                ? "通常の材質と補助演出が混在しているため、そのまま含めます。"
+                ? "通常のマテリアルと補助演出が混在しているため、そのまま含めます。"
                 : "未対応シェーダーですが、非表示の指定がないため、そのまま含めます。";
             return finding;
         }
@@ -116,7 +116,7 @@ namespace VRVlog.LilToonExporter
         internal const string PlatformFilterMixedReason = "Platform Filterで含める指定と外す指定が混在しているため残します。";
         internal const string PlatformFilterUnreadableReason = "Platform Filterの設定を読めないため残します。";
         internal const string VrChatOnlyReason = "VRChatの中でだけ動く仕組み（カメラ・音・パーティクル等）を持つギミックです。";
-        internal const string VrChatOnlyUncertainReason = "メッシュまたは材質が不足しているため、VRChat専用のギミックか判定できず残します。";
+        internal const string VrChatOnlyUncertainReason = "メッシュまたはマテリアルが不足しているため、VRChat専用のギミックか判定できず残します。";
         internal const string VrChatOnlyNoEvidenceReason = "VRChatの中でだけ動く仕組みが見つからないため、自動では外さずに残します。";
         // MA's platform for builds that target no particular platform.
         const string GenericPlatform = "nadena.dev.ndmf.generic";
@@ -178,12 +178,102 @@ namespace VRVlog.LilToonExporter
             foreach (var (tool, ruleId, reason) in PoseTools(source, excluded))
                 if (!Skipped(tool)) Add(tool, ruleId, reason, null);
             foreach (var candidate in source.GetComponentsInChildren<Transform>(true)
-                         .Where(t => t != source.transform && !excluded(t) && ExportRendererSelection.ActiveUnder(t.gameObject, source.transform) &&
-                                     t.GetComponents<Component>().Any(c => IsType(c, StructuralEntryTypes)))
+                         .Where(t => t != source.transform && !excluded(t) && t.GetComponents<Component>().Any(c => IsType(c, StructuralEntryTypes)))
                          .OrderBy(Depth).ToArray())
-                if (!Skipped(candidate) && VrChatOnly(source, candidate, excluded, out var review))
+            {
+                if (Skipped(candidate)) continue;
+                var none = new Dictionary<UnityEngine.Object, bool>();
+                if (Shown(candidate.gameObject, source.transform, none) && VrChatOnly(source, candidate, excluded, none, out var review))
+                {
                     Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
+                    continue;
+                }
+                // Hidden until an animator merged from the object itself shows
+                // it in one clip. A prop with its own toggle stays and exports
+                // as a toggle; one with a camera leaves, as it does when shown.
+                if (!candidate.GetComponentsInChildren<Camera>(true).Any(c => !excluded(c.transform))) continue;
+                foreach (var clipState in ClipStates(source.transform, candidate))
+                    if (Shown(candidate.gameObject, source.transform, clipState) &&
+                        VrChatOnly(source, candidate, excluded, clipState, out review) && review == null)
+                    {
+                        Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, null);
+                        break;
+                    }
+            }
         }
+
+        // Every object up to the avatar is on, now or in the clip's state.
+        static bool Shown(GameObject target, Transform avatarRoot, Dictionary<UnityEngine.Object, bool> clipState)
+        {
+            for (var t = target.transform; t != null && t != avatarRoot; t = t.parent)
+                if (!On(t.gameObject, t.gameObject.activeSelf, clipState)) return false;
+            return true;
+        }
+
+        static bool On(UnityEngine.Object target, bool now, Dictionary<UnityEngine.Object, bool> clipState) =>
+            clipState.TryGetValue(target, out var on) ? on : now;
+
+        // For each clip of the animators merged from the candidate itself that
+        // turns something on, the on or off it holds the objects and renderers
+        // inside the candidate at, and the parents it hides, with paths
+        // resolved the way MA reads them.
+        // A clip whose value changes over time is skipped: what shows together
+        // is unknown. An animator further down may belong to another gimmick
+        // in the same folder.
+        static IEnumerable<Dictionary<UnityEngine.Object, bool>> ClipStates(Transform avatarRoot, Transform candidate)
+        {
+            foreach (var merge in candidate.GetComponents<Component>()
+                         .Where(c => c != null && IsType(c, new[] { ExportGimmickRules.MergeAnimator })))
+            {
+                using var serialized = new SerializedObject(merge);
+                var controller = serialized.FindProperty("animator")?.objectReferenceValue;
+                var relative = (serialized.FindProperty("pathMode")?.intValue ?? 0) == 0;
+                var reference = serialized.FindProperty("relativePathRoot.targetObject")?.objectReferenceValue as GameObject;
+                var referencePath = serialized.FindProperty("relativePathRoot.referencePath")?.stringValue;
+                // AvatarObjectReference.Get, falling back to the component.
+                var root = !relative ? avatarRoot : string.IsNullOrEmpty(referencePath) ? null :
+                    reference != null && reference.transform.IsChildOf(avatarRoot) ? reference.transform :
+                    referencePath == "$$$AVATAR_ROOT$$$" ? avatarRoot : avatarRoot.Find(referencePath);
+                if (root == null) root = merge.transform;
+                foreach (var clip in Clips(controller).Distinct())
+                {
+                    var found = new Dictionary<UnityEngine.Object, bool>();
+                    var steady = true;
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+                        if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
+                        var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                        if (target == null || target == avatarRoot) continue;
+                        var inside = target.IsChildOf(candidate);
+                        if (!inside && !candidate.IsChildOf(target)) continue;
+                        var keys = AnimationUtility.GetEditorCurve(clip, binding)?.keys;
+                        if (keys == null || keys.Length == 0) continue;
+                        var on = keys[0].value > 0.5f;
+                        if (keys.Any(key => key.value > 0.5f != on)) { steady = false; break; }
+                        // A parent the clip hides hides the candidate; one it shows is not counted.
+                        if (!inside && on) continue;
+                        if (active) found[target.gameObject] = on;
+                        else if (target.TryGetComponent(binding.type, out var renderer)) found[renderer] = on;
+                    }
+                    if (steady && found.ContainsValue(true)) yield return found;
+                }
+            }
+        }
+
+        static IEnumerable<AnimationClip> Clips(UnityEngine.Object value) => value switch
+        {
+            AnimationClip clip => new[] { clip },
+            // Each original clip plays unless it is overridden.
+            AnimatorOverrideController overrides => PlayedClips(overrides),
+            UnityEditor.Animations.AnimatorController controller => controller.layers.SelectMany(layer =>
+                States(layer.stateMachine).Select(state => state.motion).Concat(
+                    layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < controller.layers.Length
+                        ? States(controller.layers[layer.syncedLayerIndex].stateMachine).Select(layer.GetOverrideMotion)
+                        : Enumerable.Empty<Motion>())).SelectMany(Clips),
+            UnityEditor.Animations.BlendTree tree => tree.children.SelectMany(child => Clips(child.motion)),
+            _ => Enumerable.Empty<AnimationClip>()
+        };
 
         internal const string PoseMotionReason = "体の姿勢を動かすポーズ用のアニメーションを持つ仕組みです。ポーズはアプリで付けます。";
         internal const string SkeletonTakeoverReason = "書き出しの前の処理で体の骨を別の場所へ付け替える仕組みです。VRMで体の骨の親子が崩れ、ポーズが付かなくなります。";
@@ -309,6 +399,13 @@ namespace VRVlog.LilToonExporter
                 layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < layers.Length &&
                 States(layers[layer.syncedLayerIndex].stateMachine).Any(state => MovesBody(layer.GetOverrideMotion(state), motions)));
 
+        static IEnumerable<AnimationClip> PlayedClips(AnimatorOverrideController overrides)
+        {
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrides.GetOverrides(pairs);
+            return pairs.Select(pair => pair.Value != null ? pair.Value : pair.Key).Where(clip => clip != null);
+        }
+
         static IEnumerable<AnimationClip> OverrideClips(AnimatorOverrideController overrides)
         {
             var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
@@ -330,7 +427,7 @@ namespace VRVlog.LilToonExporter
         // A menu or animator entry with its own shown mesh that is neither
         // bound to the body nor drawn like it. review is null when VRChat-only
         // parts (camera, sound, particles, contacts, constraints) prove it.
-        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, out string review)
+        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, Dictionary<UnityEngine.Object, bool> clipState, out string review)
         {
             review = null;
             bool Inside(Transform t) => t == candidate || t.IsChildOf(candidate);
@@ -339,7 +436,7 @@ namespace VRVlog.LilToonExporter
             var renderers = candidate.GetComponentsInChildren<Renderer>(true).Where(r => !excluded(r.transform)).ToArray();
             var meshes = renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).ToArray();
             // Without a mesh it is settings: expression and pose import read them.
-            if (!meshes.Any(r => r.enabled && MeshOf(r) != null && ExportRendererSelection.ActiveUnder(r.gameObject, source.transform))) return false;
+            if (!meshes.Any(r => On(r, r.enabled, clipState) && MeshOf(r) != null && Shown(r.gameObject, source.transform, clipState))) return false;
             // Bound to the body: an outfit, whatever its menu does.
             var components = candidate.GetComponentsInChildren<Component>(true).Where(c => c != null && !excluded(c.transform)).ToArray();
             if (meshes.OfType<SkinnedMeshRenderer>().Any(skin => skin.bones.Length > 0) || components.Any(c => IsType(c, BoundTypes))) return false;
@@ -564,7 +661,7 @@ namespace VRVlog.LilToonExporter
                 var materials = renderer.sharedMaterials;
                 var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
                 if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount || materials.Any(m => m == null || m.shader == null))
-                    return "メッシュまたは材質が不足しているため、システム全体は残します。";
+                    return "メッシュまたはマテリアルが不足しているため、システム全体は残します。";
                 if (!(renderer is MeshRenderer || renderer is SkinnedMeshRenderer) || materials.Length == 0 || !materials.All(HiddenFallback))
                     return "通常の表示物を含むため、システム全体は残して補助Rendererだけを判定します。";
             }

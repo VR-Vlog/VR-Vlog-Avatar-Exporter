@@ -36,7 +36,7 @@ namespace VRVlog.LilToonExporter
             "Unified Expressions の morph target 参照が不正です: ",
             "BlendShape の移動先を解決できません: ",
             "マテリアルの移動先を解決できません: ",
-            "表示中のメッシュに材質が1つも割り当てられていないため、書き出せません。材質の参照が切れている可能性があります。元のアバターで材質を割り当ててください: ",
+            "表示中のメッシュにマテリアルが1つも割り当てられていないため、書き出せません。マテリアルの参照が切れている可能性があります。元のアバターでマテリアルを割り当ててください: ",
             "最適化でVRM表情のマテリアルが失われました: ",
             "最適化で書き出し用の表情が失われました: ",
             "最適化で元のVRM表情の適用量が衝突しました: ",
@@ -58,7 +58,7 @@ namespace VRVlog.LilToonExporter
         static string _locale;
         static Dictionary<string, string> _messages;
 
-        internal static string Locale => _locale ?? (_locale = ResolveLocale(CultureInfo.CurrentUICulture.Name));
+        public static string Locale => _locale ?? (_locale = ResolveLocale(CultureInfo.CurrentUICulture.Name));
 
         internal static string ResolveLocale(string languageTag)
         {
@@ -85,6 +85,14 @@ namespace VRVlog.LilToonExporter
                 if (source.StartsWith(prefix, StringComparison.Ordinal) && _messages.TryGetValue(prefix, out translated))
                     return translated + source.Substring(prefix.Length);
             return source;
+        }
+
+        // The Japanese sentences the table of the Editor's language translates; none in Japanese.
+        public static IEnumerable<string> Sources()
+        {
+            if (Locale == "ja") return Array.Empty<string>();
+            if (_messages == null) LoadMessages();
+            return new List<string>(_messages.Keys);
         }
 
         // A note of the export written in the language of the Editor (the downscale notes of ExportNoteText).

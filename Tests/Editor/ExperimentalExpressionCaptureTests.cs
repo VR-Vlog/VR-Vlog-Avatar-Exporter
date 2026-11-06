@@ -803,6 +803,63 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The blink button of the result list opens the blink settings of the
+        // board showing the avatar, also after the board made its copy again
+        // (changing the objects left out); once the board moved to another avatar or left it, it does nothing.
+        [Test]
+        public void TheResultListBlinkButtonStillOpensAfterARebuild()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var other = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            var texture = new RenderTexture(16, 16, 0);
+            var window = BoardHarness.Create();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-blink-button-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var previous = ExportTestHooks.ContinueByDefault;
+            var originalDialog = ExportFallbackConfirmation.Dialog;
+            var originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
+            Action openBlinkSettings = null;
+            try
+            {
+                ExportFallbackConfirmation.Dialog = (result, avatar, heading, note, diagnostics, open) => openBlinkSettings = open;
+                ExportFallbackConfirmation.IsBatchMode = () => false;
+                ExportTestHooks.ContinueByDefault = true;
+                // A stage left out, so the transfer has a result list to open.
+                material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                window.SetField("source", fixture.Source);
+                window.PrepareWithoutBlink();
+                Assert.That(window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => { }), Is.Null);
+                window.LastResult.Invoke(ExportResultWindow.SavedTitle, null);
+                Assert.That(openBlinkSettings, Is.Not.Null);
+                var exported = window.Session();
+                Assert.That(window.Call("RebuildKeepingAssignments", Array.Empty<GameObject>(), null), Is.Null);
+                Assert.That(window.Session(), Is.Not.Null.And.Not.SameAs(exported), "The board made its copy again.");
+                openBlinkSettings();
+                Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") != null, Is.True, "The button opens the blink settings.");
+                // Another avatar on the board: the setting of the exported one is not opened.
+                foreach (var shown in Resources.FindObjectsOfTypeAll<BlinkConfigurationWindow>()) shown.Close();
+                window.SetField("blinkConfiguration", null);
+                window.SetField("source", other.Source);
+                window.PrepareWithoutBlink();
+                openBlinkSettings();
+                Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") == null, Is.True, "Another avatar opens nothing.");
+                window.Call("ChangeAvatar");
+                openBlinkSettings();
+                Assert.That(window.Field<BlinkConfigurationWindow>("blinkConfiguration") == null, Is.True, "A board without the avatar opens nothing.");
+            }
+            finally
+            {
+                ExportFallbackConfirmation.Dialog = originalDialog;
+                ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
+                ExportTestHooks.ContinueByDefault = previous;
+                foreach (var blink in Resources.FindObjectsOfTypeAll<BlinkConfigurationWindow>()) blink.Close();
+                foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);
+                Object.DestroyImmediate(window); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
         // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
         // moves one, or is entered by a gesture (the gesture route exports it) stays a face. A controller
@@ -852,14 +909,22 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A face may also turn a bone, such as an eye highlight, or show an object. It is still a face on the
         // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
-        // bone and the shown object beside it. A material swap keeps the clip unsupported. A hand pose that
+        // bone and the shown object beside it. A finger pose beside the face is left out; a body pose, an IK goal
+        // or the root keeps a clip no gesture enters unsupported. A material swap keeps the clip unsupported. A hand pose that
         // only holds the face shapes at rest is not a face.
         [TestCase("transform", true, 80f, "usable")]
         [TestCase("transform", false, 80f, "usable")]
         [TestCase("active", true, 80f, "usable")]
         [TestCase("active", false, 80f, "usable")]
+        [TestCase("finger", true, 80f, "usable")]
+        [TestCase("finger", false, 80f, "usable")]
+        [TestCase("body", true, 80f, "usable")]
+        [TestCase("body", false, 80f, "unsupported")]
+        [TestCase("ik", false, 80f, "unsupported")]
+        [TestCase("root", false, 80f, "unsupported")]
         [TestCase("material", true, 80f, "unsupported")]
         [TestCase("transform", true, 0f, "noface")]
+        [TestCase("finger", false, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
         {
             using var on = new ExpressionTransformsSwitch(true);
@@ -869,11 +934,8 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-                if (extra == "material")
-                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), AnimationCurve.Constant(0, 1, 0.5f));
-                else AnimationUtility.SetEditorCurve(clip, extra == "transform"
-                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
-                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
+                var (binding, value) = CurveBesideTheFace(extra);
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, value));
                 var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
                 if (gesture)
                 {
@@ -892,15 +954,31 @@ namespace VRVlog.LilToonExporter.Tests
                     // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
                     // keeps the clip out of it, as before, so the automatic choice of each preset is unchanged.
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
-                    var presetUsable = gesture && extra == "transform";
+                    var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body");
                     if (presetUsable) Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
-                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(binding.propertyName));
                     Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
-                else Assert.That(error, Does.EndWith("material._Color.r"));
+                else Assert.That(error, Does.EndWith(binding.propertyName));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
+        // The curve a face clip carries beside its BlendShape, and the value it holds.
+        static (EditorCurveBinding Binding, float Value) CurveBesideTheFace(string extra)
+        {
+            switch (extra)
+            {
+                case "transform": return (EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x"), -30);
+                case "active": return (EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), 0);
+                case "finger": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHand.Index.1 Stretched"), -0.5f);
+                case "body": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "Spine Front-Back"), 0.3f);
+                case "ik": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHandT.x"), 0.2f);
+                case "root": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "RootT.x"), 0.2f);
+                case "material": return (EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), 0.5f);
+                default: throw new System.ArgumentOutOfRangeException(nameof(extra), extra, null);
+            }
         }
 
         // While the export leaves bones and visibility out, the board treats them as 1.4.2 did: a gesture
@@ -910,6 +988,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("transform", false, 80f, "unsupported")]
         [TestCase("active", true, 80f, "unsupported")]
         [TestCase("active", false, 80f, "unsupported")]
+        [TestCase("finger", false, 80f, "unsupported")]
         [TestCase("transform", true, 0f, "noface")]
         public void WhileTheExportLeavesBonesOutTheBoardTreatsThemAsBefore(string extra, bool gesture, float weight, string expected)
         {
@@ -920,9 +999,8 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-                AnimationUtility.SetEditorCurve(clip, extra == "transform"
-                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
-                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
+                var (binding, value) = CurveBesideTheFace(extra);
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, value));
                 var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
                 if (gesture)
                 {
@@ -939,7 +1017,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
-                else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+                else Assert.That(error, Does.EndWith(binding.propertyName));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
@@ -3211,6 +3289,8 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal static void ExpectFollowed() => LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("^" +
                 System.Text.RegularExpressions.Regex.Escape(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.FollowedSourceFormat).Split('{')[0])));
+            internal static void ExpectRetried() => LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("^" +
+                System.Text.RegularExpressions.Regex.Escape(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.RetriedOnSourceFormat).Split('{')[0])));
 
             internal void AssertKept()
             {
@@ -3358,12 +3438,16 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var board = new FollowBoard();
             var before = board.Session;
+            // A thumbnail drawn on the old copy goes with it.
+            var thumbnails = board.Get<System.Collections.Generic.Dictionary<string, Texture2D>>("thumbnails");
+            thumbnails["drawn before the edit"] = new Texture2D(1, 1);
             board.Edit();
             FollowBoard.ExpectFollowed();
             board.Choose(ExpressionPreset.sad, "Front");
             Assert.That(board.Session, Is.Not.SameAs(before));
             board.AssertKept();
             Assert.That(board.Session.Presets[ExpressionPreset.sad].Path, Is.EqualTo("Front"), "The choice itself is made.");
+            Assert.That(thumbnails.ContainsKey("drawn before the edit"), Is.False, "Thumbnails of the old copy are drawn again.");
         }
 
         // The files are checked again after an import or a change in the scene; an edit rebuilds the copy.
@@ -3569,7 +3653,8 @@ namespace VRVlog.LilToonExporter.Tests
             using var board = new FollowBoard();
             var target = board.Session;
             board.Edit();
-            FollowBoard.ExpectFollowed();
+            // It says it exported again, not that the board kept its choices: the board's copy stays as it was.
+            FollowBoard.ExpectRetried();
             var used = new System.Collections.Generic.List<ExperimentalExpressionCaptureSession>();
             var warnings = new System.Collections.Generic.List<string>();
             var bytes = ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceChecked) =>
@@ -3586,6 +3671,22 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() =>
                 ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, true, warnings, (from, sourceChecked) =>
                     { if (from != target) Assert.Fail("Only a retry rebuilds."); throw new ExperimentalExpressionCaptureSession.SourceChangedException("m", "d"); }));
+            // A retry that fails shows its own error and does not say it exported again.
+            var retried = ExporterLocalization.T(ExperimentalExpressionCaptureWindow.RetriedOnSourceFormat).Split('{')[0];
+            var logged = new System.Collections.Generic.List<string>();
+            void Collect(string message, string stack, LogType type) => logged.Add(message);
+            Application.logMessageReceived += Collect;
+            try
+            {
+                Assert.Throws<InvalidOperationException>(() =>
+                    ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceChecked) =>
+                    {
+                        if (from == target) throw new ExperimentalExpressionCaptureSession.SourceChangedException("m", "d");
+                        throw new InvalidOperationException("The retry failed.");
+                    }));
+            }
+            finally { Application.logMessageReceived -= Collect; }
+            Assert.That(logged.Where(message => message.StartsWith(retried, StringComparison.Ordinal)), Is.Empty);
         }
 
         // Leaving objects out rebuilds the copy from the avatar. Nothing of the

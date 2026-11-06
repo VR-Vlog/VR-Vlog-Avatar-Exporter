@@ -43,6 +43,8 @@ namespace VRVlog.LilToonExporter
         Vector2 pageScroll;
         Vector3 center;
         float distance = 1, yaw, zoom = 1;
+        // 自動で軽量化する: off on a new board and for another avatar; the avatar's saved choice applies on preparing.
+        bool autoLightweight;
         BlinkExportOptions configuredBlink;
         BlinkConfigurationWindow blinkConfiguration;
         readonly System.Collections.Generic.Dictionary<AnimationClip, string> clipErrors = new System.Collections.Generic.Dictionary<AnimationClip, string>();
@@ -328,6 +330,9 @@ namespace VRVlog.LilToonExporter
 
         internal const string HiddenFaceFormat = "元のアバターで「{0}」が非表示になっています。表示に戻すか、「変更」からアバターを指定し直してください。";
         internal const string FollowedSourceFormat = "元のアバターがプレビューのコピーと違っていたため、表情ボードの選択を残したままコピーを作り直しました。違っていた値: {0}";
+        // A retry from the recovery window exports a copy of its own and leaves the board's copy, so
+        // it does not say the board was rebuilt (the board may be closed by then).
+        internal const string RetriedOnSourceFormat = "元のアバターが表情ボードで準備したときと違っていたため、同じ選択のまま今のアバターから書き出し直しました。違っていた値: {0}";
 
         // The copy no longer matches the avatar: a change in the scene, an
         // import, or a value that reads differently after a reload. Everything
@@ -701,6 +706,8 @@ namespace VRVlog.LilToonExporter
                                 DrawAddRow();
                                 EditorGUILayout.Space(12);
                                 DrawBlink();
+                                EditorGUILayout.Space(8);
+                                DrawLightweight();
                                 EditorGUILayout.Space(12);
                                 DrawPoseInputs();
                             }
@@ -816,6 +823,7 @@ namespace VRVlog.LilToonExporter
                 // So does the blink, as the blink settings window would set it.
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode != BlinkExportMode.Auto) configuredBlink = storedBlink.Copy();
+                autoLightweight = stored.AutoLightweight;
                 session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
                 if (keptPoses == null)
@@ -2185,6 +2193,28 @@ namespace VRVlog.LilToonExporter
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
         }
 
+        internal const string AutoLightweightLabel = "自動で軽量化する";
+        internal const string AutoLightweightNote = "見た目の変化を抑えてテクスチャを小さくします";
+
+        // Saved at once for the avatar, like the gimmick choices, so the next
+        // board and the quick transfer start from it.
+        void DrawLightweight()
+        {
+            var label = ExporterLocalization.T(AutoLightweightLabel);
+            var width = Mathf.Max(0, position.width - 32);
+            var on = EditorGUILayout.ToggleLeft(new GUIContent(Fit(label, EditorStyles.label, width), label), autoLightweight);
+            if (on != autoLightweight)
+            {
+                autoLightweight = on;
+                var settings = ExportSettingsStore.Load(source);
+                settings.AutoLightweight = on;
+                ExportSettingsStore.Save(source, settings);
+            }
+            var note = ExporterLocalization.T(AutoLightweightNote);
+            var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
+            GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+        }
+
         internal static string BlinkSettingLabel(BlinkExportMode mode)
         {
             switch (mode)
@@ -2516,6 +2546,7 @@ namespace VRVlog.LilToonExporter
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
+            var lightweight = autoLightweight;
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
             // The list-only export: the faces of the list, read like gesture
@@ -2601,11 +2632,13 @@ namespace VRVlog.LilToonExporter
                 var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
                     from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked));
+                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight));
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
-                openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); },
+                // The blink setting belongs to the avatar, so the button still opens it
+                // after the board made its copy again; not once the board left the avatar.
+                openBlinkSettings: () => { if (this != null && session != null && source == target.Source) ShowBlinkConfiguration(); },
                 diagnosticsKind: diagnosticsKind,
                 resultAfterTransfer: written != null ? open => transferResult = open : (Action<Action<string, string>>)null);
             if (recovery != null)
@@ -2625,10 +2658,12 @@ namespace VRVlog.LilToonExporter
             try { return export(target, sourceChecked); }
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
             {
-                Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), changed.Detail ?? ""));
                 using var current = ExperimentalExpressionCaptureSession.Create(target.Source, target.ExcludedObjects, target.GimmickOptions);
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
-                return export(current, true);
+                var exported = export(current, true);
+                // Only once it is written: a failed retry shows its own error instead.
+                Debug.Log(string.Format(ExporterLocalization.T(RetriedOnSourceFormat), changed.Detail ?? ""));
+                return exported;
             }
         }
 
@@ -2745,6 +2780,7 @@ namespace VRVlog.LilToonExporter
         void ChangeAvatar()
         {
             Cleanup(); CloseChildWindows();
+            autoLightweight = false;
             licenseOptions = new AvatarLicenseOptions();
             status = null;
             page = ExpressionsPage;

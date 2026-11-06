@@ -14,7 +14,7 @@ namespace VRVlog.LilToonExporter
     internal sealed class FacialProjectionScope
     {
         internal readonly HashSet<EditorCurveBinding> Morphs = new HashSet<EditorCurveBinding>();
-        internal const string Notice = "表情は顔の形状変化だけを保存します。材質・オブジェクトの切り替えと顔以外の変形は、書き出し用コピーの見た目を保持します。";
+        internal const string Notice = "表情は顔の形状変化だけを保存します。マテリアル・オブジェクトの切り替えと顔以外の変形は、書き出し用コピーの見た目を保持します。";
 
         // Analyze reads one prepared geometry snapshot. The session is removed
         // before endpoint creation/baking or optimizer passes can mutate it.
@@ -40,9 +40,9 @@ namespace VRVlog.LilToonExporter
         {
             var animator = avatar.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || !animator.avatar.isHuman || !animator.avatar.isValid) return null;
-            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            var head = HumanoidBones.Resolve(animator, HumanBodyBones.Head);
             if (head == null) return null;
-            var neck = animator.GetBoneTransform(HumanBodyBones.Neck);
+            var neck = HumanoidBones.Resolve(animator, HumanBodyBones.Neck);
             return Estimate(avatar.transform, head, neck, DescriptorFaceShapes(avatar));
         }
 
