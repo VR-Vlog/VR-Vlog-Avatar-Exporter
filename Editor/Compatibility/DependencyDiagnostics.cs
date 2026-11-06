@@ -39,7 +39,7 @@ namespace VRVlog.LilToonExporter.Compatibility
                             null, new[] { typeof(GameObject) }, null);
                         if (method == null || method.ReturnType != typeof(bool))
                         {
-                            backendError = "書き出し画面の入口が見つかりません。";
+                            backendError = "書き出し画面の入口が見つかりません";
                             break;
                         }
                         backendReady = true;
@@ -87,17 +87,23 @@ namespace VRVlog.LilToonExporter.Compatibility
 
         public static bool IsBusy => EditorApplication.isCompiling || EditorApplication.isUpdating;
 
+        // What the export and transfer windows show: the state, then what to do, one sentence a line
+        // (no 。 or ください, the windows' wording rules).
+        public const string BusyText = "Unityがパッケージを読み込み中です\n終わると自動で再確認します";
+        public const string CompileErrorText = "Unityでコンパイルエラーが発生しています\nConsoleの赤いエラーを確認する\n黄色い更新通知だけでは書き出しを止めません";
+        public const string NotReadyText = "書き出し処理の準備が終わっていません\n「再読み込み」を押す";
+
         public static string StartupError(Dictionary<string, string> packages)
         {
-            if (IsBusy) return "Unityがパッケージを読み込み中です。完了すると自動で再確認します。";
+            if (IsBusy) return BusyText;
             // The lilToon message already names its own fix.
             var lilToonError = LilToonError(packages);
             if (lilToonError != null) return lilToonError;
             if (BackendReady) return null;
             if (EditorUtility.scriptCompilationFailed)
-                return "Unityでコンパイルエラーが発生しています。Consoleの赤いエラーを確認してください。黄色い更新通知だけでは書き出しを止めません。";
-            return "書き出し処理の準備が完了していません。「再読み込み」を押してください。" +
-                (backendError == null ? "" : "\n" + backendError);
+                return CompileErrorText;
+            // The reason goes after it already translated: ExporterLocalization.T translates NotReadyText as a prefix.
+            return NotReadyText + (backendError == null ? "" : "\n" + T(backendError));
         }
 
         public static void ReloadBackend()

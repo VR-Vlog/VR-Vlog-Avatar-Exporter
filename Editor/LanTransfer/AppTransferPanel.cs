@@ -177,7 +177,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 exporter = DependencyDiagnostics.Error(installed) == null ? new AppTransferExport() : null;
                 if (exporter != null) exporter.SelectAvatar(avatar);
                 else exporterProblem = DependencyDiagnostics.StartupError(installed)
-                    ?? "書き出し処理の準備が完了していません。「再読み込み」を押してください。";
+                    ?? DependencyDiagnostics.NotReadyText;
                 return exporter;
             }
         }
