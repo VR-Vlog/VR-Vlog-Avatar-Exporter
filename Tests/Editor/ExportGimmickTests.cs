@@ -752,6 +752,18 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(), Is.Empty);
         }
 
+        [Test] public void ClipThatHidesTheGimmicksParentDoesNotCount()
+        {
+            var folder = Child("folder");
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain(), parent: folder.transform);
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "folder/gimmick", typeof(GameObject), "m_IsActive");
+            Merges(gimmick, controller, pathMode: 1);
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+            AnimationUtility.SetEditorCurve(controller.animationClips[0], EditorCurveBinding.FloatCurve("folder", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+            Assert.That(Matched(), Is.Empty);
+        }
+
         [Test] public void FolderShownByAGimmickInsideItStays()
         {
             var folder = Child("folder"); folder.AddComponent(MaType(ExportGimmickRules.MenuInstaller));

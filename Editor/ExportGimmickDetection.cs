@@ -215,7 +215,8 @@ namespace VRVlog.LilToonExporter
 
         // For each clip of the animators merged from the candidate itself that
         // turns something on, the on or off it holds the objects and renderers
-        // inside the candidate at, with paths resolved the way MA reads them.
+        // inside the candidate at, and the parents it hides, with paths
+        // resolved the way MA reads them.
         // A clip whose value changes over time is skipped: what shows together
         // is unknown. An animator further down may belong to another gimmick
         // in the same folder.
@@ -243,11 +244,15 @@ namespace VRVlog.LilToonExporter
                         var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
                         if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
                         var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
-                        if (target == null || !target.IsChildOf(candidate)) continue;
+                        if (target == null || target == avatarRoot) continue;
+                        var inside = target.IsChildOf(candidate);
+                        if (!inside && !candidate.IsChildOf(target)) continue;
                         var keys = AnimationUtility.GetEditorCurve(clip, binding)?.keys;
                         if (keys == null || keys.Length == 0) continue;
                         var on = keys[0].value > 0.5f;
                         if (keys.Any(key => key.value > 0.5f != on)) { steady = false; break; }
+                        // A parent the clip hides hides the candidate; one it shows is not counted.
+                        if (!inside && on) continue;
                         if (active) found[target.gameObject] = on;
                         else if (target.TryGetComponent(binding.type, out var renderer)) found[renderer] = on;
                     }
