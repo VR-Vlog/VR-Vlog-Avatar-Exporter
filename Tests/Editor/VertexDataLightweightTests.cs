@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VertexDataLightweight.ReadsVertexColor(MToonMaterial(), record), Is.EqualTo(reads));
         }
 
-        // Without a lilToon record only MToon is known never to read them; a
+        // Only MToon is known never to read them, with or without a lilToon record; a
         // missing record field or an unreadable value counts as reading.
         [Test]
         public void AnythingNotKnownCountsAsReading()
@@ -46,6 +46,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VertexDataLightweight.ReadsVertexColor(MToonMaterial(), null), Is.False);
             Assert.That(VertexDataLightweight.ReadsVertexColor(new Dictionary<string, object> { { "name", "unlit" } }, null), Is.True);
             Assert.That(VertexDataLightweight.ReadsVertexColor(null, null), Is.True);
+            Assert.That(VertexDataLightweight.ReadsVertexColor(new Dictionary<string, object> { { "name", "unlit" } }, Record("lilToon", 0, 0, 0, true)), Is.True);
             var withoutPasses = Record("Hidden/lilToonOutline", 1, 0, 0, false);
             withoutPasses.Remove("passes");
             Assert.That(VertexDataLightweight.ReadsVertexColor(MToonMaterial(), withoutPasses), Is.True);

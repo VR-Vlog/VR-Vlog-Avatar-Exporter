@@ -98,12 +98,13 @@ namespace VRVlog.LilToonExporter
         // (_VertexColor2FurVector). lilToonMulti chooses its outline by
         // keyword, so any _OutlineVertexR2Width counts. A property the shader
         // does not declare is 0. The app's MToon never reads COLOR_0; a
-        // material with neither (unlit, PBR) counts as reading it, as does a
-        // primitive with no material.
+        // material with neither (unlit, PBR) counts as reading it even with a
+        // lilToon record, as does a primitive with no material.
         internal static bool ReadsVertexColor(Dictionary<string, object> material, Dictionary<string, object> record)
         {
             if (material == null) return true;
-            if (record == null) return Object(Object(material, "extensions"), "VRMC_materials_mtoon") == null;
+            if (Object(Object(material, "extensions"), "VRMC_materials_mtoon") == null) return true;
+            if (record == null) return false;
             if (Value(record, "_VertexColor2FurVector") != 0) return true;
             if (Value(record, "_OutlineVertexR2Width") == 0) return false;
             if (Value(record, "_OutlineDeleteMesh") != 0) return true;
