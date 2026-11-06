@@ -37,7 +37,7 @@ Materials on orels Toon (the `orels1/Toon/` and `orels1/Toon/v2/` shaders) carry
 
 With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, which is the default, the export leaves out what does nothing in a VRM:
 
-- VRChat-only gimmicks: an object with a Modular Avatar menu or animator merge that contains a camera, sound, particles, a light, a contact or a constraint, and whose meshes are not drawn like the avatar (lilToon, MToon or a shader shared with the body). It is removed as a whole. Outfits bound to the body's bones and props drawn like the avatar stay. Gimmicks without VRChat-only parts are only listed for review.
+- VRChat-only gimmicks: an object with a Modular Avatar menu or animator merge that contains a camera, sound, particles, a light, a contact or a constraint, and whose meshes are not drawn like the avatar (lilToon, MToon or a shader shared with the body). It is removed as a whole, also when it is hidden, its own animations have a key that shows it, and it contains a camera (hidden props without a camera still export as toggles). Outfits bound to the body's bones and props drawn like the avatar stay. Gimmicks without VRChat-only parts are only listed for review.
 - Objects that a Modular Avatar Platform Filter leaves out of the generic (VRM) platform. Objects whose filters both include and exclude platforms are only listed for review.
 - Pose tools, found by what they do, not by name, because the app applies poses itself:
   - objects with pose animations that move the trunk or legs (animations of only the hands, fingers, head or face do not count). Outfits bound to the body's bones and the VRChat Avatar Descriptor stay;

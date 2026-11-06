@@ -668,6 +668,155 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(), Is.Empty);
         }
 
+        // The gimmick's merged animator turns on what it names (relative to
+        // the animator's object, as MA reads it) with a key of 1.
+        AnimatorController TurnsOn(GameObject gimmick, string path, Type type, string property, float value = 1)
+        {
+            var clip = Own(new AnimationClip());
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, type, property), AnimationCurve.Constant(0, 1, value));
+            var controller = Own(new AnimatorController());
+            controller.AddLayer("FX");
+            controller.layers[0].stateMachine.AddState("on").motion = clip;
+            Merges(gimmick, controller);
+            return controller;
+        }
+
+        void Merges(GameObject gimmick, RuntimeAnimatorController controller, int pathMode = 0, string referencePath = null)
+        {
+            using var serialized = new SerializedObject(gimmick.GetComponent(MaType(ExportGimmickRules.MergeAnimator)));
+            serialized.FindProperty("animator").objectReferenceValue = controller;
+            serialized.FindProperty("pathMode").intValue = pathMode;
+            if (referencePath != null) serialized.FindProperty("relativePathRoot.referencePath").stringValue = referencePath;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        [Test] public void HiddenPropWithItsOwnToggleStays()
+        {
+            // A held item: placed by a constraint, drawn in its own material,
+            // shown from its menu. It exports as a toggle.
+            var prop = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain(), runtime: false);
+            prop.AddComponent<UnityEngine.Animations.ParentConstraint>();
+            prop.SetActive(false);
+            TurnsOn(prop, "", typeof(GameObject), "m_IsActive");
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void GimmickItsAnimatorOnlyHidesStays()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive", 0);
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void GimmickShownFromOutsideItIsNotCounted()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            gimmick.SetActive(false);
+            var menu = Child("menu"); menu.AddComponent(MaType(ExportGimmickRules.MergeAnimator));
+            var controller = TurnsOn(menu, "gimmick", typeof(GameObject), "m_IsActive");
+            Merges(menu, controller, pathMode: 1);
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void OnsFromDifferentClipsAreNotCombined()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            gimmick.transform.Find("prop").GetComponent<Renderer>().enabled = false;
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var mesh = Own(new AnimationClip());
+            AnimationUtility.SetEditorCurve(mesh, EditorCurveBinding.FloatCurve("prop", typeof(MeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 1));
+            controller.layers[0].stateMachine.AddState("mesh").motion = mesh;
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void ClipThatShowsTheRootButHidesTheMeshDoesNotCount()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var clip = controller.animationClips[0];
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("prop", typeof(MeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 0));
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void ClipWhoseOnChangesOverTimeDoesNotCount()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var clip = controller.animationClips[0];
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(GameObject), "m_IsActive"),
+                new AnimationCurve(new Keyframe(0, 1), new Keyframe(1, 0)));
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void ClipThatHidesTheGimmicksParentDoesNotCount()
+        {
+            var folder = Child("folder");
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain(), parent: folder.transform);
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "folder/gimmick", typeof(GameObject), "m_IsActive");
+            Merges(gimmick, controller, pathMode: 1);
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+            AnimationUtility.SetEditorCurve(controller.animationClips[0], EditorCurveBinding.FloatCurve("folder", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void FolderShownByAGimmickInsideItStays()
+        {
+            var folder = Child("folder"); folder.AddComponent(MaType(ExportGimmickRules.MenuInstaller));
+            Render("other", Plain(), folder.transform);
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain(), parent: folder.transform);
+            folder.SetActive(false);
+            var controller = TurnsOn(gimmick, "folder", typeof(GameObject), "m_IsActive");
+            Merges(gimmick, controller, pathMode: 1);
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void AnimatorPathsFromTheAvatarRootAreResolved()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "gimmick", typeof(GameObject), "m_IsActive");
+            Merges(gimmick, controller, referencePath: "$$$AVATAR_ROOT$$$");
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+            Merges(gimmick, controller, pathMode: 1);
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+        }
+
+        [Test] public void GimmickHiddenUntilItsOwnAnimatorShowsItLeavesAsAWhole()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            Assert.That(Matched(), Is.Empty);
+            TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var finding = Matched().Single();
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.VrChatOnlyStructure));
+            Assert.That(finding.Target, Is.SameAs(gimmick));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+        }
+
+        [Test] public void OverriddenClipDoesNotShowTheGimmick()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var overrides = Own(new AnimatorOverrideController(controller));
+            overrides[controller.animationClips[0]] = Own(new AnimationClip());
+            Merges(gimmick, overrides);
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void MeshTheGimmickAnimatorEnablesCountsAsShown()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.transform.Find("prop").GetComponent<Renderer>().enabled = false;
+            TurnsOn(gimmick, "prop", typeof(MeshRenderer), "m_Enabled");
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+        }
+
         const string VrChatPlatform = "nadena.dev.ndmf.vrchat.avatar3";
         const string GenericPlatform = "nadena.dev.ndmf.generic";
 
