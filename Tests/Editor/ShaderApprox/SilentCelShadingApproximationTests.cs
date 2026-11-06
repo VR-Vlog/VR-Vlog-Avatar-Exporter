@@ -48,6 +48,19 @@ namespace VRVlog.LilToonExporter.Tests
 
         Material Substitute(Material source, string shader = Crosstone) => Substitute(source, shader, out _, out _);
 
+        // Under -nographics no image is read back, so nothing is baked.
+        static bool NoGraphics => SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
+
+        // A ramp that cannot be read leaves lilToon's default edge, in the
+        // tone's color (black without a boost).
+        void AssertDefaultEdge(Material output)
+        {
+            var defaults = Own(new Material(output.shader));
+            Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(defaults.GetFloat("_ShadowBorder")));
+            Assert.That(output.GetFloat("_ShadowBlur"), Is.EqualTo(defaults.GetFloat("_ShadowBlur")));
+            AssertColor(output.GetColor("_ShadowColor"), Color.black);
+        }
+
         static void AssertColor(Color actual, Color expected) =>
             Assert.That(new[] { actual.r, actual.g, actual.b, actual.a }, Is.EqualTo(new[] { expected.r, expected.g, expected.b, expected.a }).Within(1e-3f));
 
@@ -191,6 +204,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_Ramp", ramp);
             var output = Substitute(source, Lightramp);
             Assert.That(output.GetFloat("_UseShadow"), Is.EqualTo(1f));
+            if (NoGraphics) { AssertDefaultEdge(output); return; }
             Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(.5f).Within(.03f));
             Assert.That(output.GetFloat("_ShadowBlur"), Is.LessThan(.1f));
             // The tone is black (no boost), lerped to white by the ramp's 0.2.
@@ -209,6 +223,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_Ramp", Solid("ramp", new Color(.5f, .5f, .5f, 1), 64));
             var output = Substitute(source, Lightramp);
             Assert.That(output.GetFloat("_UseShadow"), Is.EqualTo(1f));
+            if (NoGraphics) { AssertDefaultEdge(output); return; }
             Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(1f));
             var expected = new Color(128 / 255f, 128 / 255f, 128 / 255f, 1).gamma;
             AssertColor(output.GetColor("_ShadowColor"), new Color(expected.r, expected.g, expected.b, 1));
@@ -233,6 +248,14 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_Tweak_Transparency", .1f);
             var output = Substitute(source);
             Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(1f));
+            // Unbaked, the mask is kept and the tweak added without the clamp.
+            if (NoGraphics)
+            {
+                Assert.That(output.GetTexture("_AlphaMask"), Is.SameAs(mask));
+                Assert.That(output.GetFloat("_AlphaMaskScale"), Is.EqualTo(.8f).Within(1e-5f));
+                Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(.1f * .8f).Within(1e-5f));
+                return;
+            }
             // saturate(mask + tweak) is baked, then times the tint.
             var baked = output.GetTexture("_AlphaMask") as Texture2D;
             Assert.That(baked, Is.Not.Null.And.Not.SameAs(mask));

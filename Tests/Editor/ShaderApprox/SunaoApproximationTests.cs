@@ -41,6 +41,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         Material Substitute(Material source) => Substitute(source, Opaque, out _);
 
+        // Under -nographics no image is read back, so nothing is baked.
+        static bool NoGraphics => SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
+
         [TestCase(0, "lilToon")]
         [TestCase(1, "Hidden/lilToonTransparent")]
         [TestCase(2, "Hidden/lilToonCutout")]
@@ -153,6 +156,8 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_ShadeColor", .5f);
             var output = Substitute(source);
             var baked = output.GetTexture("_ShadowColorTex") as Texture2D;
+            // The image cannot be read: the shade is one color, the factor of the half-bright guess.
+            if (NoGraphics) { Assert.That(baked, Is.Null); Assert.That(output.GetColor("_ShadowColor"), Is.EqualTo(Color.black)); return; }
             Assert.That(baked, Is.Not.Null);
             Assert.That(output.GetColor("_ShadowColor"), Is.EqualTo(Color.white));
             var pixel = baked.GetPixel(0, 0);
@@ -342,7 +347,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_ReflectionEnable", 1);
             source.SetTexture("_MatCap", Image("matcap", Color.white));
             source.SetTexture("_MetallicGlossMap", Image("metallic", new Color(1, 1, 1, .5f)));
-            Assert.That(Substitute(source).GetFloat("_MatCapLod"), Is.EqualTo(1.5f).Within(.02f));
+            Assert.That(Substitute(source).GetFloat("_MatCapLod"), Is.EqualTo(NoGraphics ? 0 : 1.5f).Within(.02f), "unread, the matcap is not blurred");
         }
 
         // _Bright scales the linear color: 0.8 gives the factor saturate(2.4 - 1.5) × 0.5.
@@ -440,6 +445,8 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_OutLineEnable", 1);
             source.SetTexture("_MainTex", Image("main", new Color(1, 0, 0, .25f)));
             var image = Substitute(source).GetTexture("_OutlineTex") as Texture2D;
+            // The main alpha cannot be read, so the line has no image.
+            if (NoGraphics) { Assert.That(image, Is.Null); return; }
             Assert.That(image, Is.Not.Null);
             Assert.That(image.GetPixel(0, 0).a, Is.EqualTo(.25f).Within(.01f));
             Assert.That(image.GetPixel(0, 0).g, Is.EqualTo(1f).Within(.01f));
@@ -451,7 +458,8 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_OutLineEnable", 1);
             source.SetFloat("_OutLineTexColor", 1);
             source.SetTexture("_MainTex", Image("main", new Color(1, 0, 0, 1)));
-            var image = Substitute(source).GetTexture("_OutlineTex") as Texture2D;
+            var image = Substitute(source, Opaque, out var dropped).GetTexture("_OutlineTex") as Texture2D;
+            if (NoGraphics) { Assert.That(image, Is.Null); Assert.That(dropped, Does.Contain("Outline Main Color")); return; }
             Assert.That(image.GetPixel(0, 0).r, Is.EqualTo(1f).Within(.01f));
             Assert.That(image.GetPixel(0, 0).g, Is.EqualTo(0f).Within(.01f));
         }

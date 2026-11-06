@@ -49,6 +49,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         static float Center(Texture texture) => ((Texture2D)texture).GetPixel(2, 2).r;
 
+        // Under -nographics no image is read back, so nothing is baked.
+        static bool NoGraphics => SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
+
         [TestCase(0, "lilToon")]
         [TestCase(1, "Hidden/lilToonCutout")]
         [TestCase(2, "Hidden/lilToonTransparent")]
@@ -111,7 +114,15 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_AlphaMaskChannel", 1);
             source.SetFloat("_AlphaMaskOpacity", .5f);
             var textures = new List<Texture2D>();
-            var output = Substitute(source, Name, out _, out _, textures);
+            var output = Substitute(source, Name, out _, out var dropped, textures);
+            // Unbaked, the channel cannot be copied: the alpha is left and the mask reported.
+            if (NoGraphics)
+            {
+                Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(0f));
+                Assert.That(textures, Is.Empty);
+                Assert.That(dropped, Does.Contain("Alpha Mask"));
+                return;
+            }
             Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_AlphaMaskScale"), Is.EqualTo(.5f).Within(1e-6f));
             Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(0f));
@@ -189,6 +200,14 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_EmissionMaskChannel", 2);
             var textures = new List<Texture2D>();
             var output = Substitute(source, Name, out _, out var dropped, textures);
+            // Unbaked, the mask's channel cannot be copied: the emission is turned off and reported.
+            if (NoGraphics)
+            {
+                Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(0f));
+                Assert.That(textures, Is.Empty);
+                Assert.That(dropped, Is.EquivalentTo(new[] { "Emission Mask" }));
+                return;
+            }
             Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
             Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(map));
             var linear = output.GetColor("_EmissionColor").linear;
@@ -214,8 +233,17 @@ namespace VRVlog.LilToonExporter.Tests
             var textures = new List<Texture2D>();
             var output = Substitute(source, Name, out _, out var dropped, textures);
             var main = (Texture2D)output.GetTexture("_MainTex");
-            Assert.That(textures, Does.Contain(main));
             Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(new Vector2(2, 3)));
+            // Unbaked, the image is kept and lilToon multiplies the saturation.
+            if (NoGraphics)
+            {
+                Assert.That(main, Is.SameAs(source.GetTexture("_MainTex")));
+                Assert.That(output.GetColor("_Color"), Is.EqualTo(new Color(1, 1, 1, .75f)));
+                Assert.That(output.GetVector("_MainTexHSVG"), Is.EqualTo(new Vector4(0, 0, 1, 1)));
+                Assert.That(dropped, Is.Empty);
+                return;
+            }
+            Assert.That(textures, Does.Contain(main));
             Assert.That(output.GetColor("_Color"), Is.EqualTo(new Color(1, 1, 1, .75f)));
             Assert.That(output.GetVector("_MainTexHSVG"), Is.EqualTo(new Vector4(0, 1, 1, 1)));
             var pixel = main.GetPixel(2, 2);
@@ -310,7 +338,17 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetTexture("_MetallicMap", Solid("metallic", new Color(0, .4f, 0, 1)));
             source.SetFloat("_MetallicStrength", 1);
             var textures = new List<Texture2D>();
-            var output = Substitute(source, Name, out _, out _, textures);
+            var output = Substitute(source, Name, out _, out var dropped, textures);
+            // Unbaked, the strengths stand in and both maps are reported.
+            if (NoGraphics)
+            {
+                Assert.That(output.GetFloat("_Smoothness"), Is.EqualTo(1 - .6f).Within(1e-5f));
+                Assert.That(output.GetFloat("_Metallic"), Is.EqualTo(1f).Within(1e-5f));
+                Assert.That(dropped, Is.SupersetOf(new[] { "Metallic Map", "Roughness Map" }));
+                Assert.That(output.GetTexture("_MetallicGlossMap"), Is.Null);
+                Assert.That(output.GetTexture("_SmoothnessTex"), Is.Null);
+                return;
+            }
             Assert.That(output.GetFloat("_Smoothness"), Is.EqualTo(1f));
             Assert.That(Center(output.GetTexture("_SmoothnessTex")), Is.EqualTo(1 - .5f * .6f).Within(.01f));
             Assert.That(Center(output.GetTexture("_MetallicGlossMap")), Is.EqualTo(.4f).Within(.01f));
@@ -325,6 +363,14 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_PackedOcclusionStrength", 0);
             var output = Substitute(source, Name, out _, out var dropped);
             Assert.That(output.GetFloat("_Metallic"), Is.EqualTo(1f).Within(1e-5f));
+            // Unbaked, the channels cannot be copied and are reported.
+            if (NoGraphics)
+            {
+                Assert.That(dropped, Is.EquivalentTo(new[] { "Metallic Map", "Roughness Map" }));
+                Assert.That(output.GetTexture("_MetallicGlossMap"), Is.Null);
+                Assert.That(output.GetTexture("_SmoothnessTex"), Is.Null);
+                return;
+            }
             Assert.That(Center(output.GetTexture("_MetallicGlossMap")), Is.EqualTo(.7f).Within(.01f));
             Assert.That(Center(output.GetTexture("_SmoothnessTex")), Is.EqualTo(.8f).Within(.01f));
             Assert.That(dropped, Is.Empty);
