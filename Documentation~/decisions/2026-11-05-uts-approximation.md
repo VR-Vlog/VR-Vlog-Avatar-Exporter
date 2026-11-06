@@ -36,8 +36,8 @@ UTS のマテリアルは透過（2026-10-18 の決定）と主画像だけが�
 - UTS3 は輪郭線のパスの有効・無効をマテリアルの値から読めないので、幅だけで判定する。
 - `_Is_BlendBaseColor` の輪郭線は元が主画像を 2 回掛ける。lilToon の画像は 1 枚なので、2 回目は色だけ掛ける。濃い部分は元より明るい。
 - 2 段目の影に画像があるとき、MToon は画像を読まずに色だけを畳むので、2 段目の帯が元より明るくなる。lilToon のマテリアルでも同じで、アプリは lilToon の情報で描くので、共有の処理は変えない。
-- 両面（UTS2 の両面のバリアント）は、MToon で裏面の陰影の差が残る。#674 の検証用プロジェクトの比較で、元のシェーダーとの差は lilToon が 5.22 から 3.33 に減ったが、MToon は 9.62 から 9.26 とほとんど減らなかった。比較画像で MToon が元と違って見えたのは、球の内側（裏面が見える所）の陰影である。
-  - 裏面の法線の扱いがシェーダーで違う。UTS2 は `VFACE` を受け取るが使わず、裏面も表の法線のまま陰影を計算する（`UCTS_DoubleShadeWithFeather.cginc` の `frag`）。lilToon は `_FlipNormal` が 0 なら反転しない（`lil_common_frag.hlsl`）。UTS の置き換えは `_FlipNormal` を書かないので、既定の 0 のままである。MToon 1.0 は裏面で法線を必ず反転する（UniVRM の `vrmc_materials_mtoon_geometry_normal.hlsl`）。MToon のプロパティにはカリングの `_DoubleSided` しか無く、反転をやめる項目が無いので、書き出しでは合わせられない。
+- 両面（UTS2 の両面のバリアント）は、MToon で裏面の陰影の差が残る。#674 の検証用プロジェクトの比較（検証用の球を書き出し、元のシェーダーとの RGB の平均絶対差を 0〜255 で測った）で、この置き換えの前後の差は lilToon が 5.22 から 3.33 に減ったが、MToon は 9.62 から 9.26 とほとんど減らなかった。比較画像を目で見て、MToon が元と違って見えたのは球の内側（裏面が見える所）の陰影だった。
+  - 裏面の法線の扱いがシェーダーで違う。UTS2 は `VFACE` を受け取るが使わず、裏面も表の法線のまま陰影を計算する（`UCTS_DoubleShadeWithFeather.cginc` の `frag`）。lilToon は `_FlipNormal` が 0 なら反転しない（`lil_common_frag.hlsl`）。UTS の置き換えは lilToon のシェーダーから新しくマテリアルを作り（`UnsupportedShaderSubstitution`）、`_FlipNormal` を書かないので、シェーダーの既定の 0 になる。同梱の UniVRM 0.131.4 の MToon 1.0 は裏面で法線を必ず反転する（`vrmc_materials_mtoon_geometry_normal.hlsl`）。両面に関わるプロパティはカリングの `_DoubleSided` だけで、反転をやめる項目が無いので、Exporter が書く値では合わせられない。
   - この違いが MToon の差の主な理由と見ているが、裏面の扱いだけを変えた比較はしていない。
 
 ## 検討した代替案と不採用理由
