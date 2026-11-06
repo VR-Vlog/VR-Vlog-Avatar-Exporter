@@ -24,6 +24,7 @@ namespace VRVlog.LilToonExporter
         private float vrmDistance = 3, yaw;
         private bool preparing;
         private bool showAppliedRemedies = true;
+        private bool showAllChanges;
         private Vector2 remediesScroll, contentScroll;
         private int previewRevision;
         private string error;
@@ -222,7 +223,11 @@ namespace VRVlog.LilToonExporter
             DrawPreview(vrmRender, ExporterLocalization.T("書き出すVRM"));
             var changes = ExportAppearanceReport.Changes(session.LastSuccess.Warnings);
             if (changes.Length > 0)
-                EditorGUILayout.HelpBox(ExporterLocalization.T("見た目の変更: ") + ExportAppearanceReport.Summary(changes), MessageType.Warning);
+            {
+                EditorGUILayout.HelpBox(ExporterLocalization.T("見た目の変更: ") + ExportAppearanceReport.Summary(changes, showAllChanges), MessageType.Warning);
+                if (changes.Length > ExportAppearanceReport.Shown)
+                    showAllChanges = EditorGUILayout.Foldout(showAllChanges, ExporterLocalization.T("すべて表示"), true);
+            }
             }
             using (new EditorGUILayout.HorizontalScope())
             {
