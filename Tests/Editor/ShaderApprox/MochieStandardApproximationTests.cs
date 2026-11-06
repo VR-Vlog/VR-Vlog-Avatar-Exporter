@@ -233,6 +233,7 @@ namespace VRVlog.LilToonExporter.Tests
             var textures = new List<Texture2D>();
             var output = Substitute(source, Name, out _, out var dropped, textures);
             var main = (Texture2D)output.GetTexture("_MainTex");
+            Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(new Vector2(2, 3)));
             // Unbaked, the image is kept and lilToon multiplies the saturation.
             if (NoGraphics)
             {
@@ -243,7 +244,6 @@ namespace VRVlog.LilToonExporter.Tests
                 return;
             }
             Assert.That(textures, Does.Contain(main));
-            Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(new Vector2(2, 3)));
             Assert.That(output.GetColor("_Color"), Is.EqualTo(new Color(1, 1, 1, .75f)));
             Assert.That(output.GetVector("_MainTexHSVG"), Is.EqualTo(new Vector4(0, 1, 1, 1)));
             var pixel = main.GetPixel(2, 2);
@@ -345,6 +345,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(output.GetFloat("_Smoothness"), Is.EqualTo(1 - .6f).Within(1e-5f));
                 Assert.That(output.GetFloat("_Metallic"), Is.EqualTo(1f).Within(1e-5f));
                 Assert.That(dropped, Is.SupersetOf(new[] { "Metallic Map", "Roughness Map" }));
+                Assert.That(output.GetTexture("_MetallicGlossMap"), Is.Null);
+                Assert.That(output.GetTexture("_SmoothnessTex"), Is.Null);
                 return;
             }
             Assert.That(output.GetFloat("_Smoothness"), Is.EqualTo(1f));
@@ -362,7 +364,13 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(source, Name, out _, out var dropped);
             Assert.That(output.GetFloat("_Metallic"), Is.EqualTo(1f).Within(1e-5f));
             // Unbaked, the channels cannot be copied and are reported.
-            if (NoGraphics) { Assert.That(dropped, Is.EquivalentTo(new[] { "Metallic Map", "Roughness Map" })); return; }
+            if (NoGraphics)
+            {
+                Assert.That(dropped, Is.EquivalentTo(new[] { "Metallic Map", "Roughness Map" }));
+                Assert.That(output.GetTexture("_MetallicGlossMap"), Is.Null);
+                Assert.That(output.GetTexture("_SmoothnessTex"), Is.Null);
+                return;
+            }
             Assert.That(Center(output.GetTexture("_MetallicGlossMap")), Is.EqualTo(.7f).Within(.01f));
             Assert.That(Center(output.GetTexture("_SmoothnessTex")), Is.EqualTo(.8f).Within(.01f));
             Assert.That(dropped, Is.Empty);
