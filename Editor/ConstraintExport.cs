@@ -400,21 +400,27 @@ namespace VRVlog.LilToonExporter
             sources.Add(source);
         }
 
-        // Whether following the sources from `from` arrives at `to`.
-        // A node moves with its parents and with the ends its VRM constraints
-        // read, and those with theirs in turn, in any alternation.
+        // Whether the world pose of `from` depends on something inside the
+        // target. A world pose comes from the parent's and from the node's own
+        // VRM constraint. A rotation or roll constraint reads only the local
+        // rotation of its end, which moves only by that end's own constraint;
+        // an aim reads the end's world position, and turns its node by the
+        // world direction, so that node's local rotation also takes the parent.
         static bool DependsOnInside(Dictionary<Transform, List<Transform>> edges, Transform from, Transform target)
         {
-            var visited = new HashSet<Transform>();
-            var pending = new Stack<Transform>();
-            pending.Push(from);
+            var visited = new HashSet<(Transform, bool)>();
+            var pending = new Stack<(Transform Node, bool World)>();
+            pending.Push((from, true));
             while (pending.Count > 0)
             {
-                var current = pending.Pop();
-                if (current == null || !visited.Add(current)) continue;
-                if (current.IsChildOf(target)) return true;
-                pending.Push(current.parent);
-                if (edges.TryGetValue(current, out var next)) foreach (var value in next) pending.Push(value);
+                var (current, world) = pending.Pop();
+                if (current == null || !visited.Add((current, world))) continue;
+                // Inside the target only the target's own local frame and the
+                // world poses change when it moves.
+                if (current == target || world && current.IsChildOf(target)) return true;
+                var aim = current.TryGetComponent<Vrm10AimConstraint>(out _);
+                if (world || aim) pending.Push((current.parent, true));
+                if (edges.TryGetValue(current, out var next)) foreach (var value in next) pending.Push((value, aim));
             }
             return false;
         }
