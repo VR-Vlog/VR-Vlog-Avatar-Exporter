@@ -424,6 +424,24 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Outcome, Is.Not.EqualTo(ExportOutcome.Omitted));
         }
 
+        // The source copies the local rotation of a point that aims outside
+        // but sits inside the target: an aim turns by the world direction, so
+        // its local rotation takes the parent, and moving the target would loop.
+        [TestCase("position")][TestCase("parent")]
+        public void AFollowOfASourceThatCopiesTheRotationOfAnAimInsideTheTargetKeepsThePose(string kind)
+        {
+            using var f = new Fixture();
+            var prop = f.Other;
+            var pivot = Fixture.Child(Fixture.Child(prop, "Inside", new Vector3(0, -.3f, 0)), "Pivot", Vector3.zero);
+            pivot.gameObject.AddComponent<Vrm10AimConstraint>().Source = f.B;
+            f.A.gameObject.AddComponent<Vrm10RotationConstraint>().Source = pivot;
+            if (kind == "position") f.Constraint<PositionConstraint>(prop, 1, f.A);
+            else f.Constraint<ParentConstraint>(prop, 1, f.A);
+            f.Convert();
+            Assert.That(prop.parent.name, Is.EqualTo("Other parent"));
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
         // A source scaled to zero has no inverse to keep the target's pose
         // under it; the target stays where it is.
         [TestCase("position")][TestCase("parent")]
