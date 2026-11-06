@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using UnityEngine;
 using ExportColorSpace = VRVlog.LilToonExporter.Vendor.UniGLTF.ColorSpace;
@@ -10,10 +11,13 @@ namespace VRVlog.LilToonExporter
     {
         // Called after UniVRM unpacked normal maps/combined PBR channels and
         // converted texture color space. Never reinterpret packed Unity normals.
-        internal static byte[] EncodeConverted(Texture2D source, bool srgb, ICollection<string> warnings = null)
+        // maximum below the default is 自動で軽量化する's smaller size; only the
+        // default's resizing is noted per image, with the size after it alone.
+        internal static byte[] EncodeConverted(Texture2D source, bool srgb, ICollection<string> warnings = null,
+            int maximum = LilToonMobileProfile.DefaultMaximumTextureSize)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            var size = TextureResizePolicy.Size(source.width, source.height);
+            var size = TextureResizePolicy.Size(source.width, source.height, maximum);
             if (size.Item1 == source.width && size.Item2 == source.height) return RequirePng(PngWriter.Encode(source), source.name);
             var pixels = source.GetPixels32();
             var rgba = new byte[checked(pixels.Length * 4)];
@@ -22,7 +26,7 @@ namespace VRVlog.LilToonExporter
                 rgba[i * 4] = pixels[i].r; rgba[i * 4 + 1] = pixels[i].g;
                 rgba[i * 4 + 2] = pixels[i].b; rgba[i * 4 + 3] = pixels[i].a;
             }
-            var resized = TextureResizePolicy.Resize(rgba, source.width, source.height, srgb);
+            var resized = TextureResizePolicy.Resize(rgba, source.width, source.height, srgb, maximum);
             var destination = new Texture2D(size.Item1, size.Item2, TextureFormat.RGBA32, false, !srgb);
             try
             {
@@ -31,7 +35,9 @@ namespace VRVlog.LilToonExporter
                 destination.SetPixels32(colors);
                 destination.Apply(false, false);
                 var png = RequirePng(PngWriter.Encode(destination), source.name);
-                Warn(warnings, source.name, source.width, source.height, size.Item1, size.Item2);
+                var capped = TextureResizePolicy.Size(source.width, source.height);
+                if (capped.Item1 != source.width || capped.Item2 != source.height)
+                    Warn(warnings, source.name, source.width, source.height, capped.Item1, capped.Item2);
                 return png;
             }
             finally { UnityEngine.Object.DestroyImmediate(destination); }
@@ -48,12 +54,29 @@ namespace VRVlog.LilToonExporter
     internal sealed class MobileTextureSerializer : ITextureSerializer
     {
         private readonly ICollection<string> warnings;
-        internal MobileTextureSerializer(ICollection<string> warnings) { this.warnings = warnings; }
+        // 自動で軽量化する's maximum long side for a source, given the default; null when off.
+        private readonly Func<Texture, int, int> lightweight;
+        // The textures UniVRM copies for the images, when lightweight is on.
+        private readonly List<Texture> sources = new List<Texture>();
+        internal MobileTextureSerializer(ICollection<string> warnings, Func<Texture, int, int> lightweight = null) { this.warnings = warnings; this.lightweight = lightweight; }
         public bool CanExportAsEditorAssetFile(Texture texture, ExportColorSpace exportColorSpace) => false;
         // Deliberately no AssetImporter writes or SaveAndReimport calls. UniVRM
         // creates disposable conversion textures before invoking the serializer.
-        public void ModifyTextureAssetBeforeExporting(Texture texture) { }
+        public void ModifyTextureAssetBeforeExporting(Texture texture)
+        {
+            if (lightweight != null && texture != null && !sources.Contains(texture)) sources.Add(texture);
+        }
         public (byte[] bytes, string mime) ExportBytesWithMime(Texture2D texture, ExportColorSpace exportColorSpace) =>
-            (MobileTextureEncoder.EncodeConverted(texture, exportColorSpace == ExportColorSpace.sRGB, warnings), "image/png");
+            (MobileTextureEncoder.EncodeConverted(texture, exportColorSpace == ExportColorSpace.sRGB, warnings, Maximum(texture)), "image/png");
+
+        // The copy keeps its source's name and size. Only a copy that matches
+        // exactly one source can take that source's smaller size; a baked,
+        // combined or ambiguous image keeps the default.
+        private int Maximum(Texture2D copy)
+        {
+            if (lightweight == null || copy == null) return LilToonMobileProfile.DefaultMaximumTextureSize;
+            var matches = sources.Where(source => source != null && source.name == copy.name && source.width == copy.width && source.height == copy.height).ToArray();
+            return matches.Length == 1 ? lightweight(matches[0], LilToonMobileProfile.DefaultMaximumTextureSize) : LilToonMobileProfile.DefaultMaximumTextureSize;
+        }
     }
 }

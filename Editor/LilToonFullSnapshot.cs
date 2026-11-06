@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -40,12 +41,19 @@ namespace VRVlog.LilToonExporter
         ICollection<string> warnings;
         bool suppressSharedTextureEmission, suppressHdrTextureEmission;
         LilToonInactiveTextureProof inactiveTextures;
+        // 自動で軽量化する: smaller maximums for textures with detail to spare. Null when off.
+        TexelDensity.Plan lightweight;
+        // 自動で軽量化する: write a slot whose feature is switched off as
+        // unassigned. The references left out, by texture key; false when off.
+        bool omitInactiveSlots;
+        readonly HashSet<(Texture, bool)> inactiveReferences = new HashSet<(Texture, bool)>();
         readonly string sourceColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear ? "linear" : "gamma";
 
-        internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null)
+        internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null,
+            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false)
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
-                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource)};
+                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots};
             var selected = new List<(Renderer renderer, Material[] materials)>();
             // Materials of renderers UniVRM does not write as meshes must not
             // create bindings to absent glTF meshes. Their transforms and bones
@@ -101,7 +109,9 @@ namespace VRVlog.LilToonExporter
                Array.IndexOf(required, "_OutlineWidthMask") >= 0 && material.HasProperty("_OutlineWidthMask") && material.HasProperty("_OutlineDeleteMesh")
                 ? (material.GetTexture("_OutlineWidthMask"), material.GetFloat("_OutlineDeleteMesh")) : (null, 0f);
 
-        int MaximumSize(Texture source, bool normal) => MaximumSize(!normal && deleteMeshMasks.Contains(source));
+        int MaximumSize(Texture source, bool normal) => Lightened(source, ExistingMaximumSize(source, normal));
+        int ExistingMaximumSize(Texture source, bool normal) => MaximumSize(!normal && deleteMeshMasks.Contains(source));
+        int Lightened(Texture source, int maximum) => lightweight == null || deleteMeshMasks.Contains(source) ? maximum : lightweight.Maximum(source, maximum);
 
         // Null when the installed shader cannot give every 2.3.4 runtime
         // property of this shader.
@@ -148,6 +158,13 @@ namespace VRVlog.LilToonExporter
                     {
                         texture = null;
                         warnings?.Add(source.name + ": 無効なlilToonレイヤーで使われない動的画像の参照を省略しました: " + name);
+                    }
+                    // 自動で軽量化する: the shader never samples this slot. A
+                    // texture another slot samples is still written once.
+                    if (texture != null && omitInactiveSlots && !LilToonInactiveSlots.Sampled(source, name))
+                    {
+                        inactiveReferences.Add((texture, normal));
+                        texture = null;
                     }
                     // Unassigned normal slots use Unity's encoded bump default.
                     // Export that default too, so the canonical decoder never
@@ -212,6 +229,21 @@ namespace VRVlog.LilToonExporter
             return new Dictionary<string, object> { {"sourceShader", shader.name}, {"name", source.name}, {"renderQueue", source.renderQueue}, {"values", values}, {"textures", textureProperties}, {"passes", passes}, {"keywords", keywords}, {"clippingCanceller",clipping} };
         }
 
+        // The line of the result list for the textures only switched-off slots
+        // referenced, with the memory they would have used; null when none.
+        internal string InactiveSlotsLine()
+        {
+            var omitted = inactiveReferences.Where(key => !textureIds.ContainsKey(key)).ToList();
+            return omitted.Count == 0 ? null : string.Format(CultureInfo.InvariantCulture, ExporterLocalization.T(ExportNoteText.InactiveTexturesOmitted),
+                omitted.Count, TexelDensity.Plan.Megabytes(omitted.Sum(key => UnwrittenBytes(key.Item1, key.Item2))));
+        }
+
+        long UnwrittenBytes(Texture source, bool normal)
+        {
+            var size = TextureResizePolicy.Size(source.width, source.height, ExistingMaximumSize(source, normal));
+            return TexelDensity.Bytes(size.Item1, size.Item2) * (source is Cubemap ? 6 : 1);
+        }
+
         int Texture(Texture source, bool normal, float normalScale)
         {
             if (textureIds.TryGetValue((source, normal), out var existing))
@@ -237,7 +269,10 @@ namespace VRVlog.LilToonExporter
             var chunks = new List<object>();
             var maximum = MaximumSize(source, normal);
             var (width, height, count, faces) = Layout(source, maximum);
-            var resized = width != source.width || height != source.height;
+            // 自動で軽量化する lists its textures in one line, not one note each;
+            // a note for the default's resizing states the size after it alone.
+            var unlightened = Layout(source, ExistingMaximumSize(source, normal));
+            var resized = unlightened.width != source.width || unlightened.height != source.height;
             // Gamma rendering can expose an UNorm GPU view of sRGB pixels.
             // Preserve the stored pixel encoding, independent of this Editor's
             // sampling mode, so a Linear-space consumer decodes it correctly.
@@ -253,7 +288,7 @@ namespace VRVlog.LilToonExporter
             if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
             else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add(ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
+                warnings?.Add(ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, unlightened.width, unlightened.height));
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
                 {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},

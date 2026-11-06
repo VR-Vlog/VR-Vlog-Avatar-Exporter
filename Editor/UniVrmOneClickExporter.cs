@@ -137,7 +137,7 @@ namespace VRVlog.LilToonExporter
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
-            IReadOnlyList<AnimationClip> listFaceSources = null)
+            IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -166,7 +166,7 @@ namespace VRVlog.LilToonExporter
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps);
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -422,7 +422,7 @@ namespace VRVlog.LilToonExporter
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
-            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps)
+            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -756,8 +756,15 @@ namespace VRVlog.LilToonExporter
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
                 }, temporaryTextures));
+                // 自動で軽量化する: measured on the copy as it is exported, before any
+                // texture is read. Off, nothing is measured and every size stays;
+                // a measurement that fails also keeps every size.
+                TexelDensity.Plan lightweight = null;
+                if (autoLightweight)
+                    try { lightweight = TexelDensity.Measure(clone); }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
-                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
+                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // Another lilToon version may lack a 2.3.4 property a material
                 // needs. Such a material keeps the MToon approximation written
@@ -844,7 +851,7 @@ namespace VRVlog.LilToonExporter
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
                     materialExporter: new BuiltInVrm10MaterialExporter(),
-                    textureSerializer: new MobileTextureSerializer(warnings),
+                    textureSerializer: new MobileTextureSerializer(warnings, lightweight == null ? null : new Func<Texture, int, int>(lightweight.Maximum)),
                     vrmMeta: CreateMeta(avatarName.Trim(), author.Trim(), licenseOptions),
                     afterExport: (converter, model, storage) =>
                     {
@@ -866,6 +873,7 @@ namespace VRVlog.LilToonExporter
                 // or its save: over the app's image limit, export without them.
                 if (matcapBakes.Images.Count > 0 && LilToonGlbExtension.StandardCounts(exported).Textures > LilToonMobileProfile.MaximumTextures)
                     throw new MatcapApproximation.OverLimit();
+                if (lightweight?.ResultLine() is string lightened) warnings?.Add(lightened);
                 recoveryReport.Stage = "出力検査";
                 recoveryReport.Phase = ExportPhase.Export;
                 // Output stages transform finished bytes; a failing one keeps the
@@ -947,6 +955,7 @@ namespace VRVlog.LilToonExporter
                     {
                         exported = injected;
                         foreach(var warning in fallbackWarnings)warnings?.Add("標準VRM表示の近似: "+warning);
+                        if (fullSnapshot.InactiveSlotsLine() is string inactive) warnings?.Add(inactive);
                     }
                     else
                     {
@@ -957,6 +966,19 @@ namespace VRVlog.LilToonExporter
                 }
                 else if (marked = withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
+                if (autoLightweight)
+                {
+                    // After the lilToon extension: Apply reads its material
+                    // records. A failure keeps the file as it is.
+                    try
+                    {
+                        var skipped = new List<string>();
+                        exported = VertexDataLightweight.Apply(exported, skipped, out var saved);
+                        foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
+                        if (VertexDataLightweight.ResultLine(saved) is string packed) warnings?.Add(packed);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                }
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);

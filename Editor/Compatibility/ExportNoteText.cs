@@ -15,6 +15,12 @@ namespace VRVlog.LilToonExporter
         public const string OutputTextureResized = "{0}: 出力用画像を {1}×{2} から {3}×{4} へ縮小しました。元の画像は変更していません。";
         // {0} material name, {1}×{2} after.
         public const string MainTextureResized = "{0}: メインカラーの焼き込み画像をモバイル向けに {1}×{2} へ縮小しました。";
+        // {0} the number of textures 自動で軽量化する made smaller, {1} the megabytes of texture memory saved.
+        public const string TexturesLightened = "テクスチャ{0}枚を小さくしてメモリ使用量を{1}MB減らしました";
+        // {0} the megabytes the VRM file lost to 自動で軽量化する's vertex data step.
+        public const string VertexDataLightened = "メッシュの頂点データを詰めてVRMを{0}MB小さくしました";
+        // {0} the number of textures 自動で軽量化する left out because only switched-off lilToon features use them, {1} their megabytes of texture memory.
+        public const string InactiveTexturesOmitted = "オフの機能だけが使うテクスチャ{0}枚を書き出さずメモリ使用量を{1}MB減らしました";
         public const string AlphaMaskResized = "{0}: アルファマスクを含む画像を {1}×{2} へ縮小しました。";
 
         // PhysBone notes, each written as "<PhysBone name>: <sentence>". The first and the last are
