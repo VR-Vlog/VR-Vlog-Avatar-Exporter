@@ -381,6 +381,48 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
         }
 
+        // The source aims at a point whose parent aims inside the target: the
+        // loop runs through a constraint, a parent and a constraint again.
+        [TestCase("position")][TestCase("parent")]
+        public void AFollowThatWouldReachItselfThroughParentsAndConstraintsKeepsThePose(string kind)
+        {
+            using var f = new Fixture();
+            var prop = f.Other;
+            var inside = Fixture.Child(prop, "Inside", new Vector3(0, -.3f, 0));
+            var holder = Fixture.Child(f.Copy.transform, "Holder", new Vector3(.5f, 0, 0));
+            holder.rotation = Quaternion.LookRotation(inside.position - holder.position);
+            f.Constraint<AimConstraint>(holder, 1, inside).aimVector = Vector3.forward;
+            var read = Fixture.Child(holder, "Read", new Vector3(0, 0, .2f));
+            f.A.rotation = Quaternion.LookRotation(read.position - f.A.position);
+            f.Constraint<AimConstraint>(f.A, 1, read).aimVector = Vector3.forward;
+            if (kind == "position") f.Constraint<PositionConstraint>(prop, 1, f.A);
+            else f.Constraint<ParentConstraint>(prop, 1, f.A);
+            f.Convert();
+            Assert.That(holder.GetComponent<Vrm10AimConstraint>(), Is.Not.Null);
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>(), Is.Not.Null);
+            Assert.That(prop.parent.name, Is.EqualTo("Other parent"));
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        // A source scaled to zero has no inverse to keep the target's pose
+        // under it; the target stays where it is.
+        [TestCase("position")][TestCase("parent")]
+        public void AFollowOfASourceScaledToZeroKeepsThePose(string kind)
+        {
+            using var f = new Fixture();
+            var prop = f.Other;
+            f.A.localScale = Vector3.zero;
+            var position = prop.position; var rotation = prop.rotation;
+            if (kind == "position") f.Constraint<PositionConstraint>(prop, 1, f.A);
+            else f.Constraint<ParentConstraint>(prop, 1, f.A);
+            f.Convert();
+            Assert.That(prop.parent.name, Is.EqualTo("Other parent"));
+            Assert.That(prop.position, Is.EqualTo(position));
+            Assert.That(prop.rotation, Is.EqualTo(rotation));
+            Assert.That(f.Entry.Outcome, Is.EqualTo(ExportOutcome.Omitted));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedReparent));
+        }
+
         [TestCase("translation axis")][TestCase("weight")][TestCase("source weight")][TestCase("rotation")][TestCase("rotation source")]
         public void APositionConstraintThatAChildWouldNotMatchKeepsThePose(string condition)
         {

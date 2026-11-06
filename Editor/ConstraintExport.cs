@@ -226,10 +226,9 @@ namespace VRVlog.LilToonExporter
             if (!(plan.X && plan.Y && plan.Z && plan.Positions) || plan.LocalSpace || plan.Weight * Mathf.Min(1, sources[0].Weight) < FullWeight ||
                 humanoid.Any(bone => bone.IsChildOf(target)) || edges.ContainsKey(target) && !aiming || edges.Values.Any(ends => ends.Contains(target)))
                 return (ExportOutcome.Omitted, OmittedReparent);
-            // A constraint reading something inside the target would, once the
-            // target follows it, read a point that moves with itself.
-            if (edges.Any(edge => edge.Value.Any(end => end.IsChildOf(target)) && (source.IsChildOf(edge.Key) || Reaches(edges, source, edge.Key))))
-                return (ExportOutcome.Omitted, OmittedCycle);
+            // If the source's pose depends on something inside the target, the
+            // target would, once it follows, move with itself.
+            if (DependsOnInside(edges, source, target)) return (ExportOutcome.Omitted, OmittedCycle);
             if (target.parent == source) return (ExportOutcome.Kept, KeptParent);
             // UniVRM finds expression and first-person renderers by these paths
             // when it writes the file; a moved target would leave them dangling.
@@ -402,6 +401,24 @@ namespace VRVlog.LilToonExporter
         }
 
         // Whether following the sources from `from` arrives at `to`.
+        // A node moves with its parents and with the ends its VRM constraints
+        // read, and those with theirs in turn, in any alternation.
+        static bool DependsOnInside(Dictionary<Transform, List<Transform>> edges, Transform from, Transform target)
+        {
+            var visited = new HashSet<Transform>();
+            var pending = new Stack<Transform>();
+            pending.Push(from);
+            while (pending.Count > 0)
+            {
+                var current = pending.Pop();
+                if (current == null || !visited.Add(current)) continue;
+                if (current.IsChildOf(target)) return true;
+                pending.Push(current.parent);
+                if (edges.TryGetValue(current, out var next)) foreach (var value in next) pending.Push(value);
+            }
+            return false;
+        }
+
         static bool Reaches(Dictionary<Transform, List<Transform>> edges, Transform from, Transform to)
         {
             var visited = new HashSet<Transform>();
