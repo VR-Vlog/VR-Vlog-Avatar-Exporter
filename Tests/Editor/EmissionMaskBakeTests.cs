@@ -122,6 +122,37 @@ namespace VRVlog.LilToonExporter.Tests
             finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); Object.DestroyImmediate(mask); Object.DestroyImmediate(material); }
         }
 
+        // An sRGB mask counts with its linear value, as in a Linear project
+        // and in the app, also in a Gamma project; a linear one as it is.
+        [TestCase(true, .5f * .214f + .1f)]
+        [TestCase(false, .5f * .5f + .1f)]
+        public void AnAlphaMaskIsReadInLinearValues(bool srgb, float expected)
+        {
+            var shader = Shader.Find("lilToonTransparent");
+            if (shader == null) shader = Shader.Find("Hidden/lilToonTransparent");
+            Assert.That(shader, Is.Not.Null, "Install supported lilToon.");
+            var material = new Material(shader);
+            var source = new Texture2D(2,2,TextureFormat.RGBA32,false,false);
+            var mask = new Texture2D(2,2,TextureFormat.RGBA32,false,!srgb);
+            var owned = new List<Texture2D>();
+            try
+            {
+                var color = new Color(.5f,.6f,.7f,1);
+                source.SetPixels(new[] { color,color,color,color }); source.Apply();
+                mask.SetPixels(new[] { Color.gray,Color.gray,Color.gray,Color.gray }); mask.Apply();
+                material.SetTexture("_MainTex",source); material.SetTexture("_AlphaMask",mask);
+                material.SetColor("_Color",Color.white);
+                material.SetFloat("_AlphaMaskMode",1); material.SetFloat("_AlphaMaskScale",.5f); material.SetFloat("_AlphaMaskValue",.1f);
+                AlphaMaskBaker.Bake(material,owned,null);
+                var pixel = owned[0].GetPixel(0,0);
+                Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f));
+                // The sRGB main image is written back as it was.
+                Assert.That(pixel.r, Is.EqualTo(.5f).Within(.01f));
+                Assert.That(pixel.b, Is.EqualTo(.7f).Within(.01f));
+            }
+            finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); Object.DestroyImmediate(mask); Object.DestroyImmediate(material); }
+        }
+
         // The factor is in linear values: an sRGB image is decoded and one
         // imported as linear data is read as it is, in a Gamma project too.
         [TestCase(false)]

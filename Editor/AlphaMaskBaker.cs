@@ -59,6 +59,9 @@ namespace VRVlog.LilToonExporter
                 baker.SetFloat("_AlphaMaskMode", mode);
                 baker.SetFloat("_AlphaMaskScale", material.GetFloat("_AlphaMaskScale"));
                 baker.SetFloat("_AlphaMaskValue", material.GetFloat("_AlphaMaskValue"));
+                // The color passes through unchanged in either color space; only
+                // the mask is read as a value, in linear as the app and a Linear project do.
+                baker.SetFloat("_VrvDecodeMask", QualitySettings.activeColorSpace == ColorSpace.Gamma && mask.isDataSRGB ? 1f : 0f);
                 var color = material.GetColor("_Color");
                 baker.SetFloat("_ColorAlpha", color.a);
                 var name = DeterministicNames.Unique(material.name + "__VRVlog_Alpha_" + DeterministicNames.Hash("Alpha", origin, material.name),
