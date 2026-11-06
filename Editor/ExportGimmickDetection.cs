@@ -188,14 +188,17 @@ namespace VRVlog.LilToonExporter
                     Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
                     continue;
                 }
-                // Hidden until its own animator shows it. A prop with its own
-                // toggle stays and exports as a toggle; one with a camera,
-                // which draws the world and no prop needs, leaves.
+                // Hidden until an animator merged from the object itself shows
+                // it in one clip. A prop with its own toggle stays and exports
+                // as a toggle; one with a camera leaves, as it does when shown.
                 if (!candidate.GetComponentsInChildren<Camera>(true).Any(c => !excluded(c.transform))) continue;
-                var turnedOn = TurnedOn(source.transform, candidate, excluded);
-                if (turnedOn.Count > 0 && Shown(candidate.gameObject, source.transform, turnedOn) &&
-                    VrChatOnly(source, candidate, excluded, turnedOn, out review) && review == null)
-                    Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, null);
+                foreach (var turnedOn in TurnedOn(source.transform, candidate))
+                    if (Shown(candidate.gameObject, source.transform, turnedOn) &&
+                        VrChatOnly(source, candidate, excluded, turnedOn, out review) && review == null)
+                    {
+                        Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, null);
+                        break;
+                    }
             }
         }
 
@@ -208,13 +211,14 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        // Objects and renderers inside the candidate that the animators merged
-        // from it can turn on, resolved the way MA reads their paths.
-        static HashSet<UnityEngine.Object> TurnedOn(Transform avatarRoot, Transform candidate, Func<Transform, bool> excluded)
+        // For each clip of the animators merged from the candidate itself, the
+        // objects and renderers inside it that the clip turns on, with paths
+        // resolved the way MA reads them. An animator further down may belong
+        // to another gimmick in the same folder.
+        static IEnumerable<HashSet<UnityEngine.Object>> TurnedOn(Transform avatarRoot, Transform candidate)
         {
-            var found = new HashSet<UnityEngine.Object>();
-            foreach (var merge in candidate.GetComponentsInChildren<Component>(true)
-                         .Where(c => c != null && !excluded(c.transform) && IsType(c, new[] { ExportGimmickRules.MergeAnimator })))
+            foreach (var merge in candidate.GetComponents<Component>()
+                         .Where(c => c != null && IsType(c, new[] { ExportGimmickRules.MergeAnimator })))
             {
                 using var serialized = new SerializedObject(merge);
                 var controller = serialized.FindProperty("animator")?.objectReferenceValue;
@@ -227,19 +231,22 @@ namespace VRVlog.LilToonExporter
                     referencePath == "$$$AVATAR_ROOT$$$" ? avatarRoot : avatarRoot.Find(referencePath);
                 if (root == null) root = merge.transform;
                 foreach (var clip in Clips(controller).Distinct())
-                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
-                    var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
-                    if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
-                    var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
-                    if (target == null || !target.IsChildOf(candidate)) continue;
-                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                    if (curve == null || !curve.keys.Any(key => key.value > 0.5f)) continue;
-                    if (active) found.Add(target.gameObject);
-                    else if (target.TryGetComponent(binding.type, out var renderer)) found.Add(renderer);
+                    var found = new HashSet<UnityEngine.Object>();
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        var active = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+                        if (!active && !(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName == "m_Enabled")) continue;
+                        var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                        if (target == null || !target.IsChildOf(candidate)) continue;
+                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || !curve.keys.Any(key => key.value > 0.5f)) continue;
+                        if (active) found.Add(target.gameObject);
+                        else if (target.TryGetComponent(binding.type, out var renderer)) found.Add(renderer);
+                    }
+                    if (found.Count > 0) yield return found;
                 }
             }
-            return found;
         }
 
         static IEnumerable<AnimationClip> Clips(UnityEngine.Object value) => value switch

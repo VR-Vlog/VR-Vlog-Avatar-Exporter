@@ -719,6 +719,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(), Is.Empty);
         }
 
+        [Test] public void OnsFromDifferentClipsAreNotCombined()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.SetActive(false);
+            gimmick.transform.Find("prop").GetComponent<Renderer>().enabled = false;
+            var controller = TurnsOn(gimmick, "", typeof(GameObject), "m_IsActive");
+            var mesh = Own(new AnimationClip());
+            AnimationUtility.SetEditorCurve(mesh, EditorCurveBinding.FloatCurve("prop", typeof(MeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 1));
+            controller.layers[0].stateMachine.AddState("mesh").motion = mesh;
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void FolderShownByAGimmickInsideItStays()
+        {
+            var folder = Child("folder"); folder.AddComponent(MaType(ExportGimmickRules.MenuInstaller));
+            Render("other", Plain(), folder.transform);
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain(), parent: folder.transform);
+            folder.SetActive(false);
+            var controller = TurnsOn(gimmick, "folder", typeof(GameObject), "m_IsActive");
+            Merges(gimmick, controller, pathMode: 1);
+            Assert.That(Matched(), Is.Empty);
+        }
+
         [Test] public void AnimatorPathsFromTheAvatarRootAreResolved()
         {
             var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
