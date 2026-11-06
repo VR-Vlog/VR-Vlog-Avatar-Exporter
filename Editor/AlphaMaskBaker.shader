@@ -36,5 +36,19 @@ Shader "Hidden/VRVlog/AlphaMaskBaker"
             }
             ENDCG
         }
+        // Decodes an sRGB mask texel by texel, drawn at the mask's own size.
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            sampler2D _MainTex;
+            float4 frag(v2f_img input) : SV_Target
+            {
+                return GammaToLinearSpaceExact(tex2D(_MainTex, input.uv).r);
+            }
+            ENDCG
+        }
     }
 }

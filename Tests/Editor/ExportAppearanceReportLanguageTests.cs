@@ -137,5 +137,42 @@ namespace VRVlog.LilToonExporter.Tests
                 messagesField.SetValue(null, previousMessages);
             }
         }
+
+        // The summary lists the first three and counts the rest, in the language of the Editor; asked
+        // for all, it lists every change and counts none.
+        [TestCase("ja", "ほか2件")]
+        [TestCase("en", "2 more")]
+        [TestCase("ko", "외 2건")]
+        [TestCase("zh-Hans", "另有 2 项")]
+        [TestCase("zh-Hant", "另有 2 項")]
+        public void TheSummaryCountsTheRestUntilAllAreShown(string locale, string rest)
+        {
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var localeField = typeof(ExporterLocalization).GetField("_locale", flags);
+            var messagesField = typeof(ExporterLocalization).GetField("_messages", flags);
+            var previousLocale = localeField.GetValue(null);
+            var previousMessages = messagesField.GetValue(null);
+            try
+            {
+                localeField.SetValue(null, locale);
+                messagesField.SetValue(null, null);
+                var changes = new[] { "a", "b", "c", "d", "e" };
+                Assert.That(ExportAppearanceReport.Summary(changes), Is.EqualTo("・a\n・b\n・c\n" + rest));
+                Assert.That(ExportAppearanceReport.Summary(changes, true), Is.EqualTo("・a\n・b\n・c\n・d\n・e"));
+                Assert.That(ExportAppearanceReport.Summary(changes.Take(3)), Is.EqualTo("・a\n・b\n・c"));
+                Assert.That(ExportAppearanceReport.Shortened(changes), Is.True);
+                Assert.That(ExportAppearanceReport.Shortened(changes.Take(3).ToArray()), Is.False);
+                // A long change is cut until all are shown.
+                var longer = new[] { new string('x', 120) };
+                Assert.That(ExportAppearanceReport.Summary(longer), Is.EqualTo("・" + new string('x', 107) + "…"));
+                Assert.That(ExportAppearanceReport.Summary(longer, true), Is.EqualTo("・" + longer[0]));
+                Assert.That(ExportAppearanceReport.Shortened(longer), Is.True);
+            }
+            finally
+            {
+                localeField.SetValue(null, previousLocale);
+                messagesField.SetValue(null, previousMessages);
+            }
+        }
     }
 }
