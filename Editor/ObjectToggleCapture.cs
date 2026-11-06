@@ -33,6 +33,9 @@ namespace VRVlog.LilToonExporter
         const float FrameStep = .05f;
         const int ValueLimit = 1000000;
 
+        // VRVLOG_object_toggles allows these many targets in a group and in all.
+        const int MaximumGroupTargets = 1024, MaximumTargets = 4096;
+
         sealed class Group
         {
             internal string Parameter, Name;
@@ -137,7 +140,7 @@ namespace VRVlog.LilToonExporter
                 groupItems.RemoveAll(item => columns.All(column => states[item.Value][column] == states[0][column]));
                 if (groupItems.Count == 0) continue;
                 values.RemoveAll(value => value != 0 && value != defaultValue && groupItems.All(item => item.Value != value));
-                if (result.groups.Count >= 256 || columns.Count > 1024 || targetCount + columns.Count > 4096 || values.Count > 256 ||
+                if (result.groups.Count >= 256 || columns.Count > MaximumGroupTargets || targetCount + columns.Count > MaximumTargets || values.Count > 256 ||
                     result.items.Count + groupItems.Count > 512)
                 {
                     warnings?.Add(ExporterLocalization.T(LimitWarning) + parameter);
@@ -162,6 +165,31 @@ namespace VRVlog.LilToonExporter
             foreach (var target in result.groups.SelectMany(group => group.Targets))
                 if (!target.activeSelf) target.SetActive(true);
             return result;
+        }
+
+        // The objects the toggles show and hide.
+        internal IEnumerable<GameObject> Targets => groups.SelectMany(group => group.Targets);
+
+        // Whether the groups of these leaders, one target each, stay within
+        // the limits of the extension.
+        internal bool HasRoom(IReadOnlyCollection<GameObject> leaders) =>
+            groups.Sum(group => group.Targets.Count) + leaders.Count <= MaximumTargets &&
+            groups.All(group => group.Targets.Count + leaders.Count(group.Targets.Contains) <= MaximumGroupTargets);
+
+        // A later step moved `moved` out from under `leader`, a target: it
+        // takes the leader's state in every value, so the toggle still shows
+        // and hides it. `path` names it in the user's avatar for warnings.
+        internal void Follow(GameObject moved, GameObject leader, string path)
+        {
+            var group = groups.First(candidate => candidate.Targets.Contains(leader));
+            var column = group.Targets.IndexOf(leader);
+            group.Targets.Add(moved);
+            group.Paths.Add(path);
+            for (var i = 0; i < group.States.Count; i++)
+            {
+                var (value, active) = group.States[i];
+                group.States[i] = (value, active.Append(active[column]).ToArray());
+            }
         }
 
         // Maps the targets to output nodes. A target the build passes or the
