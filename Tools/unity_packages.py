@@ -86,3 +86,18 @@ def editor_version(project):
     version = re.search(r'^m_EditorVersion:\s*(\S+)', text, re.MULTILINE)
     revision = re.search(r'^m_EditorVersionWithRevision:\s*\S+\s*\(([0-9a-f]+)\)', text, re.MULTILINE)
     return (version.group(1) if version else None), (revision.group(1) if revision else None)
+
+
+def color_space(project):
+    """Return 'gamma' or 'linear' from ProjectSettings/ProjectSettings.asset, or None.
+
+    The exporter bakes images differently in the two (sRGB images are not decoded
+    when sampled in a Gamma project), so a test result is only evidence for the
+    color space it ran in.
+    """
+    path = Path(project) / 'ProjectSettings' / 'ProjectSettings.asset'
+    if not path.is_file():
+        return None
+    # Bytes, so a project saved with binary serialization reads as unknown.
+    found = re.search(rb'^\s*m_ActiveColorSpace:\s*(\d+)\s*$', path.read_bytes(), re.MULTILINE)
+    return {b'0': 'gamma', b'1': 'linear'}.get(found.group(1)) if found else None
