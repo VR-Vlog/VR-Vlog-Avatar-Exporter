@@ -268,6 +268,15 @@ namespace VRVlog.LilToonExporter.Tests
             var map = Solid("emission", new Color(1, .5f, 0, 1), 32);
             source.SetTexture("_EmissionMap", map);
             Assert.That(Substitute(source, Second).GetTexture("_EmissionMap"), Is.SameAs(map));
+            // Unbaked, each setting alone is reported alone.
+            foreach (var (channel, power, label) in new[] { (2f, 1f, "Emission Map Channel"), (0f, 2f, "Emission Power") })
+            {
+                source.SetFloat("_EmissionMapChannel", channel);
+                source.SetFloat("_EmissionPower", power);
+                Substitute(source, Second, out _, out var alone);
+                if (NoGraphics) Assert.That(alone, Does.Contain(label));
+                else Assert.That(alone, Does.Not.Contain(label));
+            }
             source.SetFloat("_EmissionMapChannel", 2);
             source.SetFloat("_EmissionPower", 2);
             var output = Substitute(source, Second, out _, out var dropped);
