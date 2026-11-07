@@ -21,6 +21,9 @@
 //   -regressionLabel <text>  free label copied into every result (default "x")
 //   -regressionShots <mode>  first (default): screenshots of run 1 only;
 //                            all: every run; none: no screenshots
+//   -regressionTransforms on|off  sets ExpressionTransformCurves.Enabled for the
+//                            whole run (bones and visibility of expressions written
+//                            or not), so one package compares both; default: as built
 //   -regressionShotsOnly 1   no export: redo the screenshots of run 1 for every
 //                            job whose <ID>_1.vrm already exists in the directory
 //                            (resumes via shots_progress.txt; SHOTS_DONE.txt at the end)
@@ -101,6 +104,19 @@ namespace VRVlog.LilToonExporter.ExportRegression
             Directory.CreateDirectory(outDir);
             var jobs = File.ReadAllLines(jobsPath, Encoding.UTF8)
                 .Where(line => line.Contains("|") && !line.TrimStart().StartsWith("#", StringComparison.Ordinal)).ToArray();
+            var transforms = Arg("-regressionTransforms");
+            if (transforms != null)
+            {
+                var enabled = RequireType("VRVlog.LilToonExporter.ExpressionTransformCurves").GetField("Enabled", Any);
+                if (enabled == null || (transforms != "on" && transforms != "off"))
+                {
+                    Debug.LogError("ExportRegressionRunner: -regressionTransforms needs on or off and a package with ExpressionTransformCurves.Enabled.");
+                    EditorApplication.Exit(2);
+                    return;
+                }
+                enabled.SetValue(null, transforms == "on");
+                label += " transforms=" + transforms;
+            }
             Application.logMessageReceived += OnLog;
             routine = Arg("-regressionShotsOnly") != null ? ShotsOnly(jobs) : Run(jobs);
             EditorApplication.update += Tick;

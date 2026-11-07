@@ -5,12 +5,15 @@
 #
 #   pwsh -File Tools/run-export-regression.ps1 -Unity <Unity.exe> -Project <project dir>
 #        -Jobs <jobs.txt> -Out <results dir> [-Label <text>] [-Shots first|all|none] [-ShotsOnly]
+#        [-Transforms on|off]
 #
 # Jobs: UTF-8, one job per line "ID|prefab path|runs" (runs defaults to 2; see the
 # header of ExportRegressionRunner.cs). Results, progress.txt and unity.log go to -Out.
 # -Shots chooses which runs also get screenshots of the exported VRM (body from the
 # front and the back, face, every expression); -ShotsOnly redoes only the screenshots
-# of run 1 for the VRM files already in -Out.
+# of run 1 for the VRM files already in -Out. -Transforms writes or leaves out the bones
+# and visibility of expressions for the whole run (ExpressionTransformCurves.Enabled),
+# so one package compares both; without it the package's own value is used.
 #
 # The runner is not part of the package. This script copies it into a temporary
 # Assets folder of the project together with an asmdef whose versionDefines define
@@ -27,7 +30,8 @@ param(
     [Parameter(Mandatory)][string]$Out,
     [string]$Label = 'x',
     [ValidateSet('first', 'all', 'none')][string]$Shots = 'first',
-    [switch]$ShotsOnly
+    [switch]$ShotsOnly,
+    [ValidateSet('on', 'off')][string]$Transforms
 )
 $ErrorActionPreference = 'Stop'
 $folderName = '_VRVlogExportRegression'
@@ -89,6 +93,7 @@ try {
         '-regressionOut', $Out, '-regressionJobs', $Jobs, '-regressionLabel', $Label,
         '-regressionShots', $Shots, '-logFile', (Join-Path $Out 'unity.log'))
     if ($ShotsOnly) { $arguments += @('-regressionShotsOnly', '1') }
+    if ($Transforms) { $arguments += @('-regressionTransforms', $Transforms) }
     foreach ($argument in $arguments) {
         $start.ArgumentList.Add($argument)
     }
