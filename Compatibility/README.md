@@ -267,7 +267,7 @@ A matching hash is not proof of visual equivalence.
    Creators' projects use either color space, and the exporter bakes images
    differently in the two (a Gamma project samples sRGB images without
    decoding them). Run the tests once in a Linear project and once in a Gamma
-   project (Project Settings > Player > Color Space), each with
+   project (Project Settings > Player > Other Settings > Rendering > Color Space), each with
    `--expect-color-space linear` or `--expect-color-space gamma`. The runner
    stops before Unity starts when the project is in the other color space, and
    the receipt records it as `colorSpace`.

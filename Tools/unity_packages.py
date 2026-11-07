@@ -98,5 +98,6 @@ def color_space(project):
     path = Path(project) / 'ProjectSettings' / 'ProjectSettings.asset'
     if not path.is_file():
         return None
-    found = re.search(r'^\s*m_ActiveColorSpace:\s*(\d+)\s*$', path.read_text(encoding='utf-8-sig'), re.MULTILINE)
-    return {'0': 'gamma', '1': 'linear'}.get(found.group(1)) if found else None
+    # Bytes, so a project saved with binary serialization reads as unknown.
+    found = re.search(rb'^\s*m_ActiveColorSpace:\s*(\d+)\s*$', path.read_bytes(), re.MULTILINE)
+    return {b'0': 'gamma', b'1': 'linear'}.get(found.group(1)) if found else None

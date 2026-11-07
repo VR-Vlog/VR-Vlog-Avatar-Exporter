@@ -669,6 +669,12 @@ class LilToonExpectationTests(unittest.TestCase):
     def test_receipt_records_the_project_color_space_before_and_after_the_run(self):
         write_project(self.project, '2.3.4')
         self.assertEqual(self.run_main(None)[0]['colorSpace'], None)
+        # A project saved with binary serialization is unknown, not a crash.
+        for path in (Path(self.temp.name) / 'out').glob('*.json'):
+            path.unlink()
+        (self.project / 'ProjectSettings').mkdir(parents=True, exist_ok=True)
+        (self.project / 'ProjectSettings' / 'ProjectSettings.asset').write_bytes(b'\x00\xff\xfe\x80 m_ActiveColorSpace\x00\x01')
+        self.assertEqual(self.run_main(None)[0]['colorSpace'], None)
         for value, name in (('0', 'gamma'), ('1', 'linear')):
             with self.subTest(name=name):
                 for path in (Path(self.temp.name) / 'out').glob('*.json'):

@@ -1175,7 +1175,8 @@ def project_color_space(project, expected=None):
     """Read the project's color space and stop before Unity runs if it is not the expected one."""
     actual = unity_packages.color_space(project)
     if expected is not None and actual != expected:
-        raise SystemExit('Project color space ' + str(actual) + ' does not match --expect-color-space ' + expected)
+        shown = actual or 'unknown (no m_ActiveColorSpace of 0 or 1 in ProjectSettings/ProjectSettings.asset)'
+        raise SystemExit('Project color space ' + shown + ' does not match --expect-color-space ' + expected)
     return actual
 
 
