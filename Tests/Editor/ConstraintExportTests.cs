@@ -424,6 +424,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Outcome, Is.Not.EqualTo(ExportOutcome.Omitted));
         }
 
+        // The source aims at a point that aims inside the target. Moving the
+        // target turns the point, but does not move it, so the source stays and
+        // the target moves.
+        [TestCase("position")][TestCase("parent")]
+        public void AFollowOfASourceThatAimsAtAPointThatOnlyTurnsByTheTargetMovesTheTarget(string kind)
+        {
+            using var f = new Fixture();
+            var prop = f.Other;
+            var inside = Fixture.Child(prop, "Inside", new Vector3(0, -.3f, 0));
+            var holder = Fixture.Child(f.Copy.transform, "Holder", new Vector3(.5f, 0, 0));
+            holder.gameObject.AddComponent<Vrm10AimConstraint>().Source = inside;
+            f.A.gameObject.AddComponent<Vrm10AimConstraint>().Source = holder;
+            if (kind == "position") f.Constraint<PositionConstraint>(prop, 1, f.A);
+            else f.Constraint<ParentConstraint>(prop, 1, f.A);
+            f.Convert();
+            Assert.That(prop.parent, Is.EqualTo(f.A));
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Outcome, Is.Not.EqualTo(ExportOutcome.Omitted));
+        }
+
         // The source copies the local rotation of a point that aims outside
         // but sits inside the target: an aim turns by the world direction, so
         // its local rotation takes the parent, and moving the target would loop.
@@ -440,6 +459,82 @@ namespace VRVlog.LilToonExporter.Tests
             f.Convert();
             Assert.That(prop.parent.name, Is.EqualTo("Other parent"));
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        // Two aims each read a point under the other: turning either moves the
+        // other's source through a parent, so only one is converted.
+        [Test]
+        public void AimsThatReadPointsUnderEachOtherConvertOnlyOne()
+        {
+            using var f = new Fixture();
+            f.A.rotation = Quaternion.LookRotation(Vector3.right);
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            var holder = Fixture.Child(f.Parent, "Holder", new Vector3(.6f, 0, 0));
+            holder.rotation = Quaternion.LookRotation(Vector3.left);
+            var read = Fixture.Child(holder, "Read", new Vector3(0, 0, .1f));
+            f.Constraint<AimConstraint>(f.A, 1, read).aimVector = Vector3.forward;
+            f.Constraint<AimConstraint>(holder, 1, inside).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Has.Length.EqualTo(1));
+            Assert.That(f.Report.Results.Select(r => r.Reason),
+                Is.EquivalentTo(new[] { ConstraintExport.ApproximatedAim, ConstraintExport.OmittedCycle }));
+        }
+
+        // The source of a copied rotation aims at a point under the target:
+        // turning the target turns the source, which turns the target again.
+        [Test]
+        public void ARotationFromASourceThatAimsInsideTheTargetKeepsThePose()
+        {
+            using var f = new Fixture();
+            var inside = Fixture.Child(f.B, "Inside", new Vector3(0, 0, .1f));
+            f.A.gameObject.AddComponent<Vrm10AimConstraint>().Source = inside;
+            f.Constraint<RotationConstraint>(f.B, 1, f.A);
+            f.A.localRotation = f.B.localRotation = Quaternion.identity;
+            f.Convert();
+            Assert.That(f.B.GetComponent<Vrm10RotationConstraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        // An aim turns its node from the parent's world rotation, and here the
+        // parent copies the node's rotation. The source is outside the parent,
+        // so only the parent leads back.
+        [Test]
+        public void AnAimUnderAParentThatCopiesItsRotationKeepsThePose()
+        {
+            using var f = new Fixture();
+            f.Parent.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.A;
+            f.A.rotation = Quaternion.LookRotation(f.Other.position - f.A.position);
+            f.Constraint<AimConstraint>(f.A, 1, f.Other).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        // An aim reads only where its source is: the source's own aim at a point
+        // under the target turns the source, but does not move it.
+        [Test]
+        public void AnAimAtASourceThatOnlyTurnsByTheTargetBecomesAVrmAim()
+        {
+            using var f = new Fixture();
+            f.A.rotation = Quaternion.LookRotation(Vector3.left);
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            f.B.gameObject.AddComponent<Vrm10AimConstraint>().Source = inside;
+            f.Constraint<AimConstraint>(f.A, 1, f.B).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>().Source, Is.EqualTo(f.B));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.ApproximatedAim));
+        }
+
+        // An aim at a point under its own target moves the point as it turns.
+        [Test]
+        public void AnAimAtItsOwnChildKeepsThePose()
+        {
+            using var f = new Fixture();
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            f.Constraint<AimConstraint>(f.A, 1, inside).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
         }
 
         // A source scaled to zero has no inverse to keep the target's pose
