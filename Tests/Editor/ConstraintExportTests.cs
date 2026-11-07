@@ -424,6 +424,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Outcome, Is.Not.EqualTo(ExportOutcome.Omitted));
         }
 
+        // The source aims at a point that aims inside the target. Moving the
+        // target turns the point, but does not move it, so the source stays and
+        // the target moves.
+        [TestCase("position")][TestCase("parent")]
+        public void AFollowOfASourceThatAimsAtAPointThatOnlyTurnsByTheTargetMovesTheTarget(string kind)
+        {
+            using var f = new Fixture();
+            var prop = f.Other;
+            var inside = Fixture.Child(prop, "Inside", new Vector3(0, -.3f, 0));
+            var holder = Fixture.Child(f.Copy.transform, "Holder", new Vector3(.5f, 0, 0));
+            holder.gameObject.AddComponent<Vrm10AimConstraint>().Source = inside;
+            f.A.gameObject.AddComponent<Vrm10AimConstraint>().Source = holder;
+            if (kind == "position") f.Constraint<PositionConstraint>(prop, 1, f.A);
+            else f.Constraint<ParentConstraint>(prop, 1, f.A);
+            f.Convert();
+            Assert.That(prop.parent, Is.EqualTo(f.A));
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Outcome, Is.Not.EqualTo(ExportOutcome.Omitted));
+        }
+
         // The source copies the local rotation of a point that aims outside
         // but sits inside the target: an aim turns by the world direction, so
         // its local rotation takes the parent, and moving the target would loop.
