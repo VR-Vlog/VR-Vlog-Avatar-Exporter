@@ -53,8 +53,17 @@ namespace VRVlog.LilToonExporter
         {
             var items = changes.ToArray();
             var shown = all ? items.Length : Math.Min(Shown, items.Length);
-            return string.Join("\n", items.Take(shown).Select(item => "・" + (all || item.Length <= Longest ? item : item.Substring(0, Longest - 3) + "…"))) +
+            return string.Join("\n", items.Take(shown).Select(item => "・" + (all ? item : Cut(item)))) +
                 (items.Length > shown ? "\n" + ExporterLocalization.Format("ほか{0}件", items.Length - shown) : "");
+        }
+
+        static string Cut(string item)
+        {
+            if (item.Length <= Longest) return item;
+            var length = Longest - 3;
+            // An emoji or a rare kanji is two chars; half of one shows as a broken glyph.
+            if (char.IsHighSurrogate(item[length - 1])) length--;
+            return item.Substring(0, length) + "…";
         }
     }
 }
