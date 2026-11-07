@@ -8,11 +8,12 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class EmissionMaskBakeTests
     {
-        // Under -nographics these bakers still draw and read back, and the
-        // pixels they get are undefined: there is no fallback to check.
+        // Under -nographics nothing can be read back: the bakers keep their
+        // source images and the export warns.
         static bool NoGraphics => SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
 
-        const string Unread = "Without a graphics device the read-back pixels are undefined, and this baker has no fallback for it.";
+        static bool WarnsUnbaked(IEnumerable<string> warnings, string what) =>
+            warnings.Any(warning => warning.Contains("GPUを使えないため、" + what));
 
         [Test]
         public void MaskLimitsStandardMToonEmissionToMaskedArea()
@@ -30,12 +31,18 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetTexture("_EmissionMap", emission);
                 material.SetTexture("_EmissionBlendMask", mask);
                 var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, warnings, false, textures);
-                Assert.That(textures, Has.Count.EqualTo(1));
-                Assert.AreSame(textures[0], fallback.GetTexture("_EmissionMap"));
-                Assert.IsFalse(warnings.Any(warning => warning.Contains("発光のマスク")), "A baked mask is not an approximation.");
                 Assert.AreSame(emission, material.GetTexture("_EmissionMap"));
                 Assert.AreSame(mask, material.GetTexture("_EmissionBlendMask"));
-                if (NoGraphics) Assert.Ignore(Unread);
+                Assert.IsFalse(warnings.Any(warning => warning.Contains("発光のマスク・合成方法")), "A baked mask is not an approximation.");
+                Assert.That(WarnsUnbaked(warnings, "発光"), Is.EqualTo(NoGraphics));
+                if (NoGraphics)
+                {
+                    Assert.That(textures, Is.Empty);
+                    Assert.AreSame(emission, fallback.GetTexture("_EmissionMap"));
+                    return;
+                }
+                Assert.That(textures, Has.Count.EqualTo(1));
+                Assert.AreSame(textures[0], fallback.GetTexture("_EmissionMap"));
                 Assert.That(TestTextures.Linear(textures[0].GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not emit.");
                 Assert.That(TestTextures.Linear(textures[0].GetPixel(1, 0)).r, Is.EqualTo(.6f).Within(.015f), "White mask keeps the emission image.");
                 Assert.That(TestTextures.Linear(textures[0].GetPixel(1, 1)).g, Is.EqualTo(.6f).Within(.015f));
@@ -57,8 +64,13 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetTexture("_EmissionMap", emission);
                 material.SetFloat("_EmissionMainStrength", 1);
                 var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                if (NoGraphics)
+                {
+                    Assert.That(textures, Is.Empty);
+                    Assert.AreSame(emission, fallback.GetTexture("_EmissionMap"));
+                    return;
+                }
                 Assert.That(textures, Has.Count.EqualTo(1));
-                if (NoGraphics) Assert.Ignore(Unread);
                 var pixel = TestTextures.Linear(((Texture2D)fallback.GetTexture("_EmissionMap")).GetPixel(0, 0));
                 Assert.That(pixel.r, Is.EqualTo(.3f).Within(.015f));
                 Assert.That(pixel.g, Is.EqualTo(.15f).Within(.015f));
@@ -117,12 +129,22 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetTexture("_MainTex",source); material.SetTexture("_AlphaMask",mask);
                 material.SetColor("_Color",new Color(1,1,1,.5f));
                 material.SetFloat("_AlphaMaskMode",mode); material.SetFloat("_AlphaMaskScale",.6f); material.SetFloat("_AlphaMaskValue",.1f);
-                AlphaMaskBaker.Bake(material,owned,null);
+                var warnings = new List<string>();
+                AlphaMaskBaker.Bake(material,owned,warnings);
+                Assert.That(source.GetPixel(0,0).a, Is.EqualTo(.5f).Within(.01f));
+                Assert.That(WarnsUnbaked(warnings, "アルファマスク"), Is.EqualTo(NoGraphics));
+                if (NoGraphics)
+                {
+                    // Unread, the material keeps its image, mask and color.
+                    Assert.That(owned, Is.Empty);
+                    Assert.That(material.GetTexture("_MainTex"), Is.SameAs(source));
+                    Assert.That(material.GetFloat("_AlphaMaskMode"), Is.EqualTo((float)mode));
+                    Assert.That(material.GetColor("_Color").a, Is.EqualTo(.5f));
+                    return;
+                }
                 Assert.That(owned, Has.Count.EqualTo(1));
                 Assert.That(material.GetColor("_Color").a, Is.EqualTo(1));
                 Assert.That(material.GetFloat("_AlphaMaskMode"), Is.Zero);
-                Assert.That(source.GetPixel(0,0).a, Is.EqualTo(.5f).Within(.01f));
-                if (NoGraphics) Assert.Ignore(Unread);
                 var pixel = owned[0].GetPixel(0,0);
                 Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f));
                 var rgb = QualitySettings.activeColorSpace == ColorSpace.Linear ? pixel.linear : pixel;
@@ -153,10 +175,9 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetColor("_Color",Color.white);
                 material.SetFloat("_AlphaMaskMode",1); material.SetFloat("_AlphaMaskScale",.5f); material.SetFloat("_AlphaMaskValue",.1f);
                 AlphaMaskBaker.Bake(material,owned,null);
+                // Without a graphics device nothing is baked.
+                if (NoGraphics) { Assert.That(owned, Is.Empty); return; }
                 Assert.That(owned, Has.Count.EqualTo(1));
-                // Without a graphics device the read-back pixels are undefined,
-                // and the baker has no fallback for it.
-                if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the bake needs a graphics device.");
                 var pixel = owned[0].GetPixel(0,0);
                 Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f));
                 // The sRGB main image is written back as it was.
@@ -191,12 +212,14 @@ namespace VRVlog.LilToonExporter.Tests
                     material.SetColor("_Color", Color.white);
                     material.SetFloat("_AlphaMaskMode", 1); material.SetFloat("_AlphaMaskScale", 1); material.SetFloat("_AlphaMaskValue", 0);
                     AlphaMaskBaker.Bake(material, owned, null);
+                    // Without a graphics device nothing is baked.
+                    if (NoGraphics) { Assert.That(owned, Is.Empty); return null; }
                     Assert.That(owned, Has.Count.GreaterThan(0));
-                    if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the bake needs a graphics device.");
                     return owned[owned.Count - 1].GetPixels().Select(pixel => pixel.a).ToArray();
                 }
                 var linear = Alpha(false);
                 var decoded = Alpha(true);
+                if (NoGraphics) return;
                 Assert.That(linear.Any(a => a > .2f && a < .8f), Is.True, "The edge is blended over several texels.");
                 Assert.That(decoded, Is.EqualTo(linear).Within(.012f));
             }
@@ -218,8 +241,8 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetFloat("_EmissionUseGrad", 1f);
                 material.SetTexture("_EmissionGradTex", gradation);
                 material.SetFloat("_EmissionGradSpeed", 0f);
-                var expected = srgb ? Mathf.GammaToLinearSpace(.5f) : .5f;
-                if (NoGraphics) Assert.Ignore(Unread);
+                // Without a graphics device the gradation is left out.
+                var expected = NoGraphics ? 1f : srgb ? Mathf.GammaToLinearSpace(.5f) : .5f;
                 Assert.AreEqual(expected, LilToonEmissionPolicy.GradientFactor(material).r, .01f);
             }
             finally
@@ -248,7 +271,7 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetTexture("_EmissionGradTex", gradation);
                 material.SetFloat("_EmissionGradSpeed", 1f);
                 var factor = LilToonEmissionPolicy.GradientFactor(material);
-                if (NoGraphics) Assert.Ignore(Unread);
+                if (NoGraphics) { Assert.That(factor, Is.EqualTo(Color.white)); return; }
                 Assert.AreEqual(.25f, factor.r, .01f);
                 Assert.AreEqual(.25f, factor.g, .01f);
                 Assert.AreEqual(.25f, factor.b, .01f);

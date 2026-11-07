@@ -244,11 +244,17 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_EmissionTintToDiffuse", .5f);
             Assert.That(Substitute(source).GetFloat("_UseEmission"), Is.EqualTo(0f));
             source.EnableKeyword("_EMISSION");
-            var output = Substitute(source);
+            var output = Substitute(source, First, out _, out var dropped);
             Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_EmissionMainStrength"), Is.EqualTo(.5f).Within(1e-6f));
-            // Unbaked, the map is kept and counted once.
-            if (NoGraphics) { Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(source.GetTexture("_EmissionMap"))); return; }
+            // Unbaked, the map is kept, counted once and reported.
+            if (NoGraphics)
+            {
+                Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(source.GetTexture("_EmissionMap")));
+                Assert.That(dropped, Does.Contain("Emission Map Counted Twice"));
+                return;
+            }
+            Assert.That(dropped, Does.Not.Contain("Emission Map Counted Twice"));
             Assert.That(Center(output.GetTexture("_EmissionMap")).r, Is.EqualTo(new Color(.25f, 0, 0).gamma.r).Within(.01f));
         }
 
@@ -264,10 +270,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Substitute(source, Second).GetTexture("_EmissionMap"), Is.SameAs(map));
             source.SetFloat("_EmissionMapChannel", 2);
             source.SetFloat("_EmissionPower", 2);
-            var output = Substitute(source, Second);
+            var output = Substitute(source, Second, out _, out var dropped);
             Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
-            // Unbaked, the map is kept without the channel and the power.
-            if (NoGraphics) { Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(map)); return; }
+            // Unbaked, the map is kept without the channel and the power, which are reported.
+            if (NoGraphics)
+            {
+                Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(map));
+                Assert.That(dropped, Does.Contain("Emission Map Channel and Power"));
+                return;
+            }
+            Assert.That(dropped, Does.Not.Contain("Emission Map Channel and Power"));
             AssertColor(Center(output.GetTexture("_EmissionMap")), new Color(.25f, .25f, .25f, 1).gamma);
         }
 
