@@ -198,6 +198,7 @@ BEHAVIOR_CASES = {
         'BonesBetweenHumanoidBonesStayOutOfChains': 2,
         'HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings': 1,
         'IgnoredSubtreesDisabledBonesAndOverlappingOwnersAreExplicit': 1,
+        'AnInactiveNestedPhysBoneStaysOutOfAParentThatIgnoresOthers': 4,
         'InactiveExplicitRootsChildrenAndColliderRootsAreSkipped': 1,
         'AnInsideCapsuleWithoutLengthGoesOutAsASphere': 5,
         'InsideColliderRadiusComesBackFromTheFileUnchanged': 1,

@@ -78,7 +78,10 @@ namespace VRVlog.LilToonExporter
             // anchors are created. One conversion must never extend another PB.
             var children = copy.GetComponentsInChildren<Transform>(true)
                 .ToDictionary(t => t, t => t.Cast<Transform>().Where(c => c.gameObject.activeInHierarchy).ToArray());
-            var roots = components.Where(Active).ToDictionary(c => c, c => Root(c));
+            // VRChat's Ignore Other Phys Bones skips the root of every other PhysBone
+            // on the avatar, enabled or not, so a disabled PB still keeps its bones
+            // out of the PB above it. Only active PBs are converted.
+            var roots = components.ToDictionary(c => c, c => Root(c));
             var body = BodyBones(copy);
             var plans = new List<SpringPlan>();
             foreach (var component in components)
@@ -189,7 +192,7 @@ namespace VRVlog.LilToonExporter
             for (var parent = root.parent; parent != null; parent = parent.parent) plan.RootDepth++;
             var ignored = new HashSet<Transform>(Items(Read<object>(source, "ignoreTransforms", null)).OfType<Transform>());
             if (Read(source, "ignoreOtherPhysBones", true))
-                ignored.UnionWith(roots.Where(p => p.Key != source && p.Value != root && p.Value.gameObject.activeInHierarchy).Select(p => p.Value));
+                ignored.UnionWith(roots.Where(p => p.Key != source && p.Value != root).Select(p => p.Value));
             var endpoint = Vector(source, "endpointPosition", Vector3.zero);
             var multi = EnumNumber(source, "multiChildType", 0);
             if (multi < 0 || multi > 2) throw Unsupported(source, "Multi-Child Type");
