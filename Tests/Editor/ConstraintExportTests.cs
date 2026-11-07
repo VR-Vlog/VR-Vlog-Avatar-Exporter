@@ -442,6 +442,53 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
         }
 
+        // Two aims each read a point under the other: turning either moves the
+        // other's source through a parent, so only one is converted.
+        [Test]
+        public void AimsThatReadPointsUnderEachOtherConvertOnlyOne()
+        {
+            using var f = new Fixture();
+            f.A.rotation = Quaternion.LookRotation(Vector3.right);
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            var holder = Fixture.Child(f.Parent, "Holder", new Vector3(.6f, 0, 0));
+            holder.rotation = Quaternion.LookRotation(Vector3.left);
+            var read = Fixture.Child(holder, "Read", new Vector3(0, 0, .1f));
+            f.Constraint<AimConstraint>(f.A, 1, read).aimVector = Vector3.forward;
+            f.Constraint<AimConstraint>(holder, 1, inside).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Has.Length.EqualTo(1));
+            Assert.That(f.Report.Results.Select(r => r.Reason),
+                Is.EquivalentTo(new[] { ConstraintExport.ApproximatedAim, ConstraintExport.OmittedCycle }));
+        }
+
+        // The source of a copied rotation aims at a point under the target:
+        // turning the target turns the source, which turns the target again.
+        [Test]
+        public void ARotationFromASourceThatAimsInsideTheTargetKeepsThePose()
+        {
+            using var f = new Fixture();
+            var inside = Fixture.Child(f.B, "Inside", new Vector3(0, 0, .1f));
+            f.A.gameObject.AddComponent<Vrm10AimConstraint>().Source = inside;
+            f.Constraint<RotationConstraint>(f.B, 1, f.A);
+            f.A.localRotation = f.B.localRotation = Quaternion.identity;
+            f.Convert();
+            Assert.That(f.B.GetComponent<Vrm10RotationConstraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        // An aim turns its node from the parent's world rotation, and here the
+        // parent copies the node's rotation.
+        [Test]
+        public void AnAimUnderAParentThatCopiesItsRotationKeepsThePose()
+        {
+            using var f = new Fixture();
+            f.Parent.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.A;
+            f.Constraint<AimConstraint>(f.A, 1, f.B).aimVector = Vector3.left;
+            f.Convert();
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
         // A source scaled to zero has no inverse to keep the target's pose
         // under it; the target stays where it is.
         [TestCase("position")][TestCase("parent")]

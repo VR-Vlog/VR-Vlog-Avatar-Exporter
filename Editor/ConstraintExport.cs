@@ -153,7 +153,12 @@ namespace VRVlog.LilToonExporter
             if (source == target) return (ExportOutcome.Omitted, OmittedSetting);
             if (!Inside(root, target) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
             if (taken.Contains(target)) return (ExportOutcome.Omitted, OmittedDuplicate);
-            if (Reaches(edges, source, target)) return (ExportOutcome.Omitted, OmittedCycle);
+            // A rotation or roll reads the source's local rotation; an aim turns
+            // its node towards the source's world position from the parent's
+            // world rotation, so either may lead back inside the target.
+            var aims = plan.Kind != Kind.Rotation;
+            if (DependsOnInside(edges, source, target, aims) || aims && DependsOnInside(edges, target.parent, target, true))
+                return (ExportOutcome.Omitted, OmittedCycle);
             var weight = Mathf.Clamp01(plan.Weight * Mathf.Min(1, sources[0].Weight));
             if (plan.Kind == Kind.Rotation)
             {
@@ -174,7 +179,7 @@ namespace VRVlog.LilToonExporter
                     if (moving == root || moving == target || !driven.Contains(moving)
                         || Frame(moving, root, turning) != Frame(target, root, turning))
                         return (ExportOutcome.Omitted, OmittedParent);
-                    if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
+                    if (DependsOnInside(edges, moving, target, false)) return (ExportOutcome.Omitted, OmittedCycle);
                     source = moving;
                 }
                 if (axes == 1)
@@ -228,7 +233,7 @@ namespace VRVlog.LilToonExporter
                 return (ExportOutcome.Omitted, OmittedReparent);
             // If the source's pose depends on something inside the target, the
             // target would, once it follows, move with itself.
-            if (DependsOnInside(edges, source, target)) return (ExportOutcome.Omitted, OmittedCycle);
+            if (DependsOnInside(edges, source, target, true)) return (ExportOutcome.Omitted, OmittedCycle);
             if (target.parent == source) return (ExportOutcome.Kept, KeptParent);
             // UniVRM finds expression and first-person renderers by these paths
             // when it writes the file; a moved target would leave them dangling.
@@ -400,42 +405,28 @@ namespace VRVlog.LilToonExporter
             sources.Add(source);
         }
 
-        // Whether the world pose of `from` depends on something inside the
-        // target. A world pose comes from the parent's and from the node's own
-        // VRM constraint. A rotation or roll constraint reads only the local
-        // rotation of its end, which moves only by that end's own constraint;
-        // an aim reads the end's world position, and turns its node by the
-        // world direction, so that node's local rotation also takes the parent.
-        static bool DependsOnInside(Dictionary<Transform, List<Transform>> edges, Transform from, Transform target)
+        // Whether the world pose of `from`, or with `world` false only its
+        // local rotation, depends on something inside the target. A world pose
+        // comes from the parent's and from the node's own VRM constraint. A
+        // rotation or roll constraint reads only the local rotation of its end,
+        // which moves only by that end's own constraint; an aim reads the end's
+        // world position, and turns its node by the world direction, so that
+        // node's local rotation also takes the parent.
+        static bool DependsOnInside(Dictionary<Transform, List<Transform>> edges, Transform from, Transform target, bool world)
         {
             var visited = new HashSet<(Transform, bool)>();
             var pending = new Stack<(Transform Node, bool World)>();
-            pending.Push((from, true));
+            pending.Push((from, world));
             while (pending.Count > 0)
             {
-                var (current, world) = pending.Pop();
-                if (current == null || !visited.Add((current, world))) continue;
+                var (current, inWorld) = pending.Pop();
+                if (current == null || !visited.Add((current, inWorld))) continue;
                 // Inside the target only the target's own local frame and the
                 // world poses change when it moves.
-                if (current == target || world && current.IsChildOf(target)) return true;
+                if (current == target || inWorld && current.IsChildOf(target)) return true;
                 var aim = current.TryGetComponent<Vrm10AimConstraint>(out _);
-                if (world || aim) pending.Push((current.parent, true));
+                if (inWorld || aim) pending.Push((current.parent, true));
                 if (edges.TryGetValue(current, out var next)) foreach (var value in next) pending.Push((value, aim));
-            }
-            return false;
-        }
-
-        static bool Reaches(Dictionary<Transform, List<Transform>> edges, Transform from, Transform to)
-        {
-            var visited = new HashSet<Transform>();
-            var pending = new Stack<Transform>();
-            pending.Push(from);
-            while (pending.Count > 0)
-            {
-                var current = pending.Pop();
-                if (current == to) return true;
-                if (!visited.Add(current) || !edges.TryGetValue(current, out var next)) continue;
-                foreach (var value in next) pending.Push(value);
             }
             return false;
         }
