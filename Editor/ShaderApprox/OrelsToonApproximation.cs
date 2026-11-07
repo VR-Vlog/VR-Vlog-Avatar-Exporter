@@ -308,7 +308,7 @@ namespace VRVlog.LilToonExporter
         static void ApplyEmission1(SourceValues values, Material material, List<Texture2D> textures, ICollection<string> dropped)
         {
             if (!values.Keyword("_EMISSION") || !values.Texture("_EmissionMap", out var map, out _, out _) || !S.Flat(map)) { Off(material); return; }
-            Emission(values, material, map, p => new Vector3(p.r * p.r, p.g * p.g, p.b * p.b),
+            Emission(values, material, map, p => new Vector3(p.r * p.r, p.g * p.g, p.b * p.b), "Emission Map Counted Twice",
                 values.Float("_Hue", 0), values.Float("_Saturation", 0), values.Float("_Value", 0), textures, dropped);
         }
 
@@ -327,7 +327,8 @@ namespace VRVlog.LilToonExporter
                 return power == 1 ? c : new Vector3(Pow(c.x), Pow(c.y), Pow(c.z));
             }
             float Pow(float x) => x <= 0 ? (power <= 0 ? 1 : 0) : Mathf.Pow(x, power);
-            Emission(values, material, map, channel == 0 && power == 1 ? null : (Func<Color, Vector3>)Shape,
+            var shapeLabel = channel != 0 && power != 1 ? "Emission Map Channel and Power" : channel != 0 ? "Emission Map Channel" : "Emission Power";
+            Emission(values, material, map, channel == 0 && power == 1 ? null : (Func<Color, Vector3>)Shape, shapeLabel,
                 values.Float("_EmissionHue", 0), values.Float("_EmissionSaturation", 0), values.Float("_EmissionValue", 0), textures, dropped);
             if (values.Float("_EmissionMaskByUVTile", 0) >= .5f) S.Drop(dropped, "Emission Mask By UV Tile");
             if (Mathf.Abs(values.Float("_EmissionRimMasking", 0)) > .0001f) S.Drop(dropped, "Emission Rim Masking");
@@ -339,11 +340,12 @@ namespace VRVlog.LilToonExporter
             S.Set(material, "_UseEmission", 0);
         }
 
-        // shape is the map's value per pixel (null: the map as it is). The hue,
+        // shape is the map's value per pixel (null: the map as it is), reported
+        // as shapeLabel when it cannot be baked. The hue,
         // saturation and value act on the normalized color and keep its length;
         // they are baked with the color into the map, whose largest value
         // becomes the color. lilToon multiplies by the albedo after them.
-        static void Emission(SourceValues values, Material material, Texture map, Func<Color, Vector3> shape, float hue, float saturation,
+        static void Emission(SourceValues values, Material material, Texture map, Func<Color, Vector3> shape, string shapeLabel, float hue, float saturation,
             float value, List<Texture2D> textures, ICollection<string> dropped)
         {
             var color = values.TryVector("_EmissionColor", out var vector) && Finite(vector) ? ((Color)vector).linear : Color.black;
@@ -400,6 +402,8 @@ namespace VRVlog.LilToonExporter
                     var g = new Color(Mathf.Clamp01(c.x), Mathf.Clamp01(c.y), Mathf.Clamp01(c.z)).gamma;
                     return new Color(g.r, g.g, g.b, 1);
                 });
+            // Unbaked (no graphics device or no owner list), the map is used as it is.
+            if (baked == null && shape != null) S.Drop(dropped, shapeLabel);
             if (baked != null && shifted && peak > 0)
             {
                 var g = new Color(peak, peak, peak).gamma;

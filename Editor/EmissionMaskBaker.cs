@@ -10,12 +10,13 @@ namespace VRVlog.LilToonExporter
     internal static class EmissionMaskBaker
     {
         // Returns null when the source emission image is already exact, or when
-        // the bake cannot reproduce it (the reader then keeps its warning).
+        // the bake cannot reproduce it (the reader then keeps its warning), or
+        // without a graphics device (the fallback then warns).
         internal static Texture2D Create(Material material, List<Texture2D> owned)
         {
             if (!LilToonEmissionPolicy.NeedsEmissionBake(material) || !LilToonEmissionPolicy.CanBakeEmission(material)) return null;
             // Without an owner list the baked image would leak; keep the source image.
-            if (owned == null) return null;
+            if (owned == null || !GpuReadback.Available) return null;
             var shader = Shader.Find("Hidden/VRVlog/EmissionMaskBaker");
             if (shader == null || !shader.isSupported) throw new InvalidOperationException("lilToonのベイク用シェーダーを利用できません。");
             var main = Texture(material, "_MainTex") ?? Texture2D.whiteTexture;

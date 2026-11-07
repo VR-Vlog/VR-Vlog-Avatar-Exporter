@@ -884,7 +884,7 @@ namespace VRVlog.LilToonExporter
         // out in the mesh's UV space.
         internal static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
         {
-            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
+            if (!GpuReadback.Available) return null;
             Color[] pixels;
             try
             {
