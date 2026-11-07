@@ -588,12 +588,14 @@ class LilToonExpectationTests(unittest.TestCase):
         self.assertEqual(unity_runner.installed_liltoon(self.project),
                          {'expected': None, 'installed': '2.0.0', 'source': 'embedded'})
 
-    def run_main(self, expected, unity_changes_to=None, univrm='0.131.1', profile=None):
+    def run_main(self, expected, unity_changes_to=None, univrm='0.131.1', profile=None, color_space=None):
         output = Path(self.temp.name) / 'out'
         argv = ['run-unity-compatibility.py', '--unity', 'Unity', '--project', str(self.project),
                 '--expect-univrm', univrm, '--expect-unity', '2022.3.22f1', '--output', str(output)]
         if expected:
             argv += ['--expect-liltoon', expected]
+        if color_space:
+            argv += ['--expect-color-space', color_space]
         if profile:
             argv += ['--profile', profile]
         required = unity_runner.required_regressions('compatibility')
@@ -647,6 +649,33 @@ class LilToonExpectationTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, 'Unity failed'):
                     self.run_main(None, univrm=univrm, profile='exporter-behavior')
                 self.assertEqual(self.unity_calls, 1)
+
+    def write_color_space(self, value):
+        settings = self.project / 'ProjectSettings'
+        settings.mkdir(parents=True, exist_ok=True)
+        (settings / 'ProjectSettings.asset').write_text(
+            '%YAML 1.1\nPlayerSettings:\n  m_ObjectHideFlags: 0\n  m_ActiveColorSpace: ' + value + '\n', encoding='utf-8')
+
+    def test_receipt_records_the_color_space_the_tests_ran_in(self):
+        write_project(self.project, '2.3.4')
+        self.assertEqual(self.run_main(None)[0]['colorSpace'], None)
+        for value, name in (('0', 'gamma'), ('1', 'linear')):
+            with self.subTest(name=name):
+                for path in (Path(self.temp.name) / 'out').glob('*.json'):
+                    path.unlink()
+                self.write_color_space(value)
+                self.assertEqual(self.run_main(None, color_space=name)[0]['colorSpace'], name)
+
+    def test_another_color_space_never_launches_unity(self):
+        write_project(self.project, '2.3.4')
+        for value in (None, '1', '2'):
+            with self.subTest(value=value):
+                if value is not None:
+                    self.write_color_space(value)
+                with self.assertRaisesRegex(SystemExit, 'does not match --expect-color-space gamma'):
+                    self.run_main(None, color_space='gamma')
+                self.assertEqual(self.unity_calls, 0)
+        self.assertEqual(list((Path(self.temp.name) / 'out').glob('*.json')), [])
 
     def test_mismatch_never_launches_unity_or_writes_a_receipt(self):
         write_project(self.project, '2.3.4')

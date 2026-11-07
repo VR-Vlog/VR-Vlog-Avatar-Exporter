@@ -263,6 +263,14 @@ A matching hash is not proof of visual equivalence.
    versions. It tests ordinary and full-lilToon export/reimport, meshes, morphs,
    material bindings, source preservation, renderer selection and skin weights.
    The JSON receipt records the project's UniVRM as `expectedUniVrm`.
+
+   Creators' projects use either color space, and the exporter bakes images
+   differently in the two (a Gamma project samples sRGB images without
+   decoding them). Run the tests once in a Linear project and once in a Gamma
+   project (Project Settings > Player > Color Space), each with
+   `--expect-color-space linear` or `--expect-color-space gamma`. The runner
+   stops before Unity starts when the project is in the other color space, and
+   the receipt records it as `colorSpace`.
 5. Repeat in a project that also has an official UniVRM installed (any version)
    to confirm that it does not conflict with the bundled copy.
    Run the existing MA/NDMF tests with the actual optional packages when those
@@ -292,6 +300,9 @@ it opens every project once in batch mode
 and records the Unity, lilToon and dependency versions Unity actually resolved in
 `liltoon-version-project.json`; a compile error or a different resolved version
 stops it. Existing folders are never reused. lilToon is not committed here.
+Unity opens these new projects in the Gamma color space (`m_ActiveColorSpace: 0`
+in `ProjectSettings/ProjectSettings.asset`). For the Linear run, copy a project
+and set the value to 1 in the copy; Unity reimports its images on the next open.
 
 Pass `--expect-liltoon VERSION` to the runner. It reads the project's
 `packages-lock.json` and the installed lilToon `package.json` before launching

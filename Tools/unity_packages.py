@@ -86,3 +86,17 @@ def editor_version(project):
     version = re.search(r'^m_EditorVersion:\s*(\S+)', text, re.MULTILINE)
     revision = re.search(r'^m_EditorVersionWithRevision:\s*\S+\s*\(([0-9a-f]+)\)', text, re.MULTILINE)
     return (version.group(1) if version else None), (revision.group(1) if revision else None)
+
+
+def color_space(project):
+    """Return 'gamma' or 'linear' from ProjectSettings/ProjectSettings.asset, or None.
+
+    The exporter bakes images differently in the two (sRGB images are not decoded
+    when sampled in a Gamma project), so a test result is only evidence for the
+    color space it ran in.
+    """
+    path = Path(project) / 'ProjectSettings' / 'ProjectSettings.asset'
+    if not path.is_file():
+        return None
+    found = re.search(r'^\s*m_ActiveColorSpace:\s*(\d+)\s*$', path.read_text(encoding='utf-8-sig'), re.MULTILINE)
+    return {'0': 'gamma', '1': 'linear'}.get(found.group(1)) if found else None
