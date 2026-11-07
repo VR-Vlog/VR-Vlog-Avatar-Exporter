@@ -375,6 +375,33 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionAnimationData.ReadDocument(Extension(plain)).Animations.Single().Expression, Is.EqualTo("Wave"));
             Assert.That(withRest, Is.EqualTo(plain));
         }
+
+        // A face the board takes only for its bones or visibility (bonesOnlyFaces) fills no standard
+        // preset by name, so an empty neutral stays as it was while bones were left out. It is still
+        // a custom face with its bones.
+        [Test]
+        public void FacesTakenOnlyForTheirBonesFillNoPreset()
+        {
+            using var scene = new Scene();
+            var neutral = scene.Add(Clip("Neutral", Held(Shape, 80), Held(Bone(Joint, "localEulerAnglesRaw.y"), 30)));
+            byte[] Export(params AnimationClip[] bonesOnly) => UniVrmOneClickExporter.Export(scene.Fixture.Source, "Expression bones", "Tests",
+                exporterVersion: null, warnings: new List<string>(), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                inferEmotionPresets: false, inferNeutralAndGazePresets: true,
+                listFaces: new List<(string, AnimationClip, float)> { ("Neutral", neutral, 0f) }, bonesOnlyFaces: bonesOnly);
+            Assert.That(PresetBinds(Export(), "neutral"), Is.Not.Empty);
+            var bytes = Export(neutral);
+            Assert.That(PresetBinds(bytes, "neutral"), Is.Empty);
+            Assert.That(((List<object>)Extension(bytes)["transforms"]).Cast<Dictionary<string, object>>().Select(track => (string)track["expression"]),
+                Does.Contain("Neutral"));
+        }
+
+        static List<object> PresetBinds(byte[] bytes, string preset)
+        {
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
+            var presets = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["preset"];
+            return presets.TryGetValue(preset, out var value) && ((Dictionary<string, object>)value).TryGetValue("morphTargetBinds", out var binds)
+                ? (List<object>)binds : new List<object>();
+        }
     }
 
     // Turns the export of the expression transforms on or off for one test

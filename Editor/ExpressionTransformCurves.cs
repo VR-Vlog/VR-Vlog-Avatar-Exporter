@@ -23,11 +23,13 @@ namespace VRVlog.LilToonExporter
         // negation, the same rotation): about AngleTolerance of rotation.
         internal static readonly double QuaternionTolerance = Math.Sin(AngleTolerance * Math.PI / 180 / 2);
 
-        // Off: the export writes no transforms and leaves out a face that moves
-        // bones or visibility, as before 1.4.3, until the app plays them.
-        // Read returns nothing, so the readers keep the 1.4.2 behaviour. Not a
-        // setting; tests of the transforms turn it on.
-        internal static bool Enabled = false;
+        // On: the export writes the bones and visibility a face moves to transforms
+        // (the app plays them from #2760; the app lists these faces after the
+        // others). Off: Read returns nothing, so the readers keep the 1.4.2
+        // behaviour (a face that moves bones or visibility keeps its BlendShapes
+        // only, a face of bones alone is left out). Not a setting; tests of the
+        // 1.4.2 behaviour turn it off.
+        internal static bool Enabled = true;
 
         internal const string HumanoidWarning = "表情が動かすHumanoidのボーンは書き出しません: ";
         internal const string UnmappedWarning = "書き出すノードに結び付かない表情のボーンと表示の変化は書き出しません: ";
