@@ -715,11 +715,12 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // VRChat collects every other PhysBone's root for Ignore Other Phys Bones,
-        // enabled or not. Turning a nested PB off stops its bones; it must not
-        // hand them to the PB above, which would swing them with its settings.
+        // enabled or not. Turning a nested PB off must not hand its bones to the
+        // PB above, which would swing them with its settings.
         [TestCase(false, true)]
         [TestCase(true, true)]
         [TestCase(false, false)]
+        [TestCase(true, false)]
         public void AnInactiveNestedPhysBoneStaysOutOfAParentThatIgnoresOthers(bool hiddenHolder, bool ignoreOthers)
         {
             var source = new GameObject("source"); GameObject copy = null;
