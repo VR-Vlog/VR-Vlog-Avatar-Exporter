@@ -477,13 +477,42 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // An aim turns its node from the parent's world rotation, and here the
-        // parent copies the node's rotation.
+        // parent copies the node's rotation. The source is outside the parent,
+        // so only the parent leads back.
         [Test]
         public void AnAimUnderAParentThatCopiesItsRotationKeepsThePose()
         {
             using var f = new Fixture();
             f.Parent.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.A;
-            f.Constraint<AimConstraint>(f.A, 1, f.B).aimVector = Vector3.left;
+            f.A.rotation = Quaternion.LookRotation(f.Other.position - f.A.position);
+            f.Constraint<AimConstraint>(f.A, 1, f.Other).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        // An aim reads only where its source is: the source's own aim at a point
+        // under the target turns the source, but does not move it.
+        [Test]
+        public void AnAimAtASourceThatOnlyTurnsByTheTargetBecomesAVrmAim()
+        {
+            using var f = new Fixture();
+            f.A.rotation = Quaternion.LookRotation(Vector3.left);
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            f.B.gameObject.AddComponent<Vrm10AimConstraint>().Source = inside;
+            f.Constraint<AimConstraint>(f.A, 1, f.B).aimVector = Vector3.forward;
+            f.Convert();
+            Assert.That(f.A.GetComponent<Vrm10AimConstraint>().Source, Is.EqualTo(f.B));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.ApproximatedAim));
+        }
+
+        // An aim at a point under its own target moves the point as it turns.
+        [Test]
+        public void AnAimAtItsOwnChildKeepsThePose()
+        {
+            using var f = new Fixture();
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            f.Constraint<AimConstraint>(f.A, 1, inside).aimVector = Vector3.forward;
             f.Convert();
             Assert.That(f.A.GetComponent<Vrm10AimConstraint>(), Is.Null);
             Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
