@@ -907,6 +907,46 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
 
+        // With bones and visibility written, the board also takes faces it left out while they were not.
+        // TakenWithoutBonesOrVisibility says whether it took the face then, so the export fills no
+        // standard preset from the others.
+        [TestCase("shape", true)]
+        [TestCase("shape and bone", false)]
+        [TestCase("gesture shape and bone", true)]
+        [TestCase("rest shape and bone", false)]
+        public void FacesTakenOnlyForTheirBonesAreKnown(string kind, bool taken)
+        {
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, 0);
+            var clip = new AnimationClip { name = "Face" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Constant(0, 1, kind.StartsWith("rest") ? 0 : 80));
+                if (kind.EndsWith("bone"))
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "localEulerAnglesRaw.y"),
+                        AnimationCurve.Constant(0, 1, 20));
+                var state = machine.AddState("Face"); state.motion = clip; machine.defaultState = state;
+                if (kind.StartsWith("gesture"))
+                {
+                    controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                    machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Equals, 0, "GestureLeft");
+                }
+                controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.Null);
+                Assert.That(session.TakenWithoutBonesOrVisibility(clip), Is.EqualTo(taken));
+                using (new ExpressionTransformsSwitch(false))
+                {
+                    Assert.That(session.ClipErrors(new[] { clip })[clip] == null, Is.EqualTo(taken));
+                    Assert.That(session.TakenWithoutBonesOrVisibility(clip), Is.True);
+                }
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
         // A face may also turn a bone, such as an eye highlight, or show an object. It is still a face on the
         // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
         // bone and the shown object beside it. A finger pose beside the face is left out; a body pose, an IK goal

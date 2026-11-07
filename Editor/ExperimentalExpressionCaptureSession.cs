@@ -498,6 +498,8 @@ namespace VRVlog.LilToonExporter
             var authored = new List<Object>();
             try
             {
+                var faces = listFaces.Select(face => (face.Name, Clip: AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList();
+                var bonesOnly = faces.Where((face, index) => !TakenWithoutBonesOrVisibility(listFaces[index].Clip)).Select(face => face.Clip).ToArray();
                 var authoredVrm = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings: warnings,
                     exporterVersion: ExportEntry.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
@@ -506,8 +508,8 @@ namespace VRVlog.LilToonExporter
                     authorCopyExpressions: (clone, copyWarnings) => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored, copyWarnings),
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
-                    listFaces: listFaces.Select(face => (face.Name, AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList(),
-                    listFaceSources: listFaces.Select(face => face.Clip).ToList(), autoLightweight: autoLightweight);
+                    listFaces: faces, listFaceSources: listFaces.Select(face => face.Clip).ToList(), autoLightweight: autoLightweight,
+                    bonesOnlyFaces: bonesOnly);
                 UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                 return authoredVrm;
             }

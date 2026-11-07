@@ -346,7 +346,7 @@ namespace VRVlog.LilToonExporter
         // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
         // on the board, a FaceEmo face and a clip a gesture enters stay faces. A hand pose a gesture
         // enters that only holds the face shapes at rest is a hand pose, not a face.
-        string NoFaceError(AnimationClip clip, Pose pose)
+        string NoFaceError(AnimationClip clip, Pose pose, bool withBones = true)
         {
             var gestureFace = gestureClips.Contains(clip) && AnimationUtility.GetCurveBindings(clip).All(PoseSampling.IsBlendShape);
             if (!clipRoots.ContainsKey(clip) || gestureFace || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
@@ -355,8 +355,20 @@ namespace VRVlog.LilToonExporter
             for (var i = 0; i < Baseline.Rows.Count; i++)
                 if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
             // The export writes the bones and visibility a face moves away from the prepared copy.
-            if (MovesBonesOrVisibility(clip)) return null;
+            if (withBones && MovesBonesOrVisibility(clip)) return null;
             return ExporterLocalization.T(NoFaceChange);
+        }
+
+        // Whether the board takes the clip as a face with bones and visibility
+        // left out, as it did while the export did not write them: the same
+        // checks as a standard preset slot, and a face change of its own. A
+        // face it takes only for its bones or visibility fills no standard
+        // preset by name (UniVrmOneClickExporter bonesOnlyFaces).
+        internal bool TakenWithoutBonesOrVisibility(AnimationClip clip)
+        {
+            if (clip == null || !ExpressionTransformCurves.Enabled) return true;
+            try { return NoFaceError(clip, BuildClipPoseUnchecked(clip, FaceTime(clip), "プレビュー", presetFace: true), withBones: false) == null; }
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return false; }
         }
 
         bool MovesBonesOrVisibility(AnimationClip clip)
