@@ -1226,6 +1226,10 @@ def main():
     # version that was readable beforehand can be compared.
     if 'unavailable' not in liltoon_before and liltoon_after['installed'] != liltoon_before['installed']:
         raise SystemExit('Installed lilToon changed during Unity validation')
+    # The project setting, read before and after the run; a script that switched
+    # it during the run would leave the tests in the other color space.
+    if unity_packages.color_space(args.project) != color_space:
+        raise SystemExit('Project color space changed during Unity validation')
     report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
               'colorSpace': color_space, 'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
               'seconds': round(time.monotonic() - started), 'xml': xml.name, 'log': log.name}

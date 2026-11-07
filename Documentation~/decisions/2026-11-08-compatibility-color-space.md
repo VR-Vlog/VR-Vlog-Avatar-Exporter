@@ -12,7 +12,7 @@ Exporter は画像を GPU で焼き込む。Gamma のプロジェクトは sRGB 
 ## 決定
 
 - `run-unity-compatibility.py` に `--expect-color-space linear|gamma` を足す。`ProjectSettings/ProjectSettings.asset` の `m_ActiveColorSpace` を読み、違う色空間なら Unity を起動する前に止める。
-- 受け取りに `colorSpace` を必ず書く（オプションを付けないときも、読めた値か null）。
+- 受け取りに `colorSpace` を必ず書く（オプションを付けないときも、読めた値か null）。テストの後にもう一度読み、変わっていたら失敗にする。これはプロジェクトの設定で、Unity の中でテストが読んだ値そのものではない（スクリプトが一時的に切り替えて戻す形は見つけられない）。
 - `Compatibility/README.md` の手順に、Linear と Gamma の 2 つのプロジェクトで回すことを足す。`create-liltoon-version-projects.py` が作るプロジェクトは Unity が Gamma で開くので、Linear の分は複製して値を 1 にする手順を書く。
 
 ## 検討した代替案と不採用理由
@@ -23,5 +23,5 @@ Exporter は画像を GPU で焼き込む。Gamma のプロジェクトは sRGB 
 
 ## 確かめたこと
 
-- `Tools/test-compatibility-tooling.py` に、受け取りに色空間が残ること、違う色空間・値の無いプロジェクトでは Unity を起動しないことのテストを足し、全件が通った。
+- `Tools/test-compatibility-tooling.py` に、受け取りに色空間が残ること、違う色空間・値の無いプロジェクトでは Unity を起動しないこと、実行中に変わると失敗になることのテストを足し、全件が通った。
 - Unity 2022.3.22f1 が作った lilToon 2.3.4 のプロジェクト（Gamma）と、その複製の値を 1 にしたもの（Linear）で、`gamma`・`linear` と読めることを確かめた。Gamma のほうで `--expect-color-space linear` が Unity を起動する前に止まり、出力のフォルダも作らないことを確かめた。複製した Linear のプロジェクトでは EditMode のテストが Linear の値で通った（#717 の検証）。

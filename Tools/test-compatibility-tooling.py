@@ -656,7 +656,17 @@ class LilToonExpectationTests(unittest.TestCase):
         (settings / 'ProjectSettings.asset').write_text(
             '%YAML 1.1\nPlayerSettings:\n  m_ObjectHideFlags: 0\n  m_ActiveColorSpace: ' + value + '\n', encoding='utf-8')
 
-    def test_receipt_records_the_color_space_the_tests_ran_in(self):
+    def test_color_space_switched_during_the_run_is_not_success(self):
+        write_project(self.project, '2.3.4')
+        self.write_color_space('0')
+        with mock.patch.object(unity_runner, 'validate_result',
+                               side_effect=lambda *_: self.write_color_space('1') or []):
+            with self.assertRaisesRegex(SystemExit, 'color space changed'):
+                self.run_main(None, color_space='gamma')
+        self.assertEqual(self.unity_calls, 1)
+        self.assertEqual(list((Path(self.temp.name) / 'out').glob('*.json')), [])
+
+    def test_receipt_records_the_project_color_space_before_and_after_the_run(self):
         write_project(self.project, '2.3.4')
         self.assertEqual(self.run_main(None)[0]['colorSpace'], None)
         for value, name in (('0', 'gamma'), ('1', 'linear')):
