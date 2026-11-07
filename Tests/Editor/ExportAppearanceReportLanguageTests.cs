@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace VRVlog.LilToonExporter.Tests
 {
@@ -173,6 +174,42 @@ namespace VRVlog.LilToonExporter.Tests
                 localeField.SetValue(null, previousLocale);
                 messagesField.SetValue(null, previousMessages);
             }
+        }
+
+        // A change of 110 chars is shown whole; one more is cut to 107 and an ellipsis, a char
+        // earlier when the cut would split a surrogate pair.
+        [Test]
+        public void AChangeIsCutAfter110CharsWithoutSplittingASurrogatePair()
+        {
+            var whole = new string('x', 110);
+            Assert.That(ExportAppearanceReport.Summary(new[] { whole }), Is.EqualTo("・" + whole));
+            Assert.That(ExportAppearanceReport.Shortened(new[] { whole }), Is.False);
+            var longer = whole + "y";
+            Assert.That(ExportAppearanceReport.Summary(new[] { longer }), Is.EqualTo("・" + new string('x', 107) + "…"));
+            Assert.That(ExportAppearanceReport.Shortened(new[] { longer }), Is.True);
+            var emoji = new string('x', 106) + "\U0001F600" + new string('y', 10);
+            Assert.That(char.IsHighSurrogate(emoji[106]), Is.True);
+            Assert.That(ExportAppearanceReport.Summary(new[] { emoji }), Is.EqualTo("・" + new string('x', 106) + "…"));
+            var after = new string('x', 105) + "\U0001F600" + new string('y', 10);
+            Assert.That(ExportAppearanceReport.Summary(new[] { after }), Is.EqualTo("・" + after.Substring(0, 107) + "…"));
+        }
+
+        // The full list is opened for one result; the next export starts closed.
+        [Test]
+        public void TheFullListClosesForANewResult()
+        {
+            var window = ScriptableObject.CreateInstance<ExportRecoveryComparisonWindow>();
+            try
+            {
+                var open = typeof(ExportRecoveryComparisonWindow).GetField("showAllChanges", BindingFlags.NonPublic | BindingFlags.Instance);
+                object first = new object(), second = new object();
+                Assert.That(window.ShowsAllChanges(first), Is.False);
+                open.SetValue(window, true);
+                Assert.That(window.ShowsAllChanges(first), Is.True);
+                Assert.That(window.ShowsAllChanges(second), Is.False);
+                Assert.That(window.ShowsAllChanges(second), Is.False);
+            }
+            finally { Object.DestroyImmediate(window); }
         }
     }
 }

@@ -25,12 +25,20 @@ namespace VRVlog.LilToonExporter
         private bool preparing;
         private bool showAppliedRemedies = true;
         private bool showAllChanges;
+        private object changesShownFor;
         private Vector2 remediesScroll, contentScroll;
         private int previewRevision;
         private string error;
         private double nextSourceCheck;
         internal bool HasVrmPreview => imported != null && vrmRender != null;
         internal ExportRecoverySession Session => session;
+
+        // The full list of changes belongs to one result: a new export opens it closed.
+        internal bool ShowsAllChanges(object result)
+        {
+            if (!ReferenceEquals(changesShownFor, result)) { changesShownFor = result; showAllChanges = false; }
+            return showAllChanges;
+        }
 
         internal static void Show(ExportRecoverySession session, Action saved = null)
         {
@@ -222,11 +230,13 @@ namespace VRVlog.LilToonExporter
             if (error != null) EditorGUILayout.HelpBox(ExporterLocalization.T(error), MessageType.Error);
             DrawPreview(vrmRender, ExporterLocalization.T("書き出すVRM"));
             var changes = ExportAppearanceReport.Changes(session.LastSuccess.Warnings);
+            // Checked on every draw, so the previous result (and its VRM bytes) is let go.
+            var showAll = ShowsAllChanges(session.LastSuccess);
             if (changes.Length > 0)
             {
-                EditorGUILayout.HelpBox(ExporterLocalization.T("見た目の変更: ") + ExportAppearanceReport.Summary(changes, showAllChanges), MessageType.Warning);
+                EditorGUILayout.HelpBox(ExporterLocalization.T("見た目の変更: ") + ExportAppearanceReport.Summary(changes, showAll), MessageType.Warning);
                 if (ExportAppearanceReport.Shortened(changes))
-                    showAllChanges = EditorGUILayout.Foldout(showAllChanges, ExporterLocalization.T("すべて表示"), true);
+                    showAllChanges = EditorGUILayout.Foldout(showAll, ExporterLocalization.T("すべて表示"), true);
             }
             }
             using (new EditorGUILayout.HorizontalScope())
