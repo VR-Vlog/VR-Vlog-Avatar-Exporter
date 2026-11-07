@@ -230,9 +230,10 @@ namespace VRVlog.LilToonExporter
             if (error != null) EditorGUILayout.HelpBox(ExporterLocalization.T(error), MessageType.Error);
             DrawPreview(vrmRender, ExporterLocalization.T("書き出すVRM"));
             var changes = ExportAppearanceReport.Changes(session.LastSuccess.Warnings);
+            // Checked on every draw, so the previous result (and its VRM bytes) is let go.
+            var showAll = ShowsAllChanges(session.LastSuccess);
             if (changes.Length > 0)
             {
-                var showAll = ShowsAllChanges(session.LastSuccess);
                 EditorGUILayout.HelpBox(ExporterLocalization.T("見た目の変更: ") + ExportAppearanceReport.Summary(changes, showAll), MessageType.Warning);
                 if (ExportAppearanceReport.Shortened(changes))
                     showAllChanges = EditorGUILayout.Foldout(showAll, ExporterLocalization.T("すべて表示"), true);
