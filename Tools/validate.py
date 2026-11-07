@@ -353,7 +353,8 @@ assert 'new PoseExportSession(source, poseOptions, exclusions.Contains, menuPoli
 assert 'SkipVrChatMenus' not in recovery and 'ExcludeMenuBranch' not in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
 assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
-assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions)' in one_click
+assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(presetSources)' in one_click
+assert 'bonesOnlyFaces.Contains(clip)' in one_click
 assert "ValidateAllEncodedTextures(glb, textureSources);" in injector
 assert "materialCount > LilToonMobileProfile.MaximumMaterials" in injector
 assert (root / "Tests/Editor/GlbDocumentTests.cs").is_file()
