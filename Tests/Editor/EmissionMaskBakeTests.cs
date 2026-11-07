@@ -58,12 +58,14 @@ namespace VRVlog.LilToonExporter.Tests
             var main = TestTextures.Solid(new Color(.5f, .25f, 1, 1));
             var created = new List<Material>();
             var textures = new List<Texture2D>();
+            var warnings = new List<string>();
             try
             {
                 material.SetTexture("_MainTex", main);
                 material.SetTexture("_EmissionMap", emission);
                 material.SetFloat("_EmissionMainStrength", 1);
-                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, warnings, false, textures);
+                Assert.That(WarnsUnbaked(warnings, "発光"), Is.EqualTo(NoGraphics));
                 if (NoGraphics)
                 {
                     Assert.That(textures, Is.Empty);
@@ -84,20 +86,29 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var material = Create();
             var emission = TestTextures.Solid(new Color(.6f, .6f, .6f, 1));
+            var gray = TestTextures.Solid(Color.gray);
             var created = new List<Material>();
             var textures = new List<Texture2D>();
+            var warnings = new List<string>();
             try
             {
                 material.SetTexture("_EmissionMap", emission);
                 foreach (var mask in new Texture[] { null, Texture2D.whiteTexture })
                 {
                     material.SetTexture("_EmissionBlendMask", mask);
-                    var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                    var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, warnings, false, textures);
                     Assert.AreSame(emission, fallback.GetTexture("_EmissionMap"));
                     Assert.That(textures, Is.Empty);
                 }
+                // A mask on an emission that is off is not baked either.
+                material.SetTexture("_EmissionBlendMask", gray);
+                material.SetFloat("_UseEmission", 0);
+                material.SetTexture("_EmissionMap", null);
+                UniVrmOneClickExporter.CreateMToonFallback(material, created, warnings, false, textures);
+                Assert.That(textures, Is.Empty);
+                Assert.IsFalse(WarnsUnbaked(warnings, "発光"), string.Join(" / ", warnings));
             }
-            finally { TestObjects.Destroy(material, created, textures, emission); }
+            finally { TestObjects.Destroy(material, created, textures, emission, gray); }
         }
 
         private static Material Create()
@@ -138,7 +149,10 @@ namespace VRVlog.LilToonExporter.Tests
                     // Unread, the material keeps its image, mask and color.
                     Assert.That(owned, Is.Empty);
                     Assert.That(material.GetTexture("_MainTex"), Is.SameAs(source));
+                    Assert.That(material.GetTexture("_AlphaMask"), Is.SameAs(mask));
                     Assert.That(material.GetFloat("_AlphaMaskMode"), Is.EqualTo((float)mode));
+                    Assert.That(material.GetFloat("_AlphaMaskScale"), Is.EqualTo(.6f));
+                    Assert.That(material.GetFloat("_AlphaMaskValue"), Is.EqualTo(.1f));
                     Assert.That(material.GetColor("_Color").a, Is.EqualTo(.5f));
                     return;
                 }
@@ -271,6 +285,19 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetTexture("_EmissionGradTex", gradation);
                 material.SetFloat("_EmissionGradSpeed", 1f);
                 var factor = LilToonEmissionPolicy.GradientFactor(material);
+                // A gradation alone is baked on the GPU too, so it is reported when it is not.
+                material.SetFloat("_UseEmission", 1f);
+                material.SetTexture("_EmissionMap", Texture2D.whiteTexture);
+                var warnings = new List<string>();
+                var created = new List<Material>();
+                var textures = new List<Texture2D>();
+                try { UniVrmOneClickExporter.CreateMToonFallback(material, created, warnings, false, textures); }
+                finally
+                {
+                    foreach (var item in created) Object.DestroyImmediate(item);
+                    foreach (var texture in textures) Object.DestroyImmediate(texture);
+                }
+                Assert.That(WarnsUnbaked(warnings, "発光"), Is.EqualTo(NoGraphics));
                 if (NoGraphics) { Assert.That(factor, Is.EqualTo(Color.white)); return; }
                 Assert.AreEqual(.25f, factor.r, .01f);
                 Assert.AreEqual(.25f, factor.g, .01f);
