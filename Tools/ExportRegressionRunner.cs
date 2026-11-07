@@ -316,6 +316,49 @@ namespace VRVlog.LilToonExporter.ExportRegression
 
         const float FaceFov = 25f;
 
+        // Unity widens a skinned renderer's bounds by the reach of every BlendShape, so the same
+        // body with one more shape in the file would be framed differently. Frame the vertices
+        // as they are drawn at load instead.
+        static Bounds DrawnBounds(Renderer[] renderers)
+        {
+            var bounds = new Bounds();
+            var any = false;
+            var baked = new Mesh();
+            try
+            {
+                foreach (var r in renderers)
+                {
+                    Vector3[] vertices;
+                    Matrix4x4 matrix;
+                    if (r is SkinnedMeshRenderer skinned && skinned.sharedMesh != null)
+                    {
+                        skinned.BakeMesh(baked, true);
+                        vertices = baked.vertices;
+                        matrix = Matrix4x4.TRS(r.transform.position, r.transform.rotation, Vector3.one);
+                    }
+                    else if (r.TryGetComponent<MeshFilter>(out var filter) && filter.sharedMesh != null)
+                    {
+                        vertices = filter.sharedMesh.vertices;
+                        matrix = r.transform.localToWorldMatrix;
+                    }
+                    else
+                    {
+                        if (any) bounds.Encapsulate(r.bounds); else bounds = r.bounds;
+                        any = true;
+                        continue;
+                    }
+                    foreach (var v in vertices)
+                    {
+                        var p = matrix.MultiplyPoint3x4(v);
+                        if (any) bounds.Encapsulate(p); else bounds = new Bounds(p, Vector3.zero);
+                        any = true;
+                    }
+                }
+            }
+            finally { UnityEngine.Object.DestroyImmediate(baked); }
+            return any ? bounds : renderers[0].bounds;
+        }
+
         // Loads the exported VRM beside the scene and shoots body (+Z/-Z) and neutral face. Throws on failure.
         static ShotState LoadForShots(string vrmPath, string prefix, List<string> shots)
         {
@@ -327,8 +370,7 @@ namespace VRVlog.LilToonExporter.ExportRegression
             s.root.position = StageOffset; // away from the source avatar that is still in the scene
             s.renderers = s.instance.GetComponentsInChildren<Renderer>(false).Where(r => r.enabled).ToArray();
             if (s.renderers.Length == 0) throw new InvalidOperationException("the VRM has no enabled renderer");
-            s.bounds = s.renderers[0].bounds;
-            foreach (var r in s.renderers.Skip(1)) s.bounds.Encapsulate(r.bounds);
+            s.bounds = DrawnBounds(s.renderers);
             foreach (var r in s.renderers)
                 foreach (var m in r.sharedMaterials)
                     if (m != null && !s.materials.ContainsKey(m.name)) s.materials[m.name] = m;
