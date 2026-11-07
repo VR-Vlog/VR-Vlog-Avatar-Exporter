@@ -714,6 +714,41 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
+        // VRChat collects every other PhysBone's root for Ignore Other Phys Bones,
+        // enabled or not. Turning a nested PB off stops its bones; it must not
+        // hand them to the PB above, which would swing them with its settings.
+        [TestCase(false, true)]
+        [TestCase(true, true)]
+        [TestCase(false, false)]
+        public void AnInactiveNestedPhysBoneStaysOutOfAParentThatIgnoresOthers(bool hiddenHolder, bool ignoreOthers)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var parentRoot = Child(source.transform, "parent", Vector3.up);
+                var middle = Child(parentRoot, "middle", Vector3.down * .1f);
+                var childRoot = Child(middle, "child", Vector3.down * .1f);
+                Child(childRoot, "childTip", Vector3.down * .1f);
+                var parent = PhysBone(parentRoot.gameObject);
+                Set(parent, "ignoreOtherPhysBones", ignoreOthers);
+                var holder = Child(source.transform, "holder", Vector3.zero);
+                var child = PhysBone(holder.gameObject); Set(child, "rootTransform", childRoot);
+                if (hiddenHolder) holder.gameObject.SetActive(false); else ((Behaviour)child).enabled = false;
+                copy = Object.Instantiate(source); var warnings = new List<string>();
+                var result = PhysBoneSpringExport.Convert(source, copy, warnings);
+                Assert.That(result.Converted, Is.EqualTo(1)); Assert.That(result.Skipped, Is.EqualTo(1));
+                Assert.That(warnings.Any(w => w.Contains("無効または非表示")), Is.True);
+                var spring = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single();
+                Assert.That(spring.Joints.Take(2).Select(j => j.name), Is.EqualTo(new[] { "parent", "middle" }));
+                var nested = new[] { "parent/middle/child", "parent/middle/child/childTip" }
+                    .Select(path => copy.transform.Find(path).GetComponent<VRM10SpringBoneJoint>() != null);
+                Assert.That(nested, Is.EqualTo(new[] { !ignoreOthers, !ignoreOthers }),
+                    "Without Ignore Other Phys Bones the parent moves them in VRChat too.");
+                AssertUniqueJoints(copy);
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(bool childComponentFirst)
