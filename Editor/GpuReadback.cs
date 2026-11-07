@@ -57,6 +57,10 @@ namespace VRVlog.LilToonExporter
         }
 
 #if !EXPORTER_BAKE_TESTS
+        // False without a graphics device (-nographics): drawing does nothing
+        // and the pixels read back are undefined, so a bake keeps its source.
+        internal static bool Available => SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null;
+
         // The pixels of a linear target as read without color conversion.
         // GL.sRGBWrite is left to the caller.
         internal static Color[] LinearPixels(int width, int height, RenderTextureFormat targetFormat, TextureFormat format,

@@ -57,10 +57,10 @@ namespace VRVlog.LilToonExporter
         // gradation does not move.
         public static Color GradientFactor(Material material)
         {
-            if (material == null || !material.HasProperty("_EmissionUseGrad") || material.GetFloat("_EmissionUseGrad") <= 0.5f ||
-                !material.HasProperty("_EmissionGradTex")) return Color.white;
-            var texture = material.GetTexture("_EmissionGradTex");
-            if (texture == null) return Color.white; // lilToon's default image is white
+            var texture = GradientImage(material);
+            // Without a graphics device the row cannot be read; the gradation is
+            // left out and the fallback warns (BakesOnGpu).
+            if (texture == null || !GpuReadback.Available) return Color.white;
             // One sample per texel: a narrower row would skip texels when it shrinks the image.
             var row = TextureColors.ReadLinear(texture, Mathf.Max(texture.width, 1), 1);
             var speed = material.HasProperty("_EmissionGradSpeed") ? material.GetFloat("_EmissionGradSpeed") : 1f;
@@ -76,6 +76,17 @@ namespace VRVlog.LilToonExporter
             sum /= count;
             return Finite(sum.x) && Finite(sum.y) && Finite(sum.z) ? new Color(sum.x, sum.y, sum.z, 1) : Color.white;
         }
+
+        // The gradation image that GradientFactor reads; null when there is
+        // none to apply (lilToon's default image is white).
+        static Texture GradientImage(Material material) =>
+            material != null && material.HasProperty("_EmissionUseGrad") && material.GetFloat("_EmissionUseGrad") > 0.5f &&
+            material.HasProperty("_EmissionGradTex") ? material.GetTexture("_EmissionGradTex") : null;
+
+        // Whether the fallback's emission is read from images on the GPU: the
+        // mask and main-color bake (EmissionMaskBaker) or the gradation.
+        public static bool BakesOnGpu(Material material) =>
+            NeedsEmissionBake(material) && CanBakeEmission(material) || GradientImage(material) != null;
 #endif
     }
 }

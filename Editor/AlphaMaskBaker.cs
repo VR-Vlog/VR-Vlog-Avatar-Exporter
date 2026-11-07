@@ -42,6 +42,13 @@ namespace VRVlog.LilToonExporter
             if (!NeedsBake(material)) return;
             var mode = material.GetFloat("_AlphaMaskMode");
             if (mode < 1 || mode > 4 || mode != Mathf.Round(mode)) throw new InvalidOperationException(material.name + ": アルファマスクの合成方法が不正です。");
+            // Without a graphics device the read-back pixels are undefined: keep
+            // the source image and mask, and say so.
+            if (!GpuReadback.Available)
+            {
+                warnings?.Add(material.name + ": GPUを使えないため、アルファマスクの焼き込みを省略しました。透明な部分が元と違う場合があります。");
+                return;
+            }
             var shader = Shader.Find("Hidden/VRVlog/AlphaMaskBaker");
             if (shader == null || !shader.isSupported) throw new InvalidOperationException("アルファマスクのベイク用シェーダーを利用できません。");
             var source = material.GetTexture("_MainTex") ?? Texture2D.whiteTexture;

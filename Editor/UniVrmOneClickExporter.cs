@@ -1352,6 +1352,10 @@ namespace VRVlog.LilToonExporter
             var normalEnabled = EnabledOrTexture(source, "_UseBumpMap", "_BumpMap");
             var emissionEnabled = EnabledOrTexture(source, "_UseEmission", "_EmissionMap") &&
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
+            // Without a graphics device the mask, main-color tint and gradation
+            // are not read: the emission keeps lilToon's own image and color.
+            if (emissionEnabled && !GpuReadback.Available && LilToonEmissionPolicy.BakesOnGpu(source))
+                warnings?.Add(source.name + ": GPUを使えないため、発光のマスク・色付け・グラデーションの焼き込みを省略しました。標準MToonの発光が元と違う場合があります。");
             var matcapAdditive = MatcapAdditive(source);
             var rimEnabled = Enabled(source, "_UseRim");
             var hidden = HiddenInFallback(source);
