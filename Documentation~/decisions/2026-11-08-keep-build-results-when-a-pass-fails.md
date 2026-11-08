@@ -32,6 +32,6 @@ VRChat のアップロードは失敗が 1 つでもあると止まるので、V
 
 - `NdmfPreparationTests.ToleratedFailedPassLeavesOutOnlyThatPass`（Generating と Transforming のそれぞれ）: 失敗を記録したあとも Optimizing まで進み、失敗したパスの名前が警告に出る。
 - `NdmfPreparationTests.FailedPassStillStopsAStrictExport`・`ToleratedPreparationStillStopsOnAFailureInOptimizing`・`ToleratedPreparationStillStopsWhenTheReportNamesNoFailure`: 厳密な設定、Optimizing での失敗、記録の無い失敗では止まる。
-- `NdmfLostMorphFollowTests.APassFailingInTransformingIsLeftOutAloneByTheBoardAndTheLenientExport`: Transforming で失敗するテスト用のパスがあっても、ボードのコピーと書き出した VRM の両方で、Modular Avatar で頭に付けたメッシュが頭の下に残る。厳密な設定ではボードと書き出しの両方が止まる。
+- `NdmfLostMorphFollowTests.APassFailingInTransformingIsLeftOutAloneByTheBoardAndTheLenientExport`: Transforming で失敗するテスト用のパスがあっても、ボードのコピーと書き出した VRM の両方で、Modular Avatar で頭に付けたメッシュが頭の下に残る。厳密な設定ではボードと書き出しの両方が止まる。テスト用のパスは Modular Avatar の後に走るので、このテストが示すのは失敗したパスより前の結果が残ることまで。失敗したパスより後のパスが走ることは、NDMF 1.14.8 の `BuildContext.RunPass` が例外を記録して再送出せず、次のパスへ進むことをソースで確かめた。
 - `MaSceneReferencePreparationTests` の `...IsDetached...` の 4 件: 外部を指す参照はビルド処理の前にコピーで外れ、元のアバターと外部のオブジェクトは変わらず、外した項目が警告に出る。
 - 検証用の Unity 2022.3（Modular Avatar 1.18.7・NDMF 1.14.8）で、上の 2 つの再現の組み合わせをアプリに転送（かんたん）と同じ経路で書き出し直した。衣装は 43 本中 43 本、髪は 71 本中 71 本のボーンが体の下に入り、失敗の無いときと同じだった。結果一覧には失敗したパスの名前と、外した参照の場所が出た。
