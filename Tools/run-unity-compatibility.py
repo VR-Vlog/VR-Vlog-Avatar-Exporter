@@ -198,6 +198,7 @@ BEHAVIOR_CASES = {
         'BonesBetweenHumanoidBonesStayOutOfChains': 2,
         'HumanoidBonesStayOutOfChainsAndWhatHangsFromThemStillSwings': 1,
         'IgnoredSubtreesDisabledBonesAndOverlappingOwnersAreExplicit': 1,
+        'AnInactiveNestedPhysBoneStaysOutOfAParentThatIgnoresOthers': 4,
         'InactiveExplicitRootsChildrenAndColliderRootsAreSkipped': 1,
         'AnInsideCapsuleWithoutLengthGoesOutAsASphere': 5,
         'InsideColliderRadiusComesBackFromTheFileUnchanged': 1,
@@ -847,6 +848,7 @@ BEHAVIOR_CASES = {
         'AFaceThatLosesEveryTrackLeavesTheFileAlone': 1,
         'FacesWithoutBonesOrVisibilityWriteNoTransforms': 1,
         'WhileOffNoFaceWritesBonesOrVisibility': 1,
+        'FacesTakenOnlyForTheirBonesFillNoPreset': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
@@ -1169,6 +1171,15 @@ def installed_liltoon(project, expected=None):
     return {'expected': expected, 'installed': version, 'source': installed['source'] if installed else None}
 
 
+def project_color_space(project, expected=None):
+    """Read the project's color space and stop before Unity runs if it is not the expected one."""
+    actual = unity_packages.color_space(project)
+    if expected is not None and actual != expected:
+        shown = actual or 'unknown (no m_ActiveColorSpace of 0 or 1 in ProjectSettings/ProjectSettings.asset)'
+        raise SystemExit('Project color space ' + shown + ' does not match --expect-color-space ' + expected)
+    return actual
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unity', required=True, type=Path)
@@ -1177,6 +1188,9 @@ def main():
                         help="The project's own UniVRM version, or 'missing'; the exporter uses its bundled copy either way")
     parser.add_argument('--expect-unity', default='2022.3.62f3')
     parser.add_argument('--expect-liltoon', help='Stop before running Unity unless the project resolved exactly this lilToon release')
+    parser.add_argument('--expect-color-space', choices=('linear', 'gamma'),
+                        help="Stop before running Unity unless the project's color space is this one; "
+                             'images bake differently in the two, so run the tests in each')
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--profile', choices=PROFILES, default='compatibility',
@@ -1186,6 +1200,7 @@ def main():
     filters = profile_filters(args.profile)
     identity_before = source_identity(root)
     liltoon_before = installed_liltoon(args.project, args.expect_liltoon)
+    color_space = project_color_space(args.project, args.expect_color_space)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Unique result names prevent an earlier successful XML from satisfying a failed run.
@@ -1212,8 +1227,12 @@ def main():
     # version that was readable beforehand can be compared.
     if 'unavailable' not in liltoon_before and liltoon_after['installed'] != liltoon_before['installed']:
         raise SystemExit('Installed lilToon changed during Unity validation')
+    # The project setting, read before and after the run; a script that switched
+    # it during the run would leave the tests in the other color space.
+    if unity_packages.color_space(args.project) != color_space:
+        raise SystemExit('Project color space changed during Unity validation')
     report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
-              'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
+              'colorSpace': color_space, 'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
               'seconds': round(time.monotonic() - started), 'xml': xml.name, 'log': log.name}
     (output / (stamp + '.json')).write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

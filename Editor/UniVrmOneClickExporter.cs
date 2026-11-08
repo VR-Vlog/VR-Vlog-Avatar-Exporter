@@ -137,7 +137,7 @@ namespace VRVlog.LilToonExporter
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
-            IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false)
+            IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -166,7 +166,7 @@ namespace VRVlog.LilToonExporter
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight);
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -422,7 +422,7 @@ namespace VRVlog.LilToonExporter
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
-            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight)
+            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -892,12 +892,19 @@ namespace VRVlog.LilToonExporter
                     // inferred from its menu path as before.
                     var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
                     RecordMergedExpressions(expressions, recoveryReport);
+                    // A face of the list that is a face only for its bones or
+                    // visibility (bonesOnlyFaces) fills no standard preset by
+                    // name: a preset carries BlendShapes only, and while bones
+                    // were left out the board did not take it, so writing them
+                    // adds faces without changing the standard ones.
+                    var presetSources = bonesOnlyFaces == null || bonesOnlyFaces.Count == 0 ? expressions
+                        : expressions.Where(expression => !(expression.Clip is AnimationClip clip && bonesOnlyFaces.Contains(clip))).ToList();
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings,
                         inferEmotions: inferEmotionPresets, filledPresets: filled,
-                        emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
-                        emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,
+                        emotionCandidates: VrmMenuExpressions.EmotionCandidates(presetSources),
+                        emotionShapes: VrmMenuExpressions.EmotionShapes(presetSources), shapeNames: ExpressionShapeNames.Shipped,
                         descriptor: visemes, inferNeutralAndGaze: inferNeutralAndGazePresets, keepEmptyPresets: keepEmptyPresets);
                     RecordInferredPresets(filled, recoveryReport);
                     return output;
@@ -1345,6 +1352,10 @@ namespace VRVlog.LilToonExporter
             var normalEnabled = EnabledOrTexture(source, "_UseBumpMap", "_BumpMap");
             var emissionEnabled = EnabledOrTexture(source, "_UseEmission", "_EmissionMap") &&
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
+            // Without a graphics device the mask, main-color tint and gradation
+            // are not read: the emission keeps lilToon's own image and color.
+            if (emissionEnabled && !GpuReadback.Available && LilToonEmissionPolicy.BakesOnGpu(source))
+                warnings?.Add(source.name + ": GPUを使えないため、発光のマスク・色付け・グラデーションの焼き込みを省略しました。標準MToonの発光が元と違う場合があります。");
             var matcapAdditive = MatcapAdditive(source);
             var rimEnabled = Enabled(source, "_UseRim");
             var hidden = HiddenInFallback(source);

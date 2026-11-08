@@ -10,6 +10,10 @@ VRChat SDKが導入済みの場合、元モデルのPhysBoneを読み、MA / NDM
 
 - Root Transform、Ignore Transformsとその子孫、Ignore Other PhysBones、
   有効状態、子ボーン、Endpoint Positionを参照します。
+- チェックを外したPhysBoneと非表示のPhysBoneは揺れ物にしません。
+  Ignore Other PhysBonesがオンのPhysBoneは、VRChatと同じく、無効・非表示のPhysBoneの
+  Root Transformから先を自分の連鎖に入れません。そのため、チェックを外したPhysBoneのボーンは
+  このPhysBoneの設定では揺れず、親のボーンが動いたときにだけ付いて動きます。
 - 分岐のIgnoreでは分岐元を固定し、Firstでは最初の子へ向け、
   Averageでは子の平均位置に仮想末端を作ります。各子の連鎖を別途保持します。
   同一ボーンを複数PhysBoneが駆動する場合は、より深いRoot Transformの設定を

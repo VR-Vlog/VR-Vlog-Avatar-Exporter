@@ -2194,7 +2194,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string AutoLightweightLabel = "自動で軽量化する";
-        internal const string AutoLightweightNote = "見た目の変化を抑えてテクスチャを小さくします";
+        internal const string AutoLightweightNote = "見た目の変化を抑えてファイルとメモリを小さくします";
 
         // Saved at once for the avatar, like the gimmick choices, so the next
         // board and the quick transfer start from it.

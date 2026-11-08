@@ -153,7 +153,13 @@ namespace VRVlog.LilToonExporter
             if (source == target) return (ExportOutcome.Omitted, OmittedSetting);
             if (!Inside(root, target) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
             if (taken.Contains(target)) return (ExportOutcome.Omitted, OmittedDuplicate);
-            if (Reaches(edges, source, target)) return (ExportOutcome.Omitted, OmittedCycle);
+            // Beyond a loop of constraints, a rotation or roll reads the source's
+            // local rotation, and an aim the source's world position and the
+            // parent's world pose; any of them may lead back inside the target.
+            var aims = plan.Kind != Kind.Rotation;
+            if (Reaches(edges, source, target) || DependsOnInside(edges, source, aims ? Reading.Position : Reading.Rotation, target, false)
+                || aims && DependsOnInside(edges, target.parent, Reading.Pose, target, false))
+                return (ExportOutcome.Omitted, OmittedCycle);
             var weight = Mathf.Clamp01(plan.Weight * Mathf.Min(1, sources[0].Weight));
             if (plan.Kind == Kind.Rotation)
             {
@@ -226,10 +232,9 @@ namespace VRVlog.LilToonExporter
             if (!(plan.X && plan.Y && plan.Z && plan.Positions) || plan.LocalSpace || plan.Weight * Mathf.Min(1, sources[0].Weight) < FullWeight ||
                 humanoid.Any(bone => bone.IsChildOf(target)) || edges.ContainsKey(target) && !aiming || edges.Values.Any(ends => ends.Contains(target)))
                 return (ExportOutcome.Omitted, OmittedReparent);
-            // A constraint reading something inside the target would, once the
-            // target follows it, read a point that moves with itself.
-            if (edges.Any(edge => edge.Value.Any(end => end.IsChildOf(target)) && (source.IsChildOf(edge.Key) || Reaches(edges, source, edge.Key))))
-                return (ExportOutcome.Omitted, OmittedCycle);
+            // If the source's pose depends on something inside the target, the
+            // target would, once it follows, move with itself.
+            if (DependsOnInside(edges, source, Reading.Pose, target, true)) return (ExportOutcome.Omitted, OmittedCycle);
             if (target.parent == source) return (ExportOutcome.Kept, KeptParent);
             // UniVRM finds expression and first-person renderers by these paths
             // when it writes the file; a moved target would leave them dangling.
@@ -401,7 +406,53 @@ namespace VRVlog.LilToonExporter
             sources.Add(source);
         }
 
-        // Whether following the sources from `from` arrives at `to`.
+        // What is read of a node: its local rotation (a rotation or roll reads
+        // it of its source), its world position (an aim reads it of its source),
+        // or its whole world pose (a follow takes it of its source).
+        enum Reading { Rotation, Position, Pose }
+
+        // Whether what is read of `from` depends on something inside the target,
+        // which a converted rotation or aim turns, and a follow (`moves`) also
+        // moves. A world pose comes from the parent's and from the node's own
+        // local rotation; a world position only from the parent's pose. A local
+        // rotation changes only by the node's own VRM constraint: a rotation or
+        // roll reads its source's local rotation; an aim reads its source's world
+        // position and turns its node by the world direction, so it also takes
+        // the parent's pose.
+        static bool DependsOnInside(Dictionary<Transform, List<Transform>> edges, Transform from, Reading reading, Transform target, bool moves)
+        {
+            var visited = new HashSet<(Transform, Reading)>();
+            var pending = new Stack<(Transform Node, Reading Reading)>();
+            pending.Push((from, reading));
+            while (pending.Count > 0)
+            {
+                var (current, read) = pending.Pop();
+                if (current == null || !visited.Add((current, read))) continue;
+                if (read == Reading.Pose)
+                {
+                    if (current.IsChildOf(target)) return true;
+                    pending.Push((current.parent, Reading.Pose));
+                    pending.Push((current, Reading.Rotation));
+                }
+                else if (read == Reading.Position)
+                {
+                    // Turning the target does not move its own origin.
+                    if (current.IsChildOf(target) && (moves || current != target)) return true;
+                    pending.Push((current.parent, Reading.Pose));
+                }
+                else
+                {
+                    if (current == target) return true;
+                    var aim = current.TryGetComponent<Vrm10AimConstraint>(out _);
+                    if (aim) pending.Push((current.parent, Reading.Pose));
+                    if (edges.TryGetValue(current, out var next))
+                        foreach (var value in next) pending.Push((value, aim ? Reading.Position : Reading.Rotation));
+                }
+            }
+            return false;
+        }
+
+        // VRM forbids constraints that read each other in a loop.
         static bool Reaches(Dictionary<Transform, List<Transform>> edges, Transform from, Transform to)
         {
             var visited = new HashSet<Transform>();

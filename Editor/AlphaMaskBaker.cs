@@ -42,6 +42,13 @@ namespace VRVlog.LilToonExporter
             if (!NeedsBake(material)) return;
             var mode = material.GetFloat("_AlphaMaskMode");
             if (mode < 1 || mode > 4 || mode != Mathf.Round(mode)) throw new InvalidOperationException(material.name + ": アルファマスクの合成方法が不正です。");
+            // Without a graphics device the read-back pixels are undefined: keep
+            // the source image and mask, and say so.
+            if (!GpuReadback.Available)
+            {
+                warnings?.Add(material.name + ": GPUを使えないため、アルファマスクの焼き込みを省略しました。透明な部分が元と違う場合があります。");
+                return;
+            }
             var shader = Shader.Find("Hidden/VRVlog/AlphaMaskBaker");
             if (shader == null || !shader.isSupported) throw new InvalidOperationException("アルファマスクのベイク用シェーダーを利用できません。");
             var source = material.GetTexture("_MainTex") ?? Texture2D.whiteTexture;
@@ -51,9 +58,23 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(ExporterLocalization.Format(ExportNoteText.AlphaMaskResized, material.name, size.Item1, size.Item2));
             var baker = new Material(shader);
             Texture2D result = null;
+            RenderTexture decoded = null;
             try
             {
-                baker.SetTexture("_AlphaMask", mask);
+                // A Gamma project samples an sRGB mask without decoding it, and the
+                // alpha would come from other values than in a Linear project and
+                // the app. The mask is decoded texel by texel first, so the
+                // sampling below also blends linear values as theirs does.
+                if (QualitySettings.activeColorSpace == ColorSpace.Gamma && mask.isDataSRGB)
+                {
+                    var format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RHalf) ? RenderTextureFormat.RHalf : RenderTextureFormat.ARGBHalf;
+                    decoded = new RenderTexture(new RenderTextureDescriptor(mask.width, mask.height, format, 0)
+                        { sRGB = false, useMipMap = mask.mipmapCount > 1, autoGenerateMips = true });
+                    var active = RenderTexture.active;
+                    Graphics.Blit(mask, decoded, baker, 1);
+                    RenderTexture.active = active;
+                }
+                baker.SetTexture("_AlphaMask", decoded != null ? decoded : mask);
                 baker.SetTextureScale("_AlphaMask", material.GetTextureScale("_AlphaMask"));
                 baker.SetTextureOffset("_AlphaMask", material.GetTextureOffset("_AlphaMask"));
                 baker.SetFloat("_AlphaMaskMode", mode);
@@ -63,7 +84,7 @@ namespace VRVlog.LilToonExporter
                 baker.SetFloat("_ColorAlpha", color.a);
                 var name = DeterministicNames.Unique(material.name + "__VRVlog_Alpha_" + DeterministicNames.Hash("Alpha", origin, material.name),
                     candidate => owned.Exists(texture => texture != null && texture.name == candidate));
-                result = GpuReadback.BakeRgba32(size.Item1, size.Item2, name, source, target => Graphics.Blit(source, target, baker));
+                result = GpuReadback.BakeRgba32(size.Item1, size.Item2, name, source, target => Graphics.Blit(source, target, baker, 0));
                 owned.Add(result);
                 material.SetTexture("_MainTex", result);
                 material.SetColor("_Color", new Color(color.r, color.g, color.b, 1));
@@ -74,6 +95,7 @@ namespace VRVlog.LilToonExporter
             finally
             {
                 if (result != null) UnityEngine.Object.DestroyImmediate(result);
+                if (decoded != null) { decoded.Release(); UnityEngine.Object.DestroyImmediate(decoded); }
                 UnityEngine.Object.DestroyImmediate(baker);
             }
         }
