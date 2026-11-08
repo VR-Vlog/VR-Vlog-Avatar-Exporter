@@ -667,6 +667,7 @@ BEHAVIOR_CASES = {
         'InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar': 2,
         'OrdinaryExternalComponentReferencesAreDetachedOnTheCopyWithTheExactField': 2,
         'ExternalReferencesInOneArrayAreDetachedAndReportedOnOneLine': 1,
+        'ExternalReferencesAreGroupedByComponentAndByFieldWithoutArrayIndexes': 1,
         'ActiveMaPathReferenceRetainsTheRequiredInactiveAuthoringBeforeCanonicalBuild': 1,
         'InstalledMaMergesAnInactiveNestedArmatureWithItsDeclaredTargets': 1,
         'EnclosingAvatarRelativePathIsNotReinterpretedAfterTheSelectedSubtreeIsDetached': 1,

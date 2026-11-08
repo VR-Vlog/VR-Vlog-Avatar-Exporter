@@ -580,6 +580,38 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(holder.Targets, Is.EqualTo(new[] { outside[0], mainArm, outside[1], outside[2] }));
         }
 
+        [Test]
+        public void ExternalReferencesAreGroupedByComponentAndByFieldWithoutArrayIndexes()
+        {
+            CreateFixture();
+            Transform Outside(string name) => Child(externalRig, name, Vector3.zero);
+            var first = source.AddComponent<NdmfSharedAssetHolder>();
+            first.Targets = new[] { Outside("One") };
+            first.Groups = new[]
+            {
+                new NdmfSharedAssetHolder.TargetGroup { Targets = new[] { Outside("Two") } },
+                new NdmfSharedAssetHolder.TargetGroup { Targets = new[] { Outside("Three"), Outside("Four") } }
+            };
+            // Same object, same type: another component with the same field.
+            var second = source.AddComponent<NdmfSharedAssetHolder>();
+            second.Targets = new[] { Outside("Five") };
+            clone = Object.Instantiate(source);
+            ResetFakeBridge();
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings))
+            {
+                var detached = warnings.Where(warning => warning.Contains("参照を外して書き出しました")).ToList();
+                var targets = detached.Where(line => line.Contains(") の Targets:")).ToList();
+                Assert.That(targets, Has.Count.EqualTo(2), "Each component keeps its own line.\n" + string.Join("\n", warnings));
+                Assert.That(targets, Has.Some.Contains("/One を指していた"));
+                Assert.That(targets, Has.Some.Contains("/Five を指していた"));
+                var groups = detached.Single(line => line.Contains(") の Groups.Targets:"));
+                StringAssert.Contains("/Two など 3 件", groups);
+                Assert.That(string.Join("\n", detached), Does.Not.Contain("Array.data"));
+                Assert.That(detached, Has.Count.EqualTo(3));
+            }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void OrdinaryExternalComponentReferencesAreDetachedOnTheCopyWithTheExactField(bool probeAnchor)

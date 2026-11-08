@@ -877,35 +877,43 @@ namespace VRVlog.LilToonExporter
             // asset stops the build: clearing it would edit the original.
             var holders = clone.GetComponentsInChildren<Component>(true).Where(value => value != null).Cast<Object>()
                 .Concat(cloneAssets.Where(IsMutableAsset)).Distinct();
-            var detached = new List<(string Holder, string Field, string Target)>();
-            foreach (var holder in holders)
+            var detached = new List<(Component Holder, string Field, string Target)>();
+            try
             {
-                if (holder is Mesh || holder is Texture) continue;
-                SerializedReferences.Visit(holder, property =>
+                foreach (var holder in holders)
                 {
-                    if (property.propertyType != SerializedPropertyType.ObjectReference) return false;
-                    var reference = property.objectReferenceValue;
-                    var target = reference is GameObject gameObject ? gameObject.transform :
-                        (reference as Component)?.transform;
-                    if (target == null || EditorUtility.IsPersistent(reference) || IsWithinCopy(target, clone)) return false;
-                    if (!(holder is Component component))
-                        throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
-                            ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
-                            "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
-                            "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
-                    detached.Add((PathFromRoot(component.transform, clone.transform) + " (" + component.GetType().Name + ")",
-                        ArrayElementSuffix.Replace(property.propertyPath, ""), ScenePath(target)));
-                    property.objectReferenceValue = null;
-                    return true;
-                });
+                    if (holder is Mesh || holder is Texture) continue;
+                    SerializedReferences.Visit(holder, property =>
+                    {
+                        if (property.propertyType != SerializedPropertyType.ObjectReference) return false;
+                        var reference = property.objectReferenceValue;
+                        var target = reference is GameObject gameObject ? gameObject.transform :
+                            (reference as Component)?.transform;
+                        if (target == null || EditorUtility.IsPersistent(reference) || IsWithinCopy(target, clone)) return false;
+                        if (!(holder is Component component))
+                            throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
+                                ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
+                                "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
+                                "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
+                        detached.Add((component,
+                            ArrayElementSuffix.Replace(property.propertyPath, ""), ScenePath(target)));
+                        property.objectReferenceValue = null;
+                        return true;
+                    });
+                }
             }
-            // One line for each field: a PhysBone with many colliders is one
-            // setting to fix, not one line for each collider.
-            foreach (var field in detached.GroupBy(item => (item.Holder, item.Field)))
+            finally
             {
-                var count = field.Count();
-                var format = ExporterLocalization.T(count == 1 ? ExternalReferenceWarning : ExternalReferencesWarning);
-                warnings?.Add(string.Format(format, field.Key.Holder, field.Key.Field, field.First().Target, count));
+                // One line for each field: a PhysBone with many colliders is one
+                // setting to fix, not one line for each collider. A shared asset
+                // stopping the build leaves the lines for what was already removed.
+                foreach (var field in detached.GroupBy(item => (item.Holder, item.Field)))
+                {
+                    var count = field.Count();
+                    var format = ExporterLocalization.T(count == 1 ? ExternalReferenceWarning : ExternalReferencesWarning);
+                    warnings?.Add(string.Format(format, PathFromRoot(field.Key.Holder.transform, clone.transform) + " (" + field.Key.Holder.GetType().Name + ")",
+                        field.Key.Field, field.First().Target, count));
+                }
             }
         }
 

@@ -11,6 +11,8 @@
 
 - 同じコンポーネントの同じ項目で外した参照は 1 行にまとめ、最初の参照先と件数を出す（`ExternalReferencesWarning`）。1 件だけのときは今までの文のまま。
 - 項目名から配列の番号（`.Array.data[n]`）を落とす。入れ子の配列の中の項目も、番号を除いた項目名でまとめる。
+- まとめる単位はコンポーネントそのもの。同じオブジェクトに同じ型のコンポーネントが複数あっても別の行にする。
+- 共有アセットが外を指して処理が止まるときも、それまでに外した参照の行は残す。
 - 参照を外す動きは変えない。まとめるのは結果一覧の行だけ。
 
 ## 検討した代替案と不採用理由
@@ -20,4 +22,5 @@
 ## 確かめたこと
 
 - `MaSceneReferencePreparationTests.ExternalReferencesInOneArrayAreDetachedAndReportedOnOneLine`: 配列の 3 要素が外を指すときに 1 行にまとまって件数が出ること、アバターの中を指す要素は残ること、元のアバターは変わらないこと。
+- `ExternalReferencesAreGroupedByComponentAndByFieldWithoutArrayIndexes`: 同じ型の別のコンポーネントは別の行になること、入れ子の配列は番号を除いた項目名でまとまること、配列の中の 1 件だけのときは 1 件の文になること。
 - `OrdinaryExternalComponentReferencesAreDetachedOnTheCopyWithTheExactField`: 配列でない項目は今までの 1 行のままであること。
