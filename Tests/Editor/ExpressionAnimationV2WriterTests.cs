@@ -55,11 +55,23 @@ namespace VRVlog.LilToonExporter.Tests
                 return VrChatExpressionBaker.Bake(Avatar.Copy, menu, Owned, null, bindings);
             }
 
-            internal byte[] Export(IList<VrmMenuExpressions.Expression> expressions, ICollection<string> warnings = null) =>
-                VrmMenuExpressions.Add(Vrm10Exporter.Export(new GltfExportSettings(), Avatar.Copy,
+            internal byte[] Export(IList<VrmMenuExpressions.Expression> expressions, ICollection<string> warnings = null, params string[] existingCustom)
+            {
+                var bytes = Vrm10Exporter.Export(new GltfExportSettings(), Avatar.Copy,
                     textureSerializer: new MobileTextureSerializer(null),
-                    vrmMeta: new VRM10ObjectMeta { Name = "Animation v2 fixture", Version = "1", Authors = new List<string> { "Tests" } }),
-                    expressions, new NamedDirectBindings(), warnings);
+                    vrmMeta: new VRM10ObjectMeta { Name = "Animation v2 fixture", Version = "1", Authors = new List<string> { "Tests" } });
+                if (existingCustom.Length > 0)
+                {
+                    var glb = GlbDocument.Read(bytes);
+                    var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
+                    var root = (Dictionary<string, object>)vrm["expressions"];
+                    if (!root.TryGetValue("custom", out var raw)) root["custom"] = raw = new Dictionary<string, object>();
+                    foreach (var name in existingCustom)
+                        ((Dictionary<string, object>)raw)[name] = new Dictionary<string, object> { ["morphTargetBinds"] = new List<object>(), ["isBinary"] = true };
+                    bytes = glb.Write();
+                }
+                return VrmMenuExpressions.Add(bytes, expressions, new NamedDirectBindings(), warnings);
+            }
 
             // The authored source pose at time: rest weights, the entry's
             // fixed values, and each animated shape at its curve value.
@@ -483,6 +495,30 @@ namespace VRVlog.LilToonExporter.Tests
             }));
             Assert.That(CustomNames(bytes), Is.EqualTo(document.Expressions.Select(value => value.Expression)));
             Assert.That(expressions.Select(value => value.MergedInto), Is.EqualTo(new[] { null, null, null, null, null, null, "Smile", null }));
+        }
+
+        [Test]
+        public void CustomFacesAlreadyInTheFileCountAmongTheOthers()
+        {
+            using var scene = new Scene();
+            VrChatExpressionMenu.Entry Face(string name, string id, string source, float raise)
+            {
+                var entry = Entry(name, 1, false, new[] { ("Front", "Raise", raise) });
+                entry.Id = id; entry.Source = source;
+                return entry;
+            }
+            var bytes = scene.Export(scene.Bake(
+                Face("Other A", "a", ExpressionSource.Menu, 10),
+                Face("Emo A", "b", ExpressionSource.FaceEmo, 20),
+                Face("Hand A", "c", ExpressionSource.Gesture, 30)), null, "Authored A", "Authored B");
+            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Hand A", "Emo A", "Authored A", "Authored B", "Other A" }));
+            var listed = ExpressionAnimationData.ReadDocument(Extension(bytes)).Expressions.Select(value => value.Expression);
+            Assert.That(listed, Is.EqualTo(new[] { "Hand A", "Emo A", "Other A" }), "A face the export did not write has no source to list.");
+
+            // Nothing else to place them before: they stay.
+            bytes = scene.Export(scene.Bake(
+                Face("Hand B", "d", ExpressionSource.Gesture, 40)), null, "Authored A");
+            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Hand B", "Authored A" }));
         }
 
         static List<string> CustomNames(byte[] bytes)
