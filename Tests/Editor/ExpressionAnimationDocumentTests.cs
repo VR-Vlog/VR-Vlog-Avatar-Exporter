@@ -108,6 +108,13 @@ namespace VRVlog.LilToonExporter.Tests
             var later = ExpressionAnimationData.ReadDocument(json);
             Assert.That(later.Order, Is.EqualTo("a later order"));
             Assert.That(later.Expressions.Count, Is.EqualTo(3));
+            foreach (var notText in new object[] { null, "", 1.0, new Dictionary<string, object>() })
+            {
+                json["order"] = notText;
+                var ignored = ExpressionAnimationData.ReadDocument(json);
+                Assert.That(ignored.Order, Is.Null);
+                Assert.That(ignored.Expressions.Count, Is.EqualTo(3));
+            }
         }
 
         [Test]

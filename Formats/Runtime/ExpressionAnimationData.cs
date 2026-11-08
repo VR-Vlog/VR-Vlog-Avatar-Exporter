@@ -217,8 +217,9 @@ namespace VRVlog.Expressions
                 return document;
             }
             if (version != 2) Bad();
-            // Optional; any text, so a later value does not drop the faces.
-            if (root.TryGetValue("order", out var order)) document.Order = Json.Text(order);
+            // Optional and only a hint for the list: any text is kept, and a value
+            // that is not text (null, empty, a number) is ignored, so it never drops the faces.
+            if (root.TryGetValue("order", out var order) && order is string text && text.Length > 0) document.Order = text;
             var expressions = Json.Arr(root["expressions"]);
             var array = Json.Arr(root["animations"]);
             if (expressions.Count > 1024 || array.Count > 512 || expressions.Count == 0 && array.Count == 0) Bad();
