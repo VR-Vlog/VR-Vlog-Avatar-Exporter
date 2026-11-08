@@ -68,7 +68,7 @@ namespace VRVlog.LilToonExporter
                 {
                     RequireLocal(copy, joint.transform);
                     existing.Add(joint.transform);
-                    if (previous != null && joint.transform.IsChildOf(previous))
+                    if (previous != null && joint.transform != previous && joint.transform.IsChildOf(previous))
                         for (var node = joint.transform.parent; node != previous; node = node.parent)
                             existing.Add(node);
                     previous = joint.transform;
