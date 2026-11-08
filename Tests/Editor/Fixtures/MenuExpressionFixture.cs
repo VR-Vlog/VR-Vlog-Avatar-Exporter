@@ -154,11 +154,16 @@ namespace VRVlog.LilToonExporter.Tests
             check(plainNames.All(Custom(plainResult.Json).ContainsKey) && Custom(plainResult.Json).ContainsKey("Authored") && Custom(plainResult.Json).Count == 7,
                 "Menu names are plain; a repeated, authored, VRM preset or tracking channel name is numbered.");
             var plainDocument = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)plainResult.Json["extensions"])[ExpressionAnimationData.Extension]);
-            check(plainDocument.Expressions.Select(e => e.Expression).SequenceEqual(plainNames) &&
-                plainDocument.Expressions.Select(e => e.Source).SequenceEqual(plain.Select(e => e.Source)),
-                "The extension lists the final numbered names with their sources.");
+            // Written by source (gesture, FaceEmo, then the others in the board's order);
+            // the names are numbered in the board's order first, so they do not change.
+            var listed = new (string Name, string Source)[] { ("Smile (2)", ExpressionSource.Gesture), ("Smile (3)", ExpressionSource.FaceEmo),
+                ("Smile", ExpressionSource.Menu), ("Authored (2)", ExpressionSource.Menu), ("happy (2)", ExpressionSource.Menu), ("JawOpen (2)", ExpressionSource.Menu) };
+            check(plainDocument.Expressions.Select(e => (e.Expression, e.Source)).SequenceEqual(listed.Select(e => (e.Name, e.Source))) &&
+                plainDocument.Order == ExpressionAnimationDocument.SourceOrder &&
+                Custom(plainResult.Json).Keys.Skip(1).SequenceEqual(listed.Select(e => e.Name)),
+                "The extension lists the final numbered names with their sources, by source, in the VRM's custom order.");
             check(MenuExpressionFixture.CountRegistered(plainResult.Write()) == 6 &&
-                MenuExpressionFixture.RegisteredNames(plainResult.Write()).SequenceEqual(plainNames),
+                MenuExpressionFixture.RegisteredNames(plainResult.Write()).SequenceEqual(listed.Select(e => e.Name)),
                 "The completion count reads the extension's list; the authored bound expression is not counted.");
             check(MenuExpressionFixture.CountRegistered(GlbDocument.Create(plainRoot, binary).Write()) == 0,
                 "Without the extension no expression counts as registered, even a bound authored one.");

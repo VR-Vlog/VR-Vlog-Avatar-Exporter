@@ -23,14 +23,15 @@ namespace VRVlog.LilToonExporter
         // authored or FaceEmo face is played. The menu is still read for its
         // parameters and controllers, which the neutral and the list use.
         internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath,
-            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> listFaces, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> listFaces, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null,
+            IReadOnlyCollection<UnityEngine.Object> gestureFaces = null)
         {
             var source = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipPlayback = true });
             NeutralInputProof.Read(avatar, source);
             // Built once outside the per-face loop: nothing it keeps changes
             // during one export, and it is dropped when the export ends.
             var analysis = new FxAnalysis(avatar);
-            try { AddListFaces(avatar, source, excludedPath, listFaces, faceEmoBindings, analysis); }
+            try { AddListFaces(avatar, source, excludedPath, listFaces, faceEmoBindings, gestureFaces, analysis); }
             finally { EditorUtility.ClearProgressBar(); }
             return source;
         }
@@ -47,9 +48,13 @@ namespace VRVlog.LilToonExporter
         // rejects keeps the board's frame of its visible BlendShapes. A clip
         // FaceEmo registers is read as FaceEmo's own faces are, so the common
         // DEFAULT FACE and its permanent overrides still apply.
+        // Each face's source is FaceEmo for a clip FaceEmo registers, else
+        // gesture for a clip a hand gesture enters (gestureFaces) and menu
+        // (the other faces of the list) for the rest. Without gestureFaces
+        // every face that is not FaceEmo's is a gesture face.
         static void AddListFaces(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath,
             IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces, FaceEmoExpressions.BindingSnapshot faceEmoBindings,
-            FxAnalysis analysis)
+            IReadOnlyCollection<UnityEngine.Object> gestureFaces, FxAnalysis analysis)
         {
             if (faces == null) return;
             if (faces.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。");
@@ -61,7 +66,9 @@ namespace VRVlog.LilToonExporter
                 var entry = new VrChatExpressionMenu.Entry
                 {
                     Id = "list/" + index, Name = face.Name, ExportName = face.Name,
-                    Source = VRVlog.Expressions.ExpressionSource.Gesture, Clip = clip
+                    Source = gestureFaces == null || gestureFaces.Contains(clip)
+                        ? VRVlog.Expressions.ExpressionSource.Gesture : VRVlog.Expressions.ExpressionSource.Menu,
+                    Clip = clip
                 };
                 source.Entries.Add(entry);
                 if (faceEmoBindings != null && faceEmoBindings.RegisteredClips.Contains(clip))
