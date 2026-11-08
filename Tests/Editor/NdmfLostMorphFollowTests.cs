@@ -566,14 +566,23 @@ namespace VRVlog.LilToonExporter.Tests
                 var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => blink.Prepare(scene.Fixture.Source, options, Array.Empty<GameObject>(), gimmicks));
                 Assert.That(failure.ToString(), Does.Contain(failedPass), "The failing test pass must be what stops a strict preview.");
                 blink.Cleanup();
+                pose = PoseReviewWindow.Show(scene.Fixture.Source, new PoseExportOptions(), Array.Empty<GameObject>(), gimmicks);
+                typeof(PoseReviewWindow).GetMethod("PreparePreview", flags).Invoke(pose, null);
+                Assert.That(typeof(PoseReviewWindow).GetField("error", flags).GetValue(pose), Is.Not.Null, "A strict pose preview stops too.");
+                Assert.That(pose.Notices, Is.Empty);
 
                 ExportTestHooks.ContinueByDefault = true;
                 blink.Prepare(scene.Fixture.Source, options, Array.Empty<GameObject>(), gimmicks);
                 Assert.That(blink.Notices, Has.Some.Contains(failedPass));
                 Assert.That(blink.Notices, Does.Not.Contain(NdmfExportPreparation.BuildApplied));
-                AssertBack((GameObject)typeof(BlinkPreviewWindow).GetField("copy", flags).GetValue(blink));
+                var blinkCopy = (GameObject)typeof(BlinkPreviewWindow).GetField("copy", flags).GetValue(blink);
+                AssertBack(blinkCopy);
+                // The preview still closes the eyes on the copy the build left.
+                typeof(BlinkPreviewWindow).GetField("closure", flags).SetValue(blink, 1f);
+                typeof(BlinkPreviewWindow).GetMethod("ApplyPose", flags).Invoke(blink, null);
+                var front = blinkCopy.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Front");
+                Assert.That(front.GetBlendShapeWeight(front.sharedMesh.GetBlendShapeIndex("Face blink")), Is.EqualTo(100));
 
-                pose = PoseReviewWindow.Show(scene.Fixture.Source, new PoseExportOptions(), Array.Empty<GameObject>(), gimmicks);
                 typeof(PoseReviewWindow).GetMethod("PreparePreview", flags).Invoke(pose, null);
                 Assert.That(typeof(PoseReviewWindow).GetField("error", flags).GetValue(pose), Is.Null);
                 Assert.That(pose.Notices, Has.Some.Contains(failedPass));

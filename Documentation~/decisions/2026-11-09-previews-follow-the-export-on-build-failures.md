@@ -21,4 +21,4 @@
 
 ## 確かめたこと
 
-- `NdmfLostMorphFollowTests.ThePosePreviewAndTheBlinkPreviewLeaveOutAPassFailingInTransforming`: Transforming で失敗する NDMF の検証用プラグインを入れたアバターで、既定の設定を切ると両方止まること、既定では両方とも止まらず、Modular Avatar の処理を残し、失敗したパスの名前を `Notices` に持つこと、「適用しました」が `Notices` に入らないこと。
+- `NdmfLostMorphFollowTests.ThePosePreviewAndTheBlinkPreviewLeaveOutAPassFailingInTransforming`: Transforming で失敗する NDMF の検証用プラグインを入れたアバターで、既定の設定を切ると両方止まること、既定では両方とも止まらず、Modular Avatar の処理を残し、失敗したパスの名前を `Notices` に持つこと、瞬きのプレビューで目を閉じる操作が効くこと、「適用しました」が `Notices` に入らないこと。
