@@ -314,13 +314,30 @@ namespace VRVlog.LilToonExporter
             // name: the extension, RegisteredName and MergedInto.
             var names = ExpressionNameAffix.Trim(kept.Select(item => item.Face.Expression.Name).ToArray(),
                 candidate => Reserved(candidate) || custom.ContainsKey(candidate));
+            // The name carries no source prefix; the extension lists the
+            // source. Recorded and authored custom faces keep their names.
+            // Names are given in the list's order, so a duplicate-name suffix
+            // stays on the same face whatever the order written below.
+            var taken = new HashSet<string>(custom.Keys, StringComparer.Ordinal);
+            var finalNames = new string[kept.Count];
             for (var index = 0; index < kept.Count; index++)
+                taken.Add(finalNames[index] = UniqueName(names[index], taken.Contains));
+            // The faces are written by source (SourceRank): hand gesture
+            // faces, FaceEmo's, then the others without bones or visibility
+            // and the others with them, each group in the list's order. A
+            // merged group goes where its earliest-ranked face goes and is
+            // listed under that face's source, so each face appears once.
+            document.Order = ExpressionAnimationDocument.SourceOrder;
+            var written = Enumerable.Range(0, kept.Count)
+                .Select(index => (Index: index, Source: kept[index].Group.Select(item => item.Expression.Source)
+                    .OrderBy(source => SourceRank(source, transformsOf.ContainsKey(kept[index].Face.Expression))).First()))
+                .OrderBy(item => SourceRank(item.Source, transformsOf.ContainsKey(kept[item.Index].Face.Expression)))
+                .ThenBy(item => item.Index).ToList();
+            foreach (var (index, source) in written)
             {
                 var group = kept[index].Group;
                 var (expression, binds, animation) = kept[index].Face;
-                // The name carries no source prefix; the extension lists the
-                // source. Recorded and authored custom faces keep their names.
-                var name = UniqueName(names[index], custom.ContainsKey);
+                var name = finalNames[index];
                 // A face with no binds moves only bones or visibility. It
                 // leaves blink, mouth and gaze to tracking, so an app that
                 // ignores transforms shows the face unchanged.
@@ -330,7 +347,7 @@ namespace VRVlog.LilToonExporter
                     ["morphTargetBinds"] = binds, ["isBinary"] = true,
                     ["overrideBlink"] = hold, ["overrideMouth"] = hold, ["overrideLookAt"] = hold
                 });
-                document.Expressions.Add(new ExpressionSource { Expression = name, Source = expression.Source });
+                document.Expressions.Add(new ExpressionSource { Expression = name, Source = source });
                 expression.RegisteredName = name;
                 foreach (var other in group) if (other.Expression != expression) other.Expression.MergedInto = name;
                 if (animation != null)
@@ -348,6 +365,10 @@ namespace VRVlog.LilToonExporter
             glb.PlaceExtension(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document), "既存の表情アニメーション拡張を上書きできません。");
             return glb.Write();
         }
+
+        // The written order of the custom faces (ExpressionAnimationDocument.SourceOrder).
+        internal static int SourceRank(string source, bool withTransforms) =>
+            source == ExpressionSource.Gesture ? 0 : source == ExpressionSource.FaceEmo ? 1 : withTransforms ? 3 : 2;
 
         static (Expression Expression, List<object> Binds, ExpressionAnimationData Animation) KeptFace(
             List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> group)

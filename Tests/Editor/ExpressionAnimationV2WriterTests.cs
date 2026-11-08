@@ -425,7 +425,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // (e) Every registered expression is listed with its source, animated
-        // or not, including the duplicate-name suffix.
+        // or not, including the duplicate-name suffix. The faces are written
+        // by source (gesture, FaceEmo, the others) and keep the names they
+        // have in the list's order, so the suffix stays on the second face.
         [Test]
         public void EveryRegisteredExpressionIsListedWithItsSource()
         {
@@ -439,11 +441,54 @@ namespace VRVlog.LilToonExporter.Tests
             var bytes = scene.Export(scene.Bake(menu, gesture, faceEmo));
             var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
             Assert.That(document.SchemaVersion, Is.EqualTo(2));
+            Assert.That(document.Order, Is.EqualTo(ExpressionAnimationDocument.SourceOrder));
             Assert.That(document.Expressions.Select(value => (value.Expression, value.Source)), Is.EqualTo(new[]
             {
-                ("Smile", ExpressionSource.Menu), ("Smile (2)", ExpressionSource.Gesture), ("Wide", ExpressionSource.FaceEmo)
+                ("Smile (2)", ExpressionSource.Gesture), ("Wide", ExpressionSource.FaceEmo), ("Smile", ExpressionSource.Menu)
             }));
+            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Smile (2)", "Wide", "Smile" }));
             Assert.That(document.Animations.Single().Expression, Is.EqualTo("Smile (2)"));
+        }
+
+        // (e1) Each source keeps the list's order, and a face the list has
+        // under two sources is written once, in the earlier group, under the
+        // name of the face kept as before.
+        [Test]
+        public void FacesAreGroupedBySourceInTheListsOrder()
+        {
+            using var scene = new Scene();
+            VrChatExpressionMenu.Entry Face(string name, string id, string source, float raise, float wide)
+            {
+                var entry = Entry(name, 1, false, new[] { ("Front", "Raise", raise), ("Front", "Wide", wide) });
+                entry.Id = id; entry.Source = source;
+                return entry;
+            }
+            var expressions = scene.Bake(
+                Face("Other A", "a", ExpressionSource.Menu, 10, 0),
+                Face("Emo A", "b", ExpressionSource.FaceEmo, 20, 0),
+                Face("Hand A", "c", ExpressionSource.Gesture, 30, 0),
+                Face("Smile", "d", ExpressionSource.Menu, 40, 0),
+                Face("Emo B", "e", ExpressionSource.FaceEmo, 50, 0),
+                Face("Hand B", "f", ExpressionSource.Gesture, 60, 0),
+                // The same face as Smile, entered by a hand gesture.
+                Face("Fist", "g", ExpressionSource.Gesture, 40, 0),
+                Face("Other B", "h", ExpressionSource.Menu, 0, 30));
+            var bytes = scene.Export(expressions);
+            var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
+            Assert.That(document.Expressions.Select(value => (value.Expression, value.Source)), Is.EqualTo(new[]
+            {
+                ("Hand A", ExpressionSource.Gesture), ("Smile", ExpressionSource.Gesture), ("Hand B", ExpressionSource.Gesture),
+                ("Emo A", ExpressionSource.FaceEmo), ("Emo B", ExpressionSource.FaceEmo),
+                ("Other A", ExpressionSource.Menu), ("Other B", ExpressionSource.Menu)
+            }));
+            Assert.That(CustomNames(bytes), Is.EqualTo(document.Expressions.Select(value => value.Expression)));
+            Assert.That(expressions.Select(value => value.MergedInto), Is.EqualTo(new[] { null, null, null, null, null, null, "Smile", null }));
+        }
+
+        static List<string> CustomNames(byte[] bytes)
+        {
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
+            return ((Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"]).Keys.ToList();
         }
 
         // (e2) One gesture clip registered twice (both hands) writes one

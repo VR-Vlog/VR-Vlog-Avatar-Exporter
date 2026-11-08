@@ -395,6 +395,38 @@ namespace VRVlog.LilToonExporter.Tests
                 Does.Contain("Neutral"));
         }
 
+        // The board passes the faces a hand gesture enters (gestureFaces): they
+        // come first, then the others without bones or visibility, then the
+        // others with them, each in the list's order, and the VRM lists its
+        // custom faces the same way. Without gestureFaces every face keeps
+        // the gesture source, as before, and the list's order.
+        [Test]
+        public void CustomFacesAreWrittenBySource()
+        {
+            using var scene = new Scene();
+            var bow = scene.Add(Clip("Bow", Held(Shape, 80), Held(Bone(Joint, "localEulerAnglesRaw.x"), 30)));
+            var plain = scene.Add(Clip("Plain", Held(Shape, 50)));
+            var hand = scene.Add(Clip("Hand", Held(Shape, 20)));
+            byte[] Export(AnimationClip[] gestureFaces) => UniVrmOneClickExporter.Export(scene.Fixture.Source, "Expression bones", "Tests",
+                exporterVersion: null, warnings: new List<string>(), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                listFaces: new[] { bow, plain, hand }.Select(face => (face.name, face, 0f)).ToList(), gestureFaces: gestureFaces);
+            var bytes = Export(new[] { hand });
+            var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
+            Assert.That(document.Order, Is.EqualTo(ExpressionAnimationDocument.SourceOrder));
+            Assert.That(document.Expressions.Select(e => (e.Expression, e.Source)), Is.EqualTo(new[]
+            {
+                ("Hand", ExpressionSource.Gesture), ("Plain", ExpressionSource.Menu), ("Bow", ExpressionSource.Menu)
+            }));
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
+            var custom = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"];
+            Assert.That(custom.Keys, Is.EqualTo(new[] { "Hand", "Plain", "Bow" }));
+            var unknown = ExpressionAnimationData.ReadDocument(Extension(Export(null)));
+            Assert.That(unknown.Expressions.Select(e => (e.Expression, e.Source)), Is.EqualTo(new[]
+            {
+                ("Bow", ExpressionSource.Gesture), ("Plain", ExpressionSource.Gesture), ("Hand", ExpressionSource.Gesture)
+            }));
+        }
+
         static List<object> PresetBinds(byte[] bytes, string preset)
         {
             var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
