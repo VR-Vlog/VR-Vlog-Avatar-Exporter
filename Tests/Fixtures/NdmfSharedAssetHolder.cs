@@ -8,5 +8,6 @@ namespace VRVlog.LilToonExporter.Tests
     {
         public NdmfSharedAssetFixture Settings;
         public Renderer Renderer;
+        public Transform[] Targets;
     }
 }
