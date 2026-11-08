@@ -260,6 +260,12 @@ namespace VRVlog.LilToonExporter
         internal const string VrcFuryNoDescriptorWarning =
             "VRC Avatar Descriptorが無いためVRCFuryの設定を適用せずに書き出しました";
         internal const string VrcFuryApplied = "VRCFuryの設定を一時コピーに適用しました";
+        internal const string BuildApplied = "Modular Avatar / NDMF の衣装・追従・メッシュ編集を一時コピーに適用しました。";
+
+        // The lines a preview shows: what the build left out or could not do,
+        // not the two that only say it ran.
+        internal static List<string> PreviewNotices(IEnumerable<string> warnings) =>
+            warnings.Where(warning => warning != BuildApplied && warning != VrcFuryApplied).Distinct().ToList();
         internal static Func<GameObject, bool> VrcFuryOverride;
 
         // The hook is called directly, so VRCFury's own refusal to build its
@@ -609,6 +615,11 @@ namespace VRVlog.LilToonExporter
                 tolerateFailedPasses);
         }
 
+        // The pose and blink previews read the avatar the way the board does:
+        // a pass NDMF reports as failed is left out, and the others still apply.
+        internal static NdmfExportPreparation PrepareForPreview(GameObject source, GameObject clone, ICollection<string> warnings) =>
+            Prepare(source, clone, warnings, tolerateFailedPasses: ExportStageGuard.ContinueByDefault);
+
         internal static NdmfExportPreparation ProcessClone(GameObject source, GameObject clone, Bridge bridge,
             ICollection<string> warnings = null, Action<Material, Material> materialCopyObserver = null,
             Action<NdmfExportPreparation> afterTransforming = null, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false,
@@ -745,7 +756,7 @@ namespace VRVlog.LilToonExporter
                     // The exporter callback validates scoped AAO mappings;
                     // legacy callers still require exact generated names.
                     if (afterTransforming == null) lease.RequireMorphs(requiredMorphs, clone, tolerateLostMorphs, warnings);
-                    warnings?.Add("Modular Avatar / NDMF の衣装・追従・メッシュ編集を一時コピーに適用しました。");
+                    warnings?.Add(BuildApplied);
                     return lease;
                 }
                 finally

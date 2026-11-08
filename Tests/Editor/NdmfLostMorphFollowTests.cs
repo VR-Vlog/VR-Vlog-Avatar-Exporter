@@ -543,6 +543,61 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void ThePosePreviewAndTheBlinkPreviewLeaveOutAPassFailingInTransforming()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginTransformFail, installed.Descriptor, installed.Proxy);
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            const string failedPass = "The failing mesh tool test pass failed.";
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var options = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
+            options.Both.Add(new BlinkShapeBinding { Renderer = scene.Front, Shape = "Face blink", Weight = 100 });
+            var gimmicks = new ExportGimmickOptions { AutoExclude = false };
+            void AssertBack(GameObject copy) =>
+                Assert.That(copy.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back").transform.parent.name, Is.EqualTo("Head"),
+                    "The preview's copy keeps the MA Bone Proxy.");
+            var previous = ExportTestHooks.ContinueByDefault;
+            var blink = ScriptableObject.CreateInstance<BlinkPreviewWindow>();
+            PoseReviewWindow pose = null;
+            try
+            {
+                ExportTestHooks.ContinueByDefault = false;
+                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => blink.Prepare(scene.Fixture.Source, options, Array.Empty<GameObject>(), gimmicks));
+                Assert.That(failure.ToString(), Does.Contain(failedPass), "The failing test pass must be what stops a strict preview.");
+                blink.Cleanup();
+                pose = PoseReviewWindow.Show(scene.Fixture.Source, new PoseExportOptions(), Array.Empty<GameObject>(), gimmicks);
+                typeof(PoseReviewWindow).GetMethod("PreparePreview", flags).Invoke(pose, null);
+                Assert.That(typeof(PoseReviewWindow).GetField("error", flags).GetValue(pose), Is.Not.Null, "A strict pose preview stops too.");
+                Assert.That(pose.Notices, Is.Empty);
+
+                ExportTestHooks.ContinueByDefault = true;
+                blink.Prepare(scene.Fixture.Source, options, Array.Empty<GameObject>(), gimmicks);
+                Assert.That(blink.Notices, Has.Some.Contains(failedPass));
+                Assert.That(blink.Notices, Does.Not.Contain(NdmfExportPreparation.BuildApplied));
+                var blinkCopy = (GameObject)typeof(BlinkPreviewWindow).GetField("copy", flags).GetValue(blink);
+                AssertBack(blinkCopy);
+                // The preview still closes the eyes on the copy the build left.
+                typeof(BlinkPreviewWindow).GetField("closure", flags).SetValue(blink, 1f);
+                typeof(BlinkPreviewWindow).GetMethod("ApplyPose", flags).Invoke(blink, null);
+                var front = blinkCopy.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Front");
+                Assert.That(front.GetBlendShapeWeight(front.sharedMesh.GetBlendShapeIndex("Face blink")), Is.EqualTo(100));
+
+                typeof(PoseReviewWindow).GetMethod("PreparePreview", flags).Invoke(pose, null);
+                Assert.That(typeof(PoseReviewWindow).GetField("error", flags).GetValue(pose), Is.Null);
+                Assert.That(pose.Notices, Has.Some.Contains(failedPass));
+                Assert.That(pose.Notices, Does.Not.Contain(NdmfExportPreparation.BuildApplied));
+                AssertBack((GameObject)typeof(PoseReviewWindow).GetField("copy", flags).GetValue(pose));
+            }
+            finally
+            {
+                ExportTestHooks.ContinueByDefault = previous;
+                blink.Cleanup();
+                Object.DestroyImmediate(blink);
+                if (pose != null) pose.Close();
+            }
+        }
+
         const string LostMorphTestPluginOptimize = "optimize";
         const string LostMorphTestPluginTransformFail = "transformfail";
         const string LostMorphTestPluginOptimizeFail = "optimizefail";
