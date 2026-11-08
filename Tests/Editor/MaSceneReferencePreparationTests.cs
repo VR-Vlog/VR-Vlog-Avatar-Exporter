@@ -459,16 +459,24 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(source.transform.parent, Is.SameAs(enclosing.transform));
         }
 
-        void AssertRawGuardRejectsBeforeNormalization()
+        // Without normalization the guard would detach the reference. It runs
+        // on a copy of its own, so the test's copy keeps the raw reference.
+        void AssertRawGuardDetachesBeforeNormalization()
         {
             const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var probe = Own(Object.Instantiate(source));
             var dependencies = typeof(NdmfExportPreparation).GetMethod("Dependencies", flags, null,
-                new[] { typeof(GameObject) }, null).Invoke(null, new object[] { clone });
-            var error = Assert.Throws<TargetInvocationException>(() => typeof(NdmfExportPreparation)
-                .GetMethod("RequireCopySceneReferences", flags).Invoke(null, new[] { (object)clone, dependencies }));
-            Assert.That(error.InnerException, Is.TypeOf<InvalidOperationException>());
-            StringAssert.Contains("外部を指すシーン参照", error.InnerException.Message);
+                new[] { typeof(GameObject) }, null).Invoke(null, new object[] { probe });
+            var warnings = new List<string>();
+            typeof(NdmfExportPreparation).GetMethod("DetachExternalSceneReferences", flags)
+                .Invoke(null, new[] { (object)probe, dependencies, warnings });
+            Assert.That(warnings.Any(warning => warning.Contains("参照を外して書き出しました") && warning.Contains("other scene avatar/MainRig")), Is.True,
+                string.Join("
+", warnings));
         }
+
+        static void AssertNothingDetached(IEnumerable<string> warnings) =>
+            Assert.That(warnings, Has.None.Contains("参照を外して書き出しました"));
 
         [TestCase(false)]
         [TestCase(true)]
@@ -484,12 +492,14 @@ namespace VRVlog.LilToonExporter.Tests
             var copiedRig = targetIsAvatarRoot ? clone.transform : clone.transform.Find("MainRig");
             AssertRawReference(copiedMerge, "mergeTarget", externalRig.gameObject, path);
             Assert.That(EffectiveSerializedTarget(copiedMerge, "mergeTarget"), Is.SameAs(copiedRig.gameObject));
-            AssertRawGuardRejectsBeforeNormalization();
+            AssertRawGuardDetachesBeforeNormalization();
 
             var before = Own(new Mesh());
             var after = Own(new Mesh());
-            using (NdmfExportPreparation.Prepare(source, clone))
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.Prepare(source, clone, warnings))
             {
+                AssertNothingDetached(warnings);
                 var copiedArm = copiedRig.Find("UpperArm.L");
                 var copiedSleeve = clone.transform.Find("Sleeve").GetComponent<SkinnedMeshRenderer>();
                 Assert.That(copiedSleeve.bones[0], Is.SameAs(copiedArm));
@@ -514,26 +524,35 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(originalMesh != null, Is.True, "Cleanup must not own the source mesh.");
         }
 
+        // A reference out of the avatar is detached on the copy, as a VRChat
+        // upload leaves it out of the built avatar, and the build continues.
         [Test]
-        public void UnresolvedStaleMaPathRemainsRejectedBeforeAnyPass()
+        public void UnresolvedStaleMaPathIsDetachedOnTheCopyBeforeAnyPass()
         {
             CreateFixture();
             SetRawReference(merge, "mergeTarget", externalRig.gameObject, "missing rig");
             clone = Object.Instantiate(source);
             ResetFakeBridge();
-            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ProcessClone(source, clone, FakeBridge()));
-            StringAssert.Contains("外部を指すシーン参照", error.Message);
-            StringAssert.Contains("ModularAvatarMergeArmature", error.Message);
-            StringAssert.Contains("mergeTarget.targetObject", error.Message);
-            Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.EqualTo(0));
-            AssertRawReference(merge, "mergeTarget", externalRig.gameObject, "missing rig");
-            AssertRawReference(clone.transform.Find("clothing-merge").GetComponent(merge.GetType()),
-                "mergeTarget", externalRig.gameObject, "missing rig");
+            var copiedMerge = clone.transform.Find("clothing-merge").GetComponent(merge.GetType());
+            NdmfPreparationTests.FakeProcessor.GeneratingAction = root =>
+                AssertRawReference(copiedMerge, "mergeTarget", null, "missing rig");
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings))
+            {
+                var detached = warnings.Where(warning => warning.Contains("参照を外して書き出しました")).ToList();
+                Assert.That(detached, Has.Count.EqualTo(1), string.Join("\n", warnings));
+                StringAssert.Contains("ModularAvatarMergeArmature", detached[0]);
+                StringAssert.Contains("mergeTarget.targetObject", detached[0]);
+                StringAssert.Contains("other scene avatar/MainRig", detached[0]);
+                Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.EqualTo(2));
+                AssertRawReference(merge, "mergeTarget", externalRig.gameObject, "missing rig");
+                Assert.That(externalRig.parent, Is.SameAs(external.transform));
+            }
         }
 
         [TestCase(false)]
         [TestCase(true)]
-        public void OrdinaryExternalComponentReferencesRemainRejectedWithTheExactField(bool probeAnchor)
+        public void OrdinaryExternalComponentReferencesAreDetachedOnTheCopyWithTheExactField(bool probeAnchor)
         {
             CreateFixture();
             var externalRenderer = externalRig.gameObject.AddComponent<MeshRenderer>();
@@ -541,12 +560,24 @@ namespace VRVlog.LilToonExporter.Tests
             else source.AddComponent<NdmfSharedAssetHolder>().Renderer = externalRenderer;
             clone = Object.Instantiate(source);
             ResetFakeBridge();
-            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ProcessClone(source, clone, FakeBridge()));
-            StringAssert.Contains("外部を指すシーン参照", error.Message);
-            StringAssert.Contains(probeAnchor ? "SkinnedMeshRenderer" : nameof(NdmfSharedAssetHolder), error.Message);
-            StringAssert.Contains(probeAnchor ? "m_ProbeAnchor" : "Renderer", error.Message);
-            StringAssert.Contains("other scene avatar/MainRig", error.Message);
-            Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.EqualTo(0));
+            var copiedSleeve = clone.transform.Find("Sleeve").GetComponent<SkinnedMeshRenderer>();
+            var copiedHolder = clone.GetComponent<NdmfSharedAssetHolder>();
+            // No build pass can reach the other object through the copy.
+            NdmfPreparationTests.FakeProcessor.GeneratingAction = root =>
+            {
+                if (probeAnchor) Assert.That(copiedSleeve.probeAnchor, Is.Null);
+                else Assert.That(copiedHolder.Renderer, Is.Null);
+            };
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings))
+            {
+                var detached = warnings.Where(warning => warning.Contains("参照を外して書き出しました")).ToList();
+                Assert.That(detached, Has.Count.EqualTo(1), string.Join("\n", warnings));
+                StringAssert.Contains(probeAnchor ? "SkinnedMeshRenderer" : nameof(NdmfSharedAssetHolder), detached[0]);
+                StringAssert.Contains(probeAnchor ? "m_ProbeAnchor" : "Renderer", detached[0]);
+                StringAssert.Contains("other scene avatar/MainRig", detached[0]);
+                Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.EqualTo(2));
+            }
             if (probeAnchor) Assert.That(sleeve.probeAnchor, Is.SameAs(externalRig));
             else Assert.That(source.GetComponent<NdmfSharedAssetHolder>().Renderer, Is.SameAs(externalRenderer));
             Assert.That(externalRig.parent, Is.SameAs(external.transform));
@@ -574,7 +605,7 @@ namespace VRVlog.LilToonExporter.Tests
                 SetRawReference(setting, "m_shapes.Array.data[" + i + "].Object", externalRig.gameObject, "Sleeve");
             }
             clone = Object.Instantiate(source);
-            AssertRawGuardRejectsBeforeNormalization();
+            AssertRawGuardDetachesBeforeNormalization();
             ResetFakeBridge();
             NdmfPreparationTests.FakeProcessor.Action = root =>
             {
@@ -583,9 +614,11 @@ namespace VRVlog.LilToonExporter.Tests
                     AssertRawReference(copiedSetting, "m_shapes.Array.data[" + i + "].Object",
                         root.transform.Find("Sleeve").gameObject, "Sleeve");
             };
-            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge()))
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings))
                 for (var i = 0; i < 2; i++)
                     AssertRawReference(setting, "m_shapes.Array.data[" + i + "].Object", externalRig.gameObject, "Sleeve");
+            AssertNothingDetached(warnings);
             Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.EqualTo(2));
         }
 
@@ -663,7 +696,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void InactiveUnresolvedMaSceneReferenceIsRejectedWithoutSilentlyDroppingItsAuthoring()
+        public void InactiveUnresolvedMaSceneReferenceIsDetachedWithoutSilentlyDroppingItsAuthoring()
         {
             CreateFixture();
             var unused = Child(source.transform, "unused inactive wardrobe", Vector3.zero);
@@ -675,9 +708,15 @@ namespace VRVlog.LilToonExporter.Tests
             clone = Object.Instantiate(source);
             var copiedUnused = clone.transform.Find("unused inactive wardrobe");
             ResetFakeBridge();
-            Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ProcessClone(source, clone, FakeBridge()));
-            Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.Zero,
-                "The unresolved external scene edge must stop before any plugin can mutate that other avatar.");
+            // The external scene edge is gone before any plugin could follow it
+            // to mutate that other avatar.
+            NdmfPreparationTests.FakeProcessor.GeneratingAction = root =>
+                AssertRawReference(copiedUnused.GetComponent(merge.GetType()), "mergeTarget", null, "missing rig");
+            var warnings = new List<string>();
+            NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings).Dispose();
+            Assert.That(NdmfPreparationTests.FakeProcessor.Calls, Is.EqualTo(2));
+            Assert.That(warnings.Any(warning => warning.Contains("参照を外して書き出しました") && warning.Contains("unused inactive wardrobe")), Is.True,
+                string.Join("\n", warnings));
             Assert.That(copiedUnused.GetComponent(merge.GetType()), Is.Not.Null);
             Assert.That(copiedUnused.gameObject.activeInHierarchy, Is.False);
             AssertRawReference(unusedMerge, "mergeTarget", externalRig.gameObject, "missing rig");

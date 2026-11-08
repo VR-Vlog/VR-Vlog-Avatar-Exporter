@@ -713,7 +713,7 @@ namespace VRVlog.LilToonExporter
                             .Concat(expression.DirectPoints.Values)),
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
-                    stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing))));
+                    stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing), tolerateFailedPasses: guard.ContinueOnFailure)));
                 if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
