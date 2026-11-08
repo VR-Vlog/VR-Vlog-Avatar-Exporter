@@ -44,10 +44,22 @@ namespace VRVlog.LilToonExporter
             NeverShrinkPrefixes.Any(prefix => property.StartsWith(prefix, StringComparison.Ordinal));
 
         // A slot with a lilToon UV mode other than UV0 (0) never shrinks, nor
-        // does a 2nd or 3rd main texture drawn as MSDF: halving breaks its edges.
+        // does a 2nd or 3rd main texture drawn as MSDF (halving breaks its edges)
+        // or as a flipbook (the UV range shows one cell, so the true density is
+        // lower than the whole sheet's by the root of the cell count).
         internal static bool NeverShrinks(Material material, string property) =>
             NeverShrinks(property) || material.HasProperty(property + "_UVMode") && material.GetFloat(property + "_UVMode") != 0 ||
-            (property == "_Main2ndTex" || property == "_Main3rdTex") && material.HasProperty(property + "IsMSDF") && material.GetFloat(property + "IsMSDF") != 0;
+            (property == "_Main2ndTex" || property == "_Main3rdTex") &&
+            (material.HasProperty(property + "IsMSDF") && material.GetFloat(property + "IsMSDF") != 0 ||
+             ScalesAtlasUv(material, property + "DecalAnimation") || ScalesAtlasUv(material, property + "DecalSubParam"));
+
+        // lilToon multiplies the UV by SubParam.xy / Animation.xy; both are (1, 1) by default.
+        static bool ScalesAtlasUv(Material material, string vector)
+        {
+            if (!material.HasProperty(vector)) return false;
+            var value = material.GetVector(vector);
+            return value.x != 1 || value.y != 1;
+        }
 
         // UV0 area per world area of one triangle, as texels per metre per texel
         // of a 1×1 texture; null when the triangle is degenerate.

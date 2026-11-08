@@ -2482,13 +2482,7 @@ namespace VRVlog.LilToonExporter
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
-            if (BlocksExport)
-            {
-                // Out of sight, the quick transfer also says what to fix on the board.
-                var needsFix = ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
-                var reason = interactive ? null : BoardBlockReason();
-                return string.IsNullOrEmpty(reason) ? needsFix : needsFix + "\n" + reason;
-            }
+            if (BlocksExport) return BlockedText(!interactive);
             if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T(ExportAuthor.Required);
             // The transfer window calls this outside Advance, so it opens the
             // batch the save button runs in: the board's records check the
@@ -2507,12 +2501,20 @@ namespace VRVlog.LilToonExporter
         {
             if (savedTo == null) throw new ArgumentNullException(nameof(savedTo));
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
-            if (BlocksExport) return ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
+            if (BlocksExport) return BlockedText(true);
             if (!ExportAuthor.IsValid(targetAuthor)) return ExporterLocalization.T(ExportAuthor.Required);
             ExportRecoverySession recovery;
             using (ExperimentalExpressionCaptureSession.Batch())
                 recovery = Save(destination, name, targetAuthor, (license ?? new AvatarLicenseOptions()).Copy(), true, null, savedTo);
             return recovery == null ? null : recovery.Failure?.Message ?? "";
+        }
+
+        // Out of sight, the quick transfer also says what to fix on the board.
+        string BlockedText(bool withReason)
+        {
+            var needsFix = ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
+            var reason = withReason ? BoardBlockReason() : null;
+            return string.IsNullOrEmpty(reason) ? needsFix : needsFix + "\n" + reason;
         }
 
         // One save path for the file and the transfer. A transfer (written set)
