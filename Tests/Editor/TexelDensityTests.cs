@@ -300,6 +300,28 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(texture); }
         }
 
+        // A flipbook samples one cell at a time, so the measured density is too high.
+        [TestCase("_Main2ndTex", "DecalAnimation", 1f, 1f, true)]
+        [TestCase("_Main2ndTex", "DecalAnimation", 4f, 4f, false)]
+        [TestCase("_Main3rdTex", "DecalAnimation", 2f, 1f, false)]
+        [TestCase("_Main2ndTex", "DecalSubParam", .9f, .9f, false)]
+        public void AFlipbookTextureNeverShrinks(string slot, string suffix, float x, float y, bool measured)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Flipbook " + slot };
+            using var fixture = new QuadFixture();
+            try
+            {
+                Assert.That(fixture.Material.HasProperty(slot + suffix), Is.True, slot + suffix);
+                fixture.Material.SetTexture(slot, texture);
+                var vector = fixture.Material.GetVector(slot + suffix);
+                fixture.Material.SetVector(slot + suffix, new Vector4(x, y, vector.z, vector.w));
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.EqualTo(measured));
+                if (!measured) Assert.That(plan.Maximum(texture, 1024), Is.EqualTo(1024));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
         [TestCase(TextureFormat.RGBAHalf)]
         [TestCase(TextureFormat.RGBAFloat)]
         public void AnHdrTextureNeverShrinks(TextureFormat format)

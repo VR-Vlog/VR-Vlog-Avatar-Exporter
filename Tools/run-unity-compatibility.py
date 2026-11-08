@@ -937,6 +937,7 @@ BEHAVIOR_CASES = {
         'ASlotOnAnotherUvNeverShrinks': 2,
         'AStaleTilingOfASlotWithoutScaleOffsetIsIgnored': 2,
         'AnMsdfTextureNeverShrinks': 3,
+        'AFlipbookTextureNeverShrinks': 4,
         'AnHdrTextureNeverShrinks': 2,
         'ATextureSharedWithANeverShrinkSlotDoesNotShrink': 1,
         'AMeshWithoutUvHasNoMeasurableUser': 1,
