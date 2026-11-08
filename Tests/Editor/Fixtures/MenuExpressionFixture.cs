@@ -160,8 +160,8 @@ namespace VRVlog.LilToonExporter.Tests
                 ("Smile", ExpressionSource.Menu), ("Authored (2)", ExpressionSource.Menu), ("happy (2)", ExpressionSource.Menu), ("JawOpen (2)", ExpressionSource.Menu) };
             check(plainDocument.Expressions.Select(e => (e.Expression, e.Source)).SequenceEqual(listed.Select(e => (e.Name, e.Source))) &&
                 plainDocument.Order == ExpressionAnimationDocument.SourceOrder &&
-                Custom(plainResult.Json).Keys.Skip(1).SequenceEqual(listed.Select(e => e.Name)),
-                "The extension lists the final numbered names with their sources, by source, in the VRM's custom order.");
+                Custom(plainResult.Json).Keys.SequenceEqual(listed.Take(2).Select(e => e.Name).Append("Authored").Concat(listed.Skip(2).Select(e => e.Name))),
+                "The extension lists the final numbered names with their sources, by source, in the VRM's custom order, with the face already in the file before the others.");
             check(MenuExpressionFixture.CountRegistered(plainResult.Write()) == 6 &&
                 MenuExpressionFixture.RegisteredNames(plainResult.Write()).SequenceEqual(listed.Select(e => e.Name)),
                 "The completion count reads the extension's list; the authored bound expression is not counted.");
