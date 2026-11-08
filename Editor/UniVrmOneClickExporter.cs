@@ -495,6 +495,7 @@ namespace VRVlog.LilToonExporter
             ExportStage? builtStage = null;
             try
             {
+                ExportReferencePruning.DropLostSpringJoints(clone, warnings);
                 // MA resolves against the selected avatar after detaching its
                 // owned copy, just as NDMF does when it creates BuildContext.
                 // Source getters can use an enclosing root or no root at all.
