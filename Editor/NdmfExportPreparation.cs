@@ -40,6 +40,8 @@ namespace VRVlog.LilToonExporter
         internal readonly List<string> LostMorphs = new List<string>();
         internal const string LostGeneratedMorphs = "Modular Avatar / NDMF の処理で、以前の書き出しで作られた表情用のBlendShapeが失われたため省略しました: ";
         internal const string UnresolvedFollowingTargetWarning = "{0}: 取り付け先のボーンが見つからないため体の動きについてきません\nModular Avatar の {1} で取り付け先を設定して書き出し直す";
+        internal const string FailedPassesWarning = "次のビルド処理が失敗したため、その処理だけを除いて書き出しました\n{0}\nNDMFコンソールで該当ツールを開いて原因を確認";
+        internal const string ExternalReferenceWarning = "{0} の {1}: アバターの外にある {2} を指していたため、この参照を外して書き出しました";
         private string temporaryAssetPath, temporaryAssetGuid;
         // NDMF's asset saver writes with AssetDatabase, so the folder must be
         // under Assets. A domain starts with no live folder: leases do not
@@ -572,9 +574,12 @@ namespace VRVlog.LilToonExporter
         // stopBeforeOptimizing: a preview that reads the avatar as the export
         // reads it in afterTransforming. Optimizing would rename, merge or
         // remove the shapes the avatar's own clips name.
+        // tolerateFailedPasses: a pass that NDMF reports as failed before
+        // Optimizing leaves out only that pass, as NDMF's play mode and manual
+        // bake do; the other passes, Merge Armature among them, still apply.
         internal static NdmfExportPreparation Prepare(GameObject source, GameObject clone, ICollection<string> warnings = null,
             Action<Material, Material> materialCopyObserver = null, Action<NdmfExportPreparation> afterTransforming = null,
-            bool skipProcessing = false, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false)
+            bool skipProcessing = false, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false, bool tolerateFailedPasses = false)
         {
             RequireOwnedCopy(source, clone);
             // The build tools failed on an earlier attempt: export the copy as
@@ -599,12 +604,14 @@ namespace VRVlog.LilToonExporter
             var processor = FindType("nadena.dev.ndmf.AvatarProcessor");
             var package = processor != null ? PackageInfo.FindForAssembly(processor.Assembly) : null;
             var bridge = Bridge.Resolve(FindType, package?.version);
-            return ProcessClone(source, clone, bridge, warnings, materialCopyObserver, afterTransforming, tolerateLostMorphs, stopBeforeOptimizing);
+            return ProcessClone(source, clone, bridge, warnings, materialCopyObserver, afterTransforming, tolerateLostMorphs, stopBeforeOptimizing,
+                tolerateFailedPasses);
         }
 
         internal static NdmfExportPreparation ProcessClone(GameObject source, GameObject clone, Bridge bridge,
             ICollection<string> warnings = null, Action<Material, Material> materialCopyObserver = null,
-            Action<NdmfExportPreparation> afterTransforming = null, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false)
+            Action<NdmfExportPreparation> afterTransforming = null, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false,
+            bool tolerateFailedPasses = false)
         {
             RequireOwnedCopy(source, clone);
             EnsureCopyAvatarRoot(clone);
@@ -620,13 +627,15 @@ namespace VRVlog.LilToonExporter
             object context = null;
             IDisposable directoryScope = null;
             Exception processError = null;
-            // Set once every earlier phase succeeded and Optimizing starts.
+            // Set once Optimizing starts, with the failed passes reported before it.
             var optimizing = false;
+            var failedBeforeOptimizing = 0;
+            bool Continues() => tolerateFailedPasses || IsSuccessful(bridge, context);
             try
             {
                 try
                 {
-                    RequireCopySceneReferences(clone, cloneAssets);
+                    DetachExternalSceneReferences(clone, cloneAssets, warnings);
                     lease.IsolateSharedAssets(clone, sourceAssets, cloneAssets, materialCopyObserver);
                     // Legacy NDMF plugins (including LightLimitChanger) add
                     // subassets directly to context.AssetContainer. A null
@@ -650,7 +659,7 @@ namespace VRVlog.LilToonExporter
                     try
                     {
                         Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.First, bridge.Generating }));
-                        if (IsSuccessful(bridge, context))
+                        if (Continues())
                         {
                             // MA treats missing attachment targets as NonFatal,
                             // which NDMF.Successful does not reject, and leaves
@@ -660,10 +669,10 @@ namespace VRVlog.LilToonExporter
                             // will leave unattached instead of failing the export.
                             ResolveMaSceneReferences(clone);
                             ValidateSource(clone, unresolvedTargets: warnings ?? new List<string>());
-                            RequireCopySceneReferences(clone, Dependencies(clone));
+                            DetachExternalSceneReferences(clone, Dependencies(clone), warnings);
                             Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Transforming, bridge.Transforming }));
                         }
-                        if (IsSuccessful(bridge, context))
+                        if (Continues())
                         {
                             lease.ApplyVrcFury(clone, warnings, () => Invoke(() => bridge.Serialize.Invoke(context, null)));
                             // Prepared identities must be available while export
@@ -691,6 +700,7 @@ namespace VRVlog.LilToonExporter
                                     && AvatarOptimizerParsesRootController(clone)
                                     ? PlaceholderController(out placeholderLayer) : null;
                                 if (placeholder != null) animator.runtimeAnimatorController = placeholder;
+                                failedBeforeOptimizing = FailedPasses(context)?.Count ?? -1;
                                 optimizing = true;
                                 try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }
                                 finally
@@ -719,7 +729,17 @@ namespace VRVlog.LilToonExporter
                         throw MarkOptimizing(BuildFailure(context, processError), optimizing);
                     }
                     // NDMF records plugin exceptions instead of always rethrowing.
-                    if (!IsSuccessful(bridge, context)) throw MarkOptimizing(BuildFailure(context, null), optimizing);
+                    if (!IsSuccessful(bridge, context))
+                    {
+                        // A tolerant caller keeps the passes that succeeded when
+                        // the report names every failure. A pass that failed in
+                        // Optimizing is still retried without Optimizing.
+                        var failed = tolerateFailedPasses ? FailedPasses(context) : null;
+                        if (failed == null || failed.Count == 0 || (optimizing && failed.Count != failedBeforeOptimizing))
+                            throw MarkOptimizing(BuildFailure(context, null), optimizing);
+                        warnings?.Add(string.Format(ExporterLocalization.T(FailedPassesWarning),
+                            string.Join("\n", failed.Select(entry => entry.Detail).Distinct().Take(8))));
+                    }
                     lease.CaptureRendererReplacements(clone, context);
                     // The exporter callback validates scoped AAO mappings;
                     // legacy callers still require exact generated names.
@@ -845,11 +865,15 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        private static void RequireCopySceneReferences(GameObject clone, HashSet<Object> cloneAssets)
+        private static void DetachExternalSceneReferences(GameObject clone, HashSet<Object> cloneAssets, ICollection<string> warnings = null)
         {
             // Instantiate remaps scene references on cloned components, but a
-            // shared ScriptableObject can still point into the original rig.
-            // Do not guess a matching transform after exclusions or mesh edits.
+            // component can still point at another object in the scene, and a
+            // shared ScriptableObject into the original rig. Build passes must
+            // not reach either, and no matching transform is guessed after
+            // exclusions or mesh edits. A component of the copy loses the
+            // reference, as the avatar a VRChat upload builds does. A shared
+            // asset stops the build: clearing it would edit the original.
             var holders = clone.GetComponentsInChildren<Component>(true).Where(value => value != null).Cast<Object>()
                 .Concat(cloneAssets.Where(IsMutableAsset)).Distinct();
             foreach (var holder in holders)
@@ -861,12 +885,16 @@ namespace VRVlog.LilToonExporter
                     var reference = property.objectReferenceValue;
                     var target = reference is GameObject gameObject ? gameObject.transform :
                         (reference as Component)?.transform;
-                    if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
+                    if (target == null || EditorUtility.IsPersistent(reference) || IsWithinCopy(target, clone)) return false;
+                    if (!(holder is Component component))
                         throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
                             ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
                             "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
                             "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
-                    return false;
+                    warnings?.Add(string.Format(ExporterLocalization.T(ExternalReferenceWarning),
+                        PathFromRoot(component.transform, clone.transform) + " (" + component.GetType().Name + ")", property.propertyPath, ScenePath(target)));
+                    property.objectReferenceValue = null;
+                    return true;
                 });
             }
         }
@@ -1130,34 +1158,48 @@ namespace VRVlog.LilToonExporter
             name.StartsWith(TemporaryAssetFolderPrefix, StringComparison.Ordinal) &&
             name.Skip(TemporaryAssetFolderPrefix.Length).All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
 
-        private static InvalidOperationException BuildFailure(object context, Exception cause)
+        private struct FailedPass
         {
-            var details = new List<string>();
-            var exceptions = new List<Exception>();
-            if (cause != null) exceptions.Add(cause);
+            internal string Detail;
+            internal Exception Exception;
+        }
+
+        // The Error and InternalError entries of NDMF's report, or null when
+        // the report cannot be read.
+        private static List<FailedPass> FailedPasses(object context)
+        {
             try
             {
                 var report = ReadDiagnosticMember(context, "ErrorReport") ?? ReadDiagnosticMember(context, "_report");
-                if (ReadDiagnosticMember(report, "Errors") is System.Collections.IEnumerable errors)
-                    foreach (var entry in errors)
-                    {
-                        var error = ReadDiagnosticMember(entry, "TheError");
-                        var severity = ReadDiagnosticMember(error, "Severity")?.ToString();
-                        if (severity != "Error" && severity != "InternalError") continue;
-                        var plugin = ReadDiagnosticMember(entry, "Plugin");
-                        var pluginName = ReadDiagnosticMember(plugin, "DisplayName") as string ?? "NDMF";
-                        var pass = ReadDiagnosticMember(entry, "PassName") as string;
-                        var exception = ReadDiagnosticMember(error, "Exception") as Exception;
-                        if (exception != null) exceptions.Add(exception);
-                        var message = exception?.Message ?? error?.GetType().GetMethod("ToMessage", Type.EmptyTypes)?.Invoke(error, null) as string;
-                        if (string.IsNullOrWhiteSpace(message)) message = "処理中にエラーが発生しました";
-                        var detail = pluginName + (string.IsNullOrWhiteSpace(pass) ? "" : " / " + pass) + ": " + message.Trim();
-                        if (detail.Length > 900) detail = detail.Substring(0, 900) + "…";
-                        if (!details.Contains(detail)) details.Add(detail);
-                        if (details.Count >= 8) break;
-                    }
+                if (!(ReadDiagnosticMember(report, "Errors") is System.Collections.IEnumerable errors)) return null;
+                var failed = new List<FailedPass>();
+                foreach (var entry in errors)
+                {
+                    var error = ReadDiagnosticMember(entry, "TheError");
+                    var severity = ReadDiagnosticMember(error, "Severity")?.ToString();
+                    if (severity != "Error" && severity != "InternalError") continue;
+                    var plugin = ReadDiagnosticMember(entry, "Plugin");
+                    var pluginName = ReadDiagnosticMember(plugin, "DisplayName") as string ?? "NDMF";
+                    var pass = ReadDiagnosticMember(entry, "PassName") as string;
+                    var exception = ReadDiagnosticMember(error, "Exception") as Exception;
+                    var message = exception?.Message ?? error?.GetType().GetMethod("ToMessage", Type.EmptyTypes)?.Invoke(error, null) as string;
+                    if (string.IsNullOrWhiteSpace(message)) message = "処理中にエラーが発生しました";
+                    var detail = pluginName + (string.IsNullOrWhiteSpace(pass) ? "" : " / " + pass) + ": " + message.Trim();
+                    if (detail.Length > 900) detail = detail.Substring(0, 900) + "…";
+                    failed.Add(new FailedPass { Detail = detail, Exception = exception });
+                }
+                return failed;
             }
-            catch { /* Diagnostics must not replace the original processing failure. */ }
+            catch { return null; }
+        }
+
+        private static InvalidOperationException BuildFailure(object context, Exception cause)
+        {
+            var failed = FailedPasses(context) ?? new List<FailedPass>();
+            var details = failed.Select(entry => entry.Detail).Distinct().Take(8).ToList();
+            var exceptions = new List<Exception>();
+            if (cause != null) exceptions.Add(cause);
+            exceptions.AddRange(failed.Select(entry => entry.Exception).Where(exception => exception != null));
             var summary = "書き出し用コピーの処理を完了できませんでした\n元のアバターは変更していません";
             if (details.Count > 0) summary += "\n\n" + string.Join("\n", details);
             else if (cause != null) summary += "\n\n" + cause.Message;

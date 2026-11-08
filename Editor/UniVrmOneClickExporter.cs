@@ -82,7 +82,8 @@ namespace VRVlog.LilToonExporter
 
         // A failure in NDMF's Optimizing phase, after Generating and Transforming
         // succeeded, leaves out only that phase: the retry keeps the outfit and
-        // mesh edits. Any other build failure still leaves out every build pass.
+        // mesh edits. A pass that NDMF records as failed earlier is left out alone
+        // by the preparation; any other build failure leaves out every build pass.
         private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<T> prepare)
         {
             try { return prepare(); }
@@ -713,7 +714,7 @@ namespace VRVlog.LilToonExporter
                             .Concat(expression.DirectPoints.Values)),
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
-                    stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing))));
+                    stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing), tolerateFailedPasses: guard.ContinueOnFailure)));
                 if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
