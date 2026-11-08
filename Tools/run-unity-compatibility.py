@@ -937,6 +937,8 @@ BEHAVIOR_CASES = {
         'AStaleTilingOfASlotWithoutScaleOffsetIsIgnored': 2,
         'AnMsdfTextureNeverShrinks': 3,
         'AFlipbookTextureNeverShrinks': 4,
+        'AFeatureOffSlotDoesNotRaiseTheDensity': 2,
+        'ATextureOnlyInAFeatureOffSlotIsNotMeasured': 1,
         'AnHdrTextureNeverShrinks': 2,
         'ATextureSharedWithANeverShrinkSlotDoesNotShrink': 1,
         'AMeshWithoutUvHasNoMeasurableUser': 1,

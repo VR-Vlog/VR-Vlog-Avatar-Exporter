@@ -249,6 +249,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(fixture.Material.HasProperty("_EmissionMap_UVMode"), Is.True);
                 fixture.Material.SetTexture("_EmissionMap", texture);
+                fixture.Material.SetFloat("_UseEmission", 1);
                 fixture.Material.SetFloat("_EmissionMap_UVMode", uvMode);
                 Assert.That(TexelDensity.Measure(fixture.Root).Measured(texture), Is.EqualTo(measured));
             }
@@ -270,6 +271,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(index, Is.GreaterThanOrEqualTo(0));
                 Assert.That(shader.GetPropertyFlags(index) & UnityEngine.Rendering.ShaderPropertyFlags.NoScaleOffset, Is.Not.Zero);
                 fixture.Material.SetTexture("_ShadowColorTex", texture);
+                fixture.Material.SetFloat("_UseShadow", 1);
                 fixture.Material.SetTextureScale("_ShadowColorTex", new Vector2(4, 4));
                 fixture.Material.SetTextureScale("_MainTex", new Vector2(mainTiling, mainTiling));
                 Assert.That(fixture.Material.GetTextureScale("_ShadowColorTex"), Is.EqualTo(new Vector2(4, 4)));
@@ -292,6 +294,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(fixture.Material.HasProperty(slot + "IsMSDF"), Is.True, slot);
                 fixture.Material.SetTexture(slot, texture);
+                fixture.Material.SetFloat("_Use" + slot.Substring(1), 1);
                 fixture.Material.SetFloat(slot + "IsMSDF", msdf);
                 var plan = TexelDensity.Measure(fixture.Root);
                 Assert.That(plan.Measured(texture), Is.EqualTo(measured));
@@ -313,11 +316,48 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(fixture.Material.HasProperty(slot + suffix), Is.True, slot + suffix);
                 fixture.Material.SetTexture(slot, texture);
+                fixture.Material.SetFloat("_Use" + slot.Substring(1), 1);
                 var vector = fixture.Material.GetVector(slot + suffix);
                 fixture.Material.SetVector(slot + suffix, new Vector4(x, y, vector.z, vector.w));
                 var plan = TexelDensity.Measure(fixture.Root);
                 Assert.That(plan.Measured(texture), Is.EqualTo(measured));
                 if (!measured) Assert.That(plan.Maximum(texture, 1024), Is.EqualTo(1024));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
+        // A slot whose feature is off is not drawn, so its higher density must not
+        // raise the maximum of a texture that is also used where it is drawn.
+        [TestCase(0f, 1024d)]
+        [TestCase(1f, 4096d)]
+        public void AFeatureOffSlotDoesNotRaiseTheDensity(float useEmission, double expected)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Shared with emission" };
+            using var fixture = new QuadFixture();
+            try
+            {
+                Assert.That(fixture.Material.HasProperty("_UseEmission"), Is.True);
+                fixture.Material.SetTexture("_MainTex", texture);
+                fixture.Material.SetTexture("_EmissionMap", texture);
+                fixture.Material.SetTextureScale("_EmissionMap", new Vector2(4, 4));
+                fixture.Material.SetFloat("_UseEmission", useEmission);
+                Assert.That(TexelDensity.Measure(fixture.Root).Density(texture), Is.EqualTo(expected).Within(1e-6));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
+        [Test]
+        public void ATextureOnlyInAFeatureOffSlotIsNotMeasured()
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Emission off" };
+            using var fixture = new QuadFixture();
+            try
+            {
+                fixture.Material.SetTexture("_EmissionMap", texture);
+                fixture.Material.SetFloat("_UseEmission", 0);
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.False);
+                Assert.That(plan.Maximum(texture, 1024), Is.EqualTo(1024));
             }
             finally { Object.DestroyImmediate(texture); }
         }

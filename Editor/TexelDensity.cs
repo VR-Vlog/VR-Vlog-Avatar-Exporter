@@ -153,6 +153,9 @@ namespace VRVlog.LilToonExporter
                             never.Add(texture);
                             continue;
                         }
+                        // A slot whose feature is off is written blank, so it does not
+                        // count; its density could only allow a smaller texture.
+                        if (!LilToonInactiveSlots.Sampled(material, name)) continue;
                         // A slot sampled on the main UV is tiled by both; a smaller main
                         // tiling lowers the density, a larger one is not counted.
                         var tiling = Tiling(material, name) * (name == "_MainTex" ? 1 : Math.Min(1, mainTiling));
