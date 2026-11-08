@@ -201,8 +201,12 @@ namespace VRVlog.LilToonExporter.ExportRegression
                 w.Close();
         }
 
+        // The board runs a waiting validation only while it has a session
+        // (ExperimentalExpressionCaptureWindow.Advance), so after a failed
+        // preparation the flag stays set and nothing will ever clear it.
         static bool Busy(object window) =>
-            window != null && (Get(window, "pending") != null || (bool)Get(window, "candidateValidationPending"));
+            window != null && (Get(window, "pending") != null ||
+                               (Get(window, "session") != null && (bool)Get(window, "candidateValidationPending")));
 
         // ---- screenshots -------------------------------------------------------
 
