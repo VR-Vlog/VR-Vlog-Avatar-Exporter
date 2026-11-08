@@ -20,7 +20,7 @@ Add the package from this repository's `Formats` folder with a pinned commit, in
 "com.vrvlog.avatar-formats": "https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter.git?path=/Formats#<commit>"
 ```
 
-The assembly is auto-referenced, so scripts outside any assembly definition (`Assembly-CSharp`) see these types. An assembly definition that uses them references `VRVlog.AvatarFormats` by name.
+The assembly is auto-referenced, so scripts outside any assembly definition (`Assembly-CSharp`, `Assembly-CSharp-Editor` and their `-firstpass` variants) see these types. An assembly definition that uses them references `VRVlog.AvatarFormats` by name.
 
 The exporter package (`com.vrvlog.liltoon-vrm-exporter`) already contains this folder. Do not install both in one project: the two copies define the same assembly name and fail to compile.
 

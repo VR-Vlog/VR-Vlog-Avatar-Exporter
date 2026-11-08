@@ -22,5 +22,6 @@ Unity では、asmdef に属さないスクリプト（`Assembly-CSharp`）は `
 
 ## 影響
 
-- Exporter を入れた VRChat のプロジェクトでも、`Assembly-CSharp` から `VRVlog` 名前空間の型が見えるようになる。型は `System` だけを使い、Unity の API に依存しないので、ビルドの中身は変わらない。利用者のスクリプトが同じ完全名の型を持っていなければ衝突しない。
+- Exporter を入れた VRChat のプロジェクトでも、asmdef に属さないスクリプト（`Assembly-CSharp`・`Assembly-CSharp-Editor`・`-firstpass`）から `VRVlog` 名前空間の型が見えるようになる。型は `System` だけを使い、Unity の API に依存しないので、ビルドの中身は変わらない。
+- 同じ完全名の型が別の自動参照のアセンブリにもあると、`Assembly-CSharp` 側で CS0433 になる。asmdef に属さない利用者のスクリプトにある場合は、そちらが優先されて警告（CS0436）だけになる。`VRVlog` 名前空間なので起きにくい。
 - 書き出しの結果は変わらない。
