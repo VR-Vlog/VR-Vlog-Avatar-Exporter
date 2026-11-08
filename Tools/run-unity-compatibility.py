@@ -669,7 +669,7 @@ BEHAVIOR_CASES = {
         'ActiveMaPathReferenceRetainsTheRequiredInactiveAuthoringBeforeCanonicalBuild': 1,
         'InstalledMaMergesAnInactiveNestedArmatureWithItsDeclaredTargets': 1,
         'EnclosingAvatarRelativePathIsNotReinterpretedAfterTheSelectedSubtreeIsDetached': 1,
-        'ExternalDirectTargetWithMissingPathRemainsRejectedWithoutEditingEitherAvatar': 2,
+        'ExternalDirectTargetWithMissingPathIsDetachedWithoutEditingEitherAvatar': 2,
         'InactiveUnresolvedMaSceneReferenceIsDetachedWithoutSilentlyDroppingItsAuthoring': 1,
         'InstalledMaBoneProxyResolvesItsPathUnderTheExportCopyRootWithoutASourceMarker': 1,
         'InstalledMaMergesSelectedAvatarWithoutASourceRootMarker': 2,

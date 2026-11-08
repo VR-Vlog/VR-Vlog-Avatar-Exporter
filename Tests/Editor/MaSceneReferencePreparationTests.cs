@@ -236,7 +236,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("")]
         [TestCase(null)]
-        public void ExternalDirectTargetWithMissingPathRemainsRejectedWithoutEditingEitherAvatar(string referencePath)
+        public void ExternalDirectTargetWithMissingPathIsDetachedWithoutEditingEitherAvatar(string referencePath)
         {
             CreateFixture();
             SetRawMergeReference(externalRig.gameObject, referencePath);
@@ -247,7 +247,12 @@ namespace VRVlog.LilToonExporter.Tests
             AssertRawReference(merge, "mergeTarget", externalRig.gameObject, referencePath ?? "");
             Assert.That(RawMergePath(), Is.EqualTo(referencePath));
             clone = Object.Instantiate(source);
-            Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.Prepare(source, clone));
+            // The copy loses the edge into the other avatar before any pass, so
+            // the outfit is left unattached and the result list names that field.
+            var warnings = new List<string>();
+            NdmfExportPreparation.Prepare(source, clone, warnings).Dispose();
+            Assert.That(warnings.Any(warning => warning.Contains("参照を外して書き出しました") && warning.Contains("mergeTarget")), Is.True,
+                string.Join("\n", warnings));
             Assert.That(externalRig.parent, Is.SameAs(external.transform));
             Assert.That(externalRig.localPosition, Is.EqualTo(externalPosition));
             Assert.That(EditorJsonUtility.ToJson(merge), Is.EqualTo(sourceSettings));
