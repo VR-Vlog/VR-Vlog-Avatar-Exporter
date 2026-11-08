@@ -20,4 +20,4 @@
 
 ## 確かめたこと
 
-`ExpressionAnimationV2WriterTests.CustomFacesAlreadyInTheFileCountAmongTheOthers`: ハンドジェスチャー → FaceEmo → 元からある表情 → その他 の順になること、一覧には書き出した表情だけが載ること、その他が無くても元からある表情が残ること。
+`ExpressionAnimationV2WriterTests.CustomFacesAlreadyInTheFileCountAmongTheOthers`: ハンドジェスチャー → FaceEmo → 元からある表情 → その他 の順になること、一覧には書き出した表情だけが載ること、その他が無くても元からある表情が残ること、同じ名前の表情は今までどおり ` (2)` が付いて元の表情の中身が残ること。

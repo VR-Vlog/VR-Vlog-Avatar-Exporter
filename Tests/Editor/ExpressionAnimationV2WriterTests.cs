@@ -519,6 +519,16 @@ namespace VRVlog.LilToonExporter.Tests
             bytes = scene.Export(scene.Bake(
                 Face("Hand B", "d", ExpressionSource.Gesture, 40)), null, "Authored A");
             Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Hand B", "Authored A" }));
+
+            // A face the export writes under a name already in the file gets
+            // the suffix it had before, and the one in the file keeps its entry.
+            bytes = scene.Export(scene.Bake(
+                Face("Authored A", "e", ExpressionSource.Gesture, 50)), null, "Authored A");
+            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Authored A (2)", "Authored A" }));
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
+            var existing = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"])["Authored A"];
+            Assert.That(existing["isBinary"], Is.True);
+            Assert.That((List<object>)existing["morphTargetBinds"], Is.Empty);
         }
 
         static List<string> CustomNames(byte[] bytes)
