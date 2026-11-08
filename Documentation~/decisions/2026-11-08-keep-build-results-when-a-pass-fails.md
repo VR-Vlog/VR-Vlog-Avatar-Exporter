@@ -24,6 +24,7 @@ VRChat のアップロードは失敗が 1 つでもあると止まるので、V
   - Optimizing を始めた後で失敗が増えたとき。これは 2026-10-30 の決定どおり `Optimizing` の失敗として扱い、Optimizing を外して書き出し直す。
 - 書き出しは `guard.ContinueOnFailure`、表情ボードは `ExportStageGuard.ContinueByDefault` で `tolerateFailedPasses` を決める。どちらも失敗した段階を外す設定と同じ値なので、通常とかんたんで同じに効く。厳密な設定ではこれまでどおり止まる。`interactive` は確認を出すかどうかだけを決める決まりのまま。
 - `RequireCopySceneReferences` を `DetachExternalSceneReferences` に変える。書き出し用コピーのコンポーネントがコピーの外のシーンのオブジェクトを指していたら、その参照をコピーの上だけで外し、どのコンポーネントのどの項目が何を指していたかを結果一覧に出す（`ExternalReferenceWarning`）。ビルド処理がその参照をたどって別のアバターを書き換えることはない。共有のアセット（ScriptableObject など）が外部を指すときは、外すと元のアセットを書き換えるので、これまでどおり止める。
+  - これは厳密な設定でも同じにする。アバターの外を指す参照はアバターと一緒に保存されず、VRChat に上げたアバターにも残らない。段階の失敗ではなく、外した場所を結果一覧に出せば足りるため。
 - Modular Avatar が無いとき、別の NDMF の版のときも同じ経路を通る。ErrorReport の読み取りはリフレクションで、読めなければ従来の振る舞いに戻る。
 - VRCFury の処理（`ApplyVrcFury`）の失敗はこの変更に含めない。VRCFury の途中の状態を書き出すと別の崩れ方をするおそれがあり、検証環境に VRCFury の衣装が無く確かめられないため。
 
