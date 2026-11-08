@@ -509,17 +509,17 @@ namespace VRVlog.LilToonExporter.Tests
                 return entry;
             }
             var bytes = scene.Export(scene.Bake(
-                Face("Other A", "a", ExpressionSource.Menu, 10),
-                Face("Emo A", "b", ExpressionSource.FaceEmo, 20),
-                Face("Hand A", "c", ExpressionSource.Gesture, 30)), null, "Authored A", "Authored B");
-            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Hand A", "Emo A", "Authored A", "Authored B", "Other A" }));
+                Face("Mouth", "a", ExpressionSource.Menu, 10),
+                Face("Joy", "b", ExpressionSource.FaceEmo, 20),
+                Face("Fist", "c", ExpressionSource.Gesture, 30)), null, "Authored A", "Authored B");
+            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Fist", "Joy", "Authored A", "Authored B", "Mouth" }));
             var listed = ExpressionAnimationData.ReadDocument(Extension(bytes)).Expressions.Select(value => value.Expression);
-            Assert.That(listed, Is.EqualTo(new[] { "Hand A", "Emo A", "Other A" }), "A face the export did not write has no source to list.");
+            Assert.That(listed, Is.EqualTo(new[] { "Fist", "Joy", "Mouth" }), "A face the export did not write has no source to list.");
 
             // Nothing else to place them before: they stay.
             bytes = scene.Export(scene.Bake(
-                Face("Hand B", "d", ExpressionSource.Gesture, 40)), null, "Authored A");
-            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Hand B", "Authored A" }));
+                Face("Peace", "d", ExpressionSource.Gesture, 40)), null, "Authored A");
+            Assert.That(CustomNames(bytes), Is.EqualTo(new[] { "Peace", "Authored A" }));
 
             // A face the export writes under a name already in the file gets
             // the suffix it had before, and the one in the file keeps its entry.
