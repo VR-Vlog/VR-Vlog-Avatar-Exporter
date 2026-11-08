@@ -19,7 +19,9 @@ namespace VRVlog.LilToonExporter
         readonly List<Mesh> meshes = new List<Mesh>();
         readonly Dictionary<Transform, Quaternion> rest = new Dictionary<Transform, Quaternion>();
         Vector3 hipsRest;
-        Vector2 scroll;
+        Vector2 scroll, noticeScroll;
+        // What the preview's build left out, as the export reports it.
+        internal List<string> Notices { get; private set; } = new List<string>();
         IEnumerator<PoseCandidate> pendingSamples;
         bool rebuildRequested;
         int processed;
@@ -76,7 +78,7 @@ namespace VRVlog.LilToonExporter
 
         void PreparePreview()
         {
-            Cleanup(); error = null; processed = 0;
+            Cleanup(); error = null; processed = 0; Notices = new List<string>();
             try
             {
                 using var manual = new ExportObjectExclusions(source, excluded);
@@ -88,9 +90,11 @@ namespace VRVlog.LilToonExporter
                 copy = NdmfExportPreparation.InstantiateOwnedCopy(source);
                 copy.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
                 copy.transform.localScale = Vector3.one;
-                MaAppearanceSnapshot.Apply(source, copy, meshes, omissions);
+                var warnings = new List<string>();
+                MaAppearanceSnapshot.Apply(source, copy, meshes, omissions, warnings);
                 PoseExportSession.RemoveAplFromCopy(source, copy);
-                preparation = NdmfExportPreparation.Prepare(source, copy);
+                preparation = NdmfExportPreparation.PrepareForPreview(source, copy, warnings);
+                Notices = NdmfExportPreparation.PreviewNotices(warnings);
                 foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 // This preview has no Animator/player-loop update. Recalculate
                 // skinning when rendering manually applied bone transforms.
@@ -123,6 +127,7 @@ namespace VRVlog.LilToonExporter
             using (new EditorGUI.DisabledScope(IsBusy))
                 if (GUILayout.Button(ExporterLocalization.T("登録情報を再取得"))) RequestRebuild();
             if (error != null) EditorGUILayout.HelpBox(ExporterLocalization.T(error), MessageType.Warning);
+            PreviewRendering.DrawExportNotices(Notices, ref noticeScroll);
             if (IsBusy)
                 EditorGUILayout.HelpBox(ExporterLocalization.T("ポーズを確認中… ") + processed + " / " + (session?.Entries.Count ?? 0), MessageType.Info);
             else if (session != null)
@@ -224,6 +229,7 @@ namespace VRVlog.LilToonExporter
                 EditorGUILayout.Space(8);
                 EditorGUILayout.LabelField(ExporterLocalization.T("動くポーズは先頭から最後まで再生します。"), EditorStyles.wordWrappedLabel);
                 if (error != null) EditorGUILayout.HelpBox(error, MessageType.Warning);
+                PreviewRendering.DrawExportNotices(Notices, ref noticeScroll);
                 if (IsBusy) EditorGUILayout.LabelField(ExporterLocalization.T("確認中…"), EditorStyles.miniLabel);
                 scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.Height(150));
                 if (session != null)

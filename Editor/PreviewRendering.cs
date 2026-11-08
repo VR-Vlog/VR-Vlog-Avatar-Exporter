@@ -19,6 +19,19 @@ namespace VRVlog.LilToonExporter
             preview.ambientColor = Color.gray;
         }
 
+        const float NoticeMaxHeight = 76;
+
+        // What a preview's build left out (NdmfExportPreparation.PreviewNotices).
+        // The list can be long, so it scrolls and does not push the preview away.
+        internal static void DrawExportNotices(System.Collections.Generic.IReadOnlyList<string> notices, ref Vector2 scroll)
+        {
+            if (notices == null || notices.Count == 0) return;
+            EditorGUILayout.LabelField(ExporterLocalization.T("書き出しの注意"), EditorStyles.miniBoldLabel);
+            scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.MaxHeight(NoticeMaxHeight));
+            EditorGUILayout.HelpBox(string.Join("\n", System.Linq.Enumerable.Select(notices, ExporterLocalization.T)), MessageType.Warning);
+            EditorGUILayout.EndScrollView();
+        }
+
         // Frames the face of a humanoid, and the whole bounds of anything else.
         internal static void FrameHead(GameObject root, Bounds bounds, out Vector3 center, out float distance)
         {

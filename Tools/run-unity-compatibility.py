@@ -978,6 +978,7 @@ INTEGRATION_CASES = {
         'AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport': 1,
         'AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer': 1,
         'APassFailingInTransformingIsLeftOutAloneByTheBoardAndTheLenientExport': 1,
+        'ThePosePreviewAndTheBlinkPreviewLeaveOutAPassFailingInTransforming': 1,
     },
     'NdmfSharedObjectTests': {
         'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
