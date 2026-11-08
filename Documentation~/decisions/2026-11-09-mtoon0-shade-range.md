@@ -22,4 +22,4 @@ lilToon は半ランバート `N·L * .5 + .5` を見て `border` を中心に `
 
 ## 確かめたこと
 
-`ShaderAlphaFamilyTests.MToonShadeRangeBecomesTheSameLilToonBorder` は修正前の式で 5 件とも失敗し、修正後に通る。`OtherShadersKeepTheEarlierShadeMapping` が MToon 以外と片方だけの場合に従来の値を固定する。シェーダー近似の関連テスト 207 件は通る。
+`ShaderAlphaFamilyTests.MToonShadeRangeBecomesTheSameLilToonBorder` は修正前の式で 5 件とも失敗し、修正後に通る。`OtherShadersKeepTheEarlierShadeMapping` が MToon 以外と片方だけの場合に従来の値を固定する。シェーダー近似の関連テスト 209 件は通る。
