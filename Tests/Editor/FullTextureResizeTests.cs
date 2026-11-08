@@ -217,6 +217,21 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(bytes.Take(4).Select(v => (int)v).ToArray(), Is.EqualTo(new[] { 200, 100, 50, 0 }).Within(2), "lilToon image");
             }
             finally { Object.DestroyImmediate(source); }
+            if (!srgb) return;
+
+            // An alpha too faint to survive the reduction still counts as alpha.
+            var faint = TestTextures.Image(4096, 4, false, i => i % 4096 == 0 ? new Color32(200, 0, 0, 1) : new Color32(0, 200, 0, 0));
+            using var faintFixture = new SurfaceFixture();
+            try
+            {
+                faint.name = "Faint alpha";
+                faintFixture.Material.SetTexture("_MainTex", faint);
+                var snapshot = LilToonFullSnapshot.Capture(faintFixture.Avatar);
+                var bytes = Pixels(snapshot, Texture(snapshot, faint.name), 0, 0);
+                Assert.That((int)bytes[3], Is.EqualTo(0), "The faint alpha rounds to zero");
+                Assert.That(new[] { (int)bytes[0], bytes[1] }, Is.EqualTo(new[] { 200, 0 }).Within(2), "Weighted by its faint alpha");
+            }
+            finally { Object.DestroyImmediate(faint); }
         }
 
         [TestCase(TextureFormat.RGBAHalf)]

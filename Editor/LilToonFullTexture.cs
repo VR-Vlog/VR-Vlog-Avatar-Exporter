@@ -22,7 +22,9 @@ namespace VRVlog.LilToonExporter
         {
             var bytes = ReadResized(source, width, height, face, normal, srgb, hdr, half, true);
             // See TextureResizePolicy: an image with no alpha keeps its color.
+            // A faint alpha can round to zero when reduced, so ask the source.
             return srgb && !normal && !hdr && !half && TextureResizePolicy.HasNoAlpha(bytes)
+                && TextureResizePolicy.HasNoAlpha(Read(source, 0, face, normal, srgb, hdr, half))
                 ? ReadResized(source, width, height, face, normal, srgb, hdr, half, false) : bytes;
         }
 
