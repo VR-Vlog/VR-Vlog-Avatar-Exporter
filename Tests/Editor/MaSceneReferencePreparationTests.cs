@@ -471,8 +471,7 @@ namespace VRVlog.LilToonExporter.Tests
             typeof(NdmfExportPreparation).GetMethod("DetachExternalSceneReferences", flags)
                 .Invoke(null, new[] { (object)probe, dependencies, warnings });
             Assert.That(warnings.Any(warning => warning.Contains("参照を外して書き出しました") && warning.Contains("other scene avatar/MainRig")), Is.True,
-                string.Join("
-", warnings));
+                string.Join("\n", warnings));
         }
 
         static void AssertNothingDetached(IEnumerable<string> warnings) =>
