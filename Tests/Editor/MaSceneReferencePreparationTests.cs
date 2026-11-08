@@ -554,6 +554,64 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void ExternalReferencesInOneArrayAreDetachedAndReportedOnOneLine()
+        {
+            CreateFixture();
+            var outside = new[] { Child(externalRig, "ColliderA", Vector3.zero), Child(externalRig, "ColliderB", Vector3.zero), Child(externalRig, "ColliderC", Vector3.zero) };
+            var holder = source.AddComponent<NdmfSharedAssetHolder>();
+            holder.Targets = new[] { outside[0], mainArm, outside[1], outside[2] };
+            clone = Object.Instantiate(source);
+            ResetFakeBridge();
+            var copied = clone.GetComponent<NdmfSharedAssetHolder>();
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings))
+            {
+                var detached = warnings.Where(warning => warning.Contains("参照を外して書き出しました")).ToList();
+                Assert.That(detached, Has.Count.EqualTo(1), string.Join("\n", warnings));
+                StringAssert.Contains(nameof(NdmfSharedAssetHolder) + ") の Targets:", detached[0]);
+                StringAssert.DoesNotContain("Array.data", detached[0]);
+                StringAssert.Contains("ColliderA など 3 件", detached[0]);
+                Assert.That(copied.Targets[0], Is.Null);
+                Assert.That(copied.Targets[1] != null && copied.Targets[1].IsChildOf(clone.transform), Is.True, "A reference inside the avatar stays.");
+                Assert.That(copied.Targets[2], Is.Null);
+                Assert.That(copied.Targets[3], Is.Null);
+            }
+            Assert.That(holder.Targets, Is.EqualTo(new[] { outside[0], mainArm, outside[1], outside[2] }));
+        }
+
+        [Test]
+        public void ExternalReferencesAreGroupedByComponentAndByFieldWithoutArrayIndexes()
+        {
+            CreateFixture();
+            Transform Outside(string name) => Child(externalRig, name, Vector3.zero);
+            var first = source.AddComponent<NdmfSharedAssetHolder>();
+            first.Targets = new[] { Outside("One") };
+            first.Groups = new[]
+            {
+                new NdmfSharedAssetHolder.TargetGroup { Targets = new[] { Outside("Two") } },
+                new NdmfSharedAssetHolder.TargetGroup { Targets = new[] { Outside("Three"), Outside("Four") } }
+            };
+            // Same object, same type: another component with the same field.
+            var second = source.AddComponent<NdmfSharedAssetHolder>();
+            second.Targets = new[] { Outside("Five") };
+            clone = Object.Instantiate(source);
+            ResetFakeBridge();
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, FakeBridge(), warnings))
+            {
+                var detached = warnings.Where(warning => warning.Contains("参照を外して書き出しました")).ToList();
+                var targets = detached.Where(line => line.Contains(") の Targets:")).ToList();
+                Assert.That(targets, Has.Count.EqualTo(2), "Each component keeps its own line.\n" + string.Join("\n", warnings));
+                Assert.That(targets, Has.Some.Contains("/One を指していた"));
+                Assert.That(targets, Has.Some.Contains("/Five を指していた"));
+                var groups = detached.Single(line => line.Contains(") の Groups.Targets:"));
+                StringAssert.Contains("/Two など 3 件", groups);
+                Assert.That(string.Join("\n", detached), Does.Not.Contain("Array.data"));
+                Assert.That(detached, Has.Count.EqualTo(3));
+            }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void OrdinaryExternalComponentReferencesAreDetachedOnTheCopyWithTheExactField(bool probeAnchor)
