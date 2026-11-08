@@ -29,6 +29,12 @@
         "$ref": "#/$defs/animation"
       }
     },
+    "order": {
+      "description": "How the exporter ordered the VRM custom expressions for the list players show. source: hand gesture faces, then FaceEmo faces, then the others (menu) without transforms, then the others with transforms, each group in the order the author's board lists them; players show them in the file's order. Players that do not know the value or find no key order the list their own way.",
+      "maxLength": 1024,
+      "type": "string",
+      "minLength": 1
+    },
     "transforms": {
       "description": "Bone and visibility keys of the listed expressions. Omitted when no expression has any.",
       "minItems": 1,
@@ -71,7 +77,7 @@
           "minLength": 1
         },
         "source": {
-          "description": "menu: the avatar's expression menu. gesture: a hand gesture in the FX layer. faceEmo: a FaceEmo expression.",
+          "description": "menu: the avatar's expression menu, or any other face the author listed. gesture: a hand gesture in the FX layer. faceEmo: a FaceEmo expression.",
           "enum": [
             "menu",
             "gesture",

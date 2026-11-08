@@ -91,6 +91,32 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(read.Animations, Is.Empty);
         }
 
+        // The order key is written only when set and read back as any text;
+        // a file without it, or with a value a player does not know, keeps
+        // its faces.
+        [Test]
+        public void OrderIsOptionalAndReadAsText()
+        {
+            Assert.That(Json().ContainsKey("order"), Is.False);
+            Assert.That(ExpressionAnimationData.ReadDocument(Json()).Order, Is.Null);
+            var document = Document();
+            document.Order = ExpressionAnimationDocument.SourceOrder;
+            var json = (Dictionary<string, object>)JsonDom.Parse(JsonDom.Serialize(ExpressionAnimationData.WriteDocument(document)));
+            Assert.That(json["order"], Is.EqualTo("source"));
+            Assert.That(ExpressionAnimationData.ReadDocument(json).Order, Is.EqualTo(ExpressionAnimationDocument.SourceOrder));
+            json["order"] = "a later order";
+            var later = ExpressionAnimationData.ReadDocument(json);
+            Assert.That(later.Order, Is.EqualTo("a later order"));
+            Assert.That(later.Expressions.Count, Is.EqualTo(3));
+            foreach (var notText in new object[] { null, "", 1.0, new Dictionary<string, object>() })
+            {
+                json["order"] = notText;
+                var ignored = ExpressionAnimationData.ReadDocument(json);
+                Assert.That(ignored.Order, Is.Null);
+                Assert.That(ignored.Expressions.Count, Is.EqualTo(3));
+            }
+        }
+
         [Test]
         public void SchemaTwoNullPointNeedNotMatchTheFirstPose()
         {

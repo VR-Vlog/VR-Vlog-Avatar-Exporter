@@ -146,6 +146,7 @@ namespace VRVlog.Expressions
                     { ["expression"] = e.Expression, ["source"] = e.Source }).ToList(),
                 ["animations"] = WriteAnimations(document.Animations)
             };
+            if (document.Order != null) result["order"] = document.Order;
             // Omitted when empty, so avatars without bone or visibility keys
             // keep the bytes they had before transforms existed.
             if (document.Transforms.Count > 0) result["transforms"] = WriteTransforms(document.Transforms);
@@ -216,6 +217,9 @@ namespace VRVlog.Expressions
                 return document;
             }
             if (version != 2) Bad();
+            // Optional and only a hint for the list: any text is kept, and a value
+            // that is not text (null, empty, a number) is ignored, so it never drops the faces.
+            if (root.TryGetValue("order", out var order) && order is string text && text.Length > 0) document.Order = text;
             var expressions = Json.Arr(root["expressions"]);
             var array = Json.Arr(root["animations"]);
             if (expressions.Count > 1024 || array.Count > 512 || expressions.Count == 0 && array.Count == 0) Bad();
@@ -370,6 +374,13 @@ namespace VRVlog.Expressions
     public sealed class ExpressionAnimationDocument
     {
         public int SchemaVersion = 2;
+        // SourceOrder: the VRM custom expressions are written in the order the
+        // app lists them (hand gesture faces, FaceEmo faces, the others without
+        // bones or visibility, then the others with them), so the app keeps
+        // the file's order. Null (no "order" key, as in older files) leaves
+        // the order to the app; so does a value it does not know.
+        public const string SourceOrder = "source";
+        public string Order;
         public readonly List<ExpressionSource> Expressions = new List<ExpressionSource>();
         public readonly List<ExpressionAnimationData> Animations = new List<ExpressionAnimationData>();
         // Written under "transforms" and read only by ExpressionAnimationData.ReadTransforms.
