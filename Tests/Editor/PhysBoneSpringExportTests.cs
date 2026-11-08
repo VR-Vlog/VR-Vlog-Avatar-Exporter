@@ -1062,6 +1062,28 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
+        // The "+" of the inspector's list repeats its last entry.
+        [Test]
+        public void AJointListedTwiceInAuthoredChainDoesNotStopConversion()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "root", Vector3.zero);
+                var tip = Child(root, "tip", Vector3.down);
+                var a = root.gameObject.AddComponent<VRM10SpringBoneJoint>();
+                var b = tip.gameObject.AddComponent<VRM10SpringBoneJoint>();
+                source.AddComponent<Vrm10Instance>().SpringBone.Springs.Add(new Vrm10InstanceSpringBone.Spring("authored") { Joints = { a, a, b } });
+                var independent = Child(source.transform, "independent", Vector3.right);
+                Set(PhysBone(independent.gameObject), "endpointPosition", Vector3.down * .1f);
+                copy = Object.Instantiate(source);
+                var result = PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                Assert.That(result.Converted, Is.EqualTo(1));
+                Assert.That(result.ExistingChains, Is.EqualTo(1));
+            }
+            finally { if (copy != null) Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
         [Test]
         public async Task AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency()
         {

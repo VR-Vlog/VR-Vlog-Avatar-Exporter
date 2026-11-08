@@ -184,6 +184,7 @@ BEHAVIOR_CASES = {
         'ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal': 3,
         'ARealLastBoneGetsAShortTailThatFollowsItsParent': 1,
         'AllMotionImmobileRaisesStiffnessWhileWorldIsLeftToTheApp': 2,
+        'AJointListedTwiceInAuthoredChainDoesNotStopConversion': 1,
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,
