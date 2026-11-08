@@ -289,6 +289,40 @@ namespace VRVlog.LilToonExporter.Tests
             if (blend >= 2) Assert.That(output.GetFloat("_ZWrite"), Is.EqualTo(blend == 3 ? 1f : 0f));
         }
 
+        // Border and blur on the half-Lambert term from MToon 0.x, whose lit range on N.L is
+        // [shift, lerp(1, shift, toony)]. Expected values follow MToon10Migrator.
+        [TestCase(0f, .9f, .525f, .05f)]
+        [TestCase(-.5f, .9f, .2875f, .075f)]
+        [TestCase(.5f, .5f, .8125f, .125f)]
+        [TestCase(0f, 0f, .75f, .5f)]
+        [TestCase(-1f, 0f, .5f, 1f)]
+        public void MToonShadeRangeBecomesTheSameLilToonBorder(float shift, float toony, float border, float blur)
+        {
+            var source = Probe("MToon", MToon + "\n_ShadeShift (\"Shift\", Range(-1, 1)) = 0");
+            source.SetColor("_ShadeColor", new Color(.5f, .5f, .5f, 1));
+            source.SetFloat("_ShadeShift", shift); source.SetFloat("_ShadeToony", toony);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(border).Within(1e-4f));
+            Assert.That(output.GetFloat("_ShadowBlur"), Is.EqualTo(blur).Within(1e-4f));
+        }
+
+        // The same property names on another shader, or only one of them, keep the earlier mapping.
+        [TestCase("Plain", true, true, .75f, .5f)]
+        [TestCase("MToon", true, false, .75f, -1f)]
+        public void OtherShadersKeepTheEarlierShadeMapping(string name, bool shift, bool toony, float border, float blur)
+        {
+            var properties = "_MainTex (\"Main\", 2D) = \"white\" {}\n_Color (\"Color\", Color) = (1,1,1,1)\n_ShadeColor (\"Shade\", Color) = (1,1,1,1)";
+            if (shift) properties += "\n_ShadeShift (\"Shift\", Range(-1, 1)) = 0";
+            if (toony) properties += "\n_ShadeToony (\"Toony\", Range(0, 1)) = 0.9";
+            var source = Probe(name, properties);
+            source.SetColor("_ShadeColor", new Color(.5f, .5f, .5f, 1));
+            if (shift) source.SetFloat("_ShadeShift", -.5f);
+            if (toony) source.SetFloat("_ShadeToony", .5f);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(border).Within(1e-4f));
+            if (blur >= 0) Assert.That(output.GetFloat("_ShadowBlur"), Is.EqualTo(blur).Within(1e-4f));
+        }
+
         [Test] public void AnAlphaTestQueueReadsTheCutoffNamesOfNodeBasedShaders()
         {
             var source = Probe("Generated", "_MainTex (\"Main\", 2D) = \"white\" {}\n_MaskClipValue (\"Mask Clip Value\", Float) = 0.5");
