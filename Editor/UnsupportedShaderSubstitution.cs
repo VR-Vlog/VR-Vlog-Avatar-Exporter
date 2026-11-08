@@ -322,7 +322,7 @@ namespace VRVlog.LilToonExporter
                 }
 
             ApplyEmission(source, values, material);
-            ApplyShade(values, material, main, color);
+            ApplyShade(source, values, material, main, color);
 
             foreach (var name in new[] { "_Cull", "_CullMode", "_Culling" })
                 if (values.TryFloat(name, out var cull) && (cull == 0 || cull == 1 || cull == 2)) { Set(material, "_Cull", cull); break; }
@@ -833,7 +833,7 @@ namespace VRVlog.LilToonExporter
         // lilToon multiplies its shadow color by the lit color unless a shadow
         // texture is given. A shade texture equal to the main image therefore
         // becomes a ratio to the main color.
-        static void ApplyShade(SourceValues values, Material material, Texture main, Color mainColor)
+        static void ApplyShade(Material source, SourceValues values, Material material, Texture main, Color mainColor)
         {
             var hasColor = false; var shade = Color.white;
             foreach (var name in ShadeColors)
@@ -853,10 +853,20 @@ namespace VRVlog.LilToonExporter
                 float Ratio(float value, float basis) => Mathf.Clamp01(basis > .0001f ? value / basis : value);
                 material.SetColor("_ShadowColor", new Color(Ratio(shade.r, mainColor.r), Ratio(shade.g, mainColor.g), Ratio(shade.b, mainColor.b), 1));
             }
+            var hasShift = values.TryFloat("_ShadeShift", out var shift);
+            var hasToony = values.TryFloat("_ShadeToony", out var toony);
+            // MToon 0.x cuts N.L between _ShadeShift and lerp(1, shift, toony);
+            // lilToon cuts the half-Lambert term around a center by a width.
+            // Other shaders give these names their own meaning, so only MToon
+            // with both values uses this range.
+            var mtoonRange = hasShift && hasToony && source.shader != null && Contains(source.shader.name, "MToon");
+            var litFrom = Mathf.Lerp(1, shift, toony);
             if (values.TryFloat("_BaseColor_Step", out var step)) Set(material, "_ShadowBorder", Mathf.Clamp01(step));
-            else if (values.TryFloat("_ShadeShift", out var shift)) Set(material, "_ShadowBorder", Mathf.Clamp01(.5f - shift * .5f));
+            else if (mtoonRange) Set(material, "_ShadowBorder", Mathf.Clamp01((shift + litFrom) * .25f + .5f));
+            else if (hasShift) Set(material, "_ShadowBorder", Mathf.Clamp01(.5f - shift * .5f));
             if (values.TryFloat("_BaseShade_Feather", out var feather)) Set(material, "_ShadowBlur", Mathf.Clamp01(feather));
-            else if (values.TryFloat("_ShadeToony", out var toony)) Set(material, "_ShadowBlur", Mathf.Clamp01(1 - toony));
+            else if (mtoonRange) Set(material, "_ShadowBlur", Mathf.Clamp01((litFrom - shift) * .5f));
+            else if (hasToony) Set(material, "_ShadowBlur", Mathf.Clamp01(1 - toony));
         }
 
         // Every slot the generic mapping fills is a 2D slot.
