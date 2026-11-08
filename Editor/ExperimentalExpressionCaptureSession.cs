@@ -105,9 +105,10 @@ namespace VRVlog.LilToonExporter
         const string BuildPassFailureKey = "VRVlog.LilToonExporter.BoardBuildPassFailure";
 
         // The board stops before Optimizing, but Generating and Transforming can
-        // still fail. A lenient export then leaves out the build passes, so the
-        // board does too, instead of stopping the transfer before any file is
-        // written. The export still runs the build passes on its own copy.
+        // still fail. As a lenient export does, the board leaves out a pass
+        // NDMF reports as failed and keeps the others; when the build itself
+        // stops, it leaves out the build passes instead of stopping the transfer
+        // before any file is written. The export runs them on its own copy.
         internal static ExperimentalExpressionCaptureSession Create(GameObject source,
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, PoseExportOptions poseOptions = null)
         {
@@ -182,7 +183,7 @@ namespace VRVlog.LilToonExporter
                         authoredBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
                         faceEmoBindings.RebindPrepared(transformed.PreparedRendererFor, transformed.ObjectRegistry, transformed.IsolatedCopyOf);
                         gimmicks.Apply(null, null, Warnings);
-                    }, skipProcessing: skipBuildPasses, stopBeforeOptimizing: true);
+                    }, skipProcessing: skipBuildPasses, stopBeforeOptimizing: true, tolerateFailedPasses: ExportStageGuard.ContinueByDefault);
                 }
                 catch (Exception error) when (!skipBuildPasses && !ExportStageGuard.IsCancellation(error))
                 {

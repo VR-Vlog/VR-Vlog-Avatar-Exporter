@@ -498,40 +498,48 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // A pass that fails in Transforming fails the board's copy too. The
-        // board follows the lenient export: it reads the faces on a copy without
-        // the build passes and says so, and the quick transfer goes on to write
-        // a VRM. The strict setting still stops at the board.
+        // A pass that fails in Transforming used to make the lenient export
+        // and the board leave out every build pass, the outfit attachment among
+        // them. Both now leave out only that pass, as NDMF's play mode and
+        // manual bake do, and say which one. The strict setting still stops.
         [Test]
-        public void ABoardWhoseBuildPassesFailIsMadeWithoutThem()
+        public async Task APassFailingInTransformingIsLeftOutAloneByTheBoardAndTheLenientExport()
         {
             var installed = RequireInstalled();
             using var scene = new Scene(LostMorphTestPluginTransformFail, installed.Descriptor, installed.Proxy);
             // NDMF logs the failing pass to the Console.
             UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            const string failedPass = "The failing mesh tool test pass failed.";
             var previous = ExportTestHooks.ContinueByDefault;
+            Vrm10Instance imported = null;
             try
             {
                 ExportTestHooks.ContinueByDefault = false;
                 var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source).Dispose());
-                Assert.That(failure.ToString(), Does.Contain("The failing mesh tool test pass failed."));
+                Assert.That(failure.ToString(), Does.Contain(failedPass));
+                failure = Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
+                Assert.That(failure.ToString(), Does.Contain(failedPass), "The failing test pass must be what stops a strict export.");
 
                 ExportTestHooks.ContinueByDefault = true;
                 using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source))
                 {
-                    Assert.That(session.Copy, Is.Not.Null);
-                    Assert.That(session.Warnings, Does.Contain(ExporterLocalization.T(ExperimentalExpressionCaptureSession.WithoutBuildPassesWarning)));
-                    Assert.That(session.Copy.transform.Find("Back"), Is.Not.Null, "The board's copy is the avatar without the build passes.");
+                    Assert.That(session.Warnings, Has.Some.Contains(failedPass));
+                    Assert.That(session.Warnings, Does.Not.Contain(ExporterLocalization.T(ExperimentalExpressionCaptureSession.WithoutBuildPassesWarning)));
+                    var back = session.Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back");
+                    Assert.That(back.transform.parent.name, Is.EqualTo("Head"), "The board's copy keeps the MA Bone Proxy.");
                 }
                 var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
                 var warnings = new List<string>();
-                Assert.That(scene.Export(warnings, report), Is.Not.Null.And.Not.Empty);
-                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
-                    Is.EqualTo(new ExportStage?[] { ExportStage.BuildProcess }), string.Join("\n", warnings));
+                var bytes = scene.Export(warnings, report);
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                AssertBuildKept(report, warnings, imported);
+                Assert.That(warnings, Has.Some.Contains(failedPass));
             }
             finally
             {
                 ExportTestHooks.ContinueByDefault = previous;
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
             }
         }
 

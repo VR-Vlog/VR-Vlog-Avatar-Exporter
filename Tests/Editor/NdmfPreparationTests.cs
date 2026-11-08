@@ -243,6 +243,73 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.AreSame(original, source.GetComponent<SkinnedMeshRenderer>().sharedMesh);
         }
 
+        static void ReportFailedPass(string pass)
+        {
+            FakeContext.Success = false;
+            FakeContext.ReportedErrors.Add(new FakeErrorContext {
+                Plugin = new FakePlugin(), PassName = pass,
+                TheError = new FakeError { Exception = new InvalidOperationException(pass + " failed") }
+            });
+        }
+
+        // As NDMF's play mode and manual bake do, a tolerant caller leaves out
+        // only the pass that failed: the later phases and Optimizing still run.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ToleratedFailedPassLeavesOutOnlyThatPass(bool inGenerating)
+        {
+            var phases = new List<string>();
+            FakeProcessor.GeneratingAction = root => { phases.Add("Generating"); if (inGenerating) ReportFailedPass("GenerateAnimations"); };
+            FakeProcessor.Action = root => { phases.Add("Transforming"); if (!inGenerating) ReportFailedPass("GenerateAnimations"); };
+            FakeProcessor.OptimizationAction = root => phases.Add("Optimizing");
+            var warnings = new List<string>();
+            var transformed = false;
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), warnings, afterTransforming: lease => transformed = true,
+                tolerateFailedPasses: true))
+            {
+                CollectionAssert.AreEqual(new[] { "Generating", "Transforming", "Optimizing" }, phases);
+                Assert.IsTrue(transformed);
+                Assert.IsTrue(FakeContext.Last.Finished);
+                var warning = warnings.Single(value => value.Contains("その処理だけを除いて書き出しました"));
+                StringAssert.Contains("LightLimitChanger / GenerateAnimations: GenerateAnimations failed", warning);
+            }
+        }
+
+        [Test]
+        public void FailedPassStillStopsAStrictExport()
+        {
+            FakeProcessor.Action = root => ReportFailedPass("GenerateAnimations");
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => { }));
+            StringAssert.Contains("GenerateAnimations", error.Message);
+            Assert.AreEqual(2, FakeProcessor.Calls);
+            Assert.IsFalse(NdmfExportPreparation.FailedInOptimizing(error));
+        }
+
+        // A pass that fails in Optimizing is retried without Optimizing, as
+        // before, even after a tolerated failure in an earlier phase.
+        [Test]
+        public void ToleratedPreparationStillStopsOnAFailureInOptimizing()
+        {
+            FakeProcessor.Action = root => ReportFailedPass("GenerateAnimations");
+            FakeProcessor.OptimizationAction = root => ReportFailedPass("Optimize");
+            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ProcessClone(source, clone, Resolve(),
+                afterTransforming: lease => { }, tolerateFailedPasses: true));
+            Assert.IsTrue(NdmfExportPreparation.FailedInOptimizing(error));
+            StringAssert.Contains("Optimize", error.Message);
+        }
+
+        // Without the failed passes named, the build is not known to be partial
+        // only, so it stops as before.
+        [Test]
+        public void ToleratedPreparationStillStopsWhenTheReportNamesNoFailure()
+        {
+            FakeProcessor.Action = root => FakeContext.Success = false;
+            Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ProcessClone(source, clone, Resolve(),
+                afterTransforming: lease => { }, tolerateFailedPasses: true));
+            Assert.IsTrue(FakeContext.Last.Finished);
+        }
+
         [Test]
         public void PersistentPluginAssetsRemainUntilExportLeaseEndsAndNeverTouchSiblingAssets()
         {
