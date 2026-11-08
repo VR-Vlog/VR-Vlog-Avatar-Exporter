@@ -64,7 +64,8 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var glb = GlbDocument.Read(bytes);
                     var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
-                    var root = (Dictionary<string, object>)vrm["expressions"];
+                    if (!vrm.TryGetValue("expressions", out var written)) vrm["expressions"] = written = new Dictionary<string, object>();
+                    var root = (Dictionary<string, object>)written;
                     if (!root.TryGetValue("custom", out var raw)) root["custom"] = raw = new Dictionary<string, object>();
                     foreach (var name in existingCustom)
                         ((Dictionary<string, object>)raw)[name] = new Dictionary<string, object> { ["morphTargetBinds"] = new List<object>(), ["isBinary"] = true };
