@@ -137,7 +137,8 @@ namespace VRVlog.LilToonExporter
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
-            IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null)
+            IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null,
+            IReadOnlyCollection<AnimationClip> gestureFaces = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -166,7 +167,7 @@ namespace VRVlog.LilToonExporter
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces);
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -422,7 +423,8 @@ namespace VRVlog.LilToonExporter
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
-            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces)
+            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces,
+            IReadOnlyCollection<AnimationClip> gestureFaces)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -606,11 +608,14 @@ namespace VRVlog.LilToonExporter
                     // The faces are the board's list: its clips are read as the
                     // faces, like gesture clips, and no menu face is played. No
                     // list means no faces; the default face below is unchanged.
+                    // gestureFaces are the listed clips a hand gesture enters;
+                    // the others that FaceEmo does not register are written as
+                    // menu faces (VrChatExpressionSampler.AddListFaces).
                     var faces = (listFaces ?? Array.Empty<(string Name, AnimationClip Clip, float Time)>())
                         .Select(face => (face.Name, (UnityEngine.Object)face.Clip, face.Time)).ToList();
                     using (ExpressionBoardTimings.Step("export.playback"))
                         menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                            faces, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                            faces, faceEmoBindings, gestureFaces?.Cast<UnityEngine.Object>().ToList()), () => new VrChatExpressionMenu.Source());
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
