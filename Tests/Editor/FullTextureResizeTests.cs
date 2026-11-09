@@ -191,6 +191,49 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(source); }
         }
 
+        // Opaque materials ignore alpha, so an image with no alpha at all keeps
+        // its color when reduced, in both the standard VRM and the lilToon image.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ResizedImagesWithoutAlphaKeepTheirColor(bool srgb)
+        {
+            var pixels = Enumerable.Repeat(new byte[] { 200, 100, 50, 0 }, 4096 * 4).SelectMany(p => p).ToArray();
+            var cpu = TextureResizePolicy.Resize(pixels, 4096, 4, srgb);
+            Assert.That(cpu.Take(4).Select(v => (int)v).ToArray(), Is.EqualTo(new[] { 200, 100, 50, 0 }).Within(1), "Standard VRM image");
+            // One visible pixel keeps the alpha weighting of a transparent image.
+            pixels[3] = 255;
+            var mixed = TextureResizePolicy.Resize(pixels, 4096, 4, srgb);
+            Assert.That((int)mixed[mixed.Length - 4], Is.EqualTo(srgb ? 0 : 200).Within(1), "Transparent area of an image with alpha");
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
+
+            var source = TestTextures.Image(4096, 4, !srgb, i => new Color32(200, 100, 50, 0));
+            using var fixture = new SurfaceFixture();
+            try
+            {
+                source.name = "No alpha color";
+                fixture.Material.SetTexture("_MainTex", source);
+                var snapshot = LilToonFullSnapshot.Capture(fixture.Avatar);
+                var bytes = Pixels(snapshot, Texture(snapshot, source.name), 0, 0);
+                Assert.That(bytes.Take(4).Select(v => (int)v).ToArray(), Is.EqualTo(new[] { 200, 100, 50, 0 }).Within(2), "lilToon image");
+            }
+            finally { Object.DestroyImmediate(source); }
+            if (!srgb) return;
+
+            // An alpha too faint to survive the reduction still counts as alpha.
+            var faint = TestTextures.Image(4096, 4, false, i => i % 4096 == 0 ? new Color32(200, 0, 0, 1) : new Color32(0, 200, 0, 0));
+            using var faintFixture = new SurfaceFixture();
+            try
+            {
+                faint.name = "Faint alpha";
+                faintFixture.Material.SetTexture("_MainTex", faint);
+                var snapshot = LilToonFullSnapshot.Capture(faintFixture.Avatar);
+                var bytes = Pixels(snapshot, Texture(snapshot, faint.name), 0, 0);
+                Assert.That((int)bytes[3], Is.EqualTo(0), "The faint alpha rounds to zero");
+                Assert.That(new[] { (int)bytes[0], bytes[1] }, Is.EqualTo(new[] { 200, 0 }).Within(2), "Weighted by its faint alpha");
+            }
+            finally { Object.DestroyImmediate(faint); }
+        }
+
         [TestCase(TextureFormat.RGBAHalf)]
         [TestCase(TextureFormat.RGBAFloat)]
         public void ResizedHdrKeepsSignedRangePrecisionAndAlpha(TextureFormat format)
