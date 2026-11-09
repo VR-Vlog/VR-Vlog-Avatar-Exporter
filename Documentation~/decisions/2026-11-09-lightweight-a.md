@@ -37,7 +37,7 @@
 
 ## 確かめたこと
 
-- `FallbackImageLightweightTests`: 縮める画像と残す画像の振り分け、縮めた後の色、拡張の chunk が壊れないこと、書き出しをオンとオフで比べて UniVRM で読み込めること。
+- `FallbackImageLightweightTests`: 縮める画像と残す画像の振り分け、縮めた後の色、拡張の chunk が壊れないこと、書き出しをオンとオフで比べて UniVRM で読み込めること。2026-11-10 に `AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept` を足した。アプリが拡張から描くマテリアルと、MToon で描くマテリアルが同じ画像を使うときに、どちらのマテリアルが先に並んでいても縮めないこと。`kept` に入れる判定を外すと落ちることも確かめた。
 - `VertexDataLightweightTests`: 65534 と 65535 の境目、accessor の byteOffset、sparse の 65535 と 65536、共有された bufferView が残ること、書き出したVRMを読み込んだ三角形が元と同じこと。
 - `HdrCubeLightweightTests`: half の範囲の判定と、オンでも範囲外のキューブや 2D の画像は float のままであること。
 - アプリと同じ版の UniVRM で、16 ビットのインデックスと sparse を持つVRMを読み込めること。
