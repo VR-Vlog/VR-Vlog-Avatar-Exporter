@@ -15,6 +15,9 @@ namespace VRVlog.LilToonExporter
         NdmfExportPreparation preparation;
         readonly List<Mesh> meshes = new List<Mesh>();
         readonly Dictionary<SkinnedMeshRenderer, float[]> rest = new Dictionary<SkinnedMeshRenderer, float[]>();
+        // What the preview's build left out, as the export reports it.
+        internal List<string> Notices { get; private set; } = new List<string>();
+        Vector2 noticeScroll;
         Vector3 center;
         float distance = 1;
         float closure;
@@ -52,7 +55,8 @@ namespace VRVlog.LilToonExporter
             blink = resolved.ForClone(source, copy);
             var warnings = new List<string>();
             MaAppearanceSnapshot.Apply(source, copy, meshes, exclusions, warnings);
-            preparation = NdmfExportPreparation.Prepare(source, copy, warnings);
+            preparation = NdmfExportPreparation.PrepareForPreview(source, copy, warnings);
+            Notices = NdmfExportPreparation.PreviewNotices(warnings);
             blink.Validate(copy);
             foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
             foreach (var renderer in copy.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -78,6 +82,7 @@ namespace VRVlog.LilToonExporter
             if (preview == null || copy == null) return;
             EditorGUILayout.LabelField(ExporterLocalization.T(blink.Description), EditorStyles.boldLabel);
             EditorGUILayout.LabelField(ExporterLocalization.T("開いた状態と閉じた状態を比較できます。"), EditorStyles.wordWrappedLabel);
+            PreviewRendering.DrawExportNotices(Notices, ref noticeScroll);
             if (blink.Slots[1].Count > 0 && blink.Slots[2].Count > 0)
                 side = GUILayout.Toolbar(side, new[] { ExporterLocalization.T("両目"), ExporterLocalization.T("左目"), ExporterLocalization.T("右目") });
             EditorGUILayout.BeginHorizontal();

@@ -44,10 +44,22 @@ namespace VRVlog.LilToonExporter
             NeverShrinkPrefixes.Any(prefix => property.StartsWith(prefix, StringComparison.Ordinal));
 
         // A slot with a lilToon UV mode other than UV0 (0) never shrinks, nor
-        // does a 2nd or 3rd main texture drawn as MSDF: halving breaks its edges.
+        // does a 2nd or 3rd main texture drawn as MSDF (halving breaks its edges)
+        // or as a flipbook (the UV range shows one cell, so the true density is
+        // lower than the whole sheet's by the root of the cell count).
         internal static bool NeverShrinks(Material material, string property) =>
             NeverShrinks(property) || material.HasProperty(property + "_UVMode") && material.GetFloat(property + "_UVMode") != 0 ||
-            (property == "_Main2ndTex" || property == "_Main3rdTex") && material.HasProperty(property + "IsMSDF") && material.GetFloat(property + "IsMSDF") != 0;
+            (property == "_Main2ndTex" || property == "_Main3rdTex") &&
+            (material.HasProperty(property + "IsMSDF") && material.GetFloat(property + "IsMSDF") != 0 ||
+             ScalesAtlasUv(material, property + "DecalAnimation") || ScalesAtlasUv(material, property + "DecalSubParam"));
+
+        // lilToon multiplies the UV by SubParam.xy / Animation.xy; both are (1, 1) by default.
+        static bool ScalesAtlasUv(Material material, string vector)
+        {
+            if (!material.HasProperty(vector)) return false;
+            var value = material.GetVector(vector);
+            return value.x != 1 || value.y != 1;
+        }
 
         // UV0 area per world area of one triangle, as texels per metre per texel
         // of a 1×1 texture; null when the triangle is degenerate.
@@ -141,6 +153,9 @@ namespace VRVlog.LilToonExporter
                             never.Add(texture);
                             continue;
                         }
+                        // A slot whose feature is off is written blank, so it does not
+                        // count; its density could only allow a smaller texture.
+                        if (!LilToonInactiveSlots.Sampled(material, name)) continue;
                         // A slot sampled on the main UV is tiled by both; a smaller main
                         // tiling lowers the density, a larger one is not counted.
                         var tiling = Tiling(material, name) * (name == "_MainTex" ? 1 : Math.Min(1, mainTiling));

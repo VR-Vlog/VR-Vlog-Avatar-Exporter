@@ -495,6 +495,7 @@ namespace VRVlog.LilToonExporter
             ExportStage? builtStage = null;
             try
             {
+                ExportReferencePruning.DropLostSpringJoints(clone, warnings);
                 // MA resolves against the selected avatar after detaching its
                 // owned copy, just as NDMF does when it creates BuildContext.
                 // Source getters can use an enclosing root or no root at all.
@@ -989,6 +990,16 @@ namespace VRVlog.LilToonExporter
                         exported = VertexDataLightweight.Apply(exported, skipped, out var saved);
                         foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
                         if (VertexDataLightweight.ResultLine(saved) is string packed) warnings?.Add(packed);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                    // The MToon images only other VRM apps show. A failure
+                    // keeps the file as it is.
+                    try
+                    {
+                        var skipped = new List<string>();
+                        exported = FallbackImageLightweight.Apply(exported, skipped, out var count, out var saved);
+                        foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
+                        if (FallbackImageLightweight.ResultLine(count, saved) is string smaller) warnings?.Add(smaller);
                     }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 }

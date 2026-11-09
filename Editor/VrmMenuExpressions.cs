@@ -333,8 +333,19 @@ namespace VRVlog.LilToonExporter
                     .OrderBy(source => SourceRank(source, transformsOf.ContainsKey(kept[index].Face.Expression))).First()))
                 .OrderBy(item => SourceRank(item.Source, transformsOf.ContainsKey(kept[item.Index].Face.Expression)))
                 .ThenBy(item => item.Index).ToList();
+            // The custom expressions already in the file count among the
+            // others: after the hand gesture and FaceEmo faces, before the
+            // faces written here without bones or visibility.
+            var existing = custom.ToArray();
+            custom.Clear();
+            void PlaceExisting()
+            {
+                foreach (var pair in existing) custom.Add(pair.Key, pair.Value);
+                existing = Array.Empty<KeyValuePair<string, object>>();
+            }
             foreach (var (index, source) in written)
             {
+                if (SourceRank(source, transformsOf.ContainsKey(kept[index].Face.Expression)) >= OthersRank) PlaceExisting();
                 var group = kept[index].Group;
                 var (expression, binds, animation) = kept[index].Face;
                 var name = finalNames[index];
@@ -362,13 +373,15 @@ namespace VRVlog.LilToonExporter
                     document.Transforms.Add(transforms);
                 }
             }
+            PlaceExisting();
             glb.PlaceExtension(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document), "既存の表情アニメーション拡張を上書きできません。");
             return glb.Write();
         }
 
         // The written order of the custom faces (ExpressionAnimationDocument.SourceOrder).
+        const int OthersRank = 2;
         internal static int SourceRank(string source, bool withTransforms) =>
-            source == ExpressionSource.Gesture ? 0 : source == ExpressionSource.FaceEmo ? 1 : withTransforms ? 3 : 2;
+            source == ExpressionSource.Gesture ? 0 : source == ExpressionSource.FaceEmo ? 1 : withTransforms ? OthersRank + 1 : OthersRank;
 
         static (Expression Expression, List<object> Binds, ExpressionAnimationData Animation) KeptFace(
             List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> group)

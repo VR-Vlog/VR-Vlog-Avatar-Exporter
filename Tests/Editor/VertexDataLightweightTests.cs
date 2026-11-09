@@ -14,8 +14,9 @@ using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
 {
-    // 自動で軽量化する: vertex colours no material reads are left out and bone
-    // weights are written as normalized unsigned shorts.
+    // 自動で軽量化する: vertex colours no material reads are left out, bone
+    // weights are written as normalized unsigned shorts, and draw and morph
+    // indices that fit are written as unsigned shorts.
     public sealed class VertexDataLightweightTests
     {
         const int Vertices = 3;
@@ -168,8 +169,8 @@ namespace VRVlog.LilToonExporter.Tests
         // Through the exporter and back through the vendored importer. Off, the
         // file keeps the float weights and the colours and lists no line. On,
         // the weights load within 1/65535 of the source, the colours go unless
-        // the outline width comes from them, and the result list has the line.
-        // The vendored importer fills missing colours with white, so the loaded
+        // the outline width comes from them, the draw indices are unsigned
+        // shorts, and the result list has the line. The vendored importer fills missing colours with white, so the loaded
         // colours are compared only where the file keeps them.
         [TestCase(false, false)]
         [TestCase(true, false)]
@@ -198,7 +199,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var source = Enumerable.Range(0, count).Select(i => i % 10 / 9f).ToArray();
                 mesh.boneWeights = source.Select(w => new BoneWeight { boneIndex0 = 1, weight0 = w, boneIndex1 = 0, weight1 = 1 - w }).ToArray();
                 mesh.bindposes = bindposes;
-                mesh.AddBlendShapeFrame("Hair detail", 100, Enumerable.Repeat(new Vector3(.02f, .01f, 0), count).ToArray(), new Vector3[count], new Vector3[count]);
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vertex data", "Tests", warnings: warnings,
                     exporterVersion: "tests", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
@@ -214,6 +214,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var weights = accessors[F.Int(attributes, "WEIGHTS_0")];
                     Assert.That(F.Int(weights, "componentType"), Is.EqualTo(on ? 5123 : 5126));
                     Assert.That(weights.TryGetValue("normalized", out var normalized) && normalized is bool flag && flag, Is.EqualTo(on));
+                    Assert.That(F.Int(accessors[F.Int(primitive, "indices")], "componentType"), Is.EqualTo(on ? 5123 : 5125));
                 }
                 var prefix = ExportNoteText.VertexDataLightened.Substring(0, ExportNoteText.VertexDataLightened.IndexOf("{0}", StringComparison.Ordinal));
                 Assert.That(warnings.Count(w => w.StartsWith(prefix, StringComparison.Ordinal)), Is.EqualTo(on ? 1 : 0));
@@ -223,6 +224,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var loadedMesh = skin.sharedMesh;
                     Assert.That(loadedMesh.vertexCount, Is.EqualTo(count), skin.name);
+                    Assert.That(loadedMesh.triangles, Is.EqualTo(Enumerable.Range(0, count).ToArray()), skin.name);
                     if (!on || outlineWidthFromColours)
                         for (var v = 0; v < count; v++)
                             Assert.That(Vector4.Distance(loadedMesh.colors[v], colors[v]), Is.LessThan(1e-4f), skin.name + " " + v);
@@ -244,6 +246,70 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // Draw indices become unsigned shorts only when the largest is at most
+        // 65534 (65535 is glTF's primitive restart). The values, min and max
+        // and the target stay; an accessor offset into the view is read and
+        // dropped.
+        [TestCase(65534u, 0, true)]
+        [TestCase(65534u, 8, true)]
+        [TestCase(65535u, 0, false)]
+        [TestCase(70000u, 0, false)]
+        public void DrawIndicesBecomeUnsignedShortsOnlyUpTo65534(uint largest, int offset, bool packed)
+        {
+            var values = Enumerable.Range(0, IndexCount - 1).Select(i => (uint)(i % 3)).Append(largest).ToArray();
+            var source = BuildIndexed(values, offset, sparse: null, sharedIndexView: false);
+            var result = VertexDataLightweight.Apply(source, null, out var saved);
+            if (!packed)
+            {
+                Assert.That(result, Is.SameAs(source));
+                return;
+            }
+            Assert.That(saved, Is.GreaterThan(0));
+            var glb = GlbDocument.Read(result);
+            var primitive = AllPrimitives(glb).Single();
+            var accessor = F.Object(F.List(glb.Json, "accessors")[F.Int(primitive, "indices")]);
+            Assert.That(F.Int(accessor, "componentType"), Is.EqualTo(5123));
+            Assert.That(accessor.TryGetValue("byteOffset", out var at) ? Convert.ToInt64(at) : 0, Is.Zero);
+            Assert.That(F.List(accessor, "max").Single(), Is.EqualTo((double)largest));
+            var view = F.Object(F.List(glb.Json, "bufferViews")[F.Int(accessor, "bufferView")]);
+            Assert.That(F.Int(view, "target"), Is.EqualTo(34963));
+            Assert.That(Shorts(glb, view, values.Length), Is.EqualTo(values));
+            AssertChunkIntact(glb);
+        }
+
+        // Morph (sparse) indices become unsigned shorts up to 65535; only
+        // sparse.indices changes and its new view has no target.
+        [TestCase(65535u, true)]
+        [TestCase(65536u, false)]
+        public void SparseMorphIndicesBecomeUnsignedShortsUpTo65535(uint largest, bool packed)
+        {
+            var indices = Enumerable.Range(0, IndexCount - 1).Select(i => (uint)i).Append(largest).ToArray();
+            var source = BuildIndexed(new uint[] { 0, 1, 2 }, 0, indices, sharedIndexView: false);
+            var result = VertexDataLightweight.Apply(source, null, out var saved);
+            var glb = GlbDocument.Read(result);
+            var morph = F.Object(F.List(glb.Json, "accessors")[F.Int(F.Object(F.List(AllPrimitives(glb).Single(), "targets")[0]), "POSITION")]);
+            var sparse = F.Object(F.Object(morph["sparse"])["indices"]);
+            Assert.That(F.Int(morph, "componentType"), Is.EqualTo(5126));
+            Assert.That(F.Int(sparse, "componentType"), Is.EqualTo(packed ? 5123 : 5125));
+            if (!packed) return;
+            Assert.That(saved, Is.GreaterThan(0));
+            var view = F.Object(F.List(glb.Json, "bufferViews")[F.Int(sparse, "bufferView")]);
+            Assert.That(view.ContainsKey("target"), Is.False);
+            Assert.That(Shorts(glb, view, indices.Length), Is.EqualTo(indices));
+            var values = F.Object(F.List(glb.Json, "bufferViews")[F.Int(F.Object(F.Object(morph["sparse"])["values"]), "bufferView")]);
+            Assert.That(glb.Binary.Skip(F.Int(values, "byteOffset")).Take(12).ToArray(), Is.EqualTo(Floats(.25f, .5f, .75f)));
+            AssertChunkIntact(glb);
+        }
+
+        // Indices whose bufferView another accessor also reads stay 32-bit.
+        [Test]
+        public void IndicesInAViewAnotherAccessorReadsStay()
+        {
+            var source = BuildIndexed(new uint[] { 0, 1, 2 }, 0, sparse: null, sharedIndexView: true);
+            Assert.That(VertexDataLightweight.Apply(source, null, out var saved), Is.SameAs(source));
+            Assert.That(saved, Is.Zero);
+        }
+
         [Test]
         public void TheTextFollowsTheWordingRulesAndExistsInEveryLocale()
         {
@@ -257,6 +323,103 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
                 Assert.That(File.ReadAllText(Path.Combine(directory, "ExporterLocale_" + locale + ".json")),
                     Does.Contain("{\"source\":\"" + text + "\",\"translated\":\""), locale);
+        }
+
+        const int IndexCount = 3000;
+
+        // One primitive of three positions with 32-bit indices (preceded by
+        // offset bytes in their view) and, with sparse, a morph target whose
+        // sparse indices are those values. The extension has one chunk, so a
+        // moved bufferView shows in the chunk's bytes. sharedIndexView adds a
+        // second accessor on the indices' view.
+        static byte[] BuildIndexed(uint[] indices, int offset, uint[] sparse, bool sharedIndexView)
+        {
+            var parts = new List<byte[]>
+            {
+                Floats(0, 0, 0, 1, 0, 0, 0, 1, 0),
+                new byte[offset].Concat(indices.SelectMany(BitConverter.GetBytes)).ToArray(),
+                new byte[] { 9, 8, 7, 6, 5, 4, 3, 2 },
+            };
+            if (sparse != null)
+            {
+                parts.Add(sparse.SelectMany(BitConverter.GetBytes).ToArray());
+                parts.Add(Enumerable.Range(0, sparse.Length).SelectMany(_ => Floats(.25f, .5f, .75f)).ToArray());
+            }
+            var binary = new List<byte>();
+            var views = new List<object>();
+            foreach (var part in parts)
+            {
+                views.Add(new Dictionary<string, object> { { "buffer", 0L }, { "byteOffset", (long)binary.Count }, { "byteLength", (long)part.Length } });
+                binary.AddRange(part);
+                while (binary.Count % 4 != 0) binary.Add(0);
+            }
+            ((Dictionary<string, object>)views[1])["target"] = 34963L;
+            var index = new Dictionary<string, object>
+            {
+                { "bufferView", 1L }, { "componentType", 5125L }, { "type", "SCALAR" }, { "count", (long)indices.Length },
+                { "min", new List<object> { (double)indices.Min() } }, { "max", new List<object> { (double)indices.Max() } },
+            };
+            if (offset != 0) index["byteOffset"] = (long)offset;
+            var accessors = new List<object>
+            {
+                new Dictionary<string, object>
+                {
+                    { "bufferView", 0L }, { "componentType", 5126L }, { "type", "VEC3" }, { "count", (long)Vertices },
+                    { "min", new List<object> { 0d, 0d, 0d } }, { "max", new List<object> { 1d, 1d, 0d } },
+                },
+                index,
+            };
+            var primitive = new Dictionary<string, object> { { "attributes", new Dictionary<string, object> { { "POSITION", 0L } } }, { "indices", 1L }, { "material", 0L } };
+            if (sparse != null)
+            {
+                accessors.Add(new Dictionary<string, object>
+                {
+                    { "componentType", 5126L }, { "type", "VEC3" }, { "count", (long)sparse.Max() + 1 },
+                    { "sparse", new Dictionary<string, object>
+                    {
+                        { "count", (long)sparse.Length },
+                        { "indices", new Dictionary<string, object> { { "bufferView", 3L }, { "componentType", 5125L } } },
+                        { "values", new Dictionary<string, object> { { "bufferView", 4L } } },
+                    } },
+                });
+                primitive["targets"] = new List<object> { new Dictionary<string, object> { { "POSITION", 2L } } };
+            }
+            var meshes = new List<object> { Mesh(primitive) };
+            if (sharedIndexView)
+            {
+                accessors.Add(new Dictionary<string, object> { { "bufferView", 1L }, { "componentType", 5125L }, { "type", "SCALAR" }, { "count", (long)indices.Length } });
+                meshes.Add(Mesh(new Dictionary<string, object> { { "attributes", new Dictionary<string, object> { { "POSITION", 0L } } }, { "indices", (long)(accessors.Count - 1) }, { "material", 0L } }));
+            }
+            var record = Record("lilToon", 0, 0, 0, true);
+            record["materialIndex"] = 0L;
+            var json = new Dictionary<string, object>
+            {
+                { "asset", new Dictionary<string, object> { { "version", "2.0" } } },
+                { "extensionsUsed", new List<object> { "VRMC_materials_mtoon", F.ExtensionName } },
+                { "buffers", new List<object> { new Dictionary<string, object> { { "byteLength", (long)binary.Count } } } },
+                { "bufferViews", views }, { "accessors", accessors }, { "meshes", meshes }, { "materials", new List<object> { MToonMaterial() } },
+                { "extensions", new Dictionary<string, object> { { F.ExtensionName, new Dictionary<string, object>
+                {
+                    { "materials", new List<object> { record } },
+                    { "chunks", new List<object> { new Dictionary<string, object> { { "bufferView", 2L }, { "decodedBytes", 8L }, { "codec", "deflate" } } } },
+                } } } },
+            };
+            return GlbDocument.Create(json, binary.ToArray()).Write();
+        }
+
+        static uint[] Shorts(GlbDocument glb, Dictionary<string, object> view, int count)
+        {
+            var start = view.TryGetValue("byteOffset", out var at) ? Convert.ToInt32(at) : 0;
+            Assert.That(F.Int(view, "byteLength"), Is.EqualTo(count * 2));
+            return Enumerable.Range(0, count).Select(i => (uint)BitConverter.ToUInt16(glb.Binary, start + i * 2)).ToArray();
+        }
+
+        static void AssertChunkIntact(GlbDocument glb)
+        {
+            var chunk = F.Object(F.List(F.Object(F.Object(glb.Json["extensions"])[F.ExtensionName]), "chunks")[0]);
+            var view = F.Object(F.List(glb.Json, "bufferViews")[F.Int(chunk, "bufferView")]);
+            var start = view.TryGetValue("byteOffset", out var at) ? Convert.ToInt32(at) : 0;
+            Assert.That(glb.Binary.Skip(start).Take(8).ToArray(), Is.EqualTo(new byte[] { 9, 8, 7, 6, 5, 4, 3, 2 }));
         }
 
         static Shader Find(string name)

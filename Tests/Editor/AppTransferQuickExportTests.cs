@@ -304,6 +304,29 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // "VRMを保存" on the quick transfer reaches a hidden board too, after the save dialog.
+        [Test]
+        public void ASaveFromABlockedHiddenBoardSaysWhatToFix()
+        {
+            using var fixture = new SavedFixture();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-blocked-save-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try
+            {
+                board.SetField("excludedObjectEdits", new List<GameObject>());
+                var saved = false;
+                Assert.That(board.SaveTransferCopy("Avatar", "SampleAuthor", new AvatarLicenseOptions(), path, (_, __) => saved = true),
+                    Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardNeedsFix) + "\n" + ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(board);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         // A board switched to another avatar starts from the automatic blink, as a new board
         // (the quick transfer) does, before that avatar's saved blink applies.
         [Test]

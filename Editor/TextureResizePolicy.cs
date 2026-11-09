@@ -38,6 +38,10 @@ namespace VRVlog.LilToonExporter
             var output = new byte[checked(size.Item1 * size.Item2 * 4)];
             var sx = width / (double)size.Item1;
             var sy = height / (double)size.Item2;
+            // Weighting by alpha leaves black when no pixel has any. Such an image
+            // draws nothing when transparent and its color when opaque, so it
+            // keeps its color.
+            var noAlpha = srgb && HasNoAlpha(rgba);
             for (var y = 0; y < size.Item2; y++)
             for (var x = 0; x < size.Item1; x++)
             {
@@ -49,7 +53,7 @@ namespace VRVlog.LilToonExporter
                 {
                     var weight = (Math.Min(ix + 1, right) - Math.Max(ix, left)) * (Math.Min(iy + 1, top) - Math.Max(iy, bottom));
                     var p = (iy * width + ix) * 4;
-                    var alpha = rgba[p + 3] / 255.0;
+                    var alpha = noAlpha ? 1 : rgba[p + 3] / 255.0;
                     if (srgb)
                     {
                         r += Linear[rgba[p]] * alpha * weight;
@@ -69,9 +73,15 @@ namespace VRVlog.LilToonExporter
                 output[o] = srgb ? Srgb(a > 0 ? r / a : 0) : Byte(r / total);
                 output[o + 1] = srgb ? Srgb(a > 0 ? g / a : 0) : Byte(g / total);
                 output[o + 2] = srgb ? Srgb(a > 0 ? b / a : 0) : Byte(b / total);
-                output[o + 3] = Byte(a / total);
+                output[o + 3] = Byte(noAlpha ? 0 : a / total);
             }
             return output;
+        }
+
+        internal static bool HasNoAlpha(byte[] rgba)
+        {
+            for (var i = 3; i < rgba.Length; i += 4) if (rgba[i] != 0) return false;
+            return true;
         }
     }
 }

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using NUnit.Framework;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
@@ -129,6 +132,42 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(pet.activeSelf, Is.True);
             }
             finally { Object.DestroyImmediate(source); Object.DestroyImmediate(mesh); }
+        }
+
+        [Test]
+        public async Task SpringJointsWhoseObjectWasDeletedDoNotStopTheExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var hair = fixture.Source.transform.Find("Independent hair/Head");
+            var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            hair.parent.SetParent(head, true);
+            var authored = fixture.Source.AddComponent<Vrm10Instance>();
+            var joint = hair.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            var tipObject = new GameObject("Tip");
+            tipObject.transform.SetParent(hair, false);
+            tipObject.transform.localPosition = Vector3.down * .15f;
+            var tip = tipObject.AddComponent<VRM10SpringBoneJoint>();
+            var lostObject = new GameObject("Lost");
+            lostObject.transform.SetParent(hair, false);
+            var lost = lostObject.AddComponent<VRM10SpringBoneJoint>();
+            var chain = new Vrm10InstanceSpringBone.Spring("chain") { Joints = { joint, lost, tip } };
+            var empty = new Vrm10InstanceSpringBone.Spring("all lost") { Joints = { lost } };
+            authored.SpringBone.Springs.AddRange(new[] { chain, empty });
+            Object.DestroyImmediate(lostObject);
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Lost joint", "Tests", exporterVersion: null, warnings: warnings,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported.SpringBone.Springs.Single().Joints.Count, Is.EqualTo(2));
+                Assert.That(warnings, Has.Some.EqualTo("見つからないVRM揺れ物のジョイントを省略しました。"));
+                Assert.That(authored.SpringBone.Springs.Count, Is.EqualTo(2), "The original avatar keeps its list.");
+                Assert.That(chain.Joints.Count, Is.EqualTo(3));
+            }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
         }
 
         [Test]
