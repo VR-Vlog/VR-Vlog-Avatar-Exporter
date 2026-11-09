@@ -43,8 +43,8 @@ namespace VRVlog.LilToonExporter
         Vector2 pageScroll;
         Vector3 center;
         float distance = 1, yaw, zoom = 1;
-        // 自動で軽量化する: off on a new board and for another avatar; the avatar's saved choice applies on preparing.
-        bool autoLightweight;
+        // 自動で軽量化する: on for a new board and for another avatar; the avatar's saved choice applies on preparing.
+        bool autoLightweight = true;
         BlinkExportOptions configuredBlink;
         BlinkConfigurationWindow blinkConfiguration;
         readonly System.Collections.Generic.Dictionary<AnimationClip, string> clipErrors = new System.Collections.Generic.Dictionary<AnimationClip, string>();
@@ -2782,7 +2782,7 @@ namespace VRVlog.LilToonExporter
         void ChangeAvatar()
         {
             Cleanup(); CloseChildWindows();
-            autoLightweight = false;
+            autoLightweight = true;
             licenseOptions = new AvatarLicenseOptions();
             status = null;
             page = ExpressionsPage;

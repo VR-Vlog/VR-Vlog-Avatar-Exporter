@@ -24,8 +24,8 @@ namespace VRVlog.LilToonExporter
         internal BlinkExportOptions Blink = new BlinkExportOptions();
         internal PoseExportOptions Poses = new PoseExportOptions();
         // 自動で軽量化する: textures more detailed than the screen shows are
-        // written smaller (TexelDensity). Off writes the same file as before.
-        internal bool AutoLightweight;
+        // written smaller (TexelDensity). On unless the avatar saved it off.
+        internal bool AutoLightweight = true;
         internal AvatarLicenseOptions License = new AvatarLicenseOptions();
 
         internal GameObject[] Exclusions() => ExcludedObjects.Where(item => item != null).ToArray();
