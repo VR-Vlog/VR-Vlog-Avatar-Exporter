@@ -634,6 +634,9 @@ namespace VRVlog.LilToonExporter.Tests
                     typeof(PoseReviewWindow).GetMethod("PreparePreview", flags).Invoke(pose, null);
                     Assert.That(typeof(PoseReviewWindow).GetField("error", flags).GetValue(pose), Is.Null, "strict: " + strict);
                     Assert.That(pose.Notices, Has.None.Contains(failedPass));
+                    var poseCopy = (GameObject)typeof(PoseReviewWindow).GetField("copy", flags).GetValue(pose);
+                    Assert.That(poseCopy.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back").transform.parent.name,
+                        Is.EqualTo("Head"), "The pose preview's copy keeps the MA Bone Proxy.");
                 }
             }
             finally
