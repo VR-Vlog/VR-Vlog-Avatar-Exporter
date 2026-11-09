@@ -293,6 +293,16 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AChangedSourceIsNotASlotError()
+        {
+            using var fixture = Fixture();
+            using var session = new Session(fixture.Source);
+            var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
+            Assert.Throws<Session.SourceChangedException>(() => session.PresetError(ExpressionPreset.happy,
+                Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile")), "The slot is not emptied when the avatar changed.");
+        }
+
+        [Test]
         public void DuplicateOrUnassignableAssignmentsAreRejected()
         {
             using var fixture = Fixture();

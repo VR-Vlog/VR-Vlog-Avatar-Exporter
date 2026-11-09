@@ -256,7 +256,9 @@ namespace VRVlog.LilToonExporter
                 if (!HasGeometryChange(pose)) throw new InvalidOperationException(ExporterLocalization.T("基準の顔と形状が同じです。"));
                 return pose;
             }
-            catch (InvalidOperationException error) { throw new InvalidOperationException(label + ": " + error.Message, error); }
+            // A changed source is not a slot error: it keeps its type, so the
+            // board and the export stop on it rather than empty the slot.
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { throw new InvalidOperationException(label + ": " + error.Message, error); }
         }
 
         internal string PresetError(ExpressionPreset preset, PresetAssignment assignment) =>
