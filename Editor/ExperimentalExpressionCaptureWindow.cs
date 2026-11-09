@@ -2069,10 +2069,10 @@ namespace VRVlog.LilToonExporter
             }
             var reason = BoardBlockReason(includePending: false);
             if (reason != null) return (reason, errorText);
-            if (SkippedSlotNote() is string skipped) return (skipped, errorText);
             // Kept from opening when the saved list leaves no preview.
             if (page == ExpressionsPage && !string.IsNullOrEmpty(excludedObjectError))
                 return (ExporterLocalization.T("除外するオブジェクトを反映できませんでした・次のページに理由があります"), errorText);
+            if (SkippedSlotNote() is string skipped) return (skipped, errorText);
             if (page == InfoPage && PreviewPending) return (ExporterLocalization.T("プレビュー未反映　保存するときに反映します"), dimText);
             return (counts, dimText);
         }
