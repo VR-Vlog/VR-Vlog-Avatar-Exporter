@@ -260,7 +260,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var warnings = new List<string>();
                 var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(BoundShapes(bytes, "lookUp"), Has.Length.EqualTo(1));
-                Assert.That(warnings, Has.One.Contains(ExporterLocalization.T(Session.PresetLeftOutNote) + "Front / m_IsActive"));
+                var leftOut = ExporterLocalization.T(Session.PresetLeftOutNote) + "Front / m_IsActive";
+                Assert.That(warnings.Count(warning => warning.Contains(leftOut)), Is.EqualTo(1), string.Join("\n", warnings));
             }
             finally { Object.DestroyImmediate(clip); }
         }
