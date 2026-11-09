@@ -968,6 +968,7 @@ BEHAVIOR_CASES = {
     'FallbackImageLightweightTests': {
         'OnlyImagesNothingElseUsesBecomeSmaller': 1,
         'TheMaterialsFollowTheAppsFullyBoundRule': 1,
+        'AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept': 1,
         'AFileWithoutTheExtensionOrWithAnUnknownOneIsKept': 1,
         'TheExportShrinksTheImagesOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,

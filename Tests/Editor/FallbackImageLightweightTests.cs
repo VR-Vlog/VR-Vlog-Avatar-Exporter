@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Image 0: base colour of a material only bound nodes draw. Image 1:
         // base colour of the face material (the expressions move its mesh).
-        // Image 2: of a material a node without a binding draws too. Image 3:
+        // Image 2: of a material a node without a binding draws. Image 3:
         // also the thumbnail. Image 4: colour in one slot, data in another.
         // Image 5: normal map of the bound material.
         [Test]
@@ -65,6 +65,31 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(plan[0], Is.EqualTo((true, 256)));
             Assert.That(plan[1], Is.EqualTo((true, 512)));
             Assert.That(plan[5], Is.EqualTo((false, 256)));
+        }
+
+        // An image a material the app reads from MToon also uses is kept,
+        // whichever material comes first: other VRM apps are not the only
+        // ones that see it.
+        [Test]
+        public void AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept()
+        {
+            static Dictionary<string, object> MToon(object material) =>
+                (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)material)["extensions"])["VRMC_materials_mtoon"];
+            var source = Build((materials, info) =>
+            {
+                // Material 2 (a node without a binding draws it) comes after
+                // material 0 and shares its image 0; material 3 (bound) comes
+                // after material 2 and shares its image 2.
+                MToon(materials[2])["shadeMultiplyTexture"] = info(0);
+                MToon(materials[3])["rimMultiplyTexture"] = info(2);
+            });
+            var before = GlbDocument.Read(source);
+            Assert.That(FallbackImageLightweight.FullyBoundMaterials(before.Json), Is.EquivalentTo(new[] { 0, 1, 3 }));
+            Assert.That(FallbackImageLightweight.Plan(before.Json).Keys, Is.EquivalentTo(new[] { 1, 5 }));
+            var after = GlbDocument.Read(FallbackImageLightweight.Apply(source, null, out var count, out _));
+            Assert.That(count, Is.EqualTo(2));
+            foreach (var kept in new[] { 0, 2 }) Assert.That(Png(after, kept), Is.EqualTo(Png(before, kept)), "image " + kept);
+            Assert.That(Size(after, 1), Is.EqualTo((512, 256)));
         }
 
         // A file without the full lilToon extension, or with an extension
@@ -160,7 +185,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Nodes 0, 1 and 3 have bindings; node 2 has none and draws mesh 2
         // (material 2). Mesh 1 is the face: an expression moves it.
-        static byte[] Build()
+        static byte[] Build(Action<List<object>, Func<int, Dictionary<string, object>>> editMaterials = null)
         {
             var png = PngWriter.Encode(Noise(Width, Height), Width, Height);
             var parts = new List<byte[]> { Floats(0, 0, 0, 1, 0, 0, 0, 1, 0), new byte[] { 9, 8, 7, 6, 5, 4, 3, 2 } };
@@ -190,6 +215,7 @@ namespace VRVlog.LilToonExporter.Tests
             var materials = new List<object> { m0, Material(1), Material(2), Material(3, ("shadeMultiplyTexture", 4)) };
             ((Dictionary<string, object>)materials[3])["emissiveTexture"] = Info(3);
             ((Dictionary<string, object>)materials[3])["occlusionTexture"] = Info(4);
+            editMaterials?.Invoke(materials, Info);
             var accessors = new List<object>
             {
                 new Dictionary<string, object>
