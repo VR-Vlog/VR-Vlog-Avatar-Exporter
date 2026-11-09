@@ -267,9 +267,71 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(BoundShapes(bytes, "lookUp"), Has.Length.EqualTo(1));
                 var leftOut = ExporterLocalization.T(Session.PresetLeftOutNote) + "Front / m_IsActive";
                 Assert.That(warnings.Count(warning => warning.Contains(leftOut)), Is.EqualTo(1), string.Join("\n", warnings));
+                // Gaze keeps BlendShapes only: nothing is written under its name.
+                Assert.That(PresetTransforms(bytes), Is.Empty);
             }
             finally { Object.DestroyImmediate(clip); }
         }
+
+        static List<VRVlog.Expressions.ExpressionTransformAnimation> PresetTransforms(byte[] bytes)
+        {
+            var extensions = (Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+            if (!extensions.TryGetValue(VRVlog.Expressions.ExpressionAnimationData.Extension, out var data))
+                return new List<VRVlog.Expressions.ExpressionTransformAnimation>();
+            var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(data);
+            return VRVlog.Expressions.ExpressionAnimationData.ReadPresetTransforms(data, document);
+        }
+
+        // An emotion slot the user filled with a face that also moves a bone
+        // and hides an object writes both under the preset's name, held at the
+        // board's frame; they never become a custom face of their own.
+        [Test]
+        public void AChosenEmotionSlotWritesItsBonesAndShownObjectsUnderThePreset()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = Fixture();
+            var clip = FaceClip(100);
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Back", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.y"),
+                    AnimationCurve.Constant(0, 1, 1.85f));
+                using var session = new Session(fixture.Source);
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
+                Assert.That(session.PresetLeftOut(assignment), Is.Null);
+                Assert.That(session.PresetLeavesOutBones(assignment), Is.False);
+                session.SetPreset(ExpressionPreset.happy, assignment);
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(BoundShapes(bytes, "happy"), Has.Length.EqualTo(1));
+                Assert.That(warnings.Any(warning => warning.Contains(ExporterLocalization.T(Session.PresetLeftOutNote))), Is.False, string.Join("\n", warnings));
+                var data = Extension(bytes);
+                var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(data);
+                Assert.That(document.Expressions, Is.Empty, "A standard expression is not listed as a custom face.");
+                Assert.That(VRVlog.Expressions.ExpressionAnimationData.ReadTransforms(data, document), Is.Empty);
+                var happy = VRVlog.Expressions.ExpressionAnimationData.ReadPresetTransforms(data, document).Single();
+                Assert.That(happy.Expression, Is.EqualTo("happy"));
+                Assert.That(happy.Duration, Is.EqualTo(0));
+                Assert.That(happy.Loop, Is.False);
+                var nodes = (List<object>)GlbDocument.Read(bytes).Json["nodes"];
+                Dictionary<string, object> Node(int index) => (Dictionary<string, object>)nodes[index];
+                int Named(string name) => Enumerable.Range(0, nodes.Count).Single(index => (string)Node(index)["name"] == name);
+                var joint = ((List<object>)Node(Named("Independent hair"))["children"]).Select(Convert.ToInt32).Single();
+                Assert.That(happy.Tracks.Select(track => track.Node + ":" + track.Property),
+                    Is.EquivalentTo(new[] { Named("Back") + ":active", joint + ":translation" }));
+                var values = new double[3];
+                happy.Tracks.Single(track => track.Property == VRVlog.Expressions.ExpressionTransformAnimation.Active).Evaluate(0, values);
+                Assert.That(values[0], Is.EqualTo(0));
+                happy.Tracks.Single(track => track.Property == VRVlog.Expressions.ExpressionTransformAnimation.Translation).Evaluate(0, values);
+                Assert.That(values[1], Is.EqualTo(1.85).Within(1e-4));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
+        static Dictionary<string, object> Extension(byte[] bytes) =>
+            (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])[VRVlog.Expressions.ExpressionAnimationData.Extension];
 
         // A slot whose face is the baseline's stops neither the board nor the
         // transfer: it is written empty and the result list says so.

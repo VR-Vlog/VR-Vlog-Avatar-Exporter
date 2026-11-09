@@ -476,10 +476,13 @@ namespace VRVlog.LilToonExporter
                     return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
                 }).ToArray();
             // A slot the user filled with a face that also moves bones or shows
-            // objects keeps its BlendShapes; the result list says what it left out.
+            // objects keeps its BlendShapes. An emotion, mouth or blink slot
+            // writes those bones and objects too (PresetBonesClip); the result
+            // list says what a slot left out.
             foreach (var item in selectedPresets)
                 if (PresetLeftOut(item.Assignment) is string leftOut)
-                    warnings?.Add(PresetFullLabel(item.Preset) + ": " + ExporterLocalization.T(PresetLeftOutNote) + leftOut);
+                    warnings?.Add(PresetFullLabel(item.Preset) + ": " +
+                        ExporterLocalization.T(CarriesBones(item.Assignment.Preset) ? PresetFingersLeftOutNote : PresetLeftOutNote) + leftOut);
             // Gaze and neutral the board leaves open are filled from names as in
             // the quick export; only the user's own "none" keeps one empty.
             var keepEmpty = selectedPresets
@@ -509,6 +512,9 @@ namespace VRVlog.LilToonExporter
                 // The faces a hand gesture enters keep the gesture source; the
                 // file lists them first, before FaceEmo's and the others.
                 var gestureFaces = faces.Where((face, index) => IsGestureClip(listFaces[index].Clip)).Select(face => face.Clip).ToArray();
+                var presetBones = selectedPresets
+                    .Select(item => (Preset: item.Preset.ToString(), Label: PresetFullLabel(item.Preset), Clip: PresetBonesClip(item.Assignment, authored)))
+                    .Where(item => item.Clip != null).ToList();
                 var authoredVrm = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings: warnings,
                     exporterVersion: ExportEntry.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
@@ -518,7 +524,7 @@ namespace VRVlog.LilToonExporter
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
                     listFaces: faces, listFaceSources: listFaces.Select(face => face.Clip).ToList(), autoLightweight: autoLightweight,
-                    bonesOnlyFaces: bonesOnly, gestureFaces: gestureFaces);
+                    bonesOnlyFaces: bonesOnly, gestureFaces: gestureFaces, presetBones: presetBones);
                 UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                 return authoredVrm;
             }
