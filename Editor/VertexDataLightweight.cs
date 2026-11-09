@@ -6,8 +6,9 @@ using System.Linq;
 namespace VRVlog.LilToonExporter
 {
     // 自動で軽量化する, on the finished VRM: leaves out the vertex colours
-    // (COLOR_0) of a mesh none of whose materials reads them, and writes float
-    // bone weights (WEIGHTS_0) as normalized unsigned shorts. What the app
+    // (COLOR_0) of a mesh none of whose materials reads them, writes float
+    // bone weights (WEIGHTS_0) as normalized unsigned shorts, and writes
+    // 32-bit draw and morph (sparse) indices that fit as unsigned shorts. What the app
     // draws does not change. The accessors and bufferViews nothing uses any
     // more go with UnusedMorphTargets.RemoveAccessors. A file this class
     // cannot fully account for is returned unchanged.
@@ -18,7 +19,7 @@ namespace VRVlog.LilToonExporter
         internal const string UnknownExtensionWarning = "Kept the vertex data because the file has extensions this step has not checked: {0}";
         internal const string StorageWarning = "Kept the vertex data because the file's binary data is not one GLB chunk this step can pack again";
 
-        const long Float = 5126, UnsignedShort = 5123;
+        const long Float = 5126, UnsignedShort = 5123, UnsignedInt = 5125;
 
         // The extensions UnusedMorphTargets checked, and the lilToon one: it
         // points to bufferViews (moved like any other) and to meshes and
@@ -48,6 +49,8 @@ namespace VRVlog.LilToonExporter
             }
             var removed = RemoveColors(json, meshes.OfType<Dictionary<string, object>>());
             var replacedViews = PackWeights(glb);
+            replacedViews.UnionWith(PackIndices(glb));
+            replacedViews.UnionWith(PackSparseIndices(glb));
             if (removed.Count == 0 && replacedViews.Count == 0) return bytes;
             UnusedMorphTargets.RemoveAccessors(glb, removed, replacedViews);
             var result = glb.Write();
@@ -178,6 +181,124 @@ namespace VRVlog.LilToonExporter
                 if (accessor.ContainsKey("byteOffset")) accessor["byteOffset"] = 0L;
                 accessor["componentType"] = UnsignedShort;
                 accessor["normalized"] = true;
+                replaced.Add(view);
+            }
+            return replaced;
+        }
+
+        // Rewrites each 32-bit index accessor that only primitive indices use,
+        // whose bufferView only it uses and whose largest index is at most
+        // 65534, into a new bufferView of unsigned shorts. 65535 is left out:
+        // glTF reserves it (primitive restart). Returns the bufferViews it no
+        // longer uses.
+        static HashSet<int> PackIndices(GlbDocument glb)
+        {
+            var json = glb.Json;
+            var accessors = List(json, "accessors");
+            var views = List(json, "bufferViews");
+            if (accessors == null || views == null) return new HashSet<int>();
+            var indexUses = new Dictionary<int, int>();
+            foreach (var mesh in Objects(List(json, "meshes")))
+                foreach (var primitive in Objects(List(mesh, "primitives")))
+                    if (primitive.TryGetValue("indices", out var raw) && Index(raw) is int index) Count(indexUses, index);
+            var uses = new Dictionary<int, int>();
+            UnusedMorphTargets.ForEachAccessorReference(json, (owner, key) => Count(uses, (int)Index(owner[key])));
+            var viewUses = ViewUses(json);
+            var payloads = new List<(Dictionary<string, object> Owner, int View, byte[] Data)>();
+            foreach (var pair in indexUses.OrderBy(pair => pair.Key))
+            {
+                var index = pair.Key;
+                if (index >= accessors.Count || uses[index] != pair.Value || !(accessors[index] is Dictionary<string, object> accessor)) continue;
+                if (accessor.ContainsKey("sparse") || !(accessor.TryGetValue("type", out var shape) && shape as string == "SCALAR")) continue;
+                if (!(accessor.TryGetValue("bufferView", out var rawView) && Index(rawView) is int view) || view >= views.Count || viewUses[view] != 1) continue;
+                var bufferView = (Dictionary<string, object>)views[view];
+                if (bufferView.TryGetValue("byteStride", out var stride) && Index(stride) != 4) continue;
+                var offset = accessor.TryGetValue("byteOffset", out var rawOffset) ? Index(rawOffset) ?? -1 : 0;
+                if (!(accessor.TryGetValue("count", out var rawCount) && Index(rawCount) is int count) || count == 0) continue;
+                var data = Narrow(accessor, glb.Binary, Offset(bufferView), offset, count, Index(bufferView["byteLength"]) ?? 0, MaximumDrawIndex);
+                if (data != null) payloads.Add((accessor, view, data));
+            }
+            return Replace(glb, payloads, keepTarget: true);
+        }
+
+        // Rewrites the 32-bit indices of each sparse accessor (UniVRM writes
+        // morph targets sparse) as unsigned shorts when every index is at most
+        // 65535 and nothing else uses their bufferView. Only sparse.indices
+        // changes; the values and the accessor's own componentType stay.
+        static HashSet<int> PackSparseIndices(GlbDocument glb)
+        {
+            var json = glb.Json;
+            var accessors = List(json, "accessors");
+            var views = List(json, "bufferViews");
+            if (accessors == null || views == null) return new HashSet<int>();
+            var viewUses = ViewUses(json);
+            var payloads = new List<(Dictionary<string, object> Owner, int View, byte[] Data)>();
+            foreach (var accessor in Objects(accessors))
+            {
+                var sparse = Object(accessor, "sparse");
+                var indices = Object(sparse, "indices");
+                if (indices == null || !(sparse.TryGetValue("count", out var rawCount) && Index(rawCount) is int count) || count == 0) continue;
+                if (!(indices.TryGetValue("bufferView", out var rawView) && Index(rawView) is int view) || view >= views.Count || viewUses[view] != 1) continue;
+                var bufferView = (Dictionary<string, object>)views[view];
+                if (bufferView.ContainsKey("byteStride")) continue;
+                var offset = indices.TryGetValue("byteOffset", out var rawOffset) ? Index(rawOffset) ?? -1 : 0;
+                var data = Narrow(indices, glb.Binary, Offset(bufferView), offset, count, Index(bufferView["byteLength"]) ?? 0, ushort.MaxValue);
+                if (data != null) payloads.Add((indices, view, data));
+            }
+            return Replace(glb, payloads, keepTarget: false);
+        }
+
+        // The largest draw index an unsigned short accessor may hold.
+        internal const int MaximumDrawIndex = ushort.MaxValue - 1;
+
+        // count tightly packed 32-bit values as unsigned shorts, or null when
+        // owner's componentType is not UNSIGNED_INT, the values do not lie
+        // inside the view, or one is above limit.
+        internal static byte[] Narrow(Dictionary<string, object> owner, byte[] binary, int viewOffset, int offset, int count, int viewLength, int limit)
+        {
+            if (!(owner.TryGetValue("componentType", out var type) && Number(type) == UnsignedInt)) return null;
+            if (offset < 0 || offset % 4 != 0 || offset + (long)count * 4 > viewLength) return null;
+            var start = viewOffset + offset;
+            var result = new byte[checked(count * 2)];
+            for (var i = 0; i < count; i++)
+            {
+                var value = BitConverter.ToUInt32(binary, start + i * 4);
+                if (value > limit) return null;
+                result[i * 2] = (byte)value;
+                result[i * 2 + 1] = (byte)(value >> 8);
+            }
+            return result;
+        }
+
+        // Every reference to each bufferView: accessors, sparse indices and
+        // values, images and the lilToon extension.
+        static Dictionary<int, int> ViewUses(Dictionary<string, object> json)
+        {
+            var viewUses = new Dictionary<int, int>();
+            UnusedMorphTargets.ForEachViewReference(json, (owner, key) => Count(viewUses, (int)Index(owner[key])));
+            return viewUses;
+        }
+
+        // Writes each payload to a new bufferView, points its owner (an
+        // accessor or sparse.indices) there as unsigned shorts and returns the
+        // bufferViews it replaced. A new view of draw indices keeps the old
+        // target; one of sparse indices must have none.
+        static HashSet<int> Replace(GlbDocument glb, List<(Dictionary<string, object> Owner, int View, byte[] Data)> payloads, bool keepTarget)
+        {
+            var replaced = new HashSet<int>();
+            if (payloads.Count == 0) return replaced;
+            var views = List(glb.Json, "bufferViews");
+            var offsets = glb.AppendBinaryBatch(payloads.Select(p => p.Data).ToArray());
+            for (var i = 0; i < payloads.Count; i++)
+            {
+                var (owner, view, data) = payloads[i];
+                var old = (Dictionary<string, object>)views[view];
+                var added = new Dictionary<string, object> { { "buffer", 0L }, { "byteOffset", (long)offsets[i] }, { "byteLength", (long)data.Length } };
+                if (keepTarget && old.TryGetValue("target", out var target)) added["target"] = target;
+                views.Add(added);
+                owner["bufferView"] = (long)(views.Count - 1);
+                if (owner.ContainsKey("byteOffset")) owner["byteOffset"] = 0L;
+                owner["componentType"] = UnsignedShort;
                 replaced.Add(view);
             }
             return replaced;

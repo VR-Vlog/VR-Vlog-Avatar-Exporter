@@ -280,6 +280,15 @@ namespace VRVlog.LilToonExporter
             var storage = StorageFormat(source.graphicsFormat, normal);
             var hdr = storage != "rgba32";
             var half = storage == "rgbaHalf";
+            // 自動で軽量化する stores an HDR cubemap (lilToon's reflection
+            // cube) as half when every value of every face and mip, read as
+            // float, is one half holds; otherwise as float. Its size and mips
+            // stay: lilToon picks the reflection mip by roughness, so fewer
+            // mips would blur rough reflections. The app already draws a
+            // filtered float texture as half, so this saves file size only.
+            if (lightweight != null && source is Cubemap && storage == "rgbaFloat" &&
+                FitsHalf(Pixels(source, maximum, normal, srgb, true, false)))
+                half = true;
             var format = half ? "rgbaHalf" : hdr ? "rgbaFloat" : "rgba32";
             void Add(byte[] bytes) { chunks.Add(payloads.Count); payloads.Add(new DeflatePayload(bytes)); }
             // StorageFormat chose Half for an 8-bit or block-compressed normal
@@ -311,6 +320,23 @@ namespace VRVlog.LilToonExporter
             var count = resized && sourceMipCount > 1 ? LilToonFullTexture.MipCount(size.Item1, size.Item2) : sourceMipCount;
             return (size.Item1, size.Item2, count, source is Cubemap ? 6 : 1);
         }
+
+        // Whether every float of every chunk is finite and within half's
+        // largest value (65504), so storing it as half only rounds it.
+        internal static bool FitsHalf(IEnumerable<byte[]> floatPixels)
+        {
+            foreach (var bytes in floatPixels)
+            {
+                for (var i = 0; i + 4 <= bytes.Length; i += 4)
+                {
+                    var value = BitConverter.ToSingle(bytes, i);
+                    if (float.IsNaN(value) || Math.Abs(value) > HalfMaximum) return false;
+                }
+            }
+            return true;
+        }
+
+        internal const float HalfMaximum = 65504f;
 
         // Every face and mip in chunk order, read one at a time.
         static IEnumerable<byte[]> Pixels(Texture source, int maximum, bool normal, bool srgb, bool hdr, bool half)
