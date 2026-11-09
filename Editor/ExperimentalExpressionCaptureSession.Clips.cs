@@ -392,8 +392,10 @@ namespace VRVlog.LilToonExporter
         }
 
         // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
-        // bones or shows objects stays unsupported there, as before (the preset would lose them).
-        // The same holds for every face while the export does not write bones and visibility.
+        // bones or shows objects is no automatic candidate for one, as before (the preset would
+        // lose them). A slot the user filled takes such a clip with its BlendShapes alone
+        // (PresetLeftOut names what it drops). Every face is read this way while the export
+        // does not write bones and visibility.
         Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));
@@ -453,6 +455,24 @@ namespace VRVlog.LilToonExporter
             pose.InstalledSourceId = ClipId(clip, time);
             ValidatePose(pose);
             return pose;
+        }
+
+        // The first curve a standard preset slot the user filled drops from its
+        // clip ("path / property"), or null: the bones, shown objects and finger
+        // poses a custom face would carry. A gesture face's eye highlight bone was
+        // dropped before and is not named.
+        internal const string PresetLeftOutNote = "標準の表情には顔の変形だけが入るため、ボーン・表示切替などを外して書き出しました: ";
+        internal const string PresetLeftOutState = "顔の変形だけ使う（ボーン・表示切替などは外して書き出す）";
+
+        internal string PresetLeftOut(PresetAssignment assignment)
+        {
+            if (assignment == null || assignment.IsNone || assignment.IsShape || assignment.Automatic || !ExpressionTransformCurves.Enabled) return null;
+            var clip = assignment.ResolveClip();
+            if (clip == null) return null;
+            var gesture = gestureClips.Contains(clip);
+            var dropped = AnimationUtility.GetCurveBindings(clip).FirstOrDefault(binding => !PoseSampling.IsBlendShape(binding) &&
+                (BoneOrShown(binding) || PoseSampling.IsFingerMuscle(binding)) && !(gesture && IgnoredBesideFace(binding)));
+            return dropped.propertyName == null ? null : dropped.path + " / " + dropped.propertyName;
         }
 
         static bool BoneOrShown(EditorCurveBinding binding) => !binding.isPPtrCurve &&

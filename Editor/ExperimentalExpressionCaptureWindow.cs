@@ -67,6 +67,8 @@ namespace VRVlog.LilToonExporter
         string presetKey;
         int presetSkipped;
         readonly System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string>();
+        // Slots whose face the export takes without its bones and visibility (PresetLeftOut).
+        readonly System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset> presetsLeavingOut = new System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>();
         // Eye slots whose error is the closing shape shared with the other eye.
         readonly System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>();
         // The page shown: expressions, objects left out, then the VRM's save and transfer (the transfer
@@ -1508,7 +1510,7 @@ namespace VRVlog.LilToonExporter
             var state = reason ?? SlotState(preset, assignment);
             // The blink setting's description is too long for a slot; the slot
             // shows its head and the tooltip all of it.
-            var shown = reason == null && state == blinkFallback ? StateHead(state) : state;
+            var shown = reason == null && (state == blinkFallback || presetsLeavingOut.Contains(preset)) ? StateHead(state) : state;
             var style = reason != null ? errorMini : dimMini;
             GUI.Label(stateRect, new GUIContent(Fit(shown, style, stateRect.width), state), style);
             HandleDrop(rect, target);
@@ -1530,7 +1532,8 @@ namespace VRVlog.LilToonExporter
         // What saving does with the slot.
         string SlotState(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
-            if (assignment != null && !assignment.IsNone) return ExporterLocalization.T(assignment.Automatic ? "自動の候補" : "確定");
+            if (assignment != null && !assignment.IsNone)
+                return ExporterLocalization.T(assignment.Automatic ? "自動の候補" : presetsLeavingOut.Contains(preset) ? ExperimentalExpressionCaptureSession.PresetLeftOutState : "確定");
             if (session.HasAuthoredPreset(preset)) return ExporterLocalization.T("元のVRM設定");
             // A blink slot nobody chose follows the blink setting; "none" chosen
             // on it leaves it empty.
@@ -2358,7 +2361,7 @@ namespace VRVlog.LilToonExporter
 
         void RefreshPresetErrors()
         {
-            presetErrors.Clear(); eyeOverlaps.Clear();
+            presetErrors.Clear(); eyeOverlaps.Clear(); presetsLeavingOut.Clear();
             if (session == null) return;
             foreach (var pair in session.Presets) CheckPreset(pair.Key, pair.Value);
         }
@@ -2366,6 +2369,8 @@ namespace VRVlog.LilToonExporter
         void CheckPreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             presetErrors[preset] = session.PresetError(preset, assignment);
+            if (presetErrors[preset] == null && session.PresetLeftOut(assignment) != null) presetsLeavingOut.Add(preset);
+            else presetsLeavingOut.Remove(preset);
             if (presetErrors[preset] != null && session.BlinkSidesOverlap(preset, assignment)) eyeOverlaps.Add(preset);
             else eyeOverlaps.Remove(preset);
         }
@@ -2807,7 +2812,7 @@ namespace VRVlog.LilToonExporter
             preview?.Cleanup(); preview = null;
             session?.Dispose(); session = null; board = null;
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
-            presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
+            presetErrors.Clear(); eyeOverlaps.Clear(); presetsLeavingOut.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null;
             ReleaseObjectsPreview();
             dropHover = dropHoverNext = null; clipDropHover = clipDropHoverNext = null; dragMouse = null;
