@@ -284,8 +284,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session.SetPreset(ExpressionPreset.happy, happy);
                 var warnings = new List<string>();
                 var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
-                Assert.That(warnings.Count(warning => warning == string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), error)), Is.EqualTo(1), string.Join("
-", warnings));
+                Assert.That(warnings.Count(warning => warning == string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), error)), Is.EqualTo(1), string.Join("\n", warnings));
                 Assert.That(Presets(bytes).ContainsKey("lookUp"), Is.False, "The slot is left empty, not filled from names.");
                 Assert.That(BoundShapes(bytes, "happy"), Has.Length.EqualTo(1), "The other slots are written as chosen.");
             }
@@ -1232,8 +1231,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = session.Export("Test", "Tests", NoFaces, warnings, presets: chosen);
                 Assert.That(warnings.Where(warning => warning.EndsWith(ExporterLocalization.T("（この枠は空のまま書き出しました）"), StringComparison.Ordinal)),
                     Is.EquivalentTo(new[] { error, session.PresetError(ExpressionPreset.blinkRight, chosen[1]) }.Select(reason => string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), reason))),
-                    string.Join("
-", warnings));
+                    string.Join("\n", warnings));
                 foreach (var eye in new[] { "blinkLeft", "blinkRight" })
                     Assert.That(Presets(bytes).TryGetValue(eye, out var written) ? ((List<object>)((Dictionary<string, object>)written)["morphTargetBinds"]).Count : 0, Is.Zero, eye);
             }
