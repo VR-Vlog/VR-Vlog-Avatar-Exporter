@@ -266,6 +266,32 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); }
         }
 
+        // A slot whose face is the baseline's stops neither the board nor the
+        // transfer: it is written empty and the result list says so.
+        [Test]
+        public void AChosenSlotThatCannotBeWrittenIsWrittenEmpty()
+        {
+            using var fixture = Fixture();
+            var clip = FaceClip(0);
+            try
+            {
+                using var session = new Session(fixture.Source);
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
+                var error = session.PresetError(ExpressionPreset.lookUp, assignment);
+                Assert.That(error, Is.Not.Null, "The clip moves no shape away from the baseline.");
+                session.SetPreset(ExpressionPreset.lookUp, assignment);
+                var happy = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
+                session.SetPreset(ExpressionPreset.happy, happy);
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(warnings.Count(warning => warning == string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), error)), Is.EqualTo(1), string.Join("
+", warnings));
+                Assert.That(Presets(bytes).ContainsKey("lookUp"), Is.False, "The slot is left empty, not filled from names.");
+                Assert.That(BoundShapes(bytes, "happy"), Has.Length.EqualTo(1), "The other slots are written as chosen.");
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         [Test]
         public void DuplicateOrUnassignableAssignmentsAreRejected()
         {
@@ -1191,8 +1217,15 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Not.Null);
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkLeft, chosen[0]), Is.True, "The slot shows the short overlap text.");
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkRight, chosen[1]), Is.True);
-                var thrown = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", NoFaces, presets: chosen));
-                Assert.That(thrown.Message, Is.EqualTo(error), "The export stops with the eye slot's own error.");
+                // Both eye slots are written empty; the result list names each with its own error.
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, presets: chosen);
+                Assert.That(warnings.Where(warning => warning.EndsWith(ExporterLocalization.T("（この枠は空のまま書き出しました）"), StringComparison.Ordinal)),
+                    Is.EquivalentTo(new[] { error, session.PresetError(ExpressionPreset.blinkRight, chosen[1]) }.Select(reason => string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), reason))),
+                    string.Join("
+", warnings));
+                foreach (var eye in new[] { "blinkLeft", "blinkRight" })
+                    Assert.That(Presets(bytes).TryGetValue(eye, out var written) ? ((List<object>)((Dictionary<string, object>)written)["morphTargetBinds"]).Count : 0, Is.Zero, eye);
             }
             finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(left); Object.DestroyImmediate(right); }
         }
