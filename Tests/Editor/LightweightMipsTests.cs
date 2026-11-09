@@ -29,8 +29,10 @@ namespace VRVlog.LilToonExporter.Tests
             using var f = new ExportVrmLilToonPreviewTests.Fixture();
             var mainPath = ImportedImage(64);
             var main = AssetDatabase.LoadAssetAtPath<Texture2D>(mainPath);
-            var normal = f.Own(Image("Lightweight mips normal", 16, new Color32(128, 128, 255, 255), true));
-            var cutoutMain = f.Own(Image("Lightweight mips cutout main", 32, new Color32(200, 90, 40, 128), false));
+            var normalPath = ImportedImage(16, linear: true);
+            var normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+            var cutoutPath = ImportedImage(32);
+            var cutoutMain = AssetDatabase.LoadAssetAtPath<Texture2D>(cutoutPath);
             var cube = f.Own(new Cubemap(4, TextureFormat.RGBA32, true) { name = "Lightweight mips cube" });
             for (var face = 0; face < 6; face++) for (var mip = 0; mip < 3; mip++)
                 cube.SetPixels(Enumerable.Repeat(Color.gray, Math.Max(1, 4 >> mip) * Math.Max(1, 4 >> mip)).ToArray(), (CubemapFace)face, mip);
@@ -63,7 +65,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(f.ImportedFront.sharedMaterial.GetTexture("_BumpMap").mipmapCount, Is.EqualTo(5));
                 }
             }
-            finally { AssetDatabase.DeleteAsset(mainPath); }
+            finally { foreach (var path in new[] { mainPath, normalPath, cutoutPath }) AssetDatabase.DeleteAsset(path); }
         }
 
         // A non-opaque lilToon material keeps the mips of every texture it reads,
@@ -147,7 +149,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // An uncompressed asset with the importer's default box mips.
-        static string ImportedImage(int size)
+        static string ImportedImage(int size, bool linear = false)
         {
             var path = "Assets/__VRVlogLightweightMips_" + Guid.NewGuid().ToString("N") + ".png";
             var image = Image("Lightweight mips source", size, MainColor, false);
@@ -156,6 +158,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.ImportAsset(path);
             var importer = (TextureImporter)AssetImporter.GetAtPath(path);
             importer.mipmapEnabled = true;
+            importer.sRGBTexture = !linear;
             importer.npotScale = TextureImporterNPOTScale.None;
             importer.textureCompression = TextureImporterCompression.Uncompressed;
             importer.SaveAndReimport();
