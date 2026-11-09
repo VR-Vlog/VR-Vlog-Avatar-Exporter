@@ -465,7 +465,7 @@ namespace VRVlog.LilToonExporter
             ValidatePose(Baseline);
             // A chosen "none" is a face without a pose or morphs: an empty
             // mouth preset, an empty blink slot.
-            var selectedPresets = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray());
+            var selectedPresets = WithoutBrokenSlots(SelectedPresets(presets?.Select(value => value?.Copy()).ToArray()), warnings);
             var presetFaces = selectedPresets
                 .Where(item => !item.Assignment.IsNone || ChosenNone(item.Preset, item.Assignment))
                 .Select(item =>

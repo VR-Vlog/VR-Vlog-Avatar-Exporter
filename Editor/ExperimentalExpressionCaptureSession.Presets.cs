@@ -256,20 +256,48 @@ namespace VRVlog.LilToonExporter
                 if (!HasGeometryChange(pose)) throw new InvalidOperationException(ExporterLocalization.T("基準の顔と形状が同じです。"));
                 return pose;
             }
-            catch (InvalidOperationException error) { throw new InvalidOperationException(label + ": " + error.Message, error); }
+            // A changed source is not a slot error: it keeps its type, so the
+            // board and the export stop on it rather than empty the slot.
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { throw new InvalidOperationException(label + ": " + error.Message, error); }
         }
 
-        internal string PresetError(ExpressionPreset preset, PresetAssignment assignment)
+        internal string PresetError(ExpressionPreset preset, PresetAssignment assignment) =>
+            SlotError(preset, assignment, Presets.TryGetValue(OtherEye(preset), out var value) ? value : null);
+
+        static ExpressionPreset OtherEye(ExpressionPreset preset) =>
+            preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
+
+        // Why the slot cannot hold its face, null when it can; otherEye is the
+        // other blink slot's choice, read only on a blink slot.
+        string SlotError(ExpressionPreset preset, PresetAssignment assignment, PresetAssignment otherEye)
         {
             if (assignment == null || assignment.IsNone) return null;
             try
             {
                 BuildPresetPose(preset, assignment);
-                var other = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
-                return BlinkSideOverlap(preset, assignment, Presets.TryGetValue(other, out var value) ? value : null);
+                return BlinkSideOverlap(preset, assignment, otherEye);
             }
             catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return error.Message; }
         }
+
+        // A slot whose face cannot be written is written empty, as a chosen
+        // "none", so the export goes on; the result list names the slot and why.
+        // Every slot is checked before any is emptied, so both eyes that share
+        // a closing shape are emptied, as the board shows both in red.
+        (ExpressionPreset Preset, PresetAssignment Assignment)[] WithoutBrokenSlots(
+            (ExpressionPreset Preset, PresetAssignment Assignment)[] selected, ICollection<string> warnings)
+        {
+            var errors = selected.Select(item => SlotError(item.Preset, item.Assignment,
+                selected.FirstOrDefault(other => other.Preset == OtherEye(item.Preset)).Assignment)).ToArray();
+            return selected.Select((item, index) =>
+            {
+                if (errors[index] == null) return item;
+                warnings?.Add(string.Format(ExporterLocalization.T(PresetSkippedFormat), errors[index]));
+                return (item.Preset, PresetAssignment.None(item.Preset));
+            }).ToArray();
+        }
+
+        internal const string PresetSkippedFormat = "{0}（この枠は空のまま書き出しました）";
 
         // Whether PresetError of an eye slot is the shared closing shape, so the
         // slot can say it in a few words.

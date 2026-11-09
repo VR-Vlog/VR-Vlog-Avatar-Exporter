@@ -911,21 +911,30 @@ namespace VRVlog.LilToonExporter
         // The reasons on the board itself, in the order the bottom bar names
         // them; the author is asked apart because the transfer asks it later.
         // Without the pending edits it is what the pages check: leaving the
-        // objects page and saving apply those edits on their own.
+        // objects page and saving apply those edits on their own. A standard
+        // slot in error does not stop it: the export writes that slot empty
+        // (SkippedSlotNote).
         string BoardBlockReason(bool includePending = true)
         {
             if (includePending && excludedObjectEdits != null) return ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません");
             if (includePending && GimmicksPending) return ExporterLocalization.T(GimmicksPendingReason);
-            foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
-                if (presetErrors.TryGetValue(preset, out var reason) && reason != null) return reason;
-            // A reason kept for a preset outside the board order still stops it.
-            var other = presetErrors.Values.FirstOrDefault(value => value != null);
-            if (other != null) return other;
             if (board == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
             if (board.Unexported is ExpressionBoard.Item unexported)
                 return string.Format(ExporterLocalization.T(UnexportedFileFormat), board.NameOf(unexported.Clip), unexported.Error);
             return null;
         }
+
+        // The first standard slot in error, in board order, with what saving
+        // does with it; null when none is.
+        internal string SkippedSlotNote()
+        {
+            var reason = ExperimentalExpressionCaptureSession.AssignablePresets
+                .Select(preset => presetErrors.TryGetValue(preset, out var value) ? value : null)
+                .Concat(presetErrors.Values).FirstOrDefault(value => value != null);
+            return reason == null ? null : string.Format(ExporterLocalization.T(SkippedSlotFormat), reason);
+        }
+
+        internal const string SkippedSlotFormat = "{0}（この枠は空のまま書き出します）";
 
         internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません・ファイルを直すか書き出さない表情へ移す・{1}";
 
@@ -2063,6 +2072,7 @@ namespace VRVlog.LilToonExporter
             // Kept from opening when the saved list leaves no preview.
             if (page == ExpressionsPage && !string.IsNullOrEmpty(excludedObjectError))
                 return (ExporterLocalization.T("除外するオブジェクトを反映できませんでした・次のページに理由があります"), errorText);
+            if (SkippedSlotNote() is string skipped) return (skipped, errorText);
             if (page == InfoPage && PreviewPending) return (ExporterLocalization.T("プレビュー未反映　保存するときに反映します"), dimText);
             return (counts, dimText);
         }

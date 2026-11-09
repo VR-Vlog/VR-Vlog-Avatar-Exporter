@@ -374,7 +374,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnAddedFileInASlotStaysThereAndStopsTheSave()
+        public void AnAddedFileInASlotStaysThereAndIsSavedEmpty()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var window = BoardHarness.Create();
@@ -391,9 +391,11 @@ namespace VRVlog.LilToonExporter.Tests
 
                 AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, .3f));
                 window.Call("RefreshCandidateValidation");
-                // The slot the user chose keeps the file and names its reason.
+                // The slot the user chose keeps the file and names its reason;
+                // the save goes on with that slot empty.
                 Assert.That(board.PlaceOf(clip), Is.EqualTo(ExpressionBoard.Place.Slot(ExpressionPreset.happy)));
-                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlocksExport, Is.False);
+                Assert.That(window.SkippedSlotNote(), Is.Not.Null);
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
         }
@@ -469,11 +471,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(board.UsesRecordRoute, Is.False, "Nothing added is left to record.");
                 Assert.That(window.Field<string>("status"), Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(
                     new[] { ("Face", ExporterLocalization.T(ExperimentalExpressionCaptureWindow.DeletedClipReason)) })));
-                // The slot keeps the choice and names the file as missing, so the save stops with that reason.
+                // The slot keeps the choice and names the file as missing; the save writes it empty.
                 var slot = board.SlotValue(ExpressionPreset.happy);
                 Assert.That(slot, Is.Not.Null); Assert.That(slot.IsNone, Is.False);
                 Assert.That(ExperimentalExpressionCaptureSession.PresetDisplayName(slot), Is.EqualTo(ExporterLocalization.T("見つからないファイル")));
-                Assert.That(window.BlocksExport, Is.True, "The kept slot stops the save.");
+                Assert.That(window.BlocksExport, Is.False, "The kept slot does not stop the save.");
+                Assert.That(window.SkippedSlotNote(), Is.Not.Null, "The bottom bar says the slot is saved empty.");
             }
             finally { Object.DestroyImmediate(window); if (clip != null) Object.DestroyImmediate(clip); AssetDatabase.DeleteAsset(folder); }
         }
@@ -3165,8 +3168,10 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var errors = window.Field<System.Collections.Generic.Dictionary<ExpressionPreset, string>>("presetErrors");
                 errors[ExpressionPreset.sad] = null; errors[ExpressionPreset.aa] = "Mouth reason"; errors[ExpressionPreset.angry] = "Angry reason";
-                Assert.That(window.BlockReason(), Is.EqualTo("Angry reason"), "The first broken slot in board order gives its own reason.");
-                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.Null, "A broken slot is saved empty, so it does not stop the save.");
+                Assert.That(window.BlocksExport, Is.False);
+                Assert.That(window.SkippedSlotNote(), Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.SkippedSlotFormat), "Angry reason")),
+                    "The first broken slot in board order gives its own reason.");
 
                 window.SetField("excludedObjectEdits", new System.Collections.Generic.List<GameObject>());
                 Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
