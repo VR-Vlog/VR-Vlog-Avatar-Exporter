@@ -598,6 +598,53 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The previews read the avatar after Transforming, as the board does,
+        // and never run Optimizing: a pass failing there stops neither of them,
+        // even with the strict setting, and is no notice of theirs.
+        [Test]
+        public void ThePosePreviewAndTheBlinkPreviewDoNotRunAFailingOptimizingPass()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginOptimizeFail, installed.Descriptor, installed.Proxy);
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            const string failedPass = "The failing optimizer test pass failed.";
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var options = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
+            options.Both.Add(new BlinkShapeBinding { Renderer = scene.Front, Shape = "Face blink", Weight = 100 });
+            var gimmicks = new ExportGimmickOptions { AutoExclude = false };
+            var previous = ExportTestHooks.ContinueByDefault;
+            var blink = ScriptableObject.CreateInstance<BlinkPreviewWindow>();
+            PoseReviewWindow pose = null;
+            try
+            {
+                // The same avatar stops a strict export in Optimizing.
+                ExportTestHooks.ContinueByDefault = false;
+                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
+                Assert.That(failure.ToString(), Does.Contain(failedPass));
+                foreach (var strict in new[] { true, false })
+                {
+                    ExportTestHooks.ContinueByDefault = !strict;
+                    blink.Prepare(scene.Fixture.Source, options, Array.Empty<GameObject>(), gimmicks);
+                    Assert.That(blink.Notices, Has.None.Contains(failedPass));
+                    var blinkCopy = (GameObject)typeof(BlinkPreviewWindow).GetField("copy", flags).GetValue(blink);
+                    Assert.That(blinkCopy.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back").transform.parent.name,
+                        Is.EqualTo("Head"), "The preview's copy keeps the MA Bone Proxy.");
+                    blink.Cleanup();
+                    if (pose == null) pose = PoseReviewWindow.Show(scene.Fixture.Source, new PoseExportOptions(), Array.Empty<GameObject>(), gimmicks);
+                    typeof(PoseReviewWindow).GetMethod("PreparePreview", flags).Invoke(pose, null);
+                    Assert.That(typeof(PoseReviewWindow).GetField("error", flags).GetValue(pose), Is.Null, "strict: " + strict);
+                    Assert.That(pose.Notices, Has.None.Contains(failedPass));
+                }
+            }
+            finally
+            {
+                ExportTestHooks.ContinueByDefault = previous;
+                blink.Cleanup();
+                Object.DestroyImmediate(blink);
+                if (pose != null) pose.Close();
+            }
+        }
+
         const string LostMorphTestPluginOptimize = "optimize";
         const string LostMorphTestPluginTransformFail = "transformfail";
         const string LostMorphTestPluginOptimizeFail = "optimizefail";
