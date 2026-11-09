@@ -16,6 +16,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             // A morph the app drives: one nothing uses is left out of the VRM.
             const string drivenMorph = "JawOpen";

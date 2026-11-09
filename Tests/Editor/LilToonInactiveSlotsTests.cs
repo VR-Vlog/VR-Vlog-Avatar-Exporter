@@ -131,6 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void OnlyTheOptionLeavesOutTexturesOfSwitchedOffSlots(bool on)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture();
             var unused = Image("Unused second layer", 64);
             try
@@ -156,6 +157,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ATextureASampledSlotUsesIsKept()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture();
             var shared = Image("Shared main and emission", 32);
             try
@@ -179,6 +181,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ASwitchedOffNormalSlotGetsTheDefaultNormalTexture()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture();
             var normal = Image("Switched-off normal", 32);
             try
@@ -204,6 +207,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void OffWritesTheSameExtensionAsBefore()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture();
             var unused = Image("Off unused", 16);
             try
@@ -223,6 +227,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void TheExportListsTheLineOnlyWhenTheOptionIsOn(bool on)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Find("lilToon")) { name = "Inactive slot material" };
             var unused = Image("Inactive slot emission", 64);

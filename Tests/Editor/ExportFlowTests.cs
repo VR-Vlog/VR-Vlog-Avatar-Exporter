@@ -17,6 +17,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task FreshNormalExportSavesAndReloadsWithoutARecoveryStep()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-flow-" + Guid.NewGuid().ToString("N"));

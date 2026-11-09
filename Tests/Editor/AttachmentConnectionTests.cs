@@ -463,6 +463,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void OneClickExportClearsCopiedReferencesToBonesOutsideTheAvatar()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             // Instantiate keeps a skin's references to scene objects outside the
             // avatar, which UniVRM cannot look up among the exported nodes.
             var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");

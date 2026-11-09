@@ -107,6 +107,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ExportChecksAcceptTheFoundLilToon()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             try

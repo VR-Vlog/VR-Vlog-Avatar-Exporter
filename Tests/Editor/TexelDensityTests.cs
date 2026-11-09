@@ -448,6 +448,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, 2048)]
         public void TheExportShrinksOnlyWhenTheOptionIsOn(bool on, int source)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Lightweight material" };
             var main = new Texture2D(source, source, TextureFormat.RGBA32, true) { name = "Lightweight main" };

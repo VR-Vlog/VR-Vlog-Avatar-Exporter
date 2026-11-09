@@ -85,12 +85,14 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void AHiddenAvatarExportsItsShownChildren()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             AssertExportsVisibleChildrenOnly(fixture, fixture.Source);
         }
 
         [Test] public void AnAvatarUnderAHiddenParentExports()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var parent = Own(new GameObject("Hidden parent"));
             fixture.Source.transform.SetParent(parent.transform, false);

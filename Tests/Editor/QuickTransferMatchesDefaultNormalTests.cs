@@ -51,6 +51,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             previousSettingsPath = ExportSettingsStore.PathOverride;
             settingsPath = Path.Combine(Path.GetTempPath(), "vrvlog-same-settings-" + Guid.NewGuid().ToString("N") + ".json");
             ExportSettingsStore.PathOverride = settingsPath;
@@ -70,6 +71,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TearDown]
         public void TearDown()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             CloseBoards();
             ExportFallbackConfirmation.Dialog = originalDialog;
             ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
@@ -106,6 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheSavedExpressionsMatch()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             ExpressionPresetStore.Save(ExpressionPresetStore.KeyFor(fixture.Source),
                 new[] { ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Hair detail") });
@@ -119,6 +122,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheGimmicksAndTheSavedExclusionsMatch()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
             var hiddenMaterial = new Material(Shader.Find("VRVlogTests/UnsupportedHiddenFallback"));
@@ -153,6 +157,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void APlainAvatarMatches()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var (quick, normal) = ExportBoth(fixture.Source);
             AssertSame(quick, normal);
@@ -163,6 +168,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFailingStageMatches()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
@@ -192,6 +198,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ABoardReusedForAnotherAvatarStartsFromTheSameDefaults()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             using var other = new AttachmentConnectionTests.Fixture();
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
@@ -218,6 +225,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheSavedLightweightChoiceMatches()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var texture = new Texture2D(512, 512, TextureFormat.RGBA32, true) { name = "Lightened main" };
             try
@@ -244,6 +252,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void LightweightStartsOnUnlessSavedOff()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try { Assert.That(Defaults(hidden), Has.Member("autoLightweight True")); }
@@ -274,6 +283,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void PosesOverTheAppLimitMatch()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var assets = new List<string>();
             var previousDialog = PoseLimitChooser.Dialog;
@@ -318,6 +328,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var folder = "Assets/VRVlogPrefabExport-" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));

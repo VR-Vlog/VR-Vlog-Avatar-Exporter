@@ -127,6 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void WithoutAssignmentsTheExportedExpressionsAreUnchanged()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             using var session = new Session(fixture.Source);
             var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
@@ -140,6 +141,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task OrdinaryRouteAddsAssignedClipAndBlendShapeAsPresets()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var clip = FaceClip(80);
             Vrm10Instance imported = null;
@@ -182,6 +184,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task PresetFromAMovingClipBakesTheFaceItHolds()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var clip = new AnimationClip { name = "Sad loop" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
@@ -216,6 +219,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void PresetFromAClipWithShapesTheAvatarNeverHadBindsOnlyTheRest()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var clip = FaceClip(100);
             var absent = new AnimationClip { name = "Only missing" };
@@ -245,6 +249,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AChosenPresetThatAlsoShowsAnObjectKeepsItsShapesAndSaysWhatItLeftOut()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var on = new ExpressionTransformsSwitch(true);
             using var fixture = Fixture();
             var clip = FaceClip(100);
@@ -271,6 +276,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AChosenSlotThatCannotBeWrittenIsWrittenEmpty()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var clip = FaceClip(0);
             try
@@ -841,6 +847,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task MouthGazeAndNeutralAssignmentsExportWithoutOverrides()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var mesh = FrontMesh(fixture, Shape("Open", OpenDelta), Shape("Raise", RaiseDelta));
             Vrm10Instance imported = null;
@@ -884,6 +891,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AssignedBlinkReplacesTheAutomaticBlink()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Shut", ShutDelta));
             Vrm10Instance assigned = null, automatic = null;
@@ -980,6 +988,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ConfirmingOneBlinkPresetKeepsTheOtherCandidates()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1), Shape("Shut_L", ShutDelta, 0));
             Vrm10Instance imported = null;
@@ -1019,6 +1028,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void MouthCandidatesFollowLipSyncThenKnownNames()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             // On both meshes: the ordinary export binds it on each, so no single candidate.
             fixture.Mesh.AddBlendShapeFrame("vrc.v_ih", 100, Enumerable.Repeat(RaiseDelta, 3).ToArray(), new Vector3[3], new Vector3[3]);
@@ -1093,6 +1103,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void LipSyncCandidateOnAKnownNameKeepsTheNameBindingOnEveryMesh()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             // Back keeps the shared mesh and Front copies it: both have vrc.v_aa.
             fixture.Mesh.AddBlendShapeFrame("vrc.v_aa", 100, Enumerable.Repeat(OpenDelta, 3).ToArray(), new Vector3[3], new Vector3[3]);
@@ -1118,6 +1129,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NoneOnAMouthPresetStopsTheNameBinding()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("vrc.v_aa", OpenDelta), Shape("vrc.v_ih", RaiseDelta));
             try
@@ -1136,6 +1148,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NoneOnEveryBlinkPresetWritesNoBlink()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             try
@@ -1155,6 +1168,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ChoosingOneEyeKeepsTheAutomaticBlinkOnEveryMesh()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             // Back keeps the shared mesh and Front copies it: the automatic
             // blink closes both eyes on two meshes, so it offers no candidate.
@@ -1192,6 +1206,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void BlinkClipsUseOnlyWhatDiffersFromTheBaseline()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             var left = EyeClip("Blink_L", 35); var right = EyeClip("Blink_R", 35);
@@ -1213,6 +1228,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void BlinkClipsSharingAShapeAreAnEyeSlotError()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             var left = EyeClip("Blink_L", 60); var right = EyeClip("Blink_R", 60);
@@ -1241,6 +1257,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NoneOnAnEmptySlotKeepsTheSourceVrmBlink()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var settings = ScriptableObject.CreateInstance<VRM10Object>();
             var blink = ScriptableObject.CreateInstance<VRM10Expression>();

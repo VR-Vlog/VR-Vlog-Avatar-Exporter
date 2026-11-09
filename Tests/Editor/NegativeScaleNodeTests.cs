@@ -19,6 +19,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(-1, -1, -1)]
         public async Task MirroredPropKeepsWorldVerticesAndFrontFacesThroughVrmRoundTrip(float x, float y, float z)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var f = new AttachmentConnectionTests.Fixture();
             var hand = f.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.RightHand);
@@ -79,6 +80,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(1f, -1f, 1f, "none")]
         public async Task MirroredSkinnedMeshKeepsWorldVerticesAndFrontFacesThroughVrmRoundTrip(float x, float y, float z, string root)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = Shader.Find("lilToon");
             if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
             using var f = new AttachmentConnectionTests.Fixture();

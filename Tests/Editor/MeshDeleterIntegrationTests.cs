@@ -26,6 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(bool useInstalledMeshDeleter, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             MethodInfo remove = null;
             if (useInstalledMeshDeleter)
             {
