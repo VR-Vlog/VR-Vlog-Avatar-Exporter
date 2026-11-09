@@ -91,6 +91,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var image = (Texture2D)material.GetTexture("_MainTex");
                 Assert.That(image, Is.Not.SameAs(source));
                 Assert.That(image.width, Is.EqualTo(1024)); Assert.That(image.height, Is.EqualTo(4));
+                // Point-filtered, so neither the preview nor the app builds mips
+                // (Documentation~/decisions/2026-11-09-lightweight-mips.md).
                 Assert.That(image.mipmapCount, Is.EqualTo(1)); Assert.That(image.isDataSRGB, Is.EqualTo(srgb));
                 Assert.That(image.filterMode, Is.EqualTo(FilterMode.Point)); Assert.That(image.wrapModeU, Is.EqualTo(TextureWrapMode.Clamp));
                 Assert.That(image.wrapModeV, Is.EqualTo(TextureWrapMode.Mirror)); Assert.That(image.wrapModeW, Is.EqualTo(TextureWrapMode.Repeat));
@@ -377,7 +379,7 @@ namespace VRVlog.LilToonExporter.Tests
             public void Dispose() { Object.DestroyImmediate(Value); }
         }
 
-        sealed class Fixture : IDisposable
+        internal sealed class Fixture : IDisposable
         {
             internal readonly AttachmentConnectionTests.Fixture Avatar = new AttachmentConnectionTests.Fixture();
             readonly List<Object> owned = new List<Object>();
@@ -412,9 +414,9 @@ namespace VRVlog.LilToonExporter.Tests
                 Front.sharedMesh = mesh; Front.sharedMaterials = new[] { First, Second };
             }
 
-            internal byte[] Export()
+            internal byte[] Export(TexelDensity.Plan lightweight = null)
             {
-                var snapshot = LilToonFullSnapshot.Capture(Avatar.Copy);
+                var snapshot = LilToonFullSnapshot.Capture(Avatar.Copy, lightweight: lightweight);
                 var skins = Avatar.Skins; var original = skins.Select(r => r.sharedMaterials).ToArray();
                 var replacements = new Dictionary<Material, Material>();
                 foreach (var source in original.SelectMany(values => values).Distinct())

@@ -972,6 +972,13 @@ BEHAVIOR_CASES = {
         'TheExportListsTheLineOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
+    # 自動で軽量化する: opaque colour textures are written as mip 0 alone.
+    'LightweightMipsTests': {
+        'OnlyTheOptionLeavesOutTheMipsOfOpaqueColourTextures': 2,
+        'TexturesOfNonOpaqueMaterialsKeepTheirMips': 1,
+        'APointFilteredTextureKeepsItsMips': 1,
+        'AnImporterMipFilterOtherThanTheBoxFilterKeepsTheMips': 5,
+    },
 }
 INTEGRATION_CASES = {
     'NdmfLostMorphFollowTests': {

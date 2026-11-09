@@ -325,7 +325,7 @@ namespace VRVlog.LilToonExporter
         private static MaterialBakeIssue Issue(Material material, string path, string layer, string setting, string reason, string nextStep) =>
             new MaterialBakeIssue(material, path, layer, setting, reason, nextStep);
 
-        private static bool IsOpaque(Material material)
+        internal static bool IsOpaque(Material material)
         {
             if (material.GetTag("RenderType", false, "") != "Opaque" || Float(material, "_TransparentMode") != 0) return false;
             var name = material.shader != null ? material.shader.name : "";

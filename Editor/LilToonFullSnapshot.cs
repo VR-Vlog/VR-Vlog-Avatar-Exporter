@@ -43,6 +43,9 @@ namespace VRVlog.LilToonExporter
         LilToonInactiveTextureProof inactiveTextures;
         // 自動で軽量化する: smaller maximums for textures with detail to spare. Null when off.
         TexelDensity.Plan lightweight;
+        // 自動で軽量化する: textures a non-opaque material reads. Their alpha
+        // draws an edge, so their mips stay as the Editor made them.
+        HashSet<Texture> keepMips = new HashSet<Texture>();
         // 自動で軽量化する: write a slot whose feature is switched off as
         // unassigned. The references left out, by texture key; false when off.
         bool omitInactiveSlots;
@@ -75,6 +78,7 @@ namespace VRVlog.LilToonExporter
             // Before any material registers a shared texture, so its size does
             // not depend on which material reads it first.
             result.deleteMeshMasks = DeleteMeshMasks(selected.SelectMany(s => s.materials).Select(OutlineMaskReference));
+            if (lightweight != null) result.keepMips = KeepMips(selected.SelectMany(s => s.materials));
             foreach (var (renderer, materials) in selected)
             {
                 result.sources.Add(renderer, materials);
@@ -108,6 +112,35 @@ namespace VRVlog.LilToonExporter
             => material != null && LilToon234Catalogue.RequiredProperties.TryGetValue(material.shader.name, out var required) &&
                Array.IndexOf(required, "_OutlineWidthMask") >= 0 && material.HasProperty("_OutlineWidthMask") && material.HasProperty("_OutlineDeleteMesh")
                 ? (material.GetTexture("_OutlineWidthMask"), material.GetFloat("_OutlineDeleteMesh")) : (null, 0f);
+
+        // 自動で軽量化する writes mip 0 alone and the app builds the rest when
+        // it loads (Documentation~/decisions/2026-11-09-lightweight-mips.md). Normal maps, cube maps,
+        // textures of non-opaque materials and chains the importer filters in
+        // its own way keep the Editor's mips.
+        internal static HashSet<Texture> KeepMips(IEnumerable<Material> materials)
+        {
+            var keep = new HashSet<Texture>();
+            foreach (var material in materials)
+                if (material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) &&
+                    !LilToonMainTextureBaker.IsOpaque(material))
+                    foreach (var name in material.GetTexturePropertyNames())
+                        if (material.GetTexture(name) is Texture texture) keep.Add(texture);
+            return keep;
+        }
+
+        internal static bool OwnMipFilter(Texture source)
+        {
+            var path = AssetDatabase.GetAssetPath(source);
+            return !string.IsNullOrEmpty(path) && AssetImporter.GetAtPath(path) is TextureImporter importer &&
+                (importer.fadeout || importer.mipMapsPreserveCoverage || importer.borderMipmap || importer.mipmapFilter != TextureImporterMipFilter.BoxFilter);
+        }
+
+        // Point filtering marks dither patterns and pixel art. The app does not
+        // build mips for a point-filtered image, so its stored chain stays.
+        internal static bool KeepsStoredMips(Texture source) => source.filterMode == FilterMode.Point || OwnMipFilter(source);
+
+        bool Mip0Only(Texture source, bool normal) =>
+            lightweight != null && !normal && source is Texture2D && !keepMips.Contains(source) && !KeepsStoredMips(source);
 
         int MaximumSize(Texture source, bool normal) => Lightened(source, ExistingMaximumSize(source, normal));
         int ExistingMaximumSize(Texture source, bool normal) => MaximumSize(!normal && deleteMeshMasks.Contains(source));
@@ -268,7 +301,8 @@ namespace VRVlog.LilToonExporter
             if (!(source is Texture2D) && !(source is Cubemap)) throw new NotSupportedException("動的テクスチャは保存できません: " + source.name);
             var chunks = new List<object>();
             var maximum = MaximumSize(source, normal);
-            var (width, height, count, faces) = Layout(source, maximum);
+            var mip0Only = Mip0Only(source, normal);
+            var (width, height, count, faces) = Layout(source, maximum, mip0Only);
             // 自動で軽量化する lists its textures in one line, not one note each;
             // a note for the default's resizing states the size after it alone.
             var unlightened = Layout(source, ExistingMaximumSize(source, normal));
@@ -286,7 +320,7 @@ namespace VRVlog.LilToonExporter
             // only because of its decode; the source itself is not Half.
             var quantizable = normal && half && StorageFormat(source.graphicsFormat, false) != "rgbaHalf";
             if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
-            else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
+            else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half, mip0Only)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
                 warnings?.Add(ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, unlightened.width, unlightened.height));
             var index = textures.Count;
@@ -301,7 +335,7 @@ namespace VRVlog.LilToonExporter
             return index;
         }
 
-        static (int width, int height, int mips, int faces) Layout(Texture source, int maximum)
+        internal static (int width, int height, int mips, int faces) Layout(Texture source, int maximum, bool mip0Only = false)
         {
             var size = TextureResizePolicy.Size(source.width, source.height, maximum);
             var resized = size.Item1 != source.width || size.Item2 != source.height;
@@ -309,13 +343,14 @@ namespace VRVlog.LilToonExporter
             // Keep intentionally mipless inputs mipless. A resized mipmapped
             // texture needs the chain for its new dimensions, not the old chain.
             var count = resized && sourceMipCount > 1 ? LilToonFullTexture.MipCount(size.Item1, size.Item2) : sourceMipCount;
+            if (mip0Only) count = 1;
             return (size.Item1, size.Item2, count, source is Cubemap ? 6 : 1);
         }
 
         // Every face and mip in chunk order, read one at a time.
-        static IEnumerable<byte[]> Pixels(Texture source, int maximum, bool normal, bool srgb, bool hdr, bool half)
+        static IEnumerable<byte[]> Pixels(Texture source, int maximum, bool normal, bool srgb, bool hdr, bool half, bool mip0Only = false)
         {
-            var (width, height, count, faces) = Layout(source, maximum);
+            var (width, height, count, faces) = Layout(source, maximum, mip0Only);
             var resized = width != source.width || height != source.height;
             for (var face = 0; face < faces; face++)
                 for (var mip = 0; mip < count; mip++)
