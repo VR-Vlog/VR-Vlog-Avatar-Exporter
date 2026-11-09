@@ -139,6 +139,42 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AnAvatarWithNothingSavedStartsLightweight()
+        {
+            using var fixture = new SavedAvatar();
+            Assert.That(new ExportSettings().AutoLightweight, Is.True);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.True);
+        }
+
+        [Test]
+        public void TurningLightweightOffIsWrittenAndComesBack()
+        {
+            using var fixture = new SavedAvatar();
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { AutoLightweight = false });
+            Assert.That(File.ReadAllText(storePath), Does.Contain(ExpressionPresetStore.KeyFor(fixture.Avatar)), "Off differs from the default, so it has an entry.");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.False);
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, "Avatar");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.False, "Saving the name keeps the choice.");
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings());
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.True, "Turning it back on applies.");
+        }
+
+        // Files written by earlier versions: the value is kept when it is there,
+        // and an entry from before the option has no value and takes the default.
+        [TestCase(",\"AutoLightweight\":false", false)]
+        [TestCase(",\"AutoLightweight\":true", true)]
+        [TestCase("", true)]
+        public void AnEntryFromAnEarlierVersionIsRead(string field, bool expected)
+        {
+            using var fixture = new SavedAvatar();
+            var key = ExpressionPresetStore.KeyFor(fixture.Avatar);
+            File.WriteAllText(storePath, "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"" + key + "\",\"AutoExcludeGimmicks\":true,\"TransferName\":\"Avatar\"" + field + "}]}", Encoding.UTF8);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected));
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, "Renamed");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected), "Saving again does not change it.");
+        }
+
+        [Test]
         public void AFileThatCannotBeReadIsNeverOverwritten()
         {
             using var fixture = new SavedAvatar();

@@ -197,7 +197,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
             Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
-            Board.GetField("autoLightweight", Flags).SetValue(window, true);
+            Board.GetField("autoLightweight", Flags).SetValue(window, false);
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
             Assert.That(OpenNormal(fixture.Source), Is.SameAs(window));
@@ -238,6 +238,22 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Warnings(quick), Has.Some.Contains(line), "The texture is made smaller and the result line says so.");
             }
             finally { Object.DestroyImmediate(texture); }
+        }
+
+        // 自動で軽量化する starts on; saved off, both boards start from off.
+        [Test]
+        public void LightweightStartsOnUnlessSavedOff()
+        {
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("autoLightweight True")); }
+            finally { Object.DestroyImmediate(hidden); }
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { AutoLightweight = false });
+            hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("autoLightweight False")); }
+            finally { Object.DestroyImmediate(hidden); }
+            var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
         }
 
         sealed class CountingLimitDialog : IPoseLimitDialog
