@@ -992,11 +992,25 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(error, Is.Null);
                     // A standard expression carries BlendShapes only. It takes a gesture face beside an eye
                     // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
-                    // keeps the clip out of it, as before, so the automatic choice of each preset is unchanged.
+                    // keeps the clip out of the automatic candidates, as before, so the automatic choice of each
+                    // preset is unchanged. A slot the user filled takes the clip with its BlendShapes alone and
+                    // names the curve it leaves out, so the export does not stop on it.
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                    var automatic = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip); automatic.Automatic = true;
                     var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body");
-                    if (presetUsable) Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
-                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(binding.propertyName));
+                    Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
+                    Assert.That(session.PresetError(ExpressionPreset.happy, preset), Is.Null);
+                    if (presetUsable)
+                    {
+                        Assert.That(session.PresetError(ExpressionPreset.happy, automatic), Is.Null);
+                        Assert.That(session.PresetLeftOut(preset), Is.Null);
+                    }
+                    else
+                    {
+                        Assert.That(session.PresetError(ExpressionPreset.happy, automatic), Does.EndWith(binding.propertyName));
+                        Assert.That(session.PresetLeftOut(preset), Is.EqualTo(binding.path + " / " + binding.propertyName));
+                    }
+                    Assert.That(session.PresetLeftOut(automatic), Is.Null);
                     Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));

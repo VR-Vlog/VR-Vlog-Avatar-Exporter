@@ -475,6 +475,11 @@ namespace VRVlog.LilToonExporter
                         : ExpressionPresetGroups.Blinks.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
                     return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
                 }).ToArray();
+            // A slot the user filled with a face that also moves bones or shows
+            // objects keeps its BlendShapes; the result list says what it left out.
+            foreach (var item in selectedPresets)
+                if (PresetLeftOut(item.Assignment) is string leftOut)
+                    warnings?.Add(PresetFullLabel(item.Preset) + ": " + ExporterLocalization.T(PresetLeftOutNote) + leftOut);
             // Gaze and neutral the board leaves open are filled from names as in
             // the quick export; only the user's own "none" keeps one empty.
             var keepEmpty = selectedPresets

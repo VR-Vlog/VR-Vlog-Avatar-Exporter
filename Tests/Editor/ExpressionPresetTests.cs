@@ -238,6 +238,33 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(absent); }
         }
 
+        // A face that also shows or hides an object can be put in a standard
+        // slot by hand. A standard expression holds BlendShapes only, so the
+        // export binds its BlendShapes, leaves the object out and says so,
+        // instead of stopping on the slot.
+        [Test]
+        public void AChosenPresetThatAlsoShowsAnObjectKeepsItsShapesAndSaysWhatItLeftOut()
+        {
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = Fixture();
+            var clip = FaceClip(100);
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+                using var session = new Session(fixture.Source);
+                var automatic = Session.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip); automatic.Automatic = true;
+                Assert.That(session.PresetError(ExpressionPreset.lookUp, automatic), Does.EndWith("m_IsActive"));
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
+                Assert.That(session.PresetError(ExpressionPreset.lookUp, assignment), Is.Null);
+                session.SetPreset(ExpressionPreset.lookUp, assignment);
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(BoundShapes(bytes, "lookUp"), Has.Length.EqualTo(1));
+                Assert.That(warnings, Has.One.Contains(ExporterLocalization.T(Session.PresetLeftOutNote) + "Front / m_IsActive"));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         [Test]
         public void DuplicateOrUnassignableAssignmentsAreRejected()
         {
