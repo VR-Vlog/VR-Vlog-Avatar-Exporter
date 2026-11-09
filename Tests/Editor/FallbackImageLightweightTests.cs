@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Image 0: base colour of a material only bound nodes draw. Image 1:
         // base colour of the face material (the expressions move its mesh).
-        // Image 2: of a material a node without a binding draws too. Image 3:
+        // Image 2: of a material a node without a binding draws. Image 3:
         // also the thumbnail. Image 4: colour in one slot, data in another.
         // Image 5: normal map of the bound material.
         [Test]
