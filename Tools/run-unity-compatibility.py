@@ -956,8 +956,25 @@ BEHAVIOR_CASES = {
         'RandomWeightsRoundTripWithin1Over65535': 1,
         'WeightsThatDoNotAddUpTo1StayFloat': 1,
         'AFileWithNothingToChangeOrAnUnknownExtensionIsKept': 1,
+        'DrawIndicesBecomeUnsignedShortsOnlyUpTo65534': 4,
+        'SparseMorphIndicesBecomeUnsignedShortsUpTo65535': 2,
+        'IndicesInAViewAnotherAccessorReadsStay': 1,
         'TheExportPacksVertexDataOnlyWhenTheOptionIsOn': 3,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
+    # 自動で軽量化する: MToon images only the lilToon extension's materials use
+    # become smaller.
+    'FallbackImageLightweightTests': {
+        'OnlyImagesNothingElseUsesBecomeSmaller': 1,
+        'TheMaterialsFollowTheAppsFullyBoundRule': 1,
+        'AFileWithoutTheExtensionOrWithAnUnknownOneIsKept': 1,
+        'TheExportShrinksTheImagesOnlyWhenTheOptionIsOn': 2,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
+    # 自動で軽量化する: HDR reflection cubes that fit are stored as half.
+    'HdrCubeLightweightTests': {
+        'FitsHalfAcceptsOnlyFiniteValuesHalfHolds': 5,
+        'AFloatCubeIsStoredAsHalfOnlyWhenOnAndItFits': 4,
     },
     # 自動で軽量化する: textures of switched-off lilToon features are left out.
     'LilToonInactiveSlotsTests': {
