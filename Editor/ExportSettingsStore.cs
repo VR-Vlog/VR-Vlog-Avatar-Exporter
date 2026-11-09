@@ -55,8 +55,9 @@ namespace VRVlog.LilToonExporter
             public List<string> ExcludedPoses = new List<string>();
             public List<PoseName> PoseNames = new List<PoseName>();
             public AvatarLicenseOptions License = new AvatarLicenseOptions();
-            // Missing in entries saved before the option: off, as before.
-            public bool AutoLightweight;
+            // Missing in entries saved before the option existed: on, the
+            // default, because nobody chose. A written false stays off.
+            public bool AutoLightweight = true;
             // The name of the last successful "アプリに転送". It is not part of
             // ExportSettings, so it never changes the settings' signature.
             public string TransferName;
