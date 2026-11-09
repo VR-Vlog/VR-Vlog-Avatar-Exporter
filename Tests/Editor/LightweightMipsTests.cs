@@ -27,7 +27,8 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task OnlyTheOptionLeavesOutTheMipsOfOpaqueColourTextures(bool on)
         {
             using var f = new ExportVrmLilToonPreviewTests.Fixture();
-            var main = f.Own(Image("Lightweight mips main", 64, MainColor, false));
+            var mainPath = ImportedImage(64);
+            var main = AssetDatabase.LoadAssetAtPath<Texture2D>(mainPath);
             var normal = f.Own(Image("Lightweight mips normal", 16, new Color32(128, 128, 255, 255), true));
             var cutoutMain = f.Own(Image("Lightweight mips cutout main", 32, new Color32(200, 90, 40, 128), false));
             var cube = f.Own(new Cubemap(4, TextureFormat.RGBA32, true) { name = "Lightweight mips cube" });
@@ -41,24 +42,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(cutout, Is.Not.Null);
             f.Second.shader = cutout; f.Second.SetTexture("_MainTex", cutoutMain);
 
-            var bytes = f.Export(on ? new TexelDensity.Plan(null) : null);
-            var textures = F.List(F.Root(GlbDocument.Read(bytes).Json), "textures").Select(F.Object).ToList();
-            int Mips(Texture source) => F.Int(textures.Single(t => F.Text(t, "name") == source.name), "mips");
-            Assert.That(Mips(main), Is.EqualTo(on ? 1 : 7));
-            Assert.That(Mips(normal), Is.EqualTo(5), "Normal maps keep their mips");
-            Assert.That(Mips(cube), Is.EqualTo(3), "Cube maps keep their mips");
-            Assert.That(Mips(cutoutMain), Is.EqualTo(6), "Textures of non-opaque materials keep their mips");
-
-            await f.Import(bytes);
-            using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+            try
             {
-                var image = (Texture2D)f.ImportedFront.sharedMaterial.GetTexture("_MainTex");
-                Assert.That(image.mipmapCount, Is.EqualTo(7));
-                Assert.That(image.isReadable, Is.False);
-                foreach (var mip in new[] { 0, 3, 6 })
-                    AssertRgba(LilToonFullTexture.Read(image, mip, 0, false, true, false), MainColor, mip);
-                Assert.That(f.ImportedFront.sharedMaterial.GetTexture("_BumpMap").mipmapCount, Is.EqualTo(5));
+                var bytes = f.Export(on ? new TexelDensity.Plan(null) : null);
+                var textures = F.List(F.Root(GlbDocument.Read(bytes).Json), "textures").Select(F.Object).ToList();
+                int Mips(Texture source) => F.Int(textures.Single(t => F.Text(t, "name") == source.name), "mips");
+                Assert.That(Mips(main), Is.EqualTo(on ? 1 : 7));
+                Assert.That(Mips(normal), Is.EqualTo(5), "Normal maps keep their mips");
+                Assert.That(Mips(cube), Is.EqualTo(3), "Cube maps keep their mips");
+                Assert.That(Mips(cutoutMain), Is.EqualTo(6), "Textures of non-opaque materials keep their mips");
+
+                await f.Import(bytes);
+                using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+                {
+                    var image = (Texture2D)f.ImportedFront.sharedMaterial.GetTexture("_MainTex");
+                    Assert.That(image.mipmapCount, Is.EqualTo(7));
+                    Assert.That(image.isReadable, Is.False);
+                    foreach (var mip in new[] { 0, 3, 6 })
+                        AssertRgba(LilToonFullTexture.Read(image, mip, 0, false, true, false), MainColor, mip);
+                    Assert.That(f.ImportedFront.sharedMaterial.GetTexture("_BumpMap").mipmapCount, Is.EqualTo(5));
+                }
             }
+            finally { AssetDatabase.DeleteAsset(mainPath); }
         }
 
         // A non-opaque lilToon material keeps the mips of every texture it reads,
@@ -87,14 +92,15 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void APointFilteredTextureKeepsItsMips()
         {
-            var image = Image("Lightweight mips point", 8, MainColor, false);
+            var path = ImportedImage(8);
             try
             {
+                var image = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
                 Assert.That(LilToonFullSnapshot.KeepsStoredMips(image), Is.False);
                 image.filterMode = FilterMode.Point;
                 Assert.That(LilToonFullSnapshot.KeepsStoredMips(image), Is.True);
             }
-            finally { Object.DestroyImmediate(image); }
+            finally { AssetDatabase.DeleteAsset(path); }
         }
 
         // A chain the importer filters in its own way stays as exported; the
@@ -120,9 +126,40 @@ namespace VRVlog.LilToonExporter.Tests
                 if (setting == "kaiser") importer.mipmapFilter = TextureImporterMipFilter.KaiserFilter;
                 importer.SaveAndReimport();
                 Assert.That(LilToonFullSnapshot.OwnMipFilter(AssetDatabase.LoadAssetAtPath<Texture2D>(path)), Is.EqualTo(kept));
-                Assert.That(LilToonFullSnapshot.OwnMipFilter(original), Is.False, "A texture without an importer has no filter of its own");
             }
             finally { AssetDatabase.DeleteAsset(path); Object.DestroyImmediate(original); }
+        }
+
+        // Levels written by hand stay: the app's box filter cannot rebuild them.
+        [Test]
+        public void ATextureWithoutAnImporterKeepsItsMips()
+        {
+            var inMemory = Image("Lightweight mips in memory", 8, MainColor, false);
+            var asset = Image("Lightweight mips asset", 8, MainColor, false);
+            var path = "Assets/__VRVlogLightweightMips_" + Guid.NewGuid().ToString("N") + ".asset";
+            try
+            {
+                AssetDatabase.CreateAsset(asset, path);
+                Assert.That(LilToonFullSnapshot.OwnMipFilter(inMemory), Is.True);
+                Assert.That(LilToonFullSnapshot.OwnMipFilter(AssetDatabase.LoadAssetAtPath<Texture2D>(path)), Is.True);
+            }
+            finally { AssetDatabase.DeleteAsset(path); Object.DestroyImmediate(inMemory); }
+        }
+
+        // An uncompressed asset with the importer's default box mips.
+        static string ImportedImage(int size)
+        {
+            var path = "Assets/__VRVlogLightweightMips_" + Guid.NewGuid().ToString("N") + ".png";
+            var image = Image("Lightweight mips source", size, MainColor, false);
+            try { File.WriteAllBytes(path, ImageConversion.EncodeToPNG(image)); }
+            finally { Object.DestroyImmediate(image); }
+            AssetDatabase.ImportAsset(path);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+            importer.mipmapEnabled = true;
+            importer.npotScale = TextureImporterNPOTScale.None;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.SaveAndReimport();
+            return path;
         }
 
         static Texture2D Image(string name, int size, Color32 color, bool linear)

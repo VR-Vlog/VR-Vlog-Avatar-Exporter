@@ -130,9 +130,12 @@ namespace VRVlog.LilToonExporter
 
         internal static bool OwnMipFilter(Texture source)
         {
+            // Only an importer's plain box chain is what the app rebuilds. A chain
+            // without an importer (levels written by hand in a .asset, a texture
+            // made in memory) may hold anything, so it stays.
             var path = AssetDatabase.GetAssetPath(source);
-            return !string.IsNullOrEmpty(path) && AssetImporter.GetAtPath(path) is TextureImporter importer &&
-                (importer.fadeout || importer.mipMapsPreserveCoverage || importer.borderMipmap || importer.mipmapFilter != TextureImporterMipFilter.BoxFilter);
+            return string.IsNullOrEmpty(path) || !(AssetImporter.GetAtPath(path) is TextureImporter importer) ||
+                importer.fadeout || importer.mipMapsPreserveCoverage || importer.borderMipmap || importer.mipmapFilter != TextureImporterMipFilter.BoxFilter;
         }
 
         // Point filtering marks dither patterns and pixel art. The app does not
