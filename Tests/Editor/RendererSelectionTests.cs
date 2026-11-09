@@ -11,6 +11,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false)][TestCase(true)]
         public void EmptyMeshRenderersAreLeftOutOfTheExportCopyOnly(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var shader = Shader.Find("lilToon");
             Assert.That(shader, Is.Not.Null, "The real lilToon package is required for the exporter entry point.");
@@ -57,6 +58,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void EmptySubmeshesAreLeftOutWithTheirMaterialSlots()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var shader = Shader.Find("lilToon");
             Assert.That(shader, Is.Not.Null, "The real lilToon package is required for the exporter entry point.");

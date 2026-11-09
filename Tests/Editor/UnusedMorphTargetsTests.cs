@@ -52,6 +52,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AnExportKeepsTheCameraGazeShapesThatNoExpressionBinds()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var gaze = new[] { "eye_up", "eye_down", "eye_left", "eye_right" };
             using var avatar = new AttachmentConnectionTests.Fixture(eyes: true);
             foreach (var name in gaze.Append("Unused detail"))

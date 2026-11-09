@@ -275,6 +275,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AppTransferExportsWithTheAvatarsRememberedSettings()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             // The quick transfer exports from a board prepared out of sight, so
             // the avatar needs a mesh the board can show.
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
@@ -343,6 +344,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AppTransferRemembersTheNameOnlyAfterASave()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             static AppTransferExport Transfer(GameObject avatar)
             {
                 var transfer = new AppTransferExport();

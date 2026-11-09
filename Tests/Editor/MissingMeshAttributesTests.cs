@@ -121,6 +121,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, false)] [TestCase(false, true)]
         public async Task AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback(bool normals, bool fullExporter)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture(false, normals, !normals);
             if (fullExporter) fixture.UseLilToon();
             var streams = new Mesh { name = "Authored additional stream", vertices = fixture.Positions };
@@ -171,6 +172,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false)] [TestCase(true)]
         public void SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings(bool normalPipeline)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture(false, true, true, twin: true);
             fixture.UseLilToon();
             var streams = new List<Mesh>();
@@ -387,6 +389,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, false, true, true)] [TestCase(false, true, true, true)]
         public async Task NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(bool skinned, bool missingNormals, bool missingUv, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new Fixture(skinned, missingNormals, missingUv);
             fixture.UseLilToon();
             if (skinned) fixture.Targets.Single().GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 35);

@@ -298,6 +298,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void ARealExportReportsBlinkAndMaterialFallbacksOnce()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var plain = new Material(Shader.Find("Standard")) { name = "Plain" };
             try
@@ -360,6 +361,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void ARealExportWithAMissingShaderSavesAndWarnsOnce()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = Shader.Find("Hidden/InternalErrorShader");
             Assume.That(shader, Is.Not.Null);
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -408,6 +410,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void AnExcludedRendererWithAMissingShaderIsNotCounted()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = Shader.Find("Hidden/InternalErrorShader");
             Assume.That(shader, Is.Not.Null);
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -447,6 +450,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void TwoMaterialsWithTheSameNameCountAsTwo()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = Shader.Find("Hidden/InternalErrorShader");
             Assume.That(shader, Is.Not.Null);
             using var fixture = new AttachmentConnectionTests.Fixture();

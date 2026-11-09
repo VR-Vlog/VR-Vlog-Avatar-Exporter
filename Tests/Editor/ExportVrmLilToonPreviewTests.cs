@@ -20,6 +20,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ExportedEmissionAlphaAndMaterialSettingsDriveThePreviewWithoutEditingTheSource()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             f.First.SetColor("_Color", new Color(.17f, .23f, .31f, 1));
             f.First.SetFloat("_AsUnlit", 1);
@@ -38,7 +39,7 @@ namespace VRVlog.LilToonExporter.Tests
             await f.Import(bytes);
             var native = f.ImportedFront.sharedMaterial;
             Assert.That(native.shader.name, Does.Contain("MToon"));
-            using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+            using (Preview(bytes, f))
             {
                 var restored = f.ImportedFront.sharedMaterial;
                 Assert.That(restored.shader, Is.SameAs(f.First.shader));
@@ -50,14 +51,17 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(restored.renderQueue, Is.EqualTo(2457));
                 Assert.That(restored.GetShaderPassEnabled("ShadowCaster"), Is.False);
                 Assert.That(restored.shaderKeywords, Is.EquivalentTo(f.First.shaderKeywords));
-                var expected = Render(f.First);
-                var actual = Render(restored);
-                AssertImages(expected, actual);
-                using var visibleEmission = new MaterialOwner(restored);
-                visibleEmission.Value.SetColor("_EmissionColor", new Color(4, 3, 2, 1));
-                var lit = Render(visibleEmission.Value);
-                Assert.That(lit.Zip(actual, (a, b) => Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b)).Max(),
-                    Is.GreaterThan(.1f), "The pixel comparison must exercise emission alpha rather than an inactive shader feature.");
+                if (!NoGraphicsDevice.Missing)
+                {
+                    var expected = Render(f.First);
+                    var actual = Render(restored);
+                    AssertImages(expected, actual);
+                    using var visibleEmission = new MaterialOwner(restored);
+                    visibleEmission.Value.SetColor("_EmissionColor", new Color(4, 3, 2, 1));
+                    var lit = Render(visibleEmission.Value);
+                    Assert.That(lit.Zip(actual, (a, b) => Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b)).Max(),
+                        Is.GreaterThan(.1f), "The pixel comparison must exercise emission alpha rather than an inactive shader feature.");
+                }
             }
             Assert.That(f.ImportedFront.sharedMaterial, Is.SameAs(native));
             Assert.That(EditorJsonUtility.ToJson(f.First), Is.EqualTo(sourceState));
@@ -65,12 +69,14 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Avatar.Source.GetComponentsInChildren<Transform>(true).Select(t => t.localToWorldMatrix), Is.EqualTo(sourceMatrices));
             Assert.That(f.Avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(s => s.sharedMaterial), Is.EqualTo(new[] { f.First, f.Second }));
             Assert.That(bytes, Is.EqualTo(originalBytes));
+            NoGraphicsDevice.IgnorePixelChecks();
         }
 
         [TestCase(false)]
         [TestCase(true)]
         public async Task ResizedEmbeddedPixelsSamplerAndTextureTransformsSurviveTheActualRoundTrip(bool srgb)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             var color = new Color32(73, 119, 181, 93);
             var source = f.Own(new Texture2D(2048, 8, TextureFormat.RGBA32, false, !srgb) { name = "Preview fixture resized color" });
@@ -85,7 +91,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetPixels32(Enumerable.Repeat(new Color32(255, 0, 0, 255), source.width * source.height).ToArray()); source.Apply(false, false);
             var editedPixels = source.GetPixels32();
             await f.Import(bytes);
-            using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+            using (Preview(bytes, f))
             {
                 var material = f.ImportedFront.sharedMaterial;
                 var image = (Texture2D)material.GetTexture("_MainTex");
@@ -99,17 +105,19 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(material.GetTextureOffset("_MainTex"), Is.EqualTo(new Vector2(-.1f, .2f)));
                 Assert.That(material.GetTexture("_EmissionMap"), Is.SameAs(image));
                 Assert.That(f.ImportedBack.sharedMaterial.GetTexture("_MainTex"), Is.SameAs(image));
-                AssertRgba(LilToonFullTexture.Read(image, 0, 0, false, srgb, false), color);
+                if (!NoGraphicsDevice.Missing) AssertRgba(LilToonFullTexture.Read(image, 0, 0, false, srgb, false), color);
             }
             Assert.That(source.width, Is.EqualTo(2048)); Assert.That(source.height, Is.EqualTo(8));
             Assert.That(source.GetPixels32(), Is.EqualTo(editedPixels));
             Assert.That(f.First.GetTexture("_MainTex"), Is.SameAs(source));
             Assert.That(bytes, Is.EqualTo(originalBytes));
+            NoGraphicsDevice.IgnorePixelChecks();
         }
 
         [Test]
         public async Task HdrAlphaAndAuthoredCubeFacesAndMipLevelsArePreserved()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             var hdr = f.Own(new Texture2D(4, 4, TextureFormat.RGBAHalf, false, true) { name = "Preview fixture HDR" });
             hdr.SetPixels(Enumerable.Repeat(new Color(3, .25f, 1.5f, .125f), 16).ToArray()); hdr.Apply(false, false);
@@ -119,10 +127,13 @@ namespace VRVlog.LilToonExporter.Tests
             cube.Apply(false, false);
             f.First.SetTexture("_EmissionMap", hdr); f.First.SetTexture("_ReflectionCubeTex", cube);
             var bytes = f.Export(); await f.Import(bytes);
-            using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+            using (Preview(bytes, f))
             {
                 var restored = (Texture2D)f.ImportedFront.sharedMaterial.GetTexture("_EmissionMap");
                 Assert.That(restored.format, Is.EqualTo(TextureFormat.RGBAHalf));
+                var restoredCube = (Cubemap)f.ImportedFront.sharedMaterial.GetTexture("_ReflectionCubeTex");
+                Assert.That(restoredCube.mipmapCount, Is.EqualTo(3));
+                NoGraphicsDevice.IgnorePixelChecks();
                 var pixels = LilToonFullTexture.Read(restored, 0, 0, false, false, true);
                 for (var i = 0; i < 16; i++)
                 {
@@ -131,8 +142,6 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(BitConverter.ToSingle(pixels, i * 16 + 8), Is.EqualTo(1.5f).Within(.002f));
                     Assert.That(BitConverter.ToSingle(pixels, i * 16 + 12), Is.EqualTo(.125f).Within(.002f));
                 }
-                var restoredCube = (Cubemap)f.ImportedFront.sharedMaterial.GetTexture("_ReflectionCubeTex");
-                Assert.That(restoredCube.mipmapCount, Is.EqualTo(3));
                 for (var face = 0; face < 6; face++) for (var mip = 0; mip < 3; mip++)
                     AssertRgba(LilToonFullTexture.Read(restoredCube, mip, face, false, cube.isDataSRGB, false), CubeColor(face, mip));
             }
@@ -141,6 +150,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task NonFlatNormalsRetainTheirNativeDecodedDirectionAtEveryAuthoredMip()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             var normal = f.Own(new Texture2D(8, 8, TextureFormat.RGBA32, 4, true)
                 { name = "Preview fixture authored normal mips", filterMode = FilterMode.Point });
@@ -166,7 +176,7 @@ namespace VRVlog.LilToonExporter.Tests
             // keeps their canonical copy in 8 bits; allow one 8-bit step.
             Assert.That(F.Text(F.List(F.Root(GlbDocument.Read(bytes).Json), "textures").Select(F.Object)
                 .Single(t => F.Text(t, "name") == normal.name), "format"), Is.EqualTo("rgba32"));
-            using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+            using (Preview(bytes, f))
             {
                 var restored = (Texture2D)f.ImportedFront.sharedMaterial.GetTexture("_BumpMap");
                 Assert.That(restored, Is.Not.SameAs(normal)); Assert.That(restored.mipmapCount, Is.EqualTo(4));
@@ -175,19 +185,22 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var actual = LilToonFullTexture.Read(restored, mip, 0, true, false, true);
                     Assert.That(actual.Length, Is.EqualTo(expected[mip].Length));
-                    for (var component = 0; component < actual.Length; component += 4)
-                        Assert.That(BitConverter.ToSingle(actual, component),
-                            Is.EqualTo(BitConverter.ToSingle(expected[mip], component)).Within(1f / 255f), "mip " + mip + " byte " + component);
+                    if (!NoGraphicsDevice.Missing)
+                        for (var component = 0; component < actual.Length; component += 4)
+                            Assert.That(BitConverter.ToSingle(actual, component),
+                                Is.EqualTo(BitConverter.ToSingle(expected[mip], component)).Within(1f / 255f), "mip " + mip + " byte " + component);
                     Assert.That(normal.GetPixels32(mip), Is.EqualTo(authoredPixels[mip]));
                 }
             }
             Assert.That(bytes, Is.EqualTo(originalBytes));
             Assert.That(f.First.GetTexture("_BumpMap"), Is.SameAs(normal));
+            NoGraphicsDevice.IgnorePixelChecks();
         }
 
         [Test]
         public async Task DuplicateNamesAndReorderedObjectsCannotSwapPrimitiveMaterialsOrFourComponentUvs()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             f.UseTwoPrimitives();
             var sourceMesh = f.Front.sharedMesh;
@@ -199,7 +212,7 @@ namespace VRVlog.LilToonExporter.Tests
             var front = f.ImportedFront; var back = f.ImportedBack;
             front.name = back.name = "Duplicate renderer"; front.transform.SetAsLastSibling();
             foreach (var material in f.Imported.GetComponentsInChildren<Renderer>().SelectMany(r => r.sharedMaterials)) material.name = "Duplicate material";
-            using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
+            using (Preview(bytes, f))
             {
                 Assert.That(front.sharedMaterials.Length, Is.EqualTo(2));
                 for (var channel = 0; channel < 4; channel++)
@@ -227,13 +240,14 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task DisposalRestoresImportStateAndReleasesOwnedResourcesEvenAfterRootDestruction(bool destroyRootFirst)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             var bytes = f.Export(); await f.Import(bytes);
             var renderer = f.ImportedFront;
             var originalMesh = renderer.sharedMesh; var originalMaterials = renderer.sharedMaterials;
             var originalBounds = renderer.localBounds; renderer.sortingOrder = 83;
             var block = new MaterialPropertyBlock(); block.SetFloat("_PreviewFixtureMarker", .625f); renderer.SetPropertyBlock(block);
-            var preview = ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject);
+            var preview = Preview(bytes, f);
             var restoredMesh = renderer.sharedMesh; var restoredMaterials = renderer.sharedMaterials;
             var restoredTexture = restoredMaterials[0].GetTexture("_BumpMap");
             try
@@ -263,6 +277,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("corruptPayload")]
         public async Task InvalidSavedAppearanceFailsInsteadOfReturningAnMToonPreview(string corruption)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             var bytes = f.Export(); await f.Import(bytes);
             var document = GlbDocument.Read(bytes);
@@ -291,6 +306,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AFailureOnTheSecondRendererDoesNotPublishTheFirstOrLeakPreviewResources()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             var bytes = f.Export(); await f.Import(bytes);
             f.ImportedBack.sharedMaterials = Array.Empty<Material>();
@@ -312,6 +328,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ReorderedVertexIdDependentMaterialsAreRejectedRatherThanRenderedWithDifferentMasks()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new Fixture();
             f.UseTwoPrimitives();
             f.Second.SetFloat("_IDMaskFrom", 8); f.Second.SetFloat("_IDMask1", 1);
@@ -324,6 +341,25 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(f.ImportedFront.sharedMaterial, Is.SameAs(oldMaterial));
             }
             finally { result?.Dispose(); }
+        }
+
+        // Without a graphics device lilToon may lack the passes saved for it, as
+        // Unity can use another of its subshaders. The preview then refuses the
+        // saved appearance and leaves the imported model as it was.
+        static IDisposable Preview(byte[] bytes, Fixture f)
+        {
+            if (!NoGraphicsDevice.Missing) return ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject);
+            var renderers = f.Imported.GetComponentsInChildren<Renderer>(true);
+            var materials = renderers.Select(r => r.sharedMaterials).ToArray();
+            var meshes = f.Imported.GetComponentsInChildren<SkinnedMeshRenderer>(true).Select(r => r.sharedMesh).ToArray();
+            var resourceIds = PreviewResourceIds();
+            try { return ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject); }
+            catch (InvalidDataException) { }
+            Assert.That(renderers.Select(r => r.sharedMaterials), Is.EqualTo(materials));
+            Assert.That(f.Imported.GetComponentsInChildren<SkinnedMeshRenderer>(true).Select(r => r.sharedMesh), Is.EqualTo(meshes));
+            Assert.That(PreviewResourceIds(), Is.EquivalentTo(resourceIds));
+            NoGraphicsDevice.IgnoreLilToonPassChecks();
+            return null;
         }
 
         static int[] PreviewResourceIds() => Resources.FindObjectsOfTypeAll<Object>()

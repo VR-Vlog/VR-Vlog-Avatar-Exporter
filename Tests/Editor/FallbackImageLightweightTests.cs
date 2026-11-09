@@ -118,6 +118,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task TheExportShrinksTheImagesOnlyWhenTheOptionIsOn(bool on)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var shader = Shader.Find("lilToon");
             Assert.That(shader, Is.Not.Null);

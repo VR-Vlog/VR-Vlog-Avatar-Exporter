@@ -31,17 +31,19 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetFloat("_Main2ndTexBlendMode", 0);
                 Assert.That(LilToonMainTextureBaker.NeedsBake(material), Is.True);
                 LilToonMainTextureBaker.Bake(material, baked, new List<string>());
-                var pixel = baked.Single().GetPixel(0, 0);
-                var expected = QualitySettings.activeColorSpace == ColorSpace.Linear ? Mathf.LinearToGammaSpace(0.5f) : 0.5f;
-                Assert.That(pixel.r, Is.LessThan(0.02f));
-                Assert.That(pixel.g, Is.EqualTo(expected).Within(0.02f));
-                Assert.That(pixel.b, Is.LessThan(0.02f));
+                Assert.That(baked, Has.Count.EqualTo(1));
                 Assert.That(material.GetColor("_Color"), Is.EqualTo(Color.white));
                 Assert.That(material.GetFloat("_UseMain2ndTex"), Is.Zero);
                 var record = LilToonMaterialReader.Read(material, 0, (image, _) => image == baked[0] ? 42 : 0);
                 Assert.That(record.textures.Single(t => t.name == "_MainTex").textureIndex, Is.EqualTo(42));
                 Assert.That(record.colors.Single(c => c.name == "_Color").r, Is.EqualTo(1));
                 Assert.That(texture.GetPixel(0, 0), Is.EqualTo(Color.red));
+                NoGraphicsDevice.IgnorePixelChecks();
+                var pixel = baked.Single().GetPixel(0, 0);
+                var expected = QualitySettings.activeColorSpace == ColorSpace.Linear ? Mathf.LinearToGammaSpace(0.5f) : 0.5f;
+                Assert.That(pixel.r, Is.LessThan(0.02f));
+                Assert.That(pixel.g, Is.EqualTo(expected).Within(0.02f));
+                Assert.That(pixel.b, Is.LessThan(0.02f));
             }
             finally
             {
@@ -72,13 +74,15 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetColor("_Color2nd", new Color(0, 1, 0, 0.5f));
                 material.SetColor("_Color3rd", new Color(0, 0, 1, 0.5f));
                 LilToonMainTextureBaker.Bake(material, baked, new List<string>());
+                Assert.That(baked, Has.Count.EqualTo(1));
+                Assert.That(LilToonMainTextureBaker.NeedsBake(material), Is.False);
+                NoGraphicsDevice.IgnorePixelChecks();
                 var pixel = baked.Single().GetPixel(0, 0);
                 float Encoded(float value) => QualitySettings.activeColorSpace == ColorSpace.Linear ? Mathf.LinearToGammaSpace(value) : value;
                 Assert.That(pixel.r, Is.EqualTo(Encoded(0.25f)).Within(0.02f));
                 Assert.That(pixel.g, Is.EqualTo(Encoded(0.25f)).Within(0.02f));
                 Assert.That(pixel.b, Is.EqualTo(Encoded(0.5f)).Within(0.02f));
                 Assert.That(pixel.a, Is.EqualTo(0.25f).Within(0.01f));
-                Assert.That(LilToonMainTextureBaker.NeedsBake(material), Is.False);
             }
             finally
             {
@@ -109,6 +113,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var image = baked.Single();
                 Assert.That(image.width, Is.EqualTo(64));
                 Assert.That(image.height, Is.EqualTo(16));
+                NoGraphicsDevice.IgnorePixelChecks();
                 Assert.That(image.GetPixel(4, 8).r, Is.GreaterThan(0.98f));
                 Assert.That(image.GetPixel(4, 8).g, Is.LessThan(0.02f));
                 Assert.That(image.GetPixel(60, 8).g, Is.GreaterThan(0.98f));
@@ -143,9 +148,10 @@ namespace VRVlog.LilToonExporter.Tests
                 LilToonMainTextureBaker.Bake(material, baked, warnings);
                 Assert.That(baked.Single().width, Is.EqualTo(LilToonMobileProfile.DefaultMaximumTextureSize));
                 Assert.That(baked.Single().height, Is.EqualTo(1));
-                Assert.That(baked.Single().GetPixel(0, 0).g, Is.GreaterThan(0.98f));
                 Assert.That(original.GetPixel(0, 0), Is.EqualTo(Color.red));
                 Assert.That(warnings.Any(w => w.Contains("縮小")), Is.True);
+                NoGraphicsDevice.IgnorePixelChecks();
+                Assert.That(baked.Single().GetPixel(0, 0).g, Is.GreaterThan(0.98f));
             }
             finally
             {
@@ -190,6 +196,7 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetTextureOffset("_Main" + layer + "Tex", new Vector2(-1, 0));
                 LilToonMainTextureBaker.Bake(material, baked, new List<string>());
                 var image = baked.Single();
+                NoGraphicsDevice.IgnorePixelChecks();
                 var left = image.GetPixel(0, image.height / 2);
                 var right = image.GetPixel(image.width - 1, image.height / 2);
                 Assert.That(right.g, Is.GreaterThan(0.98f));
@@ -218,11 +225,12 @@ namespace VRVlog.LilToonExporter.Tests
                 material.SetVector("_Main" + layer + "Tex_ScrollRotate", new Vector4(0, 0, 1.234f, 0));
                 LilToonMainTextureBaker.Bake(material, baked, new List<string>());
                 var image = baked.Single();
+                Assert.That(source.GetPixel(2, 2), Is.EqualTo(Color.black));
+                NoGraphicsDevice.IgnorePixelChecks();
                 Assert.That(image.GetPixel(2, 2).r, Is.GreaterThan(0.98f));
                 Assert.That(image.GetPixel(2, 2).g, Is.LessThan(0.02f));
                 Assert.That(image.GetPixel(13, 2).g, Is.GreaterThan(0.98f));
                 Assert.That(image.GetPixel(13, 2).r, Is.LessThan(0.02f));
-                Assert.That(source.GetPixel(2, 2), Is.EqualTo(Color.black));
             }
             finally
             {
@@ -254,6 +262,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 LilToonMainTextureBaker.Bake(material, baked, new List<string>());
                 var image = baked.Single();
+                NoGraphicsDevice.IgnorePixelChecks();
                 Assert.That(image.GetPixel(2, 2).g, Is.EqualTo(copyFlip ? 1 : 0).Within(0.02f));
                 Assert.That(image.GetPixel(2, 2).b, Is.EqualTo(copyFlip ? 0 : 1).Within(0.02f));
                 Assert.That(image.GetPixel(13, 2).g, Is.EqualTo(copyFlip ? 0 : 1).Within(0.02f));
