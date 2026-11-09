@@ -69,7 +69,7 @@ namespace VRVlog.LilToonExporter
             preview = new PreviewRenderUtility();
             NdmfExportPreparation.ShowOwnedCopyInPreview(copy, preview);
             var renderers = ExportRendererSelection.Enumerate(copy).ToArray();
-            if (renderers.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("プレビューするメッシュがありません。"));
+            if (renderers.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("プレビューするメッシュがありません"));
             var bounds = renderers[0].bounds;
             foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
             PreviewRendering.FrameHead(copy, bounds, out center, out distance);
@@ -81,7 +81,7 @@ namespace VRVlog.LilToonExporter
             ExporterWindowHeader.Layout(ExporterLocalization.T("瞬きを確認"));
             if (preview == null || copy == null) return;
             EditorGUILayout.LabelField(ExporterLocalization.T(blink.Description), EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(ExporterLocalization.T("開いた状態と閉じた状態を比較できます。"), EditorStyles.wordWrappedLabel);
+            EditorGUILayout.LabelField(ExporterLocalization.T("開いた状態と閉じた状態を見比べる"), EditorStyles.wordWrappedLabel);
             PreviewRendering.DrawExportNotices(Notices, ref noticeScroll);
             if (blink.Slots[1].Count > 0 && blink.Slots[2].Count > 0)
                 side = GUILayout.Toolbar(side, new[] { ExporterLocalization.T("両目"), ExporterLocalization.T("左目"), ExporterLocalization.T("右目") });
