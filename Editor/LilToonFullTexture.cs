@@ -6,7 +6,7 @@ namespace VRVlog.LilToonExporter
     internal static class LilToonFullTexture
     {
         internal static byte[] Read(Texture source, int mip, int face, bool normal, bool srgb, bool hdr, bool half=false)
-            => ReadPixels(source, mip, Math.Max(1, source.width >> mip), Math.Max(1, source.height >> mip), face, normal, srgb, hdr, half, false);
+            => ReadPixels(source, mip, Math.Max(1, source.width >> mip), Math.Max(1, source.height >> mip), face, normal, srgb, hdr, half, false, true);
 
         internal static int MipCount(int width, int height)
         {
@@ -20,6 +20,16 @@ namespace VRVlog.LilToonExporter
         // Source dimensions, pixels, importer and sampler settings stay intact.
         internal static byte[] ReadResized(Texture source, int width, int height, int face, bool normal, bool srgb, bool hdr, bool half=false)
         {
+            var bytes = ReadResized(source, width, height, face, normal, srgb, hdr, half, true);
+            // See TextureResizePolicy: an image with no alpha keeps its color.
+            // A faint alpha can round to zero when reduced, so ask the source.
+            return srgb && !normal && !hdr && !half && TextureResizePolicy.HasNoAlpha(bytes)
+                && TextureResizePolicy.HasNoAlpha(Read(source, 0, face, normal, srgb, hdr, half))
+                ? ReadResized(source, width, height, face, normal, srgb, hdr, half, false) : bytes;
+        }
+
+        static byte[] ReadResized(Texture source, int width, int height, int face, bool normal, bool srgb, bool hdr, bool half, bool byAlpha)
+        {
             if (width <= 0 || height <= 0 || width > source.width || height > source.height)
                 throw new ArgumentOutOfRangeException(nameof(width), "縮小画像の寸法が元画像の範囲外です。");
             var count = source is Texture2D two ? two.mipmapCount : source is Cubemap cube ? cube.mipmapCount :
@@ -27,7 +37,7 @@ namespace VRVlog.LilToonExporter
             var mip = 0;
             while (mip + 1 < count && Math.Max(1, source.width >> (mip + 1)) >= width && Math.Max(1, source.height >> (mip + 1)) >= height) mip++;
             var exact = Math.Max(1, source.width >> mip) == width && Math.Max(1, source.height >> mip) == height;
-            if (exact) return ReadPixels(source, mip, width, height, face, normal, srgb, hdr, half, false);
+            if (exact) return ReadPixels(source, mip, width, height, face, normal, srgb, hdr, half, false, byAlpha);
             var sourceWidth = Math.Max(1, source.width >> mip);
             var sourceHeight = Math.Max(1, source.height >> mip);
             var current = source;
@@ -44,7 +54,7 @@ namespace VRVlog.LilToonExporter
                     var nextWidth = Math.Max(width, Math.Min(LilToonMobileProfile.DefaultMaximumTextureSize, (sourceWidth + 3) / 4));
                     var nextHeight = Math.Max(height, Math.Min(LilToonMobileProfile.DefaultMaximumTextureSize, (sourceHeight + 3) / 4));
                     var next = Target(nextWidth, nextHeight, srgb, hdr, half);
-                    try { Blit(current, mip, sourceWidth, sourceHeight, next, face, decodeNormal, srgb, true); }
+                    try { Blit(current, mip, sourceWidth, sourceHeight, next, face, decodeNormal, srgb, true, byAlpha); }
                     catch { RenderTexture.ReleaseTemporary(next); throw; }
                     if (intermediate != null) RenderTexture.ReleaseTemporary(intermediate);
                     intermediate = next;
@@ -54,7 +64,7 @@ namespace VRVlog.LilToonExporter
                     sourceHeight = nextHeight;
                     decodeNormal = false;
                 }
-                return ReadPixels(current, mip, width, height, face, decodeNormal, srgb, hdr, half, sourceWidth != width || sourceHeight != height);
+                return ReadPixels(current, mip, width, height, face, decodeNormal, srgb, hdr, half, sourceWidth != width || sourceHeight != height, byAlpha);
             }
             finally { if (intermediate != null) RenderTexture.ReleaseTemporary(intermediate); }
         }
@@ -62,7 +72,7 @@ namespace VRVlog.LilToonExporter
         static RenderTexture Target(int width, int height, bool srgb, bool hdr, bool half)
             => RenderTexture.GetTemporary(width, height, 0, half ? RenderTextureFormat.ARGBHalf : hdr ? RenderTextureFormat.ARGBFloat : RenderTextureFormat.ARGB32, srgb ? RenderTextureReadWrite.sRGB : RenderTextureReadWrite.Linear);
 
-        static byte[] ReadPixels(Texture source, int mip, int width, int height, int face, bool normal, bool srgb, bool hdr, bool half, bool resample)
+        static byte[] ReadPixels(Texture source, int mip, int width, int height, int face, bool normal, bool srgb, bool hdr, bool half, bool resample, bool byAlpha)
         {
             var previous = RenderTexture.active;
             RenderTexture target=null;
@@ -71,7 +81,7 @@ namespace VRVlog.LilToonExporter
             {
                 target = Target(width, height, srgb, hdr, half);
                 readable = new Texture2D(width, height, half ? TextureFormat.RGBAHalf : hdr ? TextureFormat.RGBAFloat : TextureFormat.RGBA32, false, !srgb);
-                Blit(source, mip, Math.Max(1, source.width >> mip), Math.Max(1, source.height >> mip), target, face, normal, srgb, resample);
+                Blit(source, mip, Math.Max(1, source.width >> mip), Math.Max(1, source.height >> mip), target, face, normal, srgb, resample, byAlpha);
                 RenderTexture.active = target;
                 readable.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
                 readable.Apply(false, false);
@@ -86,7 +96,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static void Blit(Texture source, int mip, int sourceWidth, int sourceHeight, RenderTexture target, int face, bool normal, bool srgb, bool resample)
+        static void Blit(Texture source, int mip, int sourceWidth, int sourceHeight, RenderTexture target, int face, bool normal, bool srgb, bool resample, bool byAlpha)
         {
             var shader = Shader.Find("Hidden/VRVlog/FullTextureCopy");
             if (shader == null || !shader.isSupported) throw new InvalidOperationException("lilToon画像の保存シェーダーを利用できません。");
@@ -97,7 +107,7 @@ namespace VRVlog.LilToonExporter
                 material.SetFloat("_Mip", mip); material.SetFloat("_Face", face); material.SetFloat("_Normal", normal ? 1 : 0);
                 material.SetFloat("_Cube", source is Cubemap ? 1 : 0);
                 material.SetFloat("_Resample", resample ? 1 : 0);
-                material.SetFloat("_Color", srgb && !normal ? 1 : 0);
+                material.SetFloat("_Color", srgb && !normal && byAlpha ? 1 : 0);
                 // Gamma projects sample sRGB pixels without the hardware decode
                 // used by Linear projects. Do it once around the area average.
                 material.SetFloat("_ManualSrgb", srgb && QualitySettings.activeColorSpace == ColorSpace.Gamma ? 1 : 0);
