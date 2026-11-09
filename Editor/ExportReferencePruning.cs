@@ -13,6 +13,21 @@ namespace VRVlog.LilToonExporter
     // them, and copy every ScriptableObject whose serialized settings we change.
     internal static class ExportReferencePruning
     {
+        // A joint whose object was deleted leaves an empty entry in the authored
+        // chain, and UniVRM reads the transform of every entry. Drop them before
+        // anything counts or follows the joints.
+        internal static void DropLostSpringJoints(GameObject clone, ICollection<string> warnings)
+        {
+            var instance = clone.GetComponent<Vrm10Instance>();
+            if (instance == null || instance.SpringBone == null) return;
+            var lost = 0;
+            foreach (var spring in instance.SpringBone.Springs)
+                if (spring != null) lost += spring.Joints.RemoveAll(joint => joint == null);
+            if (lost == 0) return;
+            instance.SpringBone.Springs.RemoveAll(spring => spring == null || spring.Joints.Count == 0);
+            warnings?.Add("見つからないVRM揺れ物のジョイントを省略しました。");
+        }
+
         internal static void Prepare(GameObject clone, IList<Transform> removedRoots,
             ICollection<Object> temporaryAssets, ICollection<string> warnings, ISet<Renderer> removedRenderers = null)
         {
