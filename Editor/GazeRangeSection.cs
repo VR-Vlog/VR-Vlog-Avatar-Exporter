@@ -191,7 +191,7 @@ namespace VRVlog.LilToonExporter
             var note = new Rect(area.x, area.y + 3 * (line + 2) + 4, area.width, line);
             var text = InitialNote(initial, inspection.FromEyeLook);
             GUI.Label(note, new GUIContent(text, text), captionStyle);
-            if (!inspection.FromEyeLook && inspection.Support == VrmLookAtExport.GazeSupport.Ranges)
+            if (editable && !inspection.FromEyeLook)
             {
                 var follow = ExporterLocalization.T(FollowNote);
                 GUI.Label(new Rect(note.x, note.yMax + 2, note.width, line), new GUIContent(follow, follow), captionStyle);
