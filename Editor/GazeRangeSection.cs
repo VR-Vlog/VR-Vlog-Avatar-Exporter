@@ -21,6 +21,9 @@ namespace VRVlog.LilToonExporter
         // {0} the angles, as 4° or 上 14°・下 11°・左右 20°.
         internal const string EyeLookNote = "初期値は VRChat の Eye Look の角度（{0}）";
         internal const string VrmDefaultNote = "初期値は VRM の標準の角度（{0}）";
+        // Under VRM's default the eyes reach that angle only at a 90° gaze; a
+        // changed direction follows the gaze one to one (VrmLookAtExport.Range.Linear).
+        internal const string FollowNote = "変えた方向は標準より大きく目が動きます";
 
         // The preview copy, drawn by the host's PreviewRenderUtility.
         internal sealed class Target
@@ -97,7 +100,7 @@ namespace VRVlog.LilToonExporter
                 // Beside the cross when there is room, under it otherwise. The
                 // sizes are fixed so a longer label never moves the previews.
                 var beside = width >= gridWidth + 16 + SlidersMinWidth;
-                var slidersHeight = EditorGUIUtility.singleLineHeight * 4 + 8;
+                var slidersHeight = EditorGUIUtility.singleLineHeight * 5 + 10;
                 var area = GUILayoutUtility.GetRect(gridWidth, beside ? gridHeight : gridHeight + 8 + slidersHeight, GUILayout.ExpandWidth(true));
                 var grid = new Rect(area.x, area.y + 4, gridWidth, gridHeight);
                 var sliders = beside
@@ -117,7 +120,7 @@ namespace VRVlog.LilToonExporter
                     }
                 }
                 DrawCross(grid, shown, !editable);
-                changed = DrawSliders(sliders, value, initial, shown);
+                changed = DrawSliders(sliders, editable, value, initial, shown);
             }
             return changed;
         }
@@ -168,11 +171,9 @@ namespace VRVlog.LilToonExporter
 
         static string Degrees(float value) => Mathf.RoundToInt(value) + "°";
 
-        GazeRangeOptions DrawSliders(Rect area, GazeRangeOptions value, GazeRangeOptions initial, GazeRangeOptions shown)
+        GazeRangeOptions DrawSliders(Rect area, bool editable, GazeRangeOptions value, GazeRangeOptions initial, GazeRangeOptions shown)
         {
             var line = EditorGUIUtility.singleLineHeight;
-            var next = value.Copy();
-            var moved = false;
             int Row(int index, string label, float current, float start)
             {
                 var row = new Rect(area.x, area.y + index * (line + 2), area.width, line);
@@ -187,13 +188,58 @@ namespace VRVlog.LilToonExporter
             var up = Row(0, UpLabel, shown.Up, initial.Up);
             var down = Row(1, DownLabel, shown.Down, initial.Down);
             var side = Row(2, SideLabel, shown.Side, initial.Side);
-            if (up != Mathf.RoundToInt(shown.Up)) { next.Up = Stored(up, initial.Up); moved = true; }
-            if (down != Mathf.RoundToInt(shown.Down)) { next.Down = Stored(down, initial.Down); moved = true; }
-            if (side != Mathf.RoundToInt(shown.Side)) { next.Side = Stored(side, initial.Side); moved = true; }
             var note = new Rect(area.x, area.y + 3 * (line + 2) + 4, area.width, line);
             var text = InitialNote(initial, inspection.FromEyeLook);
             GUI.Label(note, new GUIContent(text, text), captionStyle);
+            if (editable && !inspection.FromEyeLook)
+            {
+                var follow = ExporterLocalization.T(FollowNote);
+                GUI.Label(new Rect(note.x, note.yMax + 2, note.width, line), new GUIContent(follow, follow), captionStyle);
+            }
+            return Moved(editable, value, initial, shown, up, down, side);
+        }
+
+        // The value to save from the sliders' angles, else null. A disabled
+        // slider still clamps what it shows (a failed inspection shows 0°, the
+        // slider 1°), which is no change by the user, so it never saves.
+        internal static GazeRangeOptions Moved(bool editable, GazeRangeOptions value, GazeRangeOptions initial, GazeRangeOptions shown, int up, int down, int side)
+        {
+            if (!editable) return null;
+            var next = value.Copy();
+            var moved = false;
+            if (up != Mathf.RoundToInt(shown.Up)) { next.Up = Stored(up, initial.Up); moved = true; }
+            if (down != Mathf.RoundToInt(shown.Down)) { next.Down = Stored(down, initial.Down); moved = true; }
+            if (side != Mathf.RoundToInt(shown.Side)) { next.Side = Stored(side, initial.Side); moved = true; }
             return moved ? next : null;
+        }
+
+        // Target.ShowNeutralFace for a host that shows faces of type T: a
+        // neutral face shown only in part goes back before the failure is reported.
+        internal static Func<Action> NeutralFace<T>(Func<T> current, Action<T> show, Func<T> neutral) => () =>
+        {
+            var shown = current();
+            try { show(neutral()); }
+            catch { show(shown); throw; }
+            return () => show(shown);
+        };
+
+        // A dragged slider changes the value on every move; the host saves it
+        // once, when the drag lets go (or it leaves the avatar or closes).
+        internal sealed class Unsaved
+        {
+            GameObject avatar;
+
+            internal void Changed(GameObject source) => avatar = source;
+
+            // The avatar to save for, once, when no control holds the mouse
+            // or now is set; else null.
+            internal GameObject Take(bool now = false)
+            {
+                if (!now && GUIUtility.hotControl != 0) return null;
+                var result = avatar;
+                avatar = null;
+                return result;
+            }
         }
 
         // Back at the avatar's own angle, the setting is cleared, so the
@@ -226,7 +272,7 @@ namespace VRVlog.LilToonExporter
 
         // Draws only the previews whose angle changed since the last time, into
         // textures kept across draws. ranges is null when the eyes cannot turn.
-        void Render(Target target, VrmLookAtExport.Ranges? ranges)
+        internal void Render(Target target, VrmLookAtExport.Ranges? ranges)
         {
             if (target?.Avatar == null || target.Preview == null) return;
             var animator = target.Avatar.GetComponent<Animator>();
@@ -264,12 +310,15 @@ namespace VRVlog.LilToonExporter
                 middle = head != null ? head.position + Vector3.up * .06f : root.position + Vector3.up * 1.4f;
                 viewSize = .22f;
             }
-            var restore = target.ShowNeutralFace?.Invoke();
             var leftRest = left != null ? left.localRotation : Quaternion.identity;
             var rightRest = right != null ? right.localRotation : Quaternion.identity;
             var camera = target.Preview.camera;
+            var cameraPosition = camera.transform.position;
+            var cameraRotation = camera.transform.rotation;
+            Action restore = null;
             try
             {
+                restore = target.ShowNeutralFace?.Invoke();
                 var distance = viewSize * .5f / Mathf.Tan(camera.fieldOfView * .5f * Mathf.Deg2Rad);
                 for (var i = 0; i < Directions.Length; i++)
                 {
@@ -293,9 +342,12 @@ namespace VRVlog.LilToonExporter
             }
             finally
             {
+                // The eyes, the camera and the face go back as the host left
+                // them, whichever of them fails to.
                 if (left != null) left.localRotation = leftRest;
                 if (right != null) right.localRotation = rightRest;
                 camera.ResetAspect();
+                camera.transform.SetPositionAndRotation(cameraPosition, cameraRotation);
                 restore?.Invoke();
             }
             renderedAvatar = target.Avatar;

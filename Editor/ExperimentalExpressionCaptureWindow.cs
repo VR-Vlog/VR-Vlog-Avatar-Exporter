@@ -305,6 +305,7 @@ namespace VRVlog.LilToonExporter
             EditorApplication.hierarchyChanged -= GimmicksChanged;
             // Closing the board cancels a transfer on its last page, as closing the transfer window does.
             CancelTransferPanel();
+            SaveGazeRange();
             pending = null; Cleanup(); CloseChildWindows(); ReleaseStyles(); gazeSection.Dispose();
         }
 
@@ -818,6 +819,8 @@ namespace VRVlog.LilToonExporter
         // poses saved for the avatar are read.
         void PrepareWith(GameObject[] objects, PoseExportOptions keptPoses = null)
         {
+            // Saved first, so a rebuild during a drag reads back what the slider shows.
+            SaveGazeRange();
             Cleanup();
             try
             {
@@ -2244,19 +2247,28 @@ namespace VRVlog.LilToonExporter
                 Source = source,
                 Avatar = session?.Copy,
                 Preview = preview,
-                ShowNeutralFace = () =>
-                {
-                    var shown = session.CurrentFace();
-                    session.ShowFace(session.Baseline);
-                    return () => session.ShowFace(shown);
-                }
+                ShowNeutralFace = session == null ? null
+                    : GazeRangeSection.NeutralFace<ExperimentalExpressionCaptureSession.Pose>(session.CurrentFace, session.ShowFace, () => session.Baseline)
             };
             var changed = gazeSection.Draw(target, gazeRange);
-            if (changed == null) return;
-            gazeRange = changed;
-            var settings = ExportSettingsStore.Load(source);
-            settings.Gaze = changed.Copy();
-            ExportSettingsStore.Save(source, settings);
+            if (changed != null)
+            {
+                gazeRange = changed;
+                gazeRangeUnsaved.Changed(source);
+            }
+            // The export reads gazeRange, so it never waits for this save.
+            SaveGazeRange(now: false);
+        }
+
+        readonly GazeRangeSection.Unsaved gazeRangeUnsaved = new GazeRangeSection.Unsaved();
+
+        void SaveGazeRange(bool now = true)
+        {
+            var avatar = gazeRangeUnsaved.Take(now);
+            if (avatar == null) return;
+            var settings = ExportSettingsStore.Load(avatar);
+            settings.Gaze = gazeRange.Copy();
+            ExportSettingsStore.Save(avatar, settings);
         }
 
         internal static string BlinkSettingLabel(BlinkExportMode mode)
@@ -2828,6 +2840,7 @@ namespace VRVlog.LilToonExporter
 
         void ChangeAvatar()
         {
+            SaveGazeRange();
             Cleanup(); CloseChildWindows();
             autoLightweight = true;
             gazeRange = new GazeRangeOptions();
