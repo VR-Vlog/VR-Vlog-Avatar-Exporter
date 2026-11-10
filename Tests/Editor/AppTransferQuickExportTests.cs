@@ -45,10 +45,10 @@ namespace VRVlog.LilToonExporter.Tests
             internal GameObject Source => Fixture.Source;
             readonly string scenePath;
 
-            internal SavedFixture()
+            internal SavedFixture(bool eyes = false)
             {
                 var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-                Fixture = new AttachmentConnectionTests.Fixture();
+                Fixture = new AttachmentConnectionTests.Fixture(eyes);
                 foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
                 scenePath = "Assets/AppTransferQuick-" + Guid.NewGuid().ToString("N") + ".unity";
                 Assert.That(EditorSceneManager.SaveScene(scene, scenePath), Is.True);

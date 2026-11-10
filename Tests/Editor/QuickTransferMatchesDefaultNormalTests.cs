@@ -205,6 +205,7 @@ namespace VRVlog.LilToonExporter.Tests
             var window = OpenNormal(other.Source);
             Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
             Board.GetField("autoLightweight", Flags).SetValue(window, false);
+            Board.GetField("gazeRange", Flags).SetValue(window, new GazeRangeOptions { Up = 25 });
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
             Assert.That(OpenNormal(fixture.Source), Is.SameAs(window));
@@ -263,6 +264,30 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(hidden); }
             var (quick, normal) = ExportBoth(fixture.Source);
             AssertSame(quick, normal);
+        }
+
+        // 視線の動く範囲 saved for the avatar: both boards start from it and
+        // both write it into the VRM look-at range.
+        [Test]
+        public void TheSavedGazeRangeMatches()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AppTransferQuickExportTests.SavedFixture(eyes: true);
+            var gaze = new GazeRangeOptions { Up = 20, Down = 15, Side = 25 };
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { Gaze = gaze });
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("gaze " + gaze.Key())); }
+            finally { Object.DestroyImmediate(hidden); }
+
+            var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
+            var lookAt = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)Read(quick.Path).Json["extensions"])["VRMC_vrm"])["lookAt"];
+            float Output(string key) => Convert.ToSingle(((Dictionary<string, object>)lookAt[key])["outputScale"]);
+            float Input(string key) => Convert.ToSingle(((Dictionary<string, object>)lookAt[key])["inputMaxValue"]);
+            Assert.That((Input("rangeMapVerticalUp"), Output("rangeMapVerticalUp")), Is.EqualTo((20f, 20f)));
+            Assert.That((Input("rangeMapVerticalDown"), Output("rangeMapVerticalDown")), Is.EqualTo((15f, 15f)));
+            Assert.That((Input("rangeMapHorizontalInner"), Output("rangeMapHorizontalInner")), Is.EqualTo((25f, 25f)));
+            Assert.That((Input("rangeMapHorizontalOuter"), Output("rangeMapHorizontalOuter")), Is.EqualTo((25f, 25f)));
         }
 
         sealed class CountingLimitDialog : IPoseLimitDialog
@@ -413,6 +438,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 "page " + window.Page,
                 "autoLightweight " + Board.GetField("autoLightweight", Flags).GetValue(window),
+                "gaze " + ((GazeRangeOptions)Board.GetField("gazeRange", Flags).GetValue(window)).Key(),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),
                 "blink " + (blink == null ? "(automatic)" : blink.Mode.ToString()),

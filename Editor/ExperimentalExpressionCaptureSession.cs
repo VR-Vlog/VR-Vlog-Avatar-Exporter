@@ -449,7 +449,7 @@ namespace VRVlog.LilToonExporter
             ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null,
             PoseExportOptions recordedPoses = null, IEnumerable<PresetAssignment> presets = null, bool sourceChecked = false,
-            bool autoLightweight = false)
+            bool autoLightweight = false, GazeRangeOptions gazeRange = null)
         {
             if (listFaces == null) throw new ArgumentNullException(nameof(listFaces));
             // The export hashes the source again, even inside a batch, unless
@@ -524,7 +524,7 @@ namespace VRVlog.LilToonExporter
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
                     listFaces: faces, listFaceSources: listFaces.Select(face => face.Clip).ToList(), autoLightweight: autoLightweight,
-                    bonesOnlyFaces: bonesOnly, gestureFaces: gestureFaces, presetBones: presetBones);
+                    bonesOnlyFaces: bonesOnly, gestureFaces: gestureFaces, presetBones: presetBones, gazeRange: gazeRange);
                 UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                 return authoredVrm;
             }
