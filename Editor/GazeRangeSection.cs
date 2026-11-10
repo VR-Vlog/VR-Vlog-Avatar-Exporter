@@ -181,7 +181,7 @@ namespace VRVlog.LilToonExporter
                 // Reaches the initial and the stored angle, so opening never clamps a saved value.
                 var maximum = Mathf.Max(GazeRangeOptions.SliderMaximum, Mathf.CeilToInt(start), Mathf.CeilToInt(current));
                 var slider = new Rect(row.x + SliderLabelWidth, row.y, Mathf.Max(40, row.width - SliderLabelWidth - UnitWidth), line);
-                var result = EditorGUI.IntSlider(slider, Mathf.RoundToInt(current), 1, maximum);
+                var result = EditorGUI.IntSlider(slider, Shown(current), 1, maximum);
                 GUI.Label(new Rect(slider.xMax + 2, row.y, UnitWidth, line), "°");
                 return result;
             }
@@ -199,17 +199,21 @@ namespace VRVlog.LilToonExporter
             return Moved(editable, value, initial, shown, up, down, side);
         }
 
-        // The value to save from the sliders' angles, else null. A disabled
-        // slider still clamps what it shows (a failed inspection shows 0°, the
-        // slider 1°), which is no change by the user, so it never saves.
+        // The angle a slider shows for an angle: rounded, and at least its 1° minimum.
+        internal static int Shown(float degrees) => Mathf.Max(1, Mathf.RoundToInt(degrees));
+
+        // The value to save from the sliders' angles, else null. A slider
+        // clamps what it shows (a failed inspection shows 0°, an angle under
+        // 0.5° from Eye Look rounds to 0°, the slider 1°), which is no change
+        // by the user, so it compares with Shown and a disabled one never saves.
         internal static GazeRangeOptions Moved(bool editable, GazeRangeOptions value, GazeRangeOptions initial, GazeRangeOptions shown, int up, int down, int side)
         {
             if (!editable) return null;
             var next = value.Copy();
             var moved = false;
-            if (up != Mathf.RoundToInt(shown.Up)) { next.Up = Stored(up, initial.Up); moved = true; }
-            if (down != Mathf.RoundToInt(shown.Down)) { next.Down = Stored(down, initial.Down); moved = true; }
-            if (side != Mathf.RoundToInt(shown.Side)) { next.Side = Stored(side, initial.Side); moved = true; }
+            if (up != Shown(shown.Up)) { next.Up = Stored(up, initial.Up); moved = true; }
+            if (down != Shown(shown.Down)) { next.Down = Stored(down, initial.Down); moved = true; }
+            if (side != Shown(shown.Side)) { next.Side = Stored(side, initial.Side); moved = true; }
             return moved ? next : null;
         }
 
@@ -240,11 +244,21 @@ namespace VRVlog.LilToonExporter
                 avatar = null;
                 return result;
             }
+
+            // Writes the value for the avatar Take returns. A failed write is
+            // logged, not thrown, so the host's cleanup after it still runs.
+            internal void Save(Action<GameObject> write, bool now = true)
+            {
+                var avatar = Take(now);
+                if (avatar == null) return;
+                try { write(avatar); }
+                catch (Exception exception) { Debug.LogException(exception); }
+            }
         }
 
         // Back at the avatar's own angle, the setting is cleared, so the
         // export writes the avatar's range exactly as before (not a rounded one).
-        internal static float Stored(int degrees, float initial) => degrees == Mathf.RoundToInt(initial) ? 0 : degrees;
+        internal static float Stored(int degrees, float initial) => degrees == Shown(initial) ? 0 : degrees;
 
         internal static string InitialNote(GazeRangeOptions initial, bool fromEyeLook)
         {
