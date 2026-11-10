@@ -136,5 +136,110 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
         }
+
+        // A failed inspection shows 0°, which the disabled slider clamps to 1°;
+        // only a slider the user can move saves a value.
+        [Test]
+        public void ADisabledSectionSavesNothingWhenItsSliderClamps()
+        {
+            var zero = new GazeRangeOptions();
+            Assert.That(GazeRangeSection.Moved(false, zero, zero, zero, 1, 1, 1), Is.Null);
+            var initial = new GazeRangeOptions { Up = 10, Down = 10, Side = 10 };
+            Assert.That(GazeRangeSection.Moved(false, zero, initial, initial, 20, 10, 10), Is.Null);
+            Assert.That(GazeRangeSection.Moved(true, zero, initial, initial, 10, 10, 10), Is.Null, "Nothing moved.");
+            var moved = GazeRangeSection.Moved(true, zero, initial, initial, 20, 10, 10);
+            Assert.That((moved.Up, moved.Down, moved.Side), Is.EqualTo((20f, 0f, 0f)));
+        }
+
+        [Test]
+        public void ANeutralFaceShownInPartGoesBack()
+        {
+            var face = "smile";
+            var show = new System.Action<string>(next =>
+            {
+                face = next;
+                if (next == "neutral") throw new System.InvalidOperationException("broken");
+            });
+            var neutral = GazeRangeSection.NeutralFace(() => face, show, () => "neutral");
+            Assert.Throws<System.InvalidOperationException>(() => neutral());
+            Assert.That(face, Is.EqualTo("smile"));
+
+            face = "smile";
+            var restore = GazeRangeSection.NeutralFace(() => face, next => face = next, () => "neutral")();
+            Assert.That(face, Is.EqualTo("neutral"));
+            restore();
+            Assert.That(face, Is.EqualTo("smile"));
+        }
+
+        // A drag changes the value on every move and saves once, when it lets go.
+        [Test]
+        public void ADragSavesOnceWhenItLetsGo()
+        {
+            var avatar = new GameObject("Avatar");
+            var held = GUIUtility.hotControl;
+            try
+            {
+                var unsaved = new GazeRangeSection.Unsaved();
+                Assert.That(unsaved.Take(), Is.Null, "Nothing changed.");
+                unsaved.Changed(avatar);
+                GUIUtility.hotControl = 42;
+                Assert.That(unsaved.Take(), Is.Null, "Still dragging.");
+                Assert.That(unsaved.Take(now: true), Is.SameAs(avatar), "Leaving the avatar or closing saves now.");
+                Assert.That(unsaved.Take(now: true), Is.Null);
+                unsaved.Changed(avatar);
+                GUIUtility.hotControl = 0;
+                Assert.That(unsaved.Take(), Is.SameAs(avatar));
+                Assert.That(unsaved.Take(), Is.Null, "Saved once.");
+            }
+            finally
+            {
+                GUIUtility.hotControl = held;
+                Object.DestroyImmediate(avatar);
+            }
+        }
+
+        // Drawing the previews leaves the host's camera and face as they were,
+        // also when showing the neutral face fails.
+        [Test]
+        public void ThePreviewsPutTheCameraAndTheFaceBack()
+        {
+            var preview = new UnityEditor.PreviewRenderUtility();
+            var avatar = new GameObject("Avatar");
+            var section = new GazeRangeSection();
+            try
+            {
+                var camera = preview.camera.transform;
+                camera.SetPositionAndRotation(new Vector3(1, 2, 3), Quaternion.Euler(10, 20, 0));
+                var face = "smile";
+                var target = new GazeRangeSection.Target
+                {
+                    Source = avatar, Avatar = avatar, Preview = preview,
+                    ShowNeutralFace = GazeRangeSection.NeutralFace(() => face, next => face = next, () => "neutral"),
+                };
+                try { section.Render(target, VrmLookAtExport.Ranges.Default); }
+                // Without a graphics device drawing may fail; what it changed still goes back.
+                catch (System.Exception exception) when (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) { Debug.Log(exception.Message); }
+                Assert.That(face, Is.EqualTo("smile"));
+                Assert.That(Vector3.Distance(camera.position, new Vector3(1, 2, 3)), Is.LessThan(1e-4f));
+                Assert.That(Quaternion.Angle(camera.rotation, Quaternion.Euler(10, 20, 0)), Is.LessThan(.01f));
+
+                section.Invalidate();
+                section.Dispose();
+                target.ShowNeutralFace = GazeRangeSection.NeutralFace<string>(() => face, next =>
+                {
+                    face = next;
+                    if (next == "neutral") throw new System.InvalidOperationException("broken");
+                }, () => "neutral");
+                Assert.Throws<System.InvalidOperationException>(() => section.Render(target, VrmLookAtExport.Ranges.Default));
+                Assert.That(face, Is.EqualTo("smile"));
+                Assert.That(Vector3.Distance(camera.position, new Vector3(1, 2, 3)), Is.LessThan(1e-4f));
+            }
+            finally
+            {
+                section.Dispose();
+                preview.Cleanup();
+                Object.DestroyImmediate(avatar);
+            }
+        }
     }
 }

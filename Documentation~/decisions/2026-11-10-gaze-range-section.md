@@ -41,3 +41,18 @@
 - `QuickTransferMatchesDefaultNormalTests.TheSavedGazeRangeMatches`: 保存した値から表情ボードとアプリに転送（かんたん）の両方が始まり、同じ VRM を書き出し、lookAt に値が入る。`ABoardReusedForAnotherAvatarStartsFromTheSameDefaults` で、別のアバターで変えた値が次のアバターに残らない。
 - `ExportSettingsTests`: 値がアバターごとに戻り、目が回れない値は読み込むときに捨てる。
 - `GazeRangeSectionTests`: 十字の並び、初期値に戻すと 0 を保存すること、方向ごとの目の回し方（画面の右は左目の外側・右目の内側）、初期値の表示。
+
+## 追記（2026-11-10・1.14.0 の後）
+
+Eye Look から測れないアバターでは、初期値は VRM の標準（視線 90° で目を 10° 回す）で、スライダーを 10° から 11° にしただけで、変えた方向は視線と同じ角度だけ目を回す写像（入力 11°・出力 11°）に変わる。目の動き方が大きく変わるのに、スライダーとプレビューは 1° しか変わらないように見える。
+
+- 写像は変えない。変えた方向を入力＝出力の直線で書く仕様のままにする。
+  - 跳ばない写像（入力は 90° のまま出力だけを変える）にすると、スライダーを 30° にしても視線 30° で目は 10° しか回らず、カメラを目で追わせたいというこの欄の目的に届かない。
+  - 入力を 90° と出力の間で補う写像は VRChat にも VRM にも無い曲線で、決める根拠が無い。
+  - 測れたアバターは初期値も直線なので跳ばない。跳ぶのは測れないアバターだけ。
+- 代わりに、測れないアバターでは初期値の行の下に「変えた方向は標準より大きく目が動きます」と出す。行の高さは常に取っておき、アバターで並びが動かないようにする。
+- 同じ見直しで次も直した。
+  - 欄を変えられないとき（目のボーンが無い・VRM の設定がある・調べるのに失敗した）は、スライダーが表示を 1° に丸めても値を返さない（`GazeRangeSection.Moved`）。調べるのに失敗すると初期値が 0° になり、スライダーが 1° を返して保存していた。
+  - スライダーのドラッグ中は保存せず、離したとき・アバターを変えるとき・作り直すとき・表情ボードを閉じるときに 1 回だけ保存する（`GazeRangeSection.Unsaved`）。書き出しは表情ボードが持つ値を読むので、保存を待たない。
+  - プレビューを描くとき、基準の顔を出す途中で失敗しても元の顔に戻し、カメラの位置と向きも戻す（`GazeRangeSection.NeutralFace`・`Render`）。
+- 確かめたこと: `GazeRangeSectionTests` の `ADisabledSectionSavesNothingWhenItsSliderClamps`・`ANeutralFaceShownInPartGoesBack`・`ADragSavesOnceWhenItLetsGo`・`ThePreviewsPutTheCameraAndTheFaceBack`。
