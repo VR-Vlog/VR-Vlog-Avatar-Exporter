@@ -1003,23 +1003,29 @@ namespace VRVlog.LilToonExporter.Tests
                     // A standard expression carries BlendShapes only. It takes a gesture face beside an eye
                     // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
                     // keeps the clip out of the automatic candidates, as before, so the automatic choice of each
-                    // preset is unchanged. A slot the user filled takes the clip with its BlendShapes alone and
-                    // names the curve it leaves out, so the export does not stop on it.
+                    // preset is unchanged. A slot the user filled takes the clip and names the curve it leaves
+                    // out, so the export does not stop on it: an emotion slot writes the bones and shown objects
+                    // beside its BlendShapes and leaves out only a finger pose, a gaze slot leaves out all three.
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                    var gaze = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
                     var automatic = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip); automatic.Automatic = true;
                     var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body");
                     Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
                     Assert.That(session.PresetError(ExpressionPreset.happy, preset), Is.Null);
+                    var named = binding.path + " / " + binding.propertyName;
                     if (presetUsable)
                     {
                         Assert.That(session.PresetError(ExpressionPreset.happy, automatic), Is.Null);
-                        Assert.That(session.PresetLeftOut(preset), Is.Null);
+                        Assert.That(session.PresetLeftOut(gaze), Is.Null);
                     }
                     else
                     {
                         Assert.That(session.PresetError(ExpressionPreset.happy, automatic), Does.EndWith(binding.propertyName));
-                        Assert.That(session.PresetLeftOut(preset), Is.EqualTo(binding.path + " / " + binding.propertyName));
+                        Assert.That(session.PresetLeftOut(gaze), Is.EqualTo(named));
                     }
+                    Assert.That(session.PresetLeavesOutBones(gaze), Is.EqualTo(!presetUsable));
+                    Assert.That(session.PresetLeftOut(preset), Is.EqualTo(extra == "finger" && !gesture ? named : null));
+                    Assert.That(session.PresetLeavesOutBones(preset), Is.False);
                     Assert.That(session.PresetLeftOut(automatic), Is.Null);
                     Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
                 }

@@ -139,7 +139,7 @@ namespace VRVlog.LilToonExporter
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
             IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null,
-            IReadOnlyCollection<AnimationClip> gestureFaces = null)
+            IReadOnlyCollection<AnimationClip> gestureFaces = null, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -168,7 +168,8 @@ namespace VRVlog.LilToonExporter
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces);
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces,
+                    presetBones);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -418,6 +419,31 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The bones and shown objects of each standard expression's clip, read
+        // like a listed face's (ExpressionTransformCurves.Read); what the read
+        // leaves out or rejects is listed under the slot's label. Name is the label for
+        // the warnings of Resolve, Preset the name Add writes.
+        internal static List<VrmMenuExpressions.Expression> ReadPresetBones(GameObject clone,
+            IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones, Func<string, bool> excludedPath, ICollection<string> warnings)
+        {
+            var result = new List<VrmMenuExpressions.Expression>();
+            foreach (var (preset, label, clip) in presetBones)
+            {
+                // A clip the read rejects (a bone with both rotation forms, a
+                // value that is not finite) loses only its slot's bones; its face
+                // and the other expressions are written as before.
+                ExpressionTransformCurves.Reading reading;
+                try { reading = ExpressionTransformCurves.Read(clone, clip, excludedPath); }
+                catch (InvalidOperationException error) { warnings?.Add(label + ": " + error.Message); continue; }
+                foreach (var message in reading.Messages()) warnings?.Add(label + ": " + message);
+                if (reading.Tracks.Count == 0) continue;
+                var expression = new VrmMenuExpressions.Expression { Name = label, Preset = preset };
+                expression.Transforms.AddRange(reading.Tracks);
+                result.Add(expression);
+            }
+            return result;
+        }
+
         static byte[] ExportCore(GameObject source, string avatarName, string author, ICollection<string> warnings, bool suppressSharedTextureEmission,
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
@@ -425,7 +451,7 @@ namespace VRVlog.LilToonExporter
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces,
-            IReadOnlyCollection<AnimationClip> gestureFaces)
+            IReadOnlyCollection<AnimationClip> gestureFaces, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -524,6 +550,9 @@ namespace VRVlog.LilToonExporter
                 var faceEmoBindings = guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
                     expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true), () => null);
                 List<VrmMenuExpressions.Expression> expressions = null;
+                // The bones and shown objects of the standard expressions the
+                // caller filled (presetBones), written under their preset names.
+                var presetExpressions = new List<VrmMenuExpressions.Expression>();
                 ExpressionGestureCapture gestures = null;
                 recoveryReport.Stage = "ビルド処理";
                 recoveryReport.Phase = ExportPhase.Skeleton;
@@ -618,6 +647,10 @@ namespace VRVlog.LilToonExporter
                     using (ExpressionBoardTimings.Step("export.playback"))
                         menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
                             faces, faceEmoBindings, gestureFaces?.Cast<UnityEngine.Object>().ToList()), () => new VrChatExpressionMenu.Source());
+                    // Read on the same prepared copy as the faces above.
+                    if (presetBones != null && presetBones.Count > 0)
+                        presetExpressions = guard.Step(ExportStage.Expressions,
+                            () => ReadPresetBones(clone, presetBones, expressionBindings.ExcludesPreparedPath, warnings), () => new List<VrmMenuExpressions.Expression>());
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
@@ -874,6 +907,7 @@ namespace VRVlog.LilToonExporter
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
+                        ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
                     }, warnings: warnings);
                 guard.Watch(optimizerStage, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
@@ -897,7 +931,7 @@ namespace VRVlog.LilToonExporter
                     // Only the faces Add registered may fill an empty emotion;
                     // their names no longer carry a source prefix, so each is
                     // inferred from its menu path as before.
-                    var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
+                    var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings, presetExpressions);
                     RecordMergedExpressions(expressions, recoveryReport);
                     // A face of the list that is a face only for its bones or
                     // visibility (bonesOnlyFaces) fills no standard preset by

@@ -393,9 +393,10 @@ namespace VRVlog.LilToonExporter
 
         // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
         // bones or shows objects is no automatic candidate for one, as before (the preset would
-        // lose them). A slot the user filled takes such a clip with its BlendShapes alone
-        // (PresetLeftOut names what it drops). Every face is read this way while the export
-        // does not write bones and visibility.
+        // lose them). A slot the user filled takes such a clip's BlendShapes here; emotion,
+        // mouth and blink slots write its bones and shown objects apart (PresetBonesClip),
+        // and PresetLeftOut names what a slot drops. Every face is read this way while the
+        // export does not write bones and visibility.
         Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));
@@ -458,11 +459,14 @@ namespace VRVlog.LilToonExporter
         }
 
         // The first curve a standard preset slot the user filled drops from its
-        // clip ("path / property"), or null: the bones, shown objects and finger
-        // poses a custom face would carry. A gesture face's eye highlight bone was
-        // dropped before and is not named.
-        internal const string PresetLeftOutNote = "標準の表情には顔の変形だけが入るため、ボーン・表示切替などを外して書き出しました: ";
-        internal const string PresetLeftOutState = "顔の変形だけ使う（ボーン・表示切替などは外して書き出す）";
+        // clip ("path / property"), or null. An emotion, mouth or blink slot
+        // writes the clip's bones and shown objects beside its BlendShapes
+        // (CarriesBones) and drops only finger poses; a gaze or neutral slot
+        // drops those too. A gesture face's eye highlight bone was dropped
+        // before and is not named.
+        internal const string PresetLeftOutNote = "この枠はボーンと表示切替を書き出しません: ";
+        internal const string PresetLeftOutState = "顔の変形だけ使う（ボーンと表示切替は書き出さない）";
+        internal const string PresetFingersLeftOutNote = "指のポーズは書き出しません: ";
 
         internal string PresetLeftOut(PresetAssignment assignment)
         {
@@ -470,9 +474,46 @@ namespace VRVlog.LilToonExporter
             var clip = assignment.ResolveClip();
             if (clip == null) return null;
             var gesture = gestureClips.Contains(clip);
+            var carries = CarriesBones(assignment.Preset);
             var dropped = AnimationUtility.GetCurveBindings(clip).FirstOrDefault(binding => !PoseSampling.IsBlendShape(binding) &&
-                (BoneOrShown(binding) || PoseSampling.IsFingerMuscle(binding)) && !(gesture && IgnoredBesideFace(binding)));
+                (!carries && BoneOrShown(binding) || PoseSampling.IsFingerMuscle(binding)) && !(gesture && IgnoredBesideFace(binding)));
             return dropped.propertyName == null ? null : dropped.path + " / " + dropped.propertyName;
+        }
+
+        // The slot leaves out bones and shown objects its clip has: a gaze or
+        // neutral slot the user filled (the board says 顔の変形だけ使う).
+        internal bool PresetLeavesOutBones(PresetAssignment assignment) =>
+            assignment != null && !CarriesBones(assignment.Preset) && PresetLeftOut(assignment) != null;
+
+        // Emotion, mouth and blink slots write the bones and shown objects of
+        // the clip the user put in them (presetTransforms); gaze turns the eyes
+        // itself and neutral is never shown alone, so they keep BlendShapes only.
+        internal static bool CarriesBones(string preset) =>
+            preset != null && VRVlog.Expressions.ExpressionAnimationData.PresetTransformNames.Contains(preset);
+
+        // The bones and shown objects of a standard slot's clip at the board's
+        // time, held and read from the avatar root like the listed faces, for
+        // the export to write under the preset (presetTransforms). Null when
+        // the slot writes none. Copies join assets to be destroyed.
+        internal AnimationClip PresetBonesClip(PresetAssignment assignment, List<UnityEngine.Object> assets)
+        {
+            if (assignment == null || assignment.IsNone || assignment.IsShape || assignment.Automatic ||
+                !ExpressionTransformCurves.Enabled || !CarriesBones(assignment.Preset)) return null;
+            var clip = assignment.ResolveClip();
+            if (clip == null) return null;
+            var bindings = AnimationUtility.GetCurveBindings(clip).Where(BoneOrShown).ToArray();
+            if (bindings.Length == 0) return null;
+            var root = ClipRoot(clip);
+            var time = FaceTime(clip);
+            var copy = new AnimationClip { name = clip.name, frameRate = clip.frameRate }; assets.Add(copy);
+            foreach (var binding in bindings)
+            {
+                var moved = binding;
+                moved.path = string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path;
+                var value = AnimationUtility.GetEditorCurve(clip, binding).Evaluate(time);
+                AnimationUtility.SetEditorCurve(copy, moved, AnimationCurve.Constant(0, 1 / 60f, value));
+            }
+            return copy;
         }
 
         static bool BoneOrShown(EditorCurveBinding binding) => !binding.isPPtrCurve &&

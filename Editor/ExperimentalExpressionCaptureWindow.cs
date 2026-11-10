@@ -2379,7 +2379,7 @@ namespace VRVlog.LilToonExporter
         void CheckPreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             presetErrors[preset] = session.PresetError(preset, assignment);
-            if (presetErrors[preset] == null && session.PresetLeftOut(assignment) != null) presetsLeavingOut.Add(preset);
+            if (presetErrors[preset] == null && session.PresetLeavesOutBones(assignment)) presetsLeavingOut.Add(preset);
             else presetsLeavingOut.Remove(preset);
             if (presetErrors[preset] != null && session.BlinkSidesOverlap(preset, assignment)) eyeOverlaps.Add(preset);
             else eyeOverlaps.Remove(preset);
