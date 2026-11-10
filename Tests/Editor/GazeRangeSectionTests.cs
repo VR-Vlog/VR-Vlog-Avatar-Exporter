@@ -104,6 +104,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(mixed, Does.Contain("14°").And.Contain("11°").And.Contain("20°"));
         }
 
+        // The notes of the section are read in every locale the package ships.
+        [Test]
+        public void EveryShippedLocaleTranslatesTheNotes()
+        {
+            var guid = UnityEditor.AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset")[0];
+            var directory = System.IO.Path.GetDirectoryName(UnityEditor.AssetDatabase.GUIDToAssetPath(guid));
+            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            {
+                var text = System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
+                foreach (var source in new[] { GazeRangeSection.FollowNote, GazeRangeSection.VrmDefaultNote, GazeRangeSection.EyeLookNote })
+                    Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
+            }
+        }
+
         [Test]
         public void ACellNamesItsDirectionAndAngle()
         {
