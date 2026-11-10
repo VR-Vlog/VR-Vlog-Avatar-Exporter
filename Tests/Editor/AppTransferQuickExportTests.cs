@@ -91,6 +91,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void QuickTransferWritesTheExpressionsOfAnUntouchedBoard()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new SavedFixture();
             // A choice the name inference would not make, saved on the board earlier.
             ExpressionPresetStore.Save(ExpressionPresetStore.KeyFor(fixture.Source),
@@ -192,6 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ARebuildKeepsTheBlinkAndPoseWindowsOpen()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new SavedFixture();
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
@@ -239,6 +241,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFailedRebuildKeepsThePosesAndClosesTheWindowsOnlyWithoutACopy()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new SavedFixture();
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
@@ -345,6 +348,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void QuickTransferLeavesNoBoardBehind()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new SavedFixture();
             var plain = new GameObject("Plain");
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-left-" + Guid.NewGuid().ToString("N") + ".vrm");
@@ -373,6 +377,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AWrittenFileMatchesUntilWhatItIsMadeOfChanges()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new SavedFixture();
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-stamp-" + Guid.NewGuid().ToString("N") + ".vrm");
             try

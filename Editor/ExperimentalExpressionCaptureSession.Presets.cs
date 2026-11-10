@@ -175,7 +175,7 @@ namespace VRVlog.LilToonExporter
             var clip = assignment.ResolveClip();
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("表情の元クリップが見つかりません。もう一度選んでください。"));
             var time = FaceTime(clip);
-            BuildClipPoseUnchecked(clip, time, "プレビュー", presetFace: true); // The same file checks as the added faces.
+            BuildClipPoseUnchecked(clip, time, "プレビュー", presetFace: assignment.Automatic); // The same file checks as the added faces.
             var root = ClipRoot(clip);
             return AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Select(binding => (
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
@@ -199,8 +199,10 @@ namespace VRVlog.LilToonExporter
         // The suggestions try every face on every slot each time the board
         // changes. A face reads the same until the editor reports an edit, the
         // clip is changed, or the settings load another baseline.
-        readonly Dictionary<(ExpressionPreset, string, string, AnimationClip, int), (Pose Pose, string Error)> presetPoses =
-            new Dictionary<(ExpressionPreset, string, string, AnimationClip, int), (Pose, string)>();
+        // An automatic candidate and the user's choice of the same clip read
+        // differently (presetFace), so both are kept.
+        readonly Dictionary<(ExpressionPreset, string, string, AnimationClip, int, bool), (Pose Pose, string Error)> presetPoses =
+            new Dictionary<(ExpressionPreset, string, string, AnimationClip, int, bool), (Pose, string)>();
         (int Edits, bool Clamp, int Gestures) presetPosesFor;
 
         internal Pose BuildPresetPose(ExpressionPreset preset, PresetAssignment assignment)
@@ -212,7 +214,7 @@ namespace VRVlog.LilToonExporter
             if (presetPosesFor != inputs) { presetPoses.Clear(); presetPosesFor = inputs; }
             var clip = assignment.IsShape ? null : assignment.ResolveClip();
             var key = (preset, assignment.IsShape ? assignment.Path ?? "" : null, assignment.IsShape ? assignment.Shape : null, clip,
-                clip == null ? 0 : EditorUtility.GetDirtyCount(clip));
+                clip == null ? 0 : EditorUtility.GetDirtyCount(clip), assignment.Automatic);
             var known = assignment.IsShape || clip != null;
             if (known && presetPoses.TryGetValue(key, out var built))
             {
@@ -249,25 +251,53 @@ namespace VRVlog.LilToonExporter
                     pose = ClonePose(Baseline); pose.Name = PresetLabel(preset);
                     Set(pose, channel.Path, assignment.Shape, 100f);
                 }
-                else pose = BuildClipPoseUnchecked(assignment.ResolveClip(), FaceTime(assignment.ResolveClip()), PresetLabel(preset), presetFace: true);
+                else pose = BuildClipPoseUnchecked(assignment.ResolveClip(), FaceTime(assignment.ResolveClip()), PresetLabel(preset), presetFace: assignment.Automatic);
                 ValidatePose(pose);
                 if (!HasGeometryChange(pose)) throw new InvalidOperationException(ExporterLocalization.T("基準の顔と形状が同じです。"));
                 return pose;
             }
-            catch (InvalidOperationException error) { throw new InvalidOperationException(label + ": " + error.Message, error); }
+            // A changed source is not a slot error: it keeps its type, so the
+            // board and the export stop on it rather than empty the slot.
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { throw new InvalidOperationException(label + ": " + error.Message, error); }
         }
 
-        internal string PresetError(ExpressionPreset preset, PresetAssignment assignment)
+        internal string PresetError(ExpressionPreset preset, PresetAssignment assignment) =>
+            SlotError(preset, assignment, Presets.TryGetValue(OtherEye(preset), out var value) ? value : null);
+
+        static ExpressionPreset OtherEye(ExpressionPreset preset) =>
+            preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
+
+        // Why the slot cannot hold its face, null when it can; otherEye is the
+        // other blink slot's choice, read only on a blink slot.
+        string SlotError(ExpressionPreset preset, PresetAssignment assignment, PresetAssignment otherEye)
         {
             if (assignment == null || assignment.IsNone) return null;
             try
             {
                 BuildPresetPose(preset, assignment);
-                var other = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
-                return BlinkSideOverlap(preset, assignment, Presets.TryGetValue(other, out var value) ? value : null);
+                return BlinkSideOverlap(preset, assignment, otherEye);
             }
             catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return error.Message; }
         }
+
+        // A slot whose face cannot be written is written empty, as a chosen
+        // "none", so the export goes on; the result list names the slot and why.
+        // Every slot is checked before any is emptied, so both eyes that share
+        // a closing shape are emptied, as the board shows both in red.
+        (ExpressionPreset Preset, PresetAssignment Assignment)[] WithoutBrokenSlots(
+            (ExpressionPreset Preset, PresetAssignment Assignment)[] selected, ICollection<string> warnings)
+        {
+            var errors = selected.Select(item => SlotError(item.Preset, item.Assignment,
+                selected.FirstOrDefault(other => other.Preset == OtherEye(item.Preset)).Assignment)).ToArray();
+            return selected.Select((item, index) =>
+            {
+                if (errors[index] == null) return item;
+                warnings?.Add(string.Format(ExporterLocalization.T(PresetSkippedFormat), errors[index]));
+                return (item.Preset, PresetAssignment.None(item.Preset));
+            }).ToArray();
+        }
+
+        internal const string PresetSkippedFormat = "{0}（この枠は空のまま書き出しました）";
 
         // Whether PresetError of an eye slot is the shared closing shape, so the
         // slot can say it in a few words.
@@ -607,7 +637,7 @@ namespace VRVlog.LilToonExporter
                 var clip = given[index];
                 if (!ExpressionNameInference.SaysNothing(clip.name) || PathsOf(clip).Any(path => !ExpressionNameInference.SaysNothing(path))) continue;
                 List<(string Path, string Shape, float Weight)> moved;
-                try { var probe = PresetAssignment.ForClip(ExpressionPreset.happy, clip); moved = BlinkMorphs(probe, BuildPresetPose(ExpressionPreset.happy, probe)); }
+                try { var probe = PresetAssignment.ForClip(ExpressionPreset.happy, clip); probe.Automatic = true; moved = BlinkMorphs(probe, BuildPresetPose(ExpressionPreset.happy, probe)); }
                 catch (InvalidOperationException error) when (!(error is SourceChangedException)) { continue; }
                 var guess = ExpressionShapeNames.Shipped.Classify(moved.Select(morph => (morph.Shape, morph.Weight)));
                 if (guess != null) byShape.Add((guess.Value.Preset, guess.Value.Support, index, clip));

@@ -922,6 +922,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFullExportWritesTheNodeConstraint()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader);
@@ -954,6 +955,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFullExportWritesAParentConstrainedPropUnderItsSource()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = OptionalTools.RequireShader("lilToon", "Requires installed lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader);

@@ -20,6 +20,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void UnchangedDefaultsPreserveTheOriginalExporterLicense(bool fullLilToon, bool explicitOptions)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var meta = ExportMeta(explicitOptions ? new AvatarLicenseOptions() : null, fullLilToon);
             AssertIdentity(meta);
             Assert.That(meta["avatarPermission"], Is.EqualTo("onlyAuthor"));
@@ -43,6 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(2, true)]
         public void EveryLicenseSelectionReachesTheActualExportedVrm(int selection, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var options = SelectedLicense(selection);
             var before = JsonUtility.ToJson(options);
             var meta = ExportMeta(options, fullLilToon);

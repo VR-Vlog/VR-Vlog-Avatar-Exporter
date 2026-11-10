@@ -67,6 +67,8 @@ namespace VRVlog.LilToonExporter
         string presetKey;
         int presetSkipped;
         readonly System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string>();
+        // Slots whose face the export takes without its bones and visibility (PresetLeftOut).
+        readonly System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset> presetsLeavingOut = new System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>();
         // Eye slots whose error is the closing shape shared with the other eye.
         readonly System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>();
         // The page shown: expressions, objects left out, then the VRM's save and transfer (the transfer
@@ -909,21 +911,30 @@ namespace VRVlog.LilToonExporter
         // The reasons on the board itself, in the order the bottom bar names
         // them; the author is asked apart because the transfer asks it later.
         // Without the pending edits it is what the pages check: leaving the
-        // objects page and saving apply those edits on their own.
+        // objects page and saving apply those edits on their own. A standard
+        // slot in error does not stop it: the export writes that slot empty
+        // (SkippedSlotNote).
         string BoardBlockReason(bool includePending = true)
         {
             if (includePending && excludedObjectEdits != null) return ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません");
             if (includePending && GimmicksPending) return ExporterLocalization.T(GimmicksPendingReason);
-            foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
-                if (presetErrors.TryGetValue(preset, out var reason) && reason != null) return reason;
-            // A reason kept for a preset outside the board order still stops it.
-            var other = presetErrors.Values.FirstOrDefault(value => value != null);
-            if (other != null) return other;
             if (board == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
             if (board.Unexported is ExpressionBoard.Item unexported)
                 return string.Format(ExporterLocalization.T(UnexportedFileFormat), board.NameOf(unexported.Clip), unexported.Error);
             return null;
         }
+
+        // The first standard slot in error, in board order, with what saving
+        // does with it; null when none is.
+        internal string SkippedSlotNote()
+        {
+            var reason = ExperimentalExpressionCaptureSession.AssignablePresets
+                .Select(preset => presetErrors.TryGetValue(preset, out var value) ? value : null)
+                .Concat(presetErrors.Values).FirstOrDefault(value => value != null);
+            return reason == null ? null : string.Format(ExporterLocalization.T(SkippedSlotFormat), reason);
+        }
+
+        internal const string SkippedSlotFormat = "{0}（この枠は空のまま書き出します）";
 
         internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません・ファイルを直すか書き出さない表情へ移す・{1}";
 
@@ -1508,7 +1519,7 @@ namespace VRVlog.LilToonExporter
             var state = reason ?? SlotState(preset, assignment);
             // The blink setting's description is too long for a slot; the slot
             // shows its head and the tooltip all of it.
-            var shown = reason == null && state == blinkFallback ? StateHead(state) : state;
+            var shown = reason == null && (state == blinkFallback || presetsLeavingOut.Contains(preset)) ? StateHead(state) : state;
             var style = reason != null ? errorMini : dimMini;
             GUI.Label(stateRect, new GUIContent(Fit(shown, style, stateRect.width), state), style);
             HandleDrop(rect, target);
@@ -1530,7 +1541,8 @@ namespace VRVlog.LilToonExporter
         // What saving does with the slot.
         string SlotState(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
-            if (assignment != null && !assignment.IsNone) return ExporterLocalization.T(assignment.Automatic ? "自動の候補" : "確定");
+            if (assignment != null && !assignment.IsNone)
+                return ExporterLocalization.T(assignment.Automatic ? "自動の候補" : presetsLeavingOut.Contains(preset) ? ExperimentalExpressionCaptureSession.PresetLeftOutState : "確定");
             if (session.HasAuthoredPreset(preset)) return ExporterLocalization.T("元のVRM設定");
             // A blink slot nobody chose follows the blink setting; "none" chosen
             // on it leaves it empty.
@@ -2060,6 +2072,7 @@ namespace VRVlog.LilToonExporter
             // Kept from opening when the saved list leaves no preview.
             if (page == ExpressionsPage && !string.IsNullOrEmpty(excludedObjectError))
                 return (ExporterLocalization.T("除外するオブジェクトを反映できませんでした・次のページに理由があります"), errorText);
+            if (SkippedSlotNote() is string skipped) return (skipped, errorText);
             if (page == InfoPage && PreviewPending) return (ExporterLocalization.T("プレビュー未反映　保存するときに反映します"), dimText);
             return (counts, dimText);
         }
@@ -2358,7 +2371,7 @@ namespace VRVlog.LilToonExporter
 
         void RefreshPresetErrors()
         {
-            presetErrors.Clear(); eyeOverlaps.Clear();
+            presetErrors.Clear(); eyeOverlaps.Clear(); presetsLeavingOut.Clear();
             if (session == null) return;
             foreach (var pair in session.Presets) CheckPreset(pair.Key, pair.Value);
         }
@@ -2366,6 +2379,8 @@ namespace VRVlog.LilToonExporter
         void CheckPreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             presetErrors[preset] = session.PresetError(preset, assignment);
+            if (presetErrors[preset] == null && session.PresetLeavesOutBones(assignment)) presetsLeavingOut.Add(preset);
+            else presetsLeavingOut.Remove(preset);
             if (presetErrors[preset] != null && session.BlinkSidesOverlap(preset, assignment)) eyeOverlaps.Add(preset);
             else eyeOverlaps.Remove(preset);
         }
@@ -2807,7 +2822,7 @@ namespace VRVlog.LilToonExporter
             preview?.Cleanup(); preview = null;
             session?.Dispose(); session = null; board = null;
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
-            presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
+            presetErrors.Clear(); eyeOverlaps.Clear(); presetsLeavingOut.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null;
             ReleaseObjectsPreview();
             dropHover = dropHoverNext = null; clipDropHover = clipDropHoverNext = null; dragMouse = null;

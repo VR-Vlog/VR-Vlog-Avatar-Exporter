@@ -177,6 +177,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task TheExportPacksVertexDataOnlyWhenTheOptionIsOn(bool on, bool outlineWidthFromColours)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Find(outlineWidthFromColours ? "Hidden/lilToonOutline" : "lilToon")) { name = "Vertex data material" };
             Vrm10Instance imported = null;

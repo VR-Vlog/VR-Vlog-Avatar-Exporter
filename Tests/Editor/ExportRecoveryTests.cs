@@ -398,6 +398,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AudioLinkFailureCanRetryAndReloadAsStandardMToonWithoutChangingSource()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "AudioLink fixture" };
             Vrm10Instance loaded = null;
@@ -426,6 +427,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("3rd")]
         public void DynamicOptionalLayerActualFailureHasARecipeAndFullExportRetrySucceeds(string layer)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var dynamicTexture = new RenderTexture(16, 16, 0);
@@ -484,6 +486,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task ReloadedVrmIsFramedFromItsOwnBoundsWhenSourceHasAnOffsetParent(bool transformedParent)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new AttachmentConnectionTests.Fixture();
             var parent = new GameObject("Offset preview parent");
             var material = new Material(Shader.Find("lilToon"));
@@ -513,6 +516,7 @@ namespace VRVlog.LilToonExporter.Tests
                 window = ScriptableObject.CreateInstance<ExportRecoveryComparisonWindow>();
                 Set(window, "session", session);
                 await window.PrepareAsync();
+                IgnorePreviewWithoutDevice(window);
                 Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
                 var loaded = Get<Vrm10Instance>(window, "imported");
                 var render = Get<PreviewRenderUtility>(window, "vrmRender");
@@ -558,6 +562,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ReloadedVrmKeepsItsObjectsWhenASceneOpens()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             ExportRecoveryComparisonWindow window = null;
@@ -573,6 +578,7 @@ namespace VRVlog.LilToonExporter.Tests
                 window = ScriptableObject.CreateInstance<ExportRecoveryComparisonWindow>();
                 Set(window, "session", session);
                 await window.PrepareAsync();
+                IgnorePreviewWithoutDevice(window);
                 Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
                 var first = Get<Vrm10Instance>(window, "imported");
                 var firstResources = LoadedResources(first);
@@ -614,6 +620,16 @@ namespace VRVlog.LilToonExporter.Tests
             select bounds.center + Vector3.Scale(bounds.extents, new Vector3(x, y, z))).ToArray();
         static T Get<T>(object target, string name) => (T)target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(target);
         static void Set(object target, string name, object value) => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(target, value);
+
+        // Without a graphics device lilToon may lack the passes saved for it, as
+        // Unity can use another of its subshaders. The window then shows why
+        // instead of the reloaded VRM.
+        static void IgnorePreviewWithoutDevice(ExportRecoveryComparisonWindow window)
+        {
+            if (!NoGraphicsDevice.Missing || window.HasVrmPreview) return;
+            Assert.That(Get<string>(window, "error"), Is.Not.Empty);
+            NoGraphicsDevice.IgnoreLilToonPassChecks();
+        }
 
         [TestCase("existing")][TestCase("empty")]
         public void OpeningRecoveryKeepsTheFirstRealFailureWithoutRepeatingTheExport(string reportKind)

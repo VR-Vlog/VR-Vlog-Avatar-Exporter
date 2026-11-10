@@ -24,14 +24,15 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(textures, Has.Count.EqualTo(1));
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.AreSame(textures[0], weight);
-                Assert.That(weight.GetPixel(0, 0).linear.maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not add the MatCap.");
-                Assert.That(weight.GetPixel(1, 0).linear.r, Is.EqualTo(1f).Within(.015f));
                 Assert.AreSame(main, fallback.GetTexture("_MainTex"), "An added MatCap does not change the main image.");
                 Assert.AreSame(mask, material.GetTexture("_MatCapBlendMask"));
                 // Without a MatCap image there is nothing to weigh.
                 material.SetTexture("_MatCapTex", null);
                 Assert.IsNull(UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures).GetTexture("_RimTex"));
                 Assert.That(textures, Has.Count.EqualTo(1));
+                NoGraphicsDevice.IgnorePixelChecks();
+                Assert.That(weight.GetPixel(0, 0).linear.maxColorComponent, Is.EqualTo(0f).Within(.015f), "Black mask must not add the MatCap.");
+                Assert.That(weight.GetPixel(1, 0).linear.r, Is.EqualTo(1f).Within(.015f));
             }
             finally { TestObjects.Destroy(material, created, textures, mask, main); }
         }
@@ -58,8 +59,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fallback.GetColor("_RimColor").maxColorComponent, Is.GreaterThan(0f));
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.AreSame(textures[0], weight, "The mask replaces the rim image.");
-                Assert.That(weight.GetPixel(0, 0).linear.maxColorComponent, Is.EqualTo(0f).Within(.015f));
-                Assert.That(weight.GetPixel(1, 0).linear.r, Is.EqualTo(1f).Within(.015f));
                 // Without a mask the MatCap covers the mesh in lilToon too, so
                 // the rim keeps its own image.
                 material.SetTexture("_MatCapBlendMask", null);
@@ -68,6 +67,9 @@ namespace VRVlog.LilToonExporter.Tests
                 if (toggle == "_UseRim") Assert.AreSame(rim, unmasked);
                 else Assert.IsNull(unmasked);
                 Assert.That(textures, Has.Count.EqualTo(1));
+                NoGraphicsDevice.IgnorePixelChecks();
+                Assert.That(weight.GetPixel(0, 0).linear.maxColorComponent, Is.EqualTo(0f).Within(.015f));
+                Assert.That(weight.GetPixel(1, 0).linear.r, Is.EqualTo(1f).Within(.015f));
             }
             finally { TestObjects.Destroy(material, created, textures, mask, rim, main); }
         }
@@ -92,13 +94,14 @@ namespace VRVlog.LilToonExporter.Tests
                 var baked = (Texture2D)fallback.GetTexture("_MainTex");
                 Assert.AreSame(textures[0], baked);
                 Assert.AreSame(baked, fallback.GetTexture("_ShadeTex"), "The shade image is the main image.");
+                Assert.IsNull(fallback.GetTexture("_MatcapTex"), "MToon would add a multiply MatCap.");
+                Assert.AreSame(main, material.GetTexture("_MainTex"));
+                NoGraphicsDevice.IgnorePixelChecks();
                 Assert.That(baked.GetPixel(0, 0).linear.r, Is.EqualTo(1f).Within(.015f), "Black mask keeps the main image.");
                 var pixel = baked.GetPixel(1, 0).linear;
                 Assert.That(pixel.r, Is.EqualTo(.5f).Within(.015f));
                 Assert.That(pixel.g, Is.EqualTo(.25f).Within(.015f));
                 Assert.That(pixel.b, Is.EqualTo(1f).Within(.015f));
-                Assert.IsNull(fallback.GetTexture("_MatcapTex"), "MToon would add a multiply MatCap.");
-                Assert.AreSame(main, material.GetTexture("_MainTex"));
             }
             finally { TestObjects.Destroy(material, created, textures, matcap, mask, main); }
         }
@@ -121,6 +124,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
                 var baked = (Texture2D)fallback.GetTexture("_MainTex");
                 Assert.That(textures, Does.Contain(baked));
+                NoGraphicsDevice.IgnorePixelChecks();
                 // lilToon draws lerp(main, MatCap, mask); seen from every side the main image keeps 1 - mask.
                 var gray = Mathf.GammaToLinearSpace(.5f);
                 Assert.That(baked.GetPixel(0, 0).linear.r, Is.EqualTo(gray * (1 - gray)).Within(.015f));
@@ -131,6 +135,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AMultiplyMatcapAveragesAnSrgbImageInLinearValues()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var material = Create(3);
             // Half the disk is mid gray, half white.
             var matcap = Srgb(new Color(.5f, .5f, .5f, 1), Color.white, new Color(.5f, .5f, .5f, 1), Color.white);
@@ -144,6 +149,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
                 var baked = (Texture2D)fallback.GetTexture("_MainTex");
                 Assert.That(textures, Does.Contain(baked));
+                NoGraphicsDevice.IgnorePixelChecks();
                 var mean = (Mathf.GammaToLinearSpace(.5f) + 1) / 2;
                 Assert.That(baked.GetPixel(0, 0).linear.r, Is.EqualTo(mean).Within(.015f));
             }
@@ -165,6 +171,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
                 var weight = (Texture2D)fallback.GetTexture("_RimTex");
                 Assert.That(textures, Does.Contain(weight));
+                NoGraphicsDevice.IgnorePixelChecks();
                 Assert.That(weight.GetPixel(0, 0).linear.r, Is.EqualTo(1 - Mathf.GammaToLinearSpace(.5f)).Within(.015f));
             }
             finally { TestObjects.Destroy(material, created, textures, main); }
@@ -185,6 +192,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(4, true)]
         public void BakesThatPassTheImageLimitAreLeftOut(int count, bool baked)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var quad = new Mesh { name = "MatCap quad" };
             var matcap = TestTextures.Solid(Color.white);

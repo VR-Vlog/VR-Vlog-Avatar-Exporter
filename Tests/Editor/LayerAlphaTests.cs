@@ -61,10 +61,13 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var source = Source(variant); Layer(source, layer, mode);
                 var copy = Bake(source);
-                var pixel = ((Texture2D)copy.GetTexture("_MainTex")).GetPixel(4, 4);
-                Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f), variant + layer);
-                var rgb = QualitySettings.activeColorSpace == ColorSpace.Linear ? pixel.linear : pixel;
-                Assert.That(rgb.r, Is.EqualTo(.6f).Within(.015f), "Alpha mode makes the layer's RGB full strength");
+                if (!NoGraphicsDevice.Missing)
+                {
+                    var pixel = ((Texture2D)copy.GetTexture("_MainTex")).GetPixel(4, 4);
+                    Assert.That(pixel.a, Is.EqualTo(expected).Within(.012f), variant + layer);
+                    var rgb = QualitySettings.activeColorSpace == ColorSpace.Linear ? pixel.linear : pixel;
+                    Assert.That(rgb.r, Is.EqualTo(.6f).Within(.015f), "Alpha mode makes the layer's RGB full strength");
+                }
                 Assert.That(copy.GetColor("_Color"), Is.EqualTo(Color.white));
                 Assert.That(copy.GetFloat("_UseMain" + layer + "Tex"), Is.Zero);
                 Assert.That(source.GetFloat("_UseMain" + layer + "Tex"), Is.EqualTo(1));
@@ -80,6 +83,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 finally { owned.AddRange(materials); }
             }
+            NoGraphicsDevice.IgnorePixelChecks();
         }
 
         [TestCase(1)] [TestCase(2)] [TestCase(3)] [TestCase(4)]
@@ -127,6 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         void AssertRenderedEqual(Material source, Material baked)
         {
+            NoGraphicsDevice.IgnorePixelChecks();
             var before = Render(source); var after = Render(baked);
             foreach (var x in new[] { 6, 13, 22, 28 })
             {

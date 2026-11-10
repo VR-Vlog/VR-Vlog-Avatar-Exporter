@@ -74,6 +74,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static IEnumerator VerifyDrop(int count)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             // Make the synthetic visible geometry follow the animated arm, so
             // a changed bone with a stale skinned-mesh render cannot pass.
@@ -91,6 +92,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 yield return Ready(window);
+                NoGraphicsDevice.IgnoreWindowChecks();
                 var previous = Field<PoseExportSession>(window, "session");
                 Drop(window, clips.Cast<Object>().ToArray());
                 Assert.That(options.Manual.Count, Is.EqualTo(count));
@@ -141,6 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
         [UnityTest]
         public IEnumerator UnsupportedDropIsRejectedAndClosingCancelsPendingWork()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var options = new PoseExportOptions();
             var clip = HumanoidPoseTests.Clip(fixture.Source);
@@ -148,6 +151,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 yield return Ready(window);
+                NoGraphicsDevice.IgnoreWindowChecks();
                 Drop(window, fixture.Source);
                 Assert.That(options.Manual, Is.Empty);
                 Assert.That(window.IsBusy, Is.False);
@@ -168,12 +172,14 @@ namespace VRVlog.LilToonExporter.Tests
         [UnityTest]
         public IEnumerator WindowClosesWhenItsAvatarIsGone()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = Object.Instantiate(fixture.Source);
             var window = Open(source, new PoseExportOptions());
             try
             {
                 yield return Ready(window);
+                NoGraphicsDevice.IgnoreWindowChecks();
                 // Opening another scene destroys the avatar while the window stays open.
                 Object.DestroyImmediate(source);
                 window.SendEvent(new Event { type = EventType.Layout });

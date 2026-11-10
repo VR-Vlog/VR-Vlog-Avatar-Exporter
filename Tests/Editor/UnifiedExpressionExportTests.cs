@@ -55,6 +55,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task PartialChannelsAndMultipleRestingMeshesSurviveExportAndReimport(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             Vrm10Instance imported = null;
             try
@@ -156,6 +157,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task SplitFaceExportsSharedMouthAndOnlyAvailableBilateralBlink(bool bilateral, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var mouthMesh = Object.Instantiate(fixture.Mesh);
             Vrm10Instance imported = null;
@@ -277,6 +279,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task SharedGlbMeshKeepsAuthoredCoverageScopedToItsRendererNode(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -368,6 +371,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task ExplicitRawAliasWinsOverCanonicalInExportedBindings(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             Vrm10Instance imported = null;
             try
@@ -480,6 +484,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task UeEvidencePairsOnlyCompatibleLegacySidesAcrossRenderers(bool compatible, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var rightMesh = Object.Instantiate(fixture.Mesh);
             Vrm10Instance imported = null;
@@ -554,6 +559,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task SplitPartialBlinkUsesTheSameUeClosureInStandardAndDetailedPlayback(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var rightMesh = Object.Instantiate(fixture.Mesh);
             Vrm10Instance imported = null;
@@ -600,6 +606,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ambiguousRaw", false)]
         public void MissingBlinkRequiresUsableUnifiedRoute(string scenario, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -674,6 +681,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task ClampedNegativeRestKeepsNativeGeometryAndProvidesMovingUnifiedBlinkFallback(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var previousClamp = UnityEditor.PlayerSettings.legacyClampBlendShapeWeights;
             Vrm10Instance imported = null;
@@ -735,6 +743,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("emptyRepair", true)]
         public async Task SupportedUnifiedRouteWithoutBilateralEyeRigSurvivesBothExportModes(string scenario, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -802,6 +811,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(50f, .5f, false)]
         public async Task AuthoredMorphEligibilityMatchesActualExportedResidual(float rest, float bindingWeight, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -934,6 +944,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("onlyExcludedColor", true)]
         public async Task AuthoredExclusionsMatchFinalReferencePruning(string kind, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -1004,6 +1015,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(25f, true, true)]
         public async Task LeadingNeutralFrameSurvivesActualGlbAndContinuousPlayback(float rest, bool authored, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
             var baked = new Mesh(); Vrm10Instance imported = null;
@@ -1111,6 +1123,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task DuplicateAuthoredTargetsMatchPinnedFirstBindingPlayback(bool positiveFirst, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>(); Vrm10Instance imported = null;
             try
@@ -1145,6 +1158,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(200f, false)]
         public async Task ExtendedRawFramesUseActualRemainingExportRange(float rest, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var baked = new Mesh(); Vrm10Instance imported = null;
             try
@@ -1193,6 +1207,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(100f, true, false)]
         public async Task NegativeIntermediateFramesKeepTheirPositiveExportedEndpoint(float rest, bool authored, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
             var baked = new Mesh(); Vrm10Instance imported = null;
@@ -1260,6 +1275,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCaseSource(nameof(NativeNegativeBracketCases))]
         public async Task NegativeBracketPreservesNativeRestAndRebasedContinuousPlayback(string curve, float rest, bool authored, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
             var baked = new Mesh(); Vrm10Instance imported = null;
@@ -1345,6 +1361,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("scoped", false)]
         public async Task MaterialCoverageWithMalformedMorphKeepsItsDeclaredNodeScopeInRealGlb(string scope, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             Vrm10Instance imported = null;
             try
@@ -1451,6 +1468,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("uv", true)]
         public async Task MaterialOnlyAuthoredCoverageSurvivesRoundtripWithoutRawAggregate(string kind, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -1508,6 +1526,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("uv", true, true)]
         public async Task MaterialEndpointEvidenceMatchesActualImportedProxy(string kind, bool moving, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var clip = ScriptableObject.CreateInstance<VRM10Expression>();
@@ -1628,6 +1647,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task StandardEmissionEvidenceUsesItsActualGammaProxy(bool moving, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
             var material = new Material(Shader.Find("Standard")) { name = "Standard UE Material" };
@@ -1680,6 +1700,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("hdr", true, false)]
         public async Task EmissionEvidenceUsesTheActualSuppressionOptions(string kind, bool suppressed, bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
             Vrm10Instance imported = null;
@@ -1762,6 +1783,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, true)]
         public void FallbackBakingCannotReplaceMovingMaterialEvidenceWithAnInertBase(bool fullLilToon, bool otherUnifiedSurvives = false)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
             try
@@ -1823,6 +1845,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task GeneratedJawMenuRemainsBinaryAlongsideContinuousUnifiedJaw(bool fullLilToon)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             Mesh menuMesh = null;
             var face = new AnimationClip { name = "JawOpen" };

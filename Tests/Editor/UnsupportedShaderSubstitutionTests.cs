@@ -441,6 +441,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void ADynamicMainImageIsLeftOutSoTheSnapshotCanSaveTheSubstitute()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var screen = Own(new RenderTexture(4, 4, 0) { name = "screen" });
             var source = Own(new Material(Shader.Find("Unlit/Texture")) { name = "Screen" });
             source.SetTexture("_MainTex", screen);
@@ -680,6 +681,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void ApplyReplacesEverySlotOnceAndReportsItAsAnApproximation()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var plain = Standard();
             var official = Own(new Material(Shader.Find("lilToon")) { name = "Official" });
             var mtoon = Own(new Material(Shader.Find(MToon10Meta.UnityShaderName)) { name = "MToon" });
@@ -740,6 +742,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void AMixedAvatarExportsTheSubstituteInTheLilToonExtension()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var official = Own(new Material(Shader.Find("lilToon")) { name = "Official" });
             var plain = Standard();
@@ -765,6 +768,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void AMixedAvatarWithARenderTextureScreenStillExports()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var official = Own(new Material(Shader.Find("lilToon")) { name = "Official" });
             var screen = Own(new Material(Shader.Find("Unlit/Texture")) { name = "Screen" });

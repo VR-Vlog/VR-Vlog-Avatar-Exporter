@@ -677,6 +677,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void OpeningTheSameAvatarDuringATransferOnlyFocusesTheWindow()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
             using (var run = new FlowRun())
             {
