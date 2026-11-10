@@ -393,9 +393,10 @@ namespace VRVlog.LilToonExporter
 
         // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
         // bones or shows objects is no automatic candidate for one, as before (the preset would
-        // lose them). A slot the user filled takes such a clip with its BlendShapes alone
-        // (PresetLeftOut names what it drops). Every face is read this way while the export
-        // does not write bones and visibility.
+        // lose them). A slot the user filled takes such a clip's BlendShapes here; emotion,
+        // mouth and blink slots write its bones and shown objects apart (PresetBonesClip),
+        // and PresetLeftOut names what a slot drops. Every face is read this way while the
+        // export does not write bones and visibility.
         Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));

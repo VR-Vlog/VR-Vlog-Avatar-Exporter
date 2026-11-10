@@ -421,15 +421,20 @@ namespace VRVlog.LilToonExporter
 
         // The bones and shown objects of each standard expression's clip, read
         // like a listed face's (ExpressionTransformCurves.Read); what the read
-        // leaves out is listed under the slot's label. Name is the label for
+        // leaves out or rejects is listed under the slot's label. Name is the label for
         // the warnings of Resolve, Preset the name Add writes.
-        static List<VrmMenuExpressions.Expression> ReadPresetBones(GameObject clone,
+        internal static List<VrmMenuExpressions.Expression> ReadPresetBones(GameObject clone,
             IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones, Func<string, bool> excludedPath, ICollection<string> warnings)
         {
             var result = new List<VrmMenuExpressions.Expression>();
             foreach (var (preset, label, clip) in presetBones)
             {
-                var reading = ExpressionTransformCurves.Read(clone, clip, excludedPath);
+                // A clip the read rejects (a bone with both rotation forms, a
+                // value that is not finite) loses only its slot's bones; its face
+                // and the other expressions are written as before.
+                ExpressionTransformCurves.Reading reading;
+                try { reading = ExpressionTransformCurves.Read(clone, clip, excludedPath); }
+                catch (InvalidOperationException error) { warnings?.Add(label + ": " + error.Message); continue; }
                 foreach (var message in reading.Messages()) warnings?.Add(label + ": " + message);
                 if (reading.Tracks.Count == 0) continue;
                 var expression = new VrmMenuExpressions.Expression { Name = label, Preset = preset };

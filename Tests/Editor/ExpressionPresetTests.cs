@@ -297,6 +297,8 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Back", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.y"),
                     AnimationCurve.Constant(0, 1, 1.85f));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.x"),
+                    AnimationCurve.Constant(0, 1, .5f));
                 using var session = new Session(fixture.Source);
                 var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
                 Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
@@ -326,8 +328,37 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(values[0], Is.EqualTo(0));
                 happy.Tracks.Single(track => track.Property == VRVlog.Expressions.ExpressionTransformAnimation.Translation).Evaluate(0, values);
                 Assert.That(values[1], Is.EqualTo(1.85).Within(1e-4));
+                Assert.That(values[0], Is.EqualTo(-.5).Within(1e-4), "glTF mirrors x, as for a listed face.");
             }
             finally { Object.DestroyImmediate(clip); }
+        }
+
+        // A slot's clip the bone read rejects (a value that is not finite)
+        // loses only its own bones: the other slots keep theirs and the result
+        // list names the slot, instead of the export leaving out every
+        // expression.
+        [Test]
+        public void ARejectedSlotClipLosesOnlyItsBones()
+        {
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = Fixture();
+            var broken = new AnimationClip { name = "broken" };
+            var moving = new AnimationClip { name = "moving" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(broken, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalScale.x"),
+                    NeutralShapeSamplerTests.NaNCurve());
+                AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.y"),
+                    AnimationCurve.Constant(0, 1, 1.85f));
+                var warnings = new List<string>();
+                var read = UniVrmOneClickExporter.ReadPresetBones(fixture.Source,
+                    new[] { ("happy", "Happy slot", broken), ("aa", "Aa slot", moving) }, null, warnings);
+                Assert.That(read.Select(expression => expression.Preset), Is.EqualTo(new[] { "aa" }));
+                // The read's own message names the clip, the path and the property.
+                Assert.That(warnings.Any(warning => warning.StartsWith("Happy slot: ", StringComparison.Ordinal) &&
+                    warning.Contains("broken / Independent hair/Head / m_LocalScale.x")), Is.True, string.Join("|", warnings));
+            }
+            finally { Object.DestroyImmediate(broken); Object.DestroyImmediate(moving); }
         }
 
         static Dictionary<string, object> Extension(byte[] bytes) =>

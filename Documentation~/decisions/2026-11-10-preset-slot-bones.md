@@ -15,6 +15,7 @@
 - 標準の表情の名前は `expressions`・`transforms` に入れない。カスタムの表情の一覧と再生に混ざらないようにするため。
 - 書くのは、利用者が自分で感情・口・まばたきの枠に入れたクリップ（`Automatic` でない）だけ。値は表情ボードの時刻（`FaceTime`）で止めた値で、アプリは表情の実際の重みで混ぜる。自動の候補は今までどおり BlendShape だけのクリップに限るので、アプリに転送（かんたん）の書き出しは変わらない。
 - クリップの読み取りはその他の表情と同じ `ExpressionTransformCurves.Read`・`Resolve` を使う。Humanoid のボーン、見つからないパス、元から非表示のオブジェクトを表示する表示切替は、その他の表情と同じ理由で外し、枠の名前を付けて書き出し結果の一覧に出す。
+- 読み取りが拒むクリップ（同じボーンを 2 通りの回転で動かす、値が有限でない）は、その枠のボーンと表示切替だけを外し、枠の名前と理由を一覧に出す。表情ボードはボーンの曲線を検査しないので、拒んだときに書き出し全体を止めたり、カスタムの表情ごと省いたりしない。
 - 指のポーズは今までどおり外し、「指のポーズは書き出しません: <パス / プロパティ>」を一覧に出す。枠の下は「確定」のままにする。
 - 視線とneutralの枠は今までどおり顔の変形だけを使い、外した変更を一覧に出す。視線はアプリが目のボーンを回しているので、表情のボーンと二重に動かすと破綻しやすい。neutralは単独で表示しない。
 - マテリアルの変更は書き出さない（今までどおり対応外）。
@@ -35,6 +36,7 @@
 ## 確かめたこと
 
 - `ExpressionAnimationDocumentTests`: `presetTransforms` の往復、`presetTransforms` だけの文書、キーを読まない読み手でカスタムの表情と `transforms` が変わらないこと、壊れた要素（視線・neutral・カスタムの名前・大文字違い・重複・時計つき・ループ・トラック無し・空・配列でない）を拒むこと。
-- `ExpressionPresetTests.AChosenEmotionSlotWritesItsBonesAndShownObjectsUnderThePreset`: happy の枠に入れたクリップのボーンと表示切替が `presetTransforms` の happy に入り、`expressions`・`transforms` には入らない。
+- `ExpressionPresetTests.AChosenEmotionSlotWritesItsBonesAndShownObjectsUnderThePreset`: happy の枠に入れたクリップのボーンと表示切替が `presetTransforms` の happy に入り、`expressions`・`transforms` には入らない。鏡映される x の位置は符号が反転する。
+- `ExpressionPresetTests.ARejectedSlotClipLosesOnlyItsBones`: 値が有限でないクリップの枠はボーンだけを外して一覧に出し、ほかの枠のボーンは書く。
 - `ExpressionPresetTests.AChosenPresetThatAlsoShowsAnObjectKeepsItsShapesAndSaysWhatItLeftOut`: 視線の枠は今までどおり顔の変形だけで、`presetTransforms` は書かれない。
 - `ExperimentalExpressionCaptureTests.GestureFacesIgnoreBoneCurvesBesideTheFace`: happy の枠では指のポーズだけを外し、lookUp の枠では今までどおりボーン・表示切替・指のポーズを外す。
