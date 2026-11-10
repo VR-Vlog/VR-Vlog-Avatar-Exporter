@@ -19,10 +19,11 @@ namespace VRVlog.LilToonExporter
             preview.ambientColor = Color.gray;
         }
 
-        const float NoticeMaxHeight = 76, NoticeIconSize = 14;
+        const float NoticeMaxHeight = 76, NoticeIconSize = 14, NoticeWidthAllowance = 48;
 
         // What a preview's build left out (NdmfExportPreparation.PreviewNotices).
-        // The list can be long, so it scrolls and does not push the preview away.
+        // The list can be long, so it scrolls and does not push the preview away;
+        // a short list keeps its own height instead of growing to the limit.
         // The warning icon is on the heading: a HelpBox centres its icon on all
         // its lines, which puts it below the scrolled view when they are many.
         internal static void DrawExportNotices(System.Collections.Generic.IReadOnlyList<string> notices, ref Vector2 scroll)
@@ -33,8 +34,15 @@ namespace VRVlog.LilToonExporter
             EditorGUIUtility.SetIconSize(new Vector2(NoticeIconSize, NoticeIconSize));
             try { EditorGUILayout.LabelField(new GUIContent(ExporterLocalization.T("書き出しの注意"), icon), EditorStyles.miniBoldLabel); }
             finally { EditorGUIUtility.SetIconSize(previousIconSize); }
-            scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.MaxHeight(NoticeMaxHeight));
-            EditorGUILayout.HelpBox(string.Join("\n", System.Linq.Enumerable.Select(notices, ExporterLocalization.T)), MessageType.None);
+            // A scroll view takes its whole maximum height however short its
+            // text is, so it gets the height the text needs. The text is measured
+            // a little narrower than the box so the height is never short of it,
+            // which would put a scroll bar on a short list.
+            var text = string.Join("\n", System.Linq.Enumerable.Select(notices, ExporterLocalization.T));
+            var style = EditorStyles.helpBox;
+            var needed = style.CalcHeight(new GUIContent(text), EditorGUIUtility.currentViewWidth - NoticeWidthAllowance) + style.margin.vertical;
+            scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.Height(Mathf.Min(needed, NoticeMaxHeight)));
+            EditorGUILayout.HelpBox(text, MessageType.None);
             EditorGUILayout.EndScrollView();
             GUILayout.Space(4f);
         }
