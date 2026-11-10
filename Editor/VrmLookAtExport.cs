@@ -11,6 +11,7 @@ namespace VRVlog.LilToonExporter
     // origin is the midpoint of the eyes. The range follows the VRChat Eye
     // Look poses when they can be measured; otherwise it uses UniVRM's
     // defaults, which are also what UniVRM applies when lookAt is absent.
+    // 視線の動く範囲 (GazeRangeOptions) replaces the limits the user changed.
     internal sealed class VrmLookAtExport
     {
         // VRM10ObjectLookAt's defaults in the pinned UniVRM.
@@ -21,16 +22,65 @@ namespace VRVlog.LilToonExporter
         internal const float MaximumDegrees = 90f;
         internal const string UnmeasuredWarning = "Eye Lookの設定から目の可動範囲を測れないため視線は既定の範囲で書き出しました（Avatar DescriptorのEye Lookを確認）";
 
+        // One VRM range map: a gaze of Input degrees turns the eye by Output.
+        internal struct Range
+        {
+            internal float Input, Output;
+            internal static Range Default => new Range { Input = DefaultInputDegrees, Output = DefaultOutputDegrees };
+            // One-to-one up to the limit, as VRChat's Eye Look follows a gaze
+            // directly until its pose.
+            internal static Range Linear(float degrees) => new Range { Input = degrees, Output = degrees };
+        }
+
+        // The four range maps of the VRM look-at, in degrees.
+        internal struct Ranges
+        {
+            internal Range HorizontalInner, HorizontalOuter, VerticalDown, VerticalUp;
+            internal static Ranges Default => new Ranges
+            {
+                HorizontalInner = Range.Default, HorizontalOuter = Range.Default, VerticalDown = Range.Default, VerticalUp = Range.Default,
+            };
+
+            // 視線の動く範囲 replaces the limits it sets; the axes left at 0 keep these.
+            internal Ranges With(GazeRangeOptions options)
+            {
+                options = options?.Validated() ?? new GazeRangeOptions();
+                var result = this;
+                if (options.Up > 0) result.VerticalUp = Range.Linear(options.Up);
+                if (options.Down > 0) result.VerticalDown = Range.Linear(options.Down);
+                if (options.Side > 0) result.HorizontalInner = result.HorizontalOuter = Range.Linear(options.Side);
+                return result;
+            }
+
+            // How far the eyes turn at most, as the sliders show it. The sides
+            // show the smaller of the two limits, the one both eyes reach.
+            internal GazeRangeOptions Shown() => new GazeRangeOptions
+            {
+                Up = VerticalUp.Output, Down = VerticalDown.Output, Side = Mathf.Min(HorizontalInner.Output, HorizontalOuter.Output),
+            };
+        }
+
+        // Whether 視線の動く範囲 can change the avatar's look-at.
+        internal enum GazeSupport { Ranges, NoEyeBones, AuthoredVrm }
+
+        internal struct GazeInspection
+        {
+            internal GazeSupport Support;
+            // What the export writes when nothing is changed.
+            internal Ranges Ranges;
+            // The ranges came from VRChat's Eye Look, not from UniVRM's defaults.
+            internal bool FromEyeLook;
+        }
+
         // Head-local position in Unity coordinates, as UniVRM's OffsetFromHead.
         internal Vector3 OffsetFromHead;
         internal bool Measured;
-        // Measured limits in degrees. The map is one-to-one up to each limit,
-        // as VRChat's Eye Look follows a gaze directly until its pose.
-        internal float HorizontalInner, HorizontalOuter, VerticalDown, VerticalUp;
+        internal Ranges Limits = Ranges.Default;
 
         // Returns null when the copy's own VRM settings already describe the
         // look-at, or when bone look-at cannot work (no humanoid head or eyes).
-        internal static VrmLookAtExport Capture(GameObject source, GameObject copy, ICollection<string> warnings)
+        // gaze is 視線の動く範囲 of the board; null or its default keeps the avatar's ranges.
+        internal static VrmLookAtExport Capture(GameObject source, GameObject copy, ICollection<string> warnings, GazeRangeOptions gaze = null)
         {
             if (source == null || copy == null) return null;
             // UniVRM serializes VRM10Object.LookAt itself. Keep an edited one;
@@ -47,15 +97,30 @@ namespace VRVlog.LilToonExporter
             var offset = head.InverseTransformPoint((left.position + right.position) * .5f);
             if (!Finite(offset.x) || !Finite(offset.y) || !Finite(offset.z)) return null;
             var result = new VrmLookAtExport { OffsetFromHead = offset };
-            var measured = TryMeasure(source, out var authored, out var inner, out var outer, out var down, out var up);
-            if (measured)
-            {
-                result.Measured = true;
-                result.HorizontalInner = inner; result.HorizontalOuter = outer;
-                result.VerticalDown = down; result.VerticalUp = up;
-            }
+            result.Measured = TryMeasure(source, out var authored, out var measured);
+            if (result.Measured) result.Limits = measured;
             else if (authored) warnings?.Add(ExporterLocalization.T(UnmeasuredWarning));
+            result.Limits = result.Limits.With(gaze);
             return result;
+        }
+
+        // What Capture writes for this avatar when 視線の動く範囲 is left as it
+        // is, or why it writes nothing that setting could change. Reads the
+        // source as Capture reads the export copy.
+        internal static GazeInspection Inspect(GameObject source)
+        {
+            var inspection = new GazeInspection { Support = GazeSupport.NoEyeBones, Ranges = Ranges.Default };
+            if (source == null) return inspection;
+            var authoredLookAt = source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.LookAt : null;
+            if (authoredLookAt != null && !IsUniVrmDefault(authoredLookAt)) { inspection.Support = GazeSupport.AuthoredVrm; return inspection; }
+            var animator = source.GetComponent<Animator>();
+            if (animator == null || animator.avatar == null || !animator.isHuman ||
+                HumanoidBones.Resolve(animator, HumanBodyBones.Head) == null ||
+                HumanoidBones.Resolve(animator, HumanBodyBones.LeftEye) == null ||
+                HumanoidBones.Resolve(animator, HumanBodyBones.RightEye) == null) return inspection;
+            inspection.Support = GazeSupport.Ranges;
+            if (TryMeasure(source, out _, out var measured)) { inspection.Ranges = measured; inspection.FromEyeLook = true; }
+            return inspection;
         }
 
         // Writes lookAt when the exported humanoid still has a head and both
@@ -74,28 +139,28 @@ namespace VRVlog.LilToonExporter
 
         internal Dictionary<string, object> ToJson()
         {
-            Dictionary<string, object> Map(float limit) => new Dictionary<string, object>
+            Dictionary<string, object> Map(Range range) => new Dictionary<string, object>
             {
-                ["inputMaxValue"] = (double)(Measured ? limit : DefaultInputDegrees),
-                ["outputScale"] = (double)(Measured ? limit : DefaultOutputDegrees),
+                ["inputMaxValue"] = (double)range.Input,
+                ["outputScale"] = (double)range.Output,
             };
             return new Dictionary<string, object>
             {
                 // glTF mirrors Unity's X axis; UniVRM writes OffsetFromHead.ReverseX().
                 ["offsetFromHeadBone"] = new List<object> { (double)-OffsetFromHead.x, (double)OffsetFromHead.y, (double)OffsetFromHead.z },
                 ["type"] = "bone",
-                ["rangeMapHorizontalInner"] = Map(HorizontalInner),
-                ["rangeMapHorizontalOuter"] = Map(HorizontalOuter),
-                ["rangeMapVerticalDown"] = Map(VerticalDown),
-                ["rangeMapVerticalUp"] = Map(VerticalUp),
+                ["rangeMapHorizontalInner"] = Map(Limits.HorizontalInner),
+                ["rangeMapHorizontalOuter"] = Map(Limits.HorizontalOuter),
+                ["rangeMapVerticalDown"] = Map(Limits.VerticalDown),
+                ["rangeMapVerticalUp"] = Map(Limits.VerticalUp),
             };
         }
 
         // authored: Eye Look is enabled on the descriptor, so a failed
         // measurement loses information the user set up and is reported.
-        internal static bool TryMeasure(GameObject source, out bool authored, out float inner, out float outer, out float down, out float up)
+        internal static bool TryMeasure(GameObject source, out bool authored, out Ranges ranges)
         {
-            authored = false; inner = outer = down = up = 0;
+            authored = false; ranges = Ranges.Default;
             var descriptor = VrChatExpressionMenu.Descriptor(source);
             if (!(VrChatExpressionMenu.Member(descriptor, "enableEyeLook") is bool enabled) || !enabled) return false;
             authored = true;
@@ -113,11 +178,17 @@ namespace VRVlog.LilToonExporter
             if (!TryEye(source.transform, leftEye, poses, true, out var leftRange) ||
                 !TryEye(source.transform, rightEye, poses, false, out var rightRange)) return false;
             // Stay within the authored limit of both eyes.
-            inner = Mathf.Min(leftRange.Inner, rightRange.Inner);
-            outer = Mathf.Min(leftRange.Outer, rightRange.Outer);
-            down = Mathf.Min(leftRange.Down, rightRange.Down);
-            up = Mathf.Min(leftRange.Up, rightRange.Up);
-            return new[] { inner, outer, down, up }.All(value => Finite(value) && value >= MinimumDegrees && value <= MaximumDegrees);
+            var inner = Mathf.Min(leftRange.Inner, rightRange.Inner);
+            var outer = Mathf.Min(leftRange.Outer, rightRange.Outer);
+            var down = Mathf.Min(leftRange.Down, rightRange.Down);
+            var up = Mathf.Min(leftRange.Up, rightRange.Up);
+            if (!new[] { inner, outer, down, up }.All(value => Finite(value) && value >= MinimumDegrees && value <= MaximumDegrees)) return false;
+            ranges = new Ranges
+            {
+                HorizontalInner = Range.Linear(inner), HorizontalOuter = Range.Linear(outer),
+                VerticalDown = Range.Linear(down), VerticalUp = Range.Linear(up),
+            };
+            return true;
         }
 
         internal struct EyeRange { internal float Inner, Outer, Down, Up; }

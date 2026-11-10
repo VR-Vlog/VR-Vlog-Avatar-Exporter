@@ -222,6 +222,8 @@ BEHAVIOR_CASES = {
     'VrmLookAtExportTests': {
         'EyesWithoutEyeLookUseTheEyeMidpointAndTheDefaultRange': 1,
         'ExistingVrmLookAtWinsOverEyesAndEyeLook': 1,
+        'AGazeRangeReplacesTheMeasuredOrTheDefaultRangeOfItsAxes': 1,
+        'InspectTellsWhetherTheGazeRangeCanChange': 1,
         'RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm': 1,
         'UnmeasurableEyeLookKeepsTheDefaultRangeAndWarns': 1,
         'UntouchedVrmLookAtDefaultsAreReplacedByTheEyeMidpoint': 1,
@@ -921,6 +923,7 @@ BEHAVIOR_CASES = {
         'LightweightStartsOnUnlessSavedOff': 1,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
+        'TheSavedGazeRangeMatches': 1,
     },
     # 自動で軽量化する: texture sizes from texel density; off measures nothing.
     'TexelDensityTests': {

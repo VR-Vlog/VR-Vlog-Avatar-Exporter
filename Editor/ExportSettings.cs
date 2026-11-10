@@ -9,7 +9,7 @@ namespace VRVlog.LilToonExporter
 {
     // The choices of one avatar's export: manual exclusions, the gimmick
     // auto-exclusion and its exceptions, blink, poses, the automatic texture
-    // lightening and the VRM license.
+    // lightening, 視線の動く範囲 and the VRM license.
     // The expression board and the app transfer read them; the export itself
     // runs through the board. ExportSettingsStore remembers them per avatar
     // outside the avatar itself.
@@ -26,6 +26,8 @@ namespace VRVlog.LilToonExporter
         // 自動で軽量化する: textures more detailed than the screen shows are
         // written smaller (TexelDensity). On unless the avatar saved it off.
         internal bool AutoLightweight = true;
+        // 視線の動く範囲. Its default keeps the avatar's own range.
+        internal GazeRangeOptions Gaze = new GazeRangeOptions();
         internal AvatarLicenseOptions License = new AvatarLicenseOptions();
 
         internal GameObject[] Exclusions() => ExcludedObjects.Where(item => item != null).ToArray();
@@ -45,6 +47,7 @@ namespace VRVlog.LilToonExporter
                 Blink = (Blink ?? new BlinkExportOptions()).Copy(),
                 Poses = (Poses ?? new PoseExportOptions()).Copy(),
                 AutoLightweight = AutoLightweight,
+                Gaze = (Gaze ?? new GazeRangeOptions()).Copy(),
                 License = (License ?? new AvatarLicenseOptions()).Copy()
             };
             copy.ExcludedObjects.AddRange(ExcludedObjects);
@@ -68,6 +71,7 @@ namespace VRVlog.LilToonExporter
             Poses.Excluded.Clear(); Poses.Excluded.UnionWith(other.Poses.Excluded);
             Poses.Names.Clear(); foreach (var item in other.Poses.Names) Poses.Names[item.Key] = item.Value;
             AutoLightweight = other.AutoLightweight;
+            Gaze = other.Gaze;
             License = other.License;
         }
 
@@ -103,6 +107,7 @@ namespace VRVlog.LilToonExporter
             text.Append('|').Append(string.Join("\u001f", poses.Excluded.OrderBy(item => item, StringComparer.Ordinal)));
             text.Append('|').Append(string.Join("\u001f", poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "\u001e" + item.Value)));
             text.Append('|').Append(AutoLightweight);
+            text.Append('|').Append((Gaze ?? new GazeRangeOptions()).Key());
             text.Append('|').Append(JsonUtility.ToJson(License ?? new AvatarLicenseOptions()));
             return text.ToString();
         }

@@ -2828,11 +2828,12 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The prepared board's third page is the transfer panel.
+        // The prepared board's last page is the transfer panel.
         [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true)]
         [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, false, false)]
         [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, false)]
-        public void ThePreparedBoardsThirdPageIsThePanel(int page, bool prepared, bool panel)
+        [TestCase(ExperimentalExpressionCaptureWindow.GazePage, true, false)]
+        public void ThePreparedBoardsLastPageIsThePanel(int page, bool prepared, bool panel)
         {
             Assert.That(ExperimentalExpressionCaptureWindow.PanelPage(page, prepared), Is.EqualTo(panel));
         }
@@ -2845,7 +2846,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExperimentalExpressionCaptureWindow.CancelTransferTitle, ExperimentalExpressionCaptureWindow.CancelTransferBody,
                 ExperimentalExpressionCaptureWindow.LeaveTransferText, ExperimentalExpressionCaptureWindow.KeepTransferText,
-                ExperimentalExpressionCaptureWindow.NextLabel, StepIndicator.Names()[2],
+                ExperimentalExpressionCaptureWindow.NextLabel, StepIndicator.Names()[ExperimentalExpressionCaptureWindow.InfoPage],
             };
             foreach (var text in texts)
                 Assert.That(System.Text.RegularExpressions.Regex.IsMatch(text, "[。、！!\n]|ください|できます|はい|いいえ"), Is.False, text);
