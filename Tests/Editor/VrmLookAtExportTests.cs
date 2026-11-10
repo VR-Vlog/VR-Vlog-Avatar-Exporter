@@ -172,6 +172,84 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(authored); }
         }
 
+        // 視線の動く範囲: a set axis is written linearly (the eye turns as far as
+        // the gaze, up to the set angle); an axis left at 0 keeps what the
+        // avatar sets, measured from Eye Look or the VRM default.
+        [Test]
+        public void AGazeRangeReplacesTheMeasuredOrTheDefaultRangeOfItsAxes()
+        {
+            using (var fixture = LilToonFixture(eyes: true))
+            {
+                var lookAt = LookAt(Export(fixture, new List<string>(), new GazeRangeOptions { Up = 20 }));
+                AssertRange(lookAt["rangeMapVerticalUp"], 20, 20);
+                AssertRange(lookAt["rangeMapVerticalDown"], 90, 10);
+                AssertRange(lookAt["rangeMapHorizontalInner"], 90, 10);
+                AssertRange(lookAt["rangeMapHorizontalOuter"], 90, 10);
+            }
+            using (var fixture = LilToonFixture(eyes: true))
+            {
+                var animator = fixture.Source.GetComponent<Animator>();
+                EnableEyeLook(fixture.Source, animator.GetBoneTransform(HumanBodyBones.LeftEye),
+                    animator.GetBoneTransform(HumanBodyBones.RightEye), new Dictionary<string, (Quaternion Left, Quaternion Right)>
+                    {
+                        ["eyesLookingStraight"] = (Quaternion.identity, Quaternion.identity),
+                        ["eyesLookingUp"] = (Quaternion.Euler(-12, 0, 0), Quaternion.Euler(-12, 0, 0)),
+                        ["eyesLookingDown"] = (Quaternion.Euler(9, 0, 0), Quaternion.Euler(9, 0, 0)),
+                        ["eyesLookingLeft"] = (Quaternion.Euler(0, -16, 0), Quaternion.Euler(0, -16, 0)),
+                        ["eyesLookingRight"] = (Quaternion.Euler(0, 16, 0), Quaternion.Euler(0, 16, 0)),
+                    });
+                Assert.That(LookAtRanges(Export(fixture, new List<string>(), new GazeRangeOptions())),
+                    Is.EqualTo(new[] { (16f, 16f), (16f, 16f), (9f, 9f), (12f, 12f) }), "Nothing set exports the measured range.");
+                var lookAt = LookAt(Export(fixture, new List<string>(), new GazeRangeOptions { Down = 14, Side = 28 }));
+                AssertRange(lookAt["rangeMapHorizontalInner"], 28, 28);
+                AssertRange(lookAt["rangeMapHorizontalOuter"], 28, 28);
+                AssertRange(lookAt["rangeMapVerticalDown"], 14, 14);
+                AssertRange(lookAt["rangeMapVerticalUp"], 12, 12);
+                var inspection = VrmLookAtExport.Inspect(fixture.Source);
+                Assert.That(inspection.Support, Is.EqualTo(VrmLookAtExport.GazeSupport.Ranges));
+                Assert.That(inspection.FromEyeLook, Is.True);
+                var shown = inspection.Ranges.Shown();
+                Assert.That(shown.Up, Is.EqualTo(12f).Within(Tolerance));
+                Assert.That(shown.Down, Is.EqualTo(9f).Within(Tolerance));
+                Assert.That(shown.Side, Is.EqualTo(16f).Within(Tolerance));
+            }
+        }
+
+        // The section is editable only when the export writes the range itself.
+        [Test]
+        public void InspectTellsWhetherTheGazeRangeCanChange()
+        {
+            using (var fixture = LilToonFixture(eyes: false))
+                Assert.That(VrmLookAtExport.Inspect(fixture.Source).Support, Is.EqualTo(VrmLookAtExport.GazeSupport.NoEyeBones));
+            using (var fixture = LilToonFixture(eyes: true))
+            {
+                var inspection = VrmLookAtExport.Inspect(fixture.Source);
+                Assert.That(inspection.Support, Is.EqualTo(VrmLookAtExport.GazeSupport.Ranges));
+                Assert.That(inspection.FromEyeLook, Is.False);
+                var shown = inspection.Ranges.Shown();
+                Assert.That((shown.Up, shown.Down, shown.Side), Is.EqualTo((10f, 10f, 10f)));
+                var authored = ScriptableObject.CreateInstance<VRM10Object>();
+                try
+                {
+                    authored.LookAt.LookAtType = LookAtType.bone;
+                    authored.LookAt.VerticalUp = new CurveMapper(30, 5);
+                    fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
+                    Assert.That(VrmLookAtExport.Inspect(fixture.Source).Support, Is.EqualTo(VrmLookAtExport.GazeSupport.AuthoredVrm));
+                    // The avatar's own VRM settings win over a saved range too.
+                    AssertRange(LookAt(Export(fixture, new List<string>(), new GazeRangeOptions { Up = 25 }))["rangeMapVerticalUp"], 30, 5);
+                }
+                finally { Object.DestroyImmediate(authored); }
+            }
+            Assert.That(VrmLookAtExport.Inspect(null).Support, Is.EqualTo(VrmLookAtExport.GazeSupport.NoEyeBones));
+        }
+
+        static (float, float)[] LookAtRanges(byte[] bytes)
+        {
+            var lookAt = LookAt(bytes);
+            return RangeKeys.Select(key => (Dictionary<string, object>)lookAt[key])
+                .Select(map => ((float)Math.Round(Convert.ToSingle(map["inputMaxValue"]), 2), (float)Math.Round(Convert.ToSingle(map["outputScale"]), 2))).ToArray();
+        }
+
         static readonly string[] RangeKeys = { "rangeMapHorizontalInner", "rangeMapHorizontalOuter", "rangeMapVerticalDown", "rangeMapVerticalUp" };
 
         static AttachmentConnectionTests.Fixture LilToonFixture(bool eyes)
@@ -183,9 +261,9 @@ namespace VRVlog.LilToonExporter.Tests
             return fixture;
         }
 
-        static byte[] Export(AttachmentConnectionTests.Fixture fixture, ICollection<string> warnings) =>
+        static byte[] Export(AttachmentConnectionTests.Fixture fixture, ICollection<string> warnings, GazeRangeOptions gaze = null) =>
             UniVrmOneClickExporter.Export(fixture.Source, "Look-at regression", "Tests", exporterVersion: null, warnings: warnings,
-                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, gazeRange: gaze);
 
         static Dictionary<string, object> Vrm(byte[] bytes) =>
             (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];

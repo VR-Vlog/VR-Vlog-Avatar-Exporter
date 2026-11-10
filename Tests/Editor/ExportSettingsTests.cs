@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -81,6 +82,7 @@ namespace VRVlog.LilToonExporter.Tests
             settings.License.CopyrightInformation = "Sample copyright";
             settings.License.AllowRedistribution = true;
             settings.AutoLightweight = true;
+            settings.Gaze = new GazeRangeOptions { Up = 18, Down = 12.5f, Side = 24 };
             return settings;
         }
 
@@ -102,10 +104,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));
             Assert.That(loaded.Poses.Names["pose-b"], Is.EqualTo("Renamed"));
             Assert.That(loaded.License.CopyrightInformation, Is.EqualTo("Sample copyright"));
+            Assert.That(loaded.Gaze.Key(), Is.EqualTo(new GazeRangeOptions { Up = 18, Down = 12.5f, Side = 24 }.Key()));
             Assert.That(ExportSettingsStore.Load(fixture.Outside).Signature(), Is.EqualTo(new ExportSettings().Signature()),
                 "Another avatar starts from the defaults.");
             var text = File.ReadAllText(storePath);
             Assert.That(text, Does.Not.Contain("SampleAvatar").And.Not.Contain("Pet"), "Objects are kept by identity, not by name.");
+        }
+
+        // 視線の動く範囲 outside what an eye can turn, as a hand-edited file
+        // could hold, comes back as the avatar's own range for that axis.
+        [Test]
+        public void AGazeRangeAnEyeCannotTurnIsReadAsTheAvatarsOwn()
+        {
+            using var fixture = new SavedAvatar();
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { Gaze = new GazeRangeOptions { Up = 20, Down = 20, Side = 20 } });
+            var text = File.ReadAllText(storePath);
+            var edited = Regex.Replace(Regex.Replace(text, @"(""Up"":\s*)20(\.0)?", "${1}500.0"), @"(""Down"":\s*)20(\.0)?", "${1}-3.0");
+            Assert.That(edited, Is.Not.EqualTo(text), "The stored file holds the range.");
+            File.WriteAllText(storePath, edited, Encoding.UTF8);
+            var loaded = ExportSettingsStore.Load(fixture.Avatar).Gaze;
+            Assert.That((loaded.Up, loaded.Down, loaded.Side), Is.EqualTo((0f, 0f, 20f)));
         }
 
         [Test]

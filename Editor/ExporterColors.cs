@@ -16,6 +16,8 @@ namespace VRVlog.LilToonExporter
         // Secondary text and thin rules of the export result and pose limit windows.
         internal static Color Muted => Skin(new Color(0.62f, 0.62f, 0.62f), new Color(0.38f, 0.38f, 0.38f));
         internal static Color Hairline => Skin(new Color(0f, 0f, 0f, 0.35f), new Color(0f, 0f, 0f, 0.15f));
+        // Why a section of the expressions board cannot be changed (視線の動く範囲).
+        internal static Color Warning => Skin(Hex(0xe0a845), Hex(0x8a5a00));
 
         static Color Skin(Color dark, Color light) => EditorGUIUtility.isProSkin ? dark : light;
         static Color Hex(int value) => new Color32((byte)(value >> 16), (byte)(value >> 8), (byte)value, 255);
