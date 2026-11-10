@@ -413,9 +413,8 @@ namespace VRVlog.LilToonExporter
             // it. A body pose still keeps a clip no gesture enters out.
             var gesture = gestureClips.Contains(clip);
             var blendShapesOnly = presetFace || !ExpressionTransformCurves.Enabled;
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) &&
-                    (blendShapesOnly || !BoneOrShown(binding) && !PoseSampling.IsFingerMuscle(binding)) &&
-                    !(gesture && IgnoredBesideFace(binding)))
+            var unsupported = bindings.Where(binding => BesideFace(binding, gesture) &&
+                    (blendShapesOnly || !BoneOrShown(binding) && !PoseSampling.IsFingerMuscle(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
@@ -475,8 +474,8 @@ namespace VRVlog.LilToonExporter
             if (clip == null) return null;
             var gesture = gestureClips.Contains(clip);
             var carries = CarriesBones(assignment.Preset);
-            var dropped = AnimationUtility.GetCurveBindings(clip).FirstOrDefault(binding => !PoseSampling.IsBlendShape(binding) &&
-                (!carries && BoneOrShown(binding) || PoseSampling.IsFingerMuscle(binding)) && !(gesture && IgnoredBesideFace(binding)));
+            var dropped = AnimationUtility.GetCurveBindings(clip).FirstOrDefault(binding => BesideFace(binding, gesture) &&
+                (!carries && BoneOrShown(binding) || PoseSampling.IsFingerMuscle(binding)));
             return dropped.propertyName == null ? null : dropped.path + " / " + dropped.propertyName;
         }
 
@@ -518,6 +517,15 @@ namespace VRVlog.LilToonExporter
 
         static bool BoneOrShown(EditorCurveBinding binding) => !binding.isPPtrCurve &&
             (binding.type == typeof(Transform) || binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive");
+
+        // A curve of a face's clip other than its BlendShapes, leaving out what a
+        // hand gesture's clip ignores beside the face (IgnoredBesideFace); other
+        // clips keep all of them. Reading a face (BuildClipPoseUnchecked) rejects
+        // some of these and a filled standard slot (PresetLeftOut) names the ones
+        // it drops; both start from this so they cannot disagree on what is
+        // ignored.
+        static bool BesideFace(EditorCurveBinding binding, bool gesture) =>
+            !PoseSampling.IsBlendShape(binding) && !(gesture && IgnoredBesideFace(binding));
 
         static bool IgnoredBesideFace(EditorCurveBinding binding) => !binding.isPPtrCurve &&
             (binding.type == typeof(Transform) || PoseSampling.IsHumanoidChannel(binding) || NeutralShapePlan.IsInertDynamicsBinding(binding));
