@@ -175,8 +175,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(GazeRangeSection.Moved(true, zero, initial, initial, 1, 10, 10), Is.Null);
             var moved = GazeRangeSection.Moved(true, zero, initial, initial, 2, 10, 10);
             Assert.That(moved.Up, Is.EqualTo(2f));
-            var back = GazeRangeSection.Moved(true, moved, initial, moved, 1, 10, 10);
-            Assert.That(back.Up, Is.EqualTo(0f), "Back at the shown initial angle clears the setting.");
+            var shown = new GazeRangeOptions { Up = 2, Down = 10, Side = 10 };
+            var back = GazeRangeSection.Moved(true, moved, initial, shown, 1, 10, 10);
+            Assert.That((back.Up, back.Down, back.Side), Is.EqualTo((0f, 0f, 0f)), "Back at the shown initial angle clears the setting.");
         }
 
         // A save that fails is logged, not thrown, so the cleanup after it runs.
