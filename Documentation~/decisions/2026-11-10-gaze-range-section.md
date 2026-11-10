@@ -56,3 +56,9 @@ Eye Look から測れないアバターでは、初期値は VRM の標準（視
   - スライダーのドラッグ中は保存せず、離したとき・アバターを変えるとき・作り直すとき・表情ボードを閉じるときに 1 回だけ保存する（`GazeRangeSection.Unsaved`）。書き出しは表情ボードが持つ値を読むので、保存を待たない。
   - プレビューを描くとき、基準の顔を出す途中で失敗しても元の顔に戻し、カメラの位置と向きも戻す（`GazeRangeSection.NeutralFace`・`Render`）。
 - 確かめたこと: `GazeRangeSectionTests` の `ADisabledSectionSavesNothingWhenItsSliderClamps`・`ANeutralFaceShownInPartGoesBack`・`ADragSavesOnceWhenItLetsGo`・`ThePreviewsPutTheCameraAndTheFaceBack`。
+
+## 追記（2026-11-10・残りの 2 件）
+
+- 保存の失敗で後片付けを飛ばさない。表情ボードを閉じる・アバターを変える・作り直すときの保存（`GazeRangeSection.Unsaved.Save`）は、設定ファイルへの書き込みが失敗しても例外を投げずにログ（`Debug.LogException`）に残し、そのあとの後片付け（`Cleanup`・`Dispose`）を必ず走らせる。失敗した保存はやり直さない。書き出しは表情ボードが持つ値を読むので、その回の書き出しには影響しない。
+- Eye Look から測った角度が 0.5° 未満の軸は、丸めると 0° になりスライダーは 1° を出す。これまでは表示値 1° を丸めた初期値 0° と比べて「動いた」と判断し、触っていないのに 1° を保存していた。比較と「初期値に戻したら設定を消す」の判定を、スライダーが出す値（丸めて 1° 以上・`GazeRangeSection.Shown`）にそろえた。そういう角度のアバターが実在するかは確かめていない。
+- 確かめたこと: `GazeRangeSectionTests` の `AFailedSaveIsLoggedNotThrown`・`ASliderClampedUpFromATinyAngleSavesNothing`。
