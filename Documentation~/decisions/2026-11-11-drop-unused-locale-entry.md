@@ -19,4 +19,5 @@
 
 - `git grep` でこの文字列がコード・テスト・ドキュメントに無いこと。
 - 4 つの表が JSON として読め、項目の数が 1 つずつ減ったこと。
-- 訳の表を読むテスト（`OptimizationLocalizationTests` ほか）が通ること。
+- 訳の表を読むテスト（`OptimizationLocalizationTests`・`ExportFallbackConfirmationTests`・`ExpressionNameInferenceTests`・`GazeRangeSectionTests`・`AppTransferFlowTests`・`UnusedMorphTargetsTests`）の 196 件が通ること。
+- `Tools/validate.py` が通ること。
