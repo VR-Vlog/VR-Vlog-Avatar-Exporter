@@ -2262,14 +2262,13 @@ namespace VRVlog.LilToonExporter
 
         readonly GazeRangeSection.Unsaved gazeRangeUnsaved = new GazeRangeSection.Unsaved();
 
-        void SaveGazeRange(bool now = true)
+        // Never throws: closing, leaving the avatar and rebuilding clean up after it.
+        void SaveGazeRange(bool now = true) => gazeRangeUnsaved.Save(avatar =>
         {
-            var avatar = gazeRangeUnsaved.Take(now);
-            if (avatar == null) return;
             var settings = ExportSettingsStore.Load(avatar);
             settings.Gaze = gazeRange.Copy();
             ExportSettingsStore.Save(avatar, settings);
-        }
+        }, now);
 
         internal static string BlinkSettingLabel(BlinkExportMode mode)
         {

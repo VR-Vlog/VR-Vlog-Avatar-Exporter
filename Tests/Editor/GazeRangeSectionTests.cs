@@ -165,6 +165,44 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That((moved.Up, moved.Down, moved.Side), Is.EqualTo((20f, 0f, 0f)));
         }
 
+        // An angle from Eye Look under 0.5° rounds to 0°, which the slider
+        // shows as 1°; drawing it is no change, and back at 1° it clears.
+        [Test]
+        public void ASliderClampedUpFromATinyAngleSavesNothing()
+        {
+            var zero = new GazeRangeOptions();
+            var initial = new GazeRangeOptions { Up = 0.3f, Down = 10, Side = 10 };
+            Assert.That(GazeRangeSection.Moved(true, zero, initial, initial, 1, 10, 10), Is.Null);
+            var moved = GazeRangeSection.Moved(true, zero, initial, initial, 2, 10, 10);
+            Assert.That(moved.Up, Is.EqualTo(2f));
+            var shown = new GazeRangeOptions { Up = 2, Down = 10, Side = 10 };
+            var back = GazeRangeSection.Moved(true, moved, initial, shown, 1, 10, 10);
+            Assert.That((back.Up, back.Down, back.Side), Is.EqualTo((0f, 0f, 0f)), "Back at the shown initial angle clears the setting.");
+        }
+
+        // A save that fails is logged, not thrown, so the cleanup after it runs.
+        [Test]
+        public void AFailedSaveIsLoggedNotThrown()
+        {
+            var avatar = new GameObject("Avatar");
+            try
+            {
+                var unsaved = new GazeRangeSection.Unsaved();
+                GameObject written = null;
+                unsaved.Save(a => written = a);
+                Assert.That(written, Is.Null, "Nothing changed.");
+                unsaved.Changed(avatar);
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex("disk full"));
+                Assert.DoesNotThrow(() => unsaved.Save(_ => throw new System.IO.IOException("disk full")));
+                unsaved.Save(a => written = a);
+                Assert.That(written, Is.Null, "The failed save is not retried.");
+                unsaved.Changed(avatar);
+                unsaved.Save(a => written = a);
+                Assert.That(written, Is.SameAs(avatar));
+            }
+            finally { Object.DestroyImmediate(avatar); }
+        }
+
         [Test]
         public void ANeutralFaceShownInPartGoesBack()
         {
