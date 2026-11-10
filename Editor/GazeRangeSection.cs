@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
         readonly RenderTexture[] textures = new RenderTexture[Directions.Length];
         readonly bool[] stale = new bool[Directions.Length];
         GameObject inspectedSource;
-        bool inspected;
+        bool inspected, inspectFailed;
         VrmLookAtExport.GazeInspection inspection;
         GameObject renderedAvatar;
         GUIStyle captionStyle, warningStyle, centerStyle;
@@ -63,15 +63,23 @@ namespace VRVlog.LilToonExporter
             EnsureStyles();
             if (!inspected || target?.Source != inspectedSource)
             {
-                inspected = true;
                 inspectedSource = target?.Source;
-                inspection = VrmLookAtExport.Inspect(inspectedSource);
                 renderedAvatar = null;
+                // A failed inspection leaves the section unchangeable, so a slider
+                // never saves 1° from the empty ranges it would otherwise show.
+                inspection = default;
+                inspected = true;
+                try { inspection = VrmLookAtExport.Inspect(inspectedSource); inspectFailed = false; }
+                catch (Exception exception) when (!(exception is ExitGUIException))
+                {
+                    inspectFailed = true;
+                    Debug.LogException(exception);
+                }
             }
             var title = ExporterLocalization.T(Title);
             GUI.Label(GUILayoutUtility.GetRect(100, 20, GUILayout.ExpandWidth(true)), title, EditorStyles.boldLabel);
-            var editable = inspection.Support == VrmLookAtExport.GazeSupport.Ranges;
-            var reason = inspection.Support == VrmLookAtExport.GazeSupport.NoEyeBones ? NoEyeBones
+            var editable = !inspectFailed && inspection.Support == VrmLookAtExport.GazeSupport.Ranges;
+            var reason = inspectFailed ? null : inspection.Support == VrmLookAtExport.GazeSupport.NoEyeBones ? NoEyeBones
                 : inspection.Support == VrmLookAtExport.GazeSupport.AuthoredVrm ? AuthoredVrm : null;
             var captionRect = GUILayoutUtility.GetRect(100, CaptionHeight, GUILayout.ExpandWidth(true));
             GUI.Label(captionRect, ExporterLocalization.T(reason ?? Caption), reason != null ? warningStyle : captionStyle);
@@ -95,7 +103,9 @@ namespace VRVlog.LilToonExporter
                 var sliders = beside
                     ? new Rect(grid.xMax + 16, grid.y + cellHeight + Gap, Mathf.Max(SlidersMinWidth, area.xMax - grid.xMax - 16), slidersHeight)
                     : new Rect(grid.x, grid.yMax + 8, Mathf.Max(SlidersMinWidth, area.xMax - grid.x), slidersHeight);
-                if (Event.current.type == EventType.Repaint && !renderFailed)
+                // Rendered in the layout pass, which draws nothing, so the render
+                // targets it switches never touch what this repaint draws.
+                if (Event.current.type == EventType.Layout && !renderFailed)
                 {
                     // A preview that cannot be drawn stays blank until the host
                     // invalidates the section; the sliders still work.
@@ -276,7 +286,6 @@ namespace VRVlog.LilToonExporter
                         target.Preview.Render();
                     }
                     finally { drawn = target.Preview.EndPreview(); }
-                    // Blit leaves its target active; the window's own drawing follows.
                     var active = RenderTexture.active;
                     Graphics.Blit(drawn, textures[i]);
                     RenderTexture.active = active;
