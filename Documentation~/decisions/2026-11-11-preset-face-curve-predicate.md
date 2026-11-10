@@ -14,7 +14,7 @@
 - 共通の条件を `BesideFace(binding, gesture)` にまとめ、2 か所ともこれから始める。それぞれの残りの条件（読むときに断るもの・枠が外すもの）は今のまま。
 - `presetPoses` を捨てる条件に `ExpressionTransformCurves.Enabled` を足す。
 
-どちらも今の動きは変えない。
+書き出しと表情ボードの動きは変えない。キャッシュの変更で動きが変わるのは、同じセッションのまま `ExpressionTransformCurves.Enabled` を切り替えたとき（今はテストだけ）で、古い結果を返さなくなる。
 
 ## 検討した代替案と不採用理由
 

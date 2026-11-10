@@ -518,10 +518,12 @@ namespace VRVlog.LilToonExporter
         static bool BoneOrShown(EditorCurveBinding binding) => !binding.isPPtrCurve &&
             (binding.type == typeof(Transform) || binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive");
 
-        // A curve of a face's clip other than its BlendShapes that the face does
-        // not ignore. Reading a face (BuildClipPoseUnchecked) rejects some of
-        // them and a filled standard slot (PresetLeftOut) names the ones it
-        // drops; both start from this so they cannot disagree on what is ignored.
+        // A curve of a face's clip other than its BlendShapes, leaving out what a
+        // hand gesture's clip ignores beside the face (IgnoredBesideFace); other
+        // clips keep all of them. Reading a face (BuildClipPoseUnchecked) rejects
+        // some of these and a filled standard slot (PresetLeftOut) names the ones
+        // it drops; both start from this so they cannot disagree on what is
+        // ignored.
         static bool BesideFace(EditorCurveBinding binding, bool gesture) =>
             !PoseSampling.IsBlendShape(binding) && !(gesture && IgnoredBesideFace(binding));
 
