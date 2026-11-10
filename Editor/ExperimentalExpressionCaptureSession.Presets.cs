@@ -198,19 +198,20 @@ namespace VRVlog.LilToonExporter
 
         // The suggestions try every face on every slot each time the board
         // changes. A face reads the same until the editor reports an edit, the
-        // clip is changed, or the settings load another baseline.
+        // clip is changed, the settings load another baseline, or bones and
+        // shown objects are switched on or off (ExpressionTransformCurves).
         // An automatic candidate and the user's choice of the same clip read
         // differently (presetFace), so both are kept.
         readonly Dictionary<(ExpressionPreset, string, string, AnimationClip, int, bool), (Pose Pose, string Error)> presetPoses =
             new Dictionary<(ExpressionPreset, string, string, AnimationClip, int, bool), (Pose, string)>();
-        (int Edits, bool Clamp, int Gestures) presetPosesFor;
+        (int Edits, bool Clamp, int Gestures, bool Transforms) presetPosesFor;
 
         internal Pose BuildPresetPose(ExpressionPreset preset, PresetAssignment assignment)
         {
             RequireValid();
             var label = PresetFullLabel(preset);
             if (assignment == null || assignment.IsNone) throw new InvalidOperationException(label + ExporterLocalization.T(": 表情を選んでください。"));
-            var inputs = (EditorEdits.Count, PlayerSettings.legacyClampBlendShapeWeights, gestureClips.Count);
+            var inputs = (EditorEdits.Count, PlayerSettings.legacyClampBlendShapeWeights, gestureClips.Count, ExpressionTransformCurves.Enabled);
             if (presetPosesFor != inputs) { presetPoses.Clear(); presetPosesFor = inputs; }
             var clip = assignment.IsShape ? null : assignment.ResolveClip();
             var key = (preset, assignment.IsShape ? assignment.Path ?? "" : null, assignment.IsShape ? assignment.Shape : null, clip,
