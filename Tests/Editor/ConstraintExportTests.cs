@@ -271,16 +271,198 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(aim.AimAxis, Is.EqualTo(AimAxis.NegativeY));
             Assert.That(aim.Source, Is.EqualTo(f.A));
             Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.ApproximatedAim));
+            Assert.That(f.B.parent, Is.EqualTo(f.Parent), "Without an offset no node goes in between.");
+            Assert.That(f.Copy.GetComponentsInChildren<Transform>(true).Select(t => t.name), Has.None.Contains(ConstraintExport.RelayName));
+        }
+
+        // VRM would turn +Z onto the source even at rest (#770): a node at the
+        // target's place takes the aim with its axis on the source and carries
+        // the target, which keeps its pose and everything under it.
+        [Test]
+        public void AnAimOffTheSourceAtRestTurnsANodeAboveTheTarget()
+        {
+            using var f = new Fixture();
+            var mesh = Fixture.Child(f.B, "Mesh", new Vector3(0, .1f, 0));
+            var index = f.B.GetSiblingIndex();
+            f.Constraint<LookAtConstraint>(f.B, .8f, f.A);
+            f.B.localRotation = Quaternion.Euler(10, 20, 30);
+            f.B.localScale = new Vector3(1, 2, 1);
+            var world = f.B.localToWorldMatrix;
+            var result = f.Convert();
+            var node = f.B.parent;
+            Assert.That(node.name, Is.EqualTo("B-" + ConstraintExport.RelayName));
+            Assert.That(node.parent, Is.EqualTo(f.Parent));
+            Assert.That(node.GetSiblingIndex(), Is.EqualTo(index));
+            Assert.That(node.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(SameMatrix(f.B.localToWorldMatrix, world), Is.True, "The target keeps its world pose.");
+            Assert.That(mesh.parent, Is.EqualTo(f.B));
+            var aim = node.GetComponent<Vrm10AimConstraint>();
+            Assert.That(aim.Source, Is.EqualTo(f.A));
+            Assert.That(aim.AimAxis, Is.EqualTo(AimAxis.PositiveZ));
+            Assert.That(aim.Weight, Is.EqualTo(.8f));
+            Assert.That(Vector3.Angle(node.rotation * Vector3.forward, f.A.position - node.position), Is.LessThan(.01f), "VRM does not turn it at rest.");
+            Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(result.Approximated, Is.EqualTo(1));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.ApproximatedAim));
+            Assert.That(f.Entry.Path, Is.EqualTo("Parent/B"));
+        }
+
+        // Turning the node by the shortest arc turns the target the same way:
+        // the axis the offset aims keeps pointing at the source as it moves.
+        [Test]
+        public void ANodeAboveAnAimWithAnOffsetKeepsTheOffsetAxisOnTheSource()
+        {
+            using var f = new Fixture();
+            var offset = Quaternion.Euler(85.6f, -90, 0);
+            f.Constraint<AimConstraint>(f.B, 1, f.A).aimVector = Vector3.forward;
+            f.B.rotation = Quaternion.LookRotation(f.A.position - f.B.position) * offset;
+            f.Convert();
+            var node = f.B.parent;
+            var rest = node.localRotation;
+            f.A.localPosition += new Vector3(0, .1f, .05f);
+            var to = f.A.position - node.position;
+            // Vrm10AimConstraint.Process
+            var from = f.Parent.rotation * rest * Vector3.forward;
+            node.localRotation = Quaternion.Inverse(f.Parent.rotation) * Quaternion.FromToRotation(from, to) * f.Parent.rotation * rest;
+            Assert.That(Vector3.Angle(f.B.rotation * Quaternion.Inverse(offset) * Vector3.forward, to), Is.LessThan(.01f));
+        }
+
+        // A node would change more than the aim: the skeleton, a spring chain,
+        // a rotation that reads the target's own turn, or VRM settings that
+        // find meshes inside it by path.
+        [TestCase("spring")][TestCase("rotation source")][TestCase("expression")][TestCase("first person")]
+        public void AnAimOffTheSourceThatANodeWouldChangeKeepsThePose(string condition)
+        {
+            using var f = new Fixture();
+            Fixture.Child(f.B, "Mesh", Vector3.zero);
+            var settings = ScriptableObject.CreateInstance<VRM10Object>();
+            var expression = ScriptableObject.CreateInstance<VRM10Expression>();
+            try
+            {
+                if (condition == "spring") f.B.gameObject.AddComponent<VRM10SpringBoneJoint>();
+                if (condition == "rotation source") f.Other.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.B;
+                if (condition == "first person")
+                    settings.FirstPerson.Renderers.Add(new RendererFirstPersonFlags { Renderer = "Parent/B/Mesh",
+                        FirstPersonFlag = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.FirstPersonType.thirdPersonOnly });
+                if (condition == "expression")
+                {
+                    expression.MorphTargetBindings = new[] { new MorphTargetBinding { RelativePath = "Parent/B/Mesh", Index = 0, Weight = 1 } };
+                    settings.Expression.Happy = expression;
+                }
+                f.Copy.AddComponent<Vrm10Instance>().Vrm = settings;
+                f.Constraint<LookAtConstraint>(f.B, 1, f.A);
+                f.Convert();
+                Assert.That(f.B.parent, Is.EqualTo(f.Parent));
+                Assert.That(f.Parent.childCount, Is.EqualTo(2));
+                Assert.That(f.B.GetComponent<Vrm10AimConstraint>(), Is.Null);
+                Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+            }
+            finally { Object.DestroyImmediate(settings); Object.DestroyImmediate(expression); }
         }
 
         [Test]
-        public void AnAimOffTheSourceAtRestKeepsThePose()
+        public void AnAimOffTheSourceOnAHumanoidBoneKeepsTheSkeleton()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var animator = fixture.Copy.GetComponent<Animator>();
+            var forearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+            var upper = forearm.parent;
+            var constraint = forearm.gameObject.AddComponent<LookAtConstraint>();
+            constraint.AddSource(new ConstraintSource { sourceTransform = animator.GetBoneTransform(HumanBodyBones.Head), weight = 1 });
+            constraint.constraintActive = true;
+            var report = new ExportFallbackReport();
+            ConstraintExport.Convert(fixture.Source, fixture.Copy, null, report);
+            Assert.That(forearm.parent, Is.EqualTo(upper));
+            Assert.That(report.Results.Single().Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+        }
+
+        // Armor at the elbow aims at the hand with an offset (#770): read back
+        // from the file, it keeps its pose at rest and follows the bend.
+        [Test]
+        public async System.Threading.Tasks.Task AnArmPartAimedWithAnOffsetFollowsTheElbowInTheFile()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var animator = fixture.Copy.GetComponent<Animator>();
+            var upper = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            var hand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+            var guard = Fixture.Child(upper, "Elbow guard", Vector3.zero);
+            guard.position = Vector3.Lerp(upper.position, animator.GetBoneTransform(HumanBodyBones.LeftLowerArm).position, .8f) + new Vector3(0, .03f, 0);
+            var constraint = guard.gameObject.AddComponent<AimConstraint>();
+            constraint.AddSource(new ConstraintSource { sourceTransform = hand, weight = 1 });
+            constraint.aimVector = Vector3.forward; constraint.locked = true; constraint.constraintActive = true;
+            var offset = Quaternion.Euler(85.6f, -90, 0);
+            guard.rotation = Quaternion.LookRotation(hand.position - guard.position) * offset;
+            var rest = guard.rotation;
+            var report = new ExportFallbackReport();
+            ConstraintExport.Convert(fixture.Source, fixture.Copy, null, report);
+            Assert.That(report.Results.Single().Reason, Is.EqualTo(ConstraintExport.ApproximatedAim));
+            fixture.PrepareMeshesForExport();
+            var bytes = Vrm10Exporter.Export(new VRVlog.LilToonExporter.Vendor.UniGLTF.GltfExportSettings(), fixture.Copy,
+                textureSerializer: new MobileTextureSerializer(null),
+                vrmMeta: new VRM10ObjectMeta { Name = "Aim offset", Version = "1", Authors = new List<string> { "Test" } });
+            Vrm10Instance imported = null;
+            try
+            {
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new VRVlog.LilToonExporter.Vendor.UniGLTF.ImmediateCaller());
+                var part = imported.GetComponentsInChildren<Transform>(true).Single(t => t.name == "Elbow guard");
+                Assert.That(part.parent.name, Is.EqualTo("Elbow guard-" + ConstraintExport.RelayName));
+                Assert.That(imported.TryGetBoneTransform(HumanBodyBones.LeftHand, out var importedHand), Is.True);
+                float Off() => Vector3.Angle(part.rotation * Quaternion.Inverse(offset) * Vector3.forward, importedHand.position - part.position);
+                imported.Runtime.Process();
+                Assert.That(Quaternion.Angle(part.rotation, rest), Is.LessThan(.5f), "At rest the part keeps its pose.");
+                imported.Runtime.ControlRig.GetBoneTransform(HumanBodyBones.LeftLowerArm).localRotation = Quaternion.Euler(0, 70, 0);
+                imported.Runtime.Process();
+                Assert.That(Quaternion.Angle(part.rotation, rest), Is.GreaterThan(10), "The bend turns the part.");
+                Assert.That(Off(), Is.LessThan(.5f), "The offset axis stays on the hand.");
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
+        // A node aiming the prop moves under the position source with it (#602),
+        // so the aim keeps turning the prop there.
+        [Test]
+        public void APositionConstrainedPropWithAnAimOffsetMovesWithItsNode()
         {
             using var f = new Fixture();
-            f.Constraint<LookAtConstraint>(f.B, 1, f.A);
+            var prop = f.Other;
+            f.Constraint<AimConstraint>(prop, 1, f.B).aimVector = Vector3.forward;
+            f.Constraint<PositionConstraint>(prop, 1, f.A);
+            prop.position = f.A.position + new Vector3(0, -.2f, 0);
+            prop.rotation = Quaternion.LookRotation(f.B.position - prop.position) * Quaternion.Euler(85.6f, -90, 0);
+            var world = prop.localToWorldMatrix;
             f.Convert();
-            Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null, "VRM would turn +Z onto the source even at rest.");
-            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+            var node = prop.parent;
+            Assert.That(node.GetComponent<Vrm10AimConstraint>().Source, Is.EqualTo(f.B));
+            Assert.That(node.parent, Is.EqualTo(f.A));
+            Assert.That(SameMatrix(prop.localToWorldMatrix, world), Is.True);
+            Assert.That(Vector3.Angle(node.rotation * Vector3.forward, f.B.position - node.position), Is.LessThan(.01f));
+            Assert.That(f.Copy.transform.Find("Other parent").childCount, Is.EqualTo(0));
+            Assert.That(f.Report.Results.Select(r => r.Reason), Is.EquivalentTo(new[] { ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedPosition }));
+            Assert.That(f.Report.Results.Select(r => r.Path), Is.EqualTo(new[] { "Other parent/Other", "Other parent/Other" }));
+        }
+
+        // The node turns the target, so an aim that reads a point under the
+        // target from the node's own source still closes a loop. The aim left
+        // out then holds the point the other one reads, so neither turns.
+        [Test]
+        public void AimsWithOffsetsThatReadPointsUnderEachOtherKeepTheirPoses()
+        {
+            using var f = new Fixture();
+            var inside = Fixture.Child(f.A, "Inside", new Vector3(0, 0, .1f));
+            var holder = Fixture.Child(f.Parent, "Holder", new Vector3(.6f, 0, 0));
+            var read = Fixture.Child(holder, "Read", new Vector3(0, 0, .1f));
+            f.Constraint<AimConstraint>(f.A, 1, read).aimVector = Vector3.forward;
+            f.Constraint<AimConstraint>(holder, 1, inside).aimVector = Vector3.forward;
+            f.A.rotation = Quaternion.LookRotation(Vector3.up);
+            holder.rotation = Quaternion.LookRotation(Vector3.up);
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Is.Empty);
+            Assert.That(f.A.parent, Is.EqualTo(f.Parent));
+            Assert.That(f.Report.Results.Select(r => r.Reason),
+                Is.EquivalentTo(new[] { ConstraintExport.OmittedRest, ConstraintExport.OmittedCycle }));
         }
 
         [Test]
@@ -666,6 +848,44 @@ namespace VRVlog.LilToonExporter.Tests
             f.Convert();
             Assert.That(f.Other.parent.name, Is.EqualTo("Other parent"));
             Assert.That(f.Report.Results.Single(r => r.Name.Contains(nameof(ParentConstraint))).Reason, Is.EqualTo(ConstraintExport.OmittedReparent));
+        }
+
+        // A half-weight position constraint is not written, so the source stays
+        // where the avatar would have moved it; aiming at it would turn the
+        // target the wrong way.
+        [TestCase("source", .5f, false)][TestCase("source's parent", .5f, false)][TestCase("source", 1f, true)]
+        public void AnAimWithAnOffsetAtASourceTheFileLeavesInPlaceKeepsThePose(string held, float weight, bool relayed)
+        {
+            using var f = new Fixture();
+            f.Constraint<AimConstraint>(f.B, 1, f.Other).aimVector = Vector3.forward;
+            f.B.rotation = Quaternion.LookRotation(f.Other.position - f.B.position) * Quaternion.Euler(0, 40, 0);
+            var (position, rotation) = (f.B.position, f.B.rotation);
+            f.Constraint<PositionConstraint>(held == "source" ? f.Other : f.Other.parent, weight, f.A);
+            f.Convert();
+            Assert.That(Vector3.Distance(f.B.position, position), Is.LessThan(1e-5f)); Assert.That(Quaternion.Angle(f.B.rotation, rotation), Is.LessThan(.01f));
+            Assert.That(f.B.parent != f.Parent, Is.EqualTo(relayed));
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>().Length, Is.EqualTo(relayed ? 1 : 0));
+            var aim = f.Report.Results.Single(r => r.Name == "B (AimConstraint)");
+            Assert.That(aim.Outcome, Is.EqualTo(relayed ? ExportOutcome.Approximated : ExportOutcome.Omitted));
+            if (!relayed) Assert.That(aim.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+        }
+
+        // An aim reads the world position of its source, which the move keeps,
+        // so a target that an aim reads still follows its own source.
+        [TestCase("position", false)][TestCase("position", true)][TestCase("parent", true)]
+        public void AFollowTargetThatAnAimReadsStillMoves(string kind, bool offset)
+        {
+            using var f = new Fixture();
+            f.Constraint<AimConstraint>(f.B, 1, f.Other).aimVector = Vector3.forward;
+            f.B.rotation = Quaternion.LookRotation(f.Other.position - f.B.position) * (offset ? Quaternion.Euler(0, 40, 0) : Quaternion.identity);
+            if (kind == "position") f.Constraint<PositionConstraint>(f.Other, 1, f.A);
+            else f.Constraint<ParentConstraint>(f.Other, 1, f.A);
+            f.Convert();
+            Assert.That(f.Other.parent, Is.EqualTo(f.A));
+            var aim = f.Copy.GetComponentsInChildren<Vrm10AimConstraint>().Single();
+            Assert.That(aim.Source, Is.EqualTo(f.Other));
+            Assert.That(aim.transform, Is.EqualTo(offset ? f.B.parent : f.B));
+            Assert.That(f.Report.Results.Select(r => r.Outcome), Has.None.EqualTo(ExportOutcome.Omitted));
         }
 
         [Test]
