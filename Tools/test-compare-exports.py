@@ -320,6 +320,33 @@ class AllowAddedExtensionTests(unittest.TestCase):
         self.assertEqual(1, code, out)
         self.assertIn('warnings differ', out)
 
+    def test_entries_added_without_adding_the_extension_stay_a_difference(self):
+        def body_in_both(doc_a, doc_b):
+            doc_a['extensions'][ADDED] = copy.deepcopy(ADDED_VALUE)
+            doc_b['extensions'][ADDED] = copy.deepcopy(ADDED_VALUE)
+
+        def body_in_neither(doc_a, doc_b):
+            pass
+
+        def version(doc):
+            doc['asset']['extras']['VRVLOG_requiredAppVersions'] = {ADDED: '2.0.0'}
+
+        def used(doc):
+            doc['extensionsUsed'] = [ADDED]
+
+        for body in (body_in_both, body_in_neither):
+            for entry, expected in ((version, '/asset/extras/VRVLOG_requiredAppVersions'), (used, '/extensionsUsed')):
+                with self.subTest('%s %s' % (body.__name__, entry.__name__)):
+                    doc_a, doc_b = document(), document()
+                    body(doc_a, doc_b)
+                    entry(doc_b)
+                    write(self.a, 'A001_1', result('A001', 1), doc_a)
+                    write(self.b, 'A001_1', result('A001', 1), doc_b)
+                    code, out, _ = self.run_allowed()
+                    self.assertEqual(1, code, out)
+                    self.assertIn(expected, out)
+                    self.assertNotIn('added extension allowed', out)
+
     def test_extension_in_both_with_changed_content_mismatches(self):
         write(self.a, 'A001_1', result('A001', 1), with_added(document(), value={'schemaVersion': 1, 'items': []}))
         code, out, _ = self.run_allowed()

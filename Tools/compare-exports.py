@@ -170,9 +170,11 @@ def remove_added_extensions(json_a, json_b, names):
     req_a, req_b = member(extras_a, REQUIRED_APP_VERSIONS), member(extras_b, REQUIRED_APP_VERSIONS)
     emptied_used = emptied_req = False
     for name in names:
-        if isinstance(ext_b, dict) and name in ext_b and not (isinstance(ext_a, dict) and name in ext_a):
-            text = json.dumps(ext_b.pop(name), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-            removed.append({"name": name, "bytes": len(text.encode("utf-8"))})
+        # The entries that go with an extension are only removed together with the extension itself.
+        if not (isinstance(ext_b, dict) and name in ext_b) or (isinstance(ext_a, dict) and name in ext_a):
+            continue
+        text = json.dumps(ext_b.pop(name), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        removed.append({"name": name, "bytes": len(text.encode("utf-8"))})
         if isinstance(used_b, list) and name in used_b and not (isinstance(used_a, list) and name in used_a):
             used_b[:] = [item for item in used_b if item != name]
             emptied_used = not used_b
