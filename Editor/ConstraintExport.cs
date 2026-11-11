@@ -171,7 +171,7 @@ namespace VRVlog.LilToonExporter
                     var node = relays.Above(plan.Target);
                     if (node == plan.Target || !node.TryGetComponent<Vrm10AimConstraint>(out var aim) || !Held(aim.Source, node, held, stays)) continue;
                     edges.Remove(node);
-                    relays.Unwrap(plan.Target);
+                    relays.Unwrap(plan.Target, aim);
                     decisions[index] = (order, plan, ExportOutcome.Omitted, OmittedRest);
                     held.Add(plan.Target);
                     changed = true;
@@ -493,18 +493,28 @@ namespace VRVlog.LilToonExporter
                 if (node != null) UnityEngine.Object.DestroyImmediate(node.gameObject);
             }
 
-            // Takes the node out where it now stands, the target keeping its pose.
-            internal void Unwrap(Transform target)
+            // Drops the aim and takes the node out where it now stands, the
+            // target keeping its pose. A move may have scaled the node; where
+            // that does not fold into the target, the node stays, empty.
+            internal void Unwrap(Transform target, Vrm10AimConstraint aim)
             {
+                UnityEngine.Object.DestroyImmediate(aim);
                 var node = above[target];
+                var world = target.localToWorldMatrix;
+                var (position, rotation, scale) = (target.localPosition, target.localRotation, target.localScale);
+                var sibling = node.GetSiblingIndex();
+                target.SetParent(node.parent, false); target.SetSiblingIndex(sibling);
+                target.localPosition = node.localPosition + node.localRotation * Vector3.Scale(node.localScale, position);
+                target.localRotation = node.localRotation * rotation;
+                target.localScale = Vector3.Scale(node.localScale, scale);
+                if (!Same(world, target.localToWorldMatrix))
+                {
+                    target.SetParent(node, false);
+                    target.localPosition = position; target.localRotation = rotation; target.localScale = scale;
+                    return;
+                }
                 above.Remove(target);
                 inserted.RemoveAll(entry => entry.Target == target);
-                var parent = node.parent;
-                var sibling = node.GetSiblingIndex();
-                var position = node.localPosition + node.localRotation * target.localPosition;
-                var rotation = node.localRotation * target.localRotation;
-                target.SetParent(parent, false); target.SetSiblingIndex(sibling);
-                target.localPosition = position; target.localRotation = rotation;
                 UnityEngine.Object.DestroyImmediate(node.gameObject);
             }
 

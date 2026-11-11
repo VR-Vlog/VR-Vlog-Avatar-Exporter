@@ -872,19 +872,21 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The node went under the target's own source first; taken out, it
         // leaves the target there, still following that source.
-        [Test]
-        public void AFollowingTargetWhoseAimIsTakenBackStaysUnderItsSource()
+        [TestCase(1f)][TestCase(2f)]
+        public void AFollowingTargetWhoseAimIsTakenBackStaysUnderItsSource(float sourceScale)
         {
             using var f = new Fixture();
+            f.A.localScale = Vector3.one * sourceScale;
+            var mesh = Fixture.Child(f.B, "Mesh", new Vector3(0, .05f, .1f));
             f.Constraint<AimConstraint>(f.B, 1, f.Other).aimVector = Vector3.forward;
             f.B.rotation = Quaternion.LookRotation(f.Other.position - f.B.position) * Quaternion.Euler(0, 40, 0);
-            var (position, rotation) = (f.B.position, f.B.rotation);
+            var pose = mesh.localToWorldMatrix;
             f.Constraint<PositionConstraint>(f.B, 1, f.A);
             f.Constraint<PositionConstraint>(f.Other, .5f, f.A);
             f.Convert();
             Assert.That(f.B.parent, Is.EqualTo(f.A));
             Assert.That(f.A.GetComponentsInChildren<Transform>().Select(t => t.name), Has.None.EndsWith(ConstraintExport.RelayName));
-            Assert.That(Vector3.Distance(f.B.position, position), Is.LessThan(1e-5f)); Assert.That(Quaternion.Angle(f.B.rotation, rotation), Is.LessThan(.01f));
+            for (var index = 0; index < 16; index++) Assert.That(mesh.localToWorldMatrix[index], Is.EqualTo(pose[index]).Within(1e-4f));
             Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Is.Empty);
             Assert.That(f.Report.Results.Single(r => r.Name == "B (AimConstraint)").Reason, Is.EqualTo(ConstraintExport.OmittedRest));
             Assert.That(f.Report.Results.Single(r => r.Name == "B (PositionConstraint)").Outcome, Is.EqualTo(ExportOutcome.Approximated));
