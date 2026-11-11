@@ -66,6 +66,11 @@ VOLATILE_SUB = [
     # export, while the image bytes in BIN stay the same. Found with --diff-paths on two runs of
     # one package.
     ("/images/*/name", r"(__VRVlog_Emission)_[0-9a-f]{32}$", r"\1_<guid>"),
+    # A bone that the avatar's build steps merge into another armature gets "$" and a new random
+    # GUID at the end of its name on every build, before the exporter sees it. The name in front
+    # of "$" and everything else about the node are still compared. Found the same way, on
+    # avatars whose outfits are merged at build time.
+    ("/nodes/*/name", r"\$[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$", r"$<guid>"),
 ]
 
 
@@ -163,19 +168,23 @@ def remove_added_extensions(json_a, json_b, names):
     asset_b = member(json_b, "asset")
     extras_a, extras_b = member(member(json_a, "asset"), "extras"), member(asset_b, "extras")
     req_a, req_b = member(extras_a, REQUIRED_APP_VERSIONS), member(extras_b, REQUIRED_APP_VERSIONS)
+    emptied_used = emptied_req = False
     for name in names:
         if isinstance(ext_b, dict) and name in ext_b and not (isinstance(ext_a, dict) and name in ext_a):
             text = json.dumps(ext_b.pop(name), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
             removed.append({"name": name, "bytes": len(text.encode("utf-8"))})
         if isinstance(used_b, list) and name in used_b and not (isinstance(used_a, list) and name in used_a):
             used_b[:] = [item for item in used_b if item != name]
+            emptied_used = not used_b
         if isinstance(req_b, dict) and name in req_b and not (isinstance(req_a, dict) and name in req_a):
             del req_b[name]
-    if ext_b == {} and "extensions" not in json_a:
+            emptied_req = not req_b
+    # Only a container that this removal emptied goes away; one that B already had empty stays a difference.
+    if removed and ext_b == {} and "extensions" not in json_a:
         del json_b["extensions"]
-    if used_b == [] and "extensionsUsed" not in json_a:
+    if emptied_used and "extensionsUsed" not in json_a:
         del json_b["extensionsUsed"]
-    if req_b == {} and not (isinstance(extras_a, dict) and REQUIRED_APP_VERSIONS in extras_a):
+    if emptied_req and not (isinstance(extras_a, dict) and REQUIRED_APP_VERSIONS in extras_a):
         del extras_b[REQUIRED_APP_VERSIONS]
         if extras_b == {} and not (isinstance(member(json_a, "asset"), dict) and "extras" in json_a["asset"]):
             del asset_b["extras"]

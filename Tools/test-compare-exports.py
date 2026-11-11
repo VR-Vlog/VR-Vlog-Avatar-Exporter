@@ -142,6 +142,31 @@ class CompareExportsTests(unittest.TestCase):
         code, out, _ = run_main(['--diff-paths', self.a / 'A1_1.vrm', self.b / 'A1_1.vrm'])
         self.assertEqual((1, ['/images/1/name']), (code, out.split()))
 
+    def merged_bone_pair(self, name_a, name_b):
+        for directory, name in ((self.a, name_a), (self.b, name_b)):
+            doc = document()
+            doc['nodes'] = [{'name': 'Hips'}, {'name': name, 'translation': [0, 1, 0]}]
+            write(directory, 'A1_1', result('A1', 1), doc)
+        return run_main([self.a, self.b])
+
+    def test_merged_bone_guid_suffix_difference_is_ignored(self):
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdef',
+                                             'Skirt.L$fedcba98-7654-3210-fedc-ba9876543210')
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_merged_bone_with_other_name_or_other_suffix_exit_1(self):
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdef',
+                                             'Skirt.R$fedcba98-7654-3210-fedc-ba9876543210')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdef', 'Skirt.L')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+        code, out, _ = self.merged_bone_pair('Skirt.L$1', 'Skirt.L$2')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+
     def test_missing_vrm_exit_1(self):
         (self.b / 'A1_1.vrm').unlink()
         code, out, _ = run_main([self.a, self.b])
@@ -390,6 +415,23 @@ class AllowAddedExtensionTests(unittest.TestCase):
         _, removed = compare.remove_added_extensions(doc_a, doc_b, [ADDED])
         self.assertEqual(before, doc_b)
         self.assertEqual([{'name': ADDED, 'bytes': ADDED_BYTES}], removed)
+
+
+    def test_container_that_b_already_had_empty_stays_a_difference(self):
+        doc_a = {'asset': {'version': '2.0'}}
+        doc_b = {'asset': {'version': '2.0', 'extras': {compare.REQUIRED_APP_VERSIONS: {}}},
+                 'extensions': {}, 'extensionsUsed': []}
+        stripped, removed = compare.remove_added_extensions(doc_a, doc_b, [ADDED])
+        self.assertEqual(doc_b, stripped)
+        self.assertEqual([], removed)
+
+    def test_containers_emptied_by_the_removal_go_away_when_a_lacks_them(self):
+        doc_a = {'asset': {'version': '2.0'}}
+        doc_b = {'asset': {'version': '2.0', 'extras': {compare.REQUIRED_APP_VERSIONS: {ADDED: '1.0.0'}}},
+                 'extensions': {ADDED: {'schemaVersion': 1}}, 'extensionsUsed': [ADDED]}
+        stripped, removed = compare.remove_added_extensions(doc_a, doc_b, [ADDED])
+        self.assertEqual(doc_a, stripped)
+        self.assertEqual([ADDED], [item['name'] for item in removed])
 
 
 if __name__ == '__main__':
