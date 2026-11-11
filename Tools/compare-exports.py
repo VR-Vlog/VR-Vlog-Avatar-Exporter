@@ -176,7 +176,8 @@ def remove_added_extensions(json_a, json_b, names):
         text = json.dumps(ext_b.pop(name), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         removed.append({"name": name, "bytes": len(text.encode("utf-8"))})
         if isinstance(used_b, list) and name in used_b and not (isinstance(used_a, list) and name in used_a):
-            used_b[:] = [item for item in used_b if item != name]
+            # One entry goes with one extension; a second entry with the same name stays a difference.
+            used_b.remove(name)
             emptied_used = not used_b
         if isinstance(req_b, dict) and name in req_b and not (isinstance(req_a, dict) and name in req_a):
             del req_b[name]

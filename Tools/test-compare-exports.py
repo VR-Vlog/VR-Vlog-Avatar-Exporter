@@ -347,6 +347,14 @@ class AllowAddedExtensionTests(unittest.TestCase):
                     self.assertIn(expected, out)
                     self.assertNotIn('added extension allowed', out)
 
+    def test_extension_listed_twice_in_extensions_used_stays_a_difference(self):
+        doc = with_added(document())
+        doc['extensionsUsed'].append(ADDED)
+        write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensionsUsed', out)
+
     def test_extension_in_both_with_changed_content_mismatches(self):
         write(self.a, 'A001_1', result('A001', 1), with_added(document(), value={'schemaVersion': 1, 'items': []}))
         code, out, _ = self.run_allowed()
