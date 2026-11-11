@@ -773,9 +773,17 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // A save that stored nothing (the console warns only once) shows here
+        // until a save is written. It is read on Layout, as a save may fail
+        // later in the same frame (the gaze slider saves when it lets go).
+        string saveProblem;
+
         void DrawFeedback()
         {
+            if (Event.current.type == EventType.Layout) saveProblem = ExportSettingsStore.Problem;
+            else if (saveProblem != ExportSettingsStore.Problem) Repaint();
             if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(error, MessageType.Error);
+            else if (!string.IsNullOrEmpty(saveProblem)) EditorGUILayout.HelpBox(saveProblem, MessageType.Warning);
             else if (!string.IsNullOrEmpty(status)) EditorGUILayout.LabelField(status, EditorStyles.wordWrappedMiniLabel);
         }
 

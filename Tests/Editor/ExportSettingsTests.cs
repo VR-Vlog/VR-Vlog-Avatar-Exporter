@@ -225,6 +225,22 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ASaveThatStoresNothingKeepsWhyUntilASaveIsWritten()
+        {
+            using var fixture = new SavedAvatar();
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Is.Null);
+            File.WriteAllText(storePath, "{ not json", Encoding.UTF8);
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Does.Contain(storePath), "The board shows why, not only the console.");
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Does.Contain(storePath), "A second failed save still shows it, though the console warned once.");
+            File.Delete(storePath);
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Is.Null, "A written save clears it.");
+        }
+
+        [Test]
         public void BlinkBindingsToAMissingRendererAreDropped()
         {
             using var fixture = new SavedAvatar();
