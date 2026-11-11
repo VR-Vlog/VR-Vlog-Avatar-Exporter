@@ -88,7 +88,8 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
-            var relays = new Relays(copy, authored, plans.Where(p => p.Kind == Kind.Rotation).SelectMany(p => p.Sources.Select(s => s.Transform)));
+            var relays = new Relays(copy, authored, plans.Where(p => p.Kind == Kind.Rotation).SelectMany(p => p.Sources.Select(s => s.Transform)),
+                plans.Where(p => p.Kind == Kind.Parent && p.On && p.Weight > 0).Select(p => p.Target));
             var membership = new ToggleMembership(toggles, plans.Select(plan => plan.Target));
             var humanoid = plans.Any(p => p.Kind != Kind.Scale) ? HumanoidBones(copy) : new HashSet<Transform>();
             // Targets this pass aims; one may still follow a position constraint.
@@ -426,17 +427,19 @@ namespace VRVlog.LilToonExporter
         sealed class Relays
         {
             readonly Transform root;
-            readonly HashSet<Transform> rotationSources;
+            readonly HashSet<Transform> rotationSources, parented;
             readonly Dictionary<Transform, Transform> above = new Dictionary<Transform, Transform>();
             readonly List<(Transform Target, Transform Node, Transform Parent, int Sibling, Vector3 Position, Quaternion Rotation)> inserted =
                 new List<(Transform, Transform, Transform, int, Vector3, Quaternion)>();
             HashSet<string> names;
 
             // A rotation or roll reads its source's local rotation, which the
-            // node would take over from the target.
-            internal Relays(GameObject copy, IEnumerable<IVrm10Constraint> authored, IEnumerable<Transform> rotationSources)
+            // node would take over from the target. A target with a parent
+            // constraint follows that one instead, as before (#602).
+            internal Relays(GameObject copy, IEnumerable<IVrm10Constraint> authored, IEnumerable<Transform> rotationSources, IEnumerable<Transform> parented)
             {
                 root = copy.transform;
+                this.parented = new HashSet<Transform>(parented);
                 this.rotationSources = new HashSet<Transform>(rotationSources.Concat(authored.Where(c => !(c is Vrm10AimConstraint))
                     .Select(c => c.ConstraintSource)).Where(t => t != null));
             }
@@ -449,7 +452,7 @@ namespace VRVlog.LilToonExporter
             internal Transform Insert(Transform target, Vector3 axis, Vector3 toSource, HashSet<Transform> humanoid, HashSet<string> bound)
             {
                 var path = ExportFallbackReport.RelativePath(root, target);
-                if (humanoid.Any(bone => bone.IsChildOf(target)) || target.TryGetComponent<VRM10SpringBoneJoint>(out _) ||
+                if (humanoid.Any(bone => bone.IsChildOf(target)) || target.TryGetComponent<VRM10SpringBoneJoint>(out _) || parented.Contains(target) ||
                     rotationSources.Any(source => source.IsChildOf(target)) ||
                     bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal)))
                     return null;

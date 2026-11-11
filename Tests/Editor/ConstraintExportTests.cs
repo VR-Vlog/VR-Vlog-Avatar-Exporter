@@ -870,6 +870,22 @@ namespace VRVlog.LilToonExporter.Tests
             if (!relayed) Assert.That(aim.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
         }
 
+        // A parent constraint on the same target still moves it under its
+        // source, as before the node; the aim keeps the pose.
+        [Test]
+        public void AnAimWithAnOffsetLeavesAParentConstraintOnTheSameTarget()
+        {
+            using var f = new Fixture();
+            f.Constraint<AimConstraint>(f.B, 1, f.Other).aimVector = Vector3.forward;
+            f.B.rotation = Quaternion.LookRotation(f.Other.position - f.B.position) * Quaternion.Euler(0, 40, 0);
+            f.Constraint<ParentConstraint>(f.B, 1, f.A);
+            f.Convert();
+            Assert.That(f.B.parent, Is.EqualTo(f.A));
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Is.Empty);
+            Assert.That(f.Report.Results.Single(r => r.Name == "B (AimConstraint)").Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+            Assert.That(f.Report.Results.Single(r => r.Name == "B (ParentConstraint)").Outcome, Is.EqualTo(ExportOutcome.Kept));
+        }
+
         // The node went under the target's own source first; taken out, it
         // leaves the target there, still following that source.
         [TestCase(1f)][TestCase(2f)]
