@@ -167,6 +167,22 @@ class CompareExportsTests(unittest.TestCase):
         self.assertEqual(1, code, out)
         self.assertIn('/nodes/1/name', out)
 
+    def test_merged_bone_guid_followed_by_other_text_exit_1(self):
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdefx',
+                                             'Skirt.L$fedcba98-7654-3210-fedc-ba9876543210x')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+
+    def test_guid_suffix_outside_nodes_exit_1(self):
+        for directory, guid in ((self.a, '01234567-89ab-cdef-0123-456789abcdef'),
+                                (self.b, 'fedcba98-7654-3210-fedc-ba9876543210')):
+            doc = document()
+            doc['meshes'][0]['name'] = 'Face$' + guid
+            write(directory, 'A1_1', result('A1', 1), doc)
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(1, code, out)
+        self.assertIn('/meshes/0/name', out)
+
     def test_missing_vrm_exit_1(self):
         (self.b / 'A1_1.vrm').unlink()
         code, out, _ = run_main([self.a, self.b])
@@ -219,13 +235,11 @@ class CompareExportsTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn('not a glb', err)
 
-    def test_runs_mode_allows_added_extension(self):
+    def test_runs_mode_with_allowed_extension_exit_2(self):
         write(self.a, 'A1_2', result('A1', 2), with_added(document()))
-        code, out, _ = run_main(['--runs', self.a, '1', '2'])
-        self.assertEqual(1, code, out)
-        code, out, _ = run_main(['--runs', self.a, '1', '2', '--allow-added-extension', ADDED])
-        self.assertEqual(0, code, out)
-        self.assertIn('added extension allowed: %s (%d bytes of JSON)' % (ADDED, ADDED_BYTES), out)
+        code, out, err = run_main(['--runs', self.a, '1', '2', '--allow-added-extension', ADDED])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('cannot be used with --runs', err)
 
     def test_no_pairs_exit_1(self):
         empty_a, empty_b = self.root / 'ea', self.root / 'eb'
@@ -274,6 +288,25 @@ class AllowAddedExtensionTests(unittest.TestCase):
         row = json.loads(out)['rows'][0]
         self.assertEqual([{'name': ADDED, 'bytes': ADDED_BYTES}], row['allowed_extensions'])
         self.assertEqual([], row['issues'])
+
+    def test_name_without_vrvlog_prefix_exit_2(self):
+        code, out, err = run_main([self.a, self.b, '--allow-added-extension', 'VRMC_vrm'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('VRMC_vrm', err)
+
+    def test_summary_counts_pairs_with_removed_extension(self):
+        write(self.a, 'A002_1', result('A002', 1), document())
+        write(self.b, 'A002_1', result('A002', 1), document())
+        code, out, _ = self.run_allowed()
+        self.assertEqual(0, code, out)
+        self.assertEqual(['2 pairs, 0 mismatched', 'allowed extension removed in 1 of 2 pairs'],
+                         out.splitlines()[-2:])
+        write(self.b, 'A001_1', result('A001', 1), document())
+        code, out, _ = self.run_allowed()
+        self.assertEqual(0, code, out)
+        self.assertEqual('allowed extension removed in 0 of 2 pairs', out.splitlines()[-1])
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual('2 pairs, 0 mismatched', out.splitlines()[-1])
 
     def test_without_option_added_extension_is_a_difference(self):
         code, out, _ = run_main([self.a, self.b])
@@ -351,6 +384,43 @@ class AllowAddedExtensionTests(unittest.TestCase):
         doc = with_added(document())
         doc['extensionsUsed'].append(ADDED)
         write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensionsUsed', out)
+
+    def test_other_extension_stays_when_a_has_no_extensions(self):
+        doc_a, doc_b = document(), with_added(document())
+        del doc_a['extensions']
+        del doc_b['extensions']['VRMC_vrm']
+        doc_b['extensions']['VRVLOG_other'] = {'schemaVersion': 1}
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions', out)
+
+    def test_other_required_app_version_stays_when_a_has_none(self):
+        doc = with_added(document())
+        doc['asset']['extras']['VRVLOG_requiredAppVersions']['VRVLOG_other'] = '1.0.0'
+        write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras/VRVLOG_requiredAppVersions', out)
+
+    def test_other_asset_extras_stay_when_a_has_no_extras(self):
+        doc_a = document()
+        del doc_a['asset']['extras']
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras', out)
+
+    def test_name_twice_in_b_when_a_lists_it_without_the_extension_mismatches(self):
+        doc_a, doc_b = document(), with_added(document())
+        doc_a['extensionsUsed'] = [ADDED]
+        doc_b['extensionsUsed'].append(ADDED)
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
         code, out, _ = self.run_allowed()
         self.assertEqual(1, code, out)
         self.assertIn('/extensionsUsed', out)

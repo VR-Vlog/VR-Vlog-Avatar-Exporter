@@ -13,14 +13,17 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       Prints every glb JSON path that differs between two files. Use it on two runs of the
       same package to find paths that change on every export (see VOLATILE and VOLATILE_SUB).
       The JSON is compared as is, without removing or masking anything.
-  --allow-added-extension NAME (repeatable, with two directories or --runs)
-      For a change that adds the root extension NAME and should change nothing else. When B
+  --allow-added-extension NAME (repeatable, with two directories only)
+      For a change that adds the root extension NAME and should change nothing else. NAME must
+      start with VRVLOG_. It cannot be used with --runs: two runs of the same package must have
+      the same extensions, so an extension in only one of them is a difference. When B
       has extensions[NAME] and A does not, it is removed from B before hashing, together with
       NAME in extensionsUsed and in asset.extras.VRVLOG_requiredAppVersions when A does not
       have those entries (a list or object left empty is removed when A does not have it).
       NAME that A also has, and every other extension, are compared as before; warnings,
       expressions and the BIN chunk are never relaxed. Each row lists the removed names with
-      the length of their JSON as information only.
+      the length of their JSON as information only, and the summary counts the pairs where an
+      extension was removed.
 
 Checked for each pair:
   1. success or failure, and the failure text
@@ -369,6 +372,13 @@ def main(argv=None):
         parser.print_usage(sys.stderr)
         print("ERROR pass two result directories, --runs or --diff-paths", file=sys.stderr)
         return 2
+    if args.runs and args.allow_added_extension:
+        print("ERROR --allow-added-extension cannot be used with --runs", file=sys.stderr)
+        return 2
+    not_vrvlog = [name for name in args.allow_added_extension if not name.startswith("VRVLOG_")]
+    if not_vrvlog:
+        print("ERROR --allow-added-extension takes only VRVLOG_ extensions: " + ", ".join(not_vrvlog), file=sys.stderr)
+        return 2
     try:
         if args.diff_paths:
             _, json_a, _ = read_glb(args.diff_paths[0])
@@ -389,6 +399,9 @@ def main(argv=None):
     else:
         print_rows(rows)
         print("%d pairs, %d mismatched" % (len(rows), len(mismatched)))
+        if args.allow_added_extension:
+            allowed = sum(1 for row in rows if row.get("allowed_extensions"))
+            print("allowed extension removed in %d of %d pairs" % (allowed, len(rows)))
     return 0 if rows and not mismatched else 1
 
 
