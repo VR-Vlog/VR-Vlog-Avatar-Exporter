@@ -427,10 +427,10 @@ namespace VRVlog.LilToonExporter.Tests
             }));
         }
 
-        // A menu face that also shows a particle effect and sets its emission
-        // is a face on the board and in the VRM: the particle settings change
-        // nothing a VRM carries, so neither the board nor the export stops on
-        // them, gesture or not.
+        // A face no hand gesture enters that also shows a particle effect and
+        // sets its emission is a face on the board and in the VRM: the particle
+        // settings change nothing a VRM carries, so neither the board nor the
+        // export stops on them, gesture or not.
         [Test]
         public void AFaceThatAlsoDrivesAParticleIsWritten()
         {
