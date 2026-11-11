@@ -859,6 +859,7 @@ BEHAVIOR_CASES = {
         'WhileOffNoFaceWritesBonesOrVisibility': 1,
         'FacesTakenOnlyForTheirBonesFillNoPreset': 1,
         'CustomFacesAreWrittenBySource': 1,
+        'AFaceThatAlsoDrivesAParticleIsWritten': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
