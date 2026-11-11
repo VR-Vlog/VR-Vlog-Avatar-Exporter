@@ -216,7 +216,7 @@ namespace VRVlog.LilToonExporter
 
         // Why the last save stored nothing, until a save is written. The console
         // warns of each problem once, so the windows that save show this instead.
-        internal static string Problem { get; private set; }
+        internal static string Problem { get; set; }
 
         static void Failed(string message)
         {

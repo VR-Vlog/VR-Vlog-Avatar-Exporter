@@ -33,6 +33,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             ExportSettingsStore.PathOverride = previousPath;
             ExpressionPresetStore.PathOverride = previousPresetPath;
+            // A failed save in a test must not warn on the board afterwards.
+            ExportSettingsStore.Problem = null;
             if (File.Exists(storePath)) File.Delete(storePath);
             if (File.Exists(presetPath)) File.Delete(presetPath);
         }

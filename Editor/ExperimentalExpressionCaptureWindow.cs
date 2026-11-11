@@ -783,8 +783,9 @@ namespace VRVlog.LilToonExporter
             if (Event.current.type == EventType.Layout) saveProblem = ExportSettingsStore.Problem;
             else if (saveProblem != ExportSettingsStore.Problem) Repaint();
             if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(error, MessageType.Error);
-            else if (!string.IsNullOrEmpty(saveProblem)) EditorGUILayout.HelpBox(saveProblem, MessageType.Warning);
             else if (!string.IsNullOrEmpty(status)) EditorGUILayout.LabelField(status, EditorStyles.wordWrappedMiniLabel);
+            // Beside the result, so an export still shows where it went.
+            if (!string.IsNullOrEmpty(saveProblem)) EditorGUILayout.HelpBox(saveProblem, MessageType.Warning);
         }
 
         // The objects left out follow the avatar's saved export settings. When the
