@@ -142,6 +142,47 @@ class CompareExportsTests(unittest.TestCase):
         code, out, _ = run_main(['--diff-paths', self.a / 'A1_1.vrm', self.b / 'A1_1.vrm'])
         self.assertEqual((1, ['/images/1/name']), (code, out.split()))
 
+    def merged_bone_pair(self, name_a, name_b):
+        for directory, name in ((self.a, name_a), (self.b, name_b)):
+            doc = document()
+            doc['nodes'] = [{'name': 'Hips'}, {'name': name, 'translation': [0, 1, 0]}]
+            write(directory, 'A1_1', result('A1', 1), doc)
+        return run_main([self.a, self.b])
+
+    def test_merged_bone_guid_suffix_difference_is_ignored(self):
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdef',
+                                             'Skirt.L$fedcba98-7654-3210-fedc-ba9876543210')
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_merged_bone_with_other_name_or_other_suffix_exit_1(self):
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdef',
+                                             'Skirt.R$fedcba98-7654-3210-fedc-ba9876543210')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdef', 'Skirt.L')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+        code, out, _ = self.merged_bone_pair('Skirt.L$1', 'Skirt.L$2')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+
+    def test_merged_bone_guid_followed_by_other_text_exit_1(self):
+        code, out, _ = self.merged_bone_pair('Skirt.L$01234567-89ab-cdef-0123-456789abcdefx',
+                                             'Skirt.L$fedcba98-7654-3210-fedc-ba9876543210x')
+        self.assertEqual(1, code, out)
+        self.assertIn('/nodes/1/name', out)
+
+    def test_guid_suffix_outside_nodes_exit_1(self):
+        for directory, guid in ((self.a, '01234567-89ab-cdef-0123-456789abcdef'),
+                                (self.b, 'fedcba98-7654-3210-fedc-ba9876543210')):
+            doc = document()
+            doc['meshes'][0]['name'] = 'Face$' + guid
+            write(directory, 'A1_1', result('A1', 1), doc)
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(1, code, out)
+        self.assertIn('/meshes/0/name', out)
+
     def test_missing_vrm_exit_1(self):
         (self.b / 'A1_1.vrm').unlink()
         code, out, _ = run_main([self.a, self.b])
@@ -194,6 +235,12 @@ class CompareExportsTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn('not a glb', err)
 
+    def test_runs_mode_with_allowed_extension_exit_2(self):
+        write(self.a, 'A1_2', result('A1', 2), with_added(document()))
+        code, out, err = run_main(['--runs', self.a, '1', '2', '--allow-added-extension', ADDED])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('cannot be used with --runs', err)
+
     def test_no_pairs_exit_1(self):
         empty_a, empty_b = self.root / 'ea', self.root / 'eb'
         empty_a.mkdir()
@@ -201,6 +248,295 @@ class CompareExportsTests(unittest.TestCase):
         code, out, _ = run_main([empty_a, empty_b])
         self.assertEqual(1, code)
         self.assertIn('0 pairs', out)
+
+
+ADDED = 'VRVLOG_added'
+ADDED_VALUE = {'schemaVersion': 1, 'items': [{'name': 'Item', 'value': 0.5}]}
+ADDED_BYTES = len(json.dumps(ADDED_VALUE, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+
+def with_added(doc, name=ADDED, value=None, version='1.0.0'):
+    """Add a root extension the way the exporter does: extensions, extensionsUsed and the
+    per-extension entry of asset.extras.VRVLOG_requiredAppVersions."""
+    doc['extensions'][name] = copy.deepcopy(ADDED_VALUE if value is None else value)
+    doc.setdefault('extensionsUsed', []).append(name)
+    doc['asset']['extras'].setdefault('VRVLOG_requiredAppVersions', {})[name] = version
+    return doc
+
+
+class AllowAddedExtensionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.a, self.b = self.root / 'a', self.root / 'b'
+        write(self.a, 'A001_1', result('A001', 1), document())
+        write(self.b, 'A001_1', result('A001', 1), with_added(document()))
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def run_allowed(self, *extra):
+        return run_main([self.a, self.b, '--allow-added-extension', ADDED] + list(extra))
+
+    def test_only_added_extension_matches_and_reports_name_and_length(self):
+        code, out, _ = self.run_allowed()
+        self.assertEqual(0, code, out)
+        self.assertIn('1 pairs, 0 mismatched', out)
+        self.assertIn('added extension allowed: %s (%d bytes of JSON)' % (ADDED, ADDED_BYTES), out)
+        code, out, _ = self.run_allowed('--json')
+        self.assertEqual(0, code, out)
+        row = json.loads(out)['rows'][0]
+        self.assertEqual([{'name': ADDED, 'bytes': ADDED_BYTES}], row['allowed_extensions'])
+        self.assertEqual([], row['issues'])
+
+    def test_name_without_vrvlog_prefix_exit_2(self):
+        code, out, err = run_main([self.a, self.b, '--allow-added-extension', 'VRMC_vrm'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('VRMC_vrm', err)
+
+    def test_summary_counts_pairs_with_removed_extension(self):
+        write(self.a, 'A002_1', result('A002', 1), document())
+        write(self.b, 'A002_1', result('A002', 1), document())
+        code, out, _ = self.run_allowed()
+        self.assertEqual(0, code, out)
+        self.assertEqual(['2 pairs, 0 mismatched', 'allowed extension removed in 1 of 2 pairs'],
+                         out.splitlines()[-2:])
+        write(self.b, 'A001_1', result('A001', 1), document())
+        code, out, _ = self.run_allowed()
+        self.assertEqual(0, code, out)
+        self.assertEqual('allowed extension removed in 0 of 2 pairs', out.splitlines()[-1])
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual('2 pairs, 0 mismatched', out.splitlines()[-1])
+
+    def test_without_option_added_extension_is_a_difference(self):
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions/' + ADDED, out)
+        self.assertNotIn('added extension allowed', out)
+        code, out, _ = run_main([self.a, self.b, '--json'])
+        self.assertNotIn('allowed_extensions', json.loads(out)['rows'][0])
+
+    def test_other_difference_still_mismatches(self):
+        def other_extension(doc):
+            doc['extensions']['VRMC_vrm']['specVersion'] = '1.0'
+
+        def node_name(doc):
+            doc['nodes'][0]['name'] = 'Face2'
+
+        for change, expected in ((other_extension, '/extensions/VRMC_vrm/specVersion'), (node_name, '/nodes/0/name')):
+            with self.subTest(change.__name__):
+                doc = with_added(document())
+                change(doc)
+                write(self.b, 'A001_1', result('A001', 1), doc)
+                code, out, _ = self.run_allowed()
+                self.assertEqual(1, code, out)
+                self.assertIn(expected, out)
+                self.assertIn('added extension allowed', out)
+
+    def test_bin_difference_still_mismatches(self):
+        (self.b / 'A001_1.vrm').write_bytes(pack_glb(with_added(document()), BINARY[:-4] + struct.pack('<f', 2)))
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('BIN chunk differs', out)
+
+    def test_expression_difference_still_mismatches(self):
+        doc = with_added(document())
+        doc['extensions']['VRMC_vrm']['expressions']['custom']['Wink']['isBinary'] = False
+        write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('custom:Wink isBinary', out)
+
+    def test_warning_difference_still_mismatches(self):
+        write(self.b, 'A001_1', result('A001', 1, warnings=()), with_added(document()))
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings differ', out)
+
+    def test_entries_added_without_adding_the_extension_stay_a_difference(self):
+        def body_in_both(doc_a, doc_b):
+            doc_a['extensions'][ADDED] = copy.deepcopy(ADDED_VALUE)
+            doc_b['extensions'][ADDED] = copy.deepcopy(ADDED_VALUE)
+
+        def body_in_neither(doc_a, doc_b):
+            pass
+
+        def version(doc):
+            doc['asset']['extras']['VRVLOG_requiredAppVersions'] = {ADDED: '2.0.0'}
+
+        def used(doc):
+            doc['extensionsUsed'] = [ADDED]
+
+        for body in (body_in_both, body_in_neither):
+            for entry, expected in ((version, '/asset/extras/VRVLOG_requiredAppVersions'), (used, '/extensionsUsed')):
+                with self.subTest('%s %s' % (body.__name__, entry.__name__)):
+                    doc_a, doc_b = document(), document()
+                    body(doc_a, doc_b)
+                    entry(doc_b)
+                    write(self.a, 'A001_1', result('A001', 1), doc_a)
+                    write(self.b, 'A001_1', result('A001', 1), doc_b)
+                    code, out, _ = self.run_allowed()
+                    self.assertEqual(1, code, out)
+                    self.assertIn(expected, out)
+                    self.assertNotIn('added extension allowed', out)
+
+    def test_extension_listed_twice_in_extensions_used_stays_a_difference(self):
+        doc = with_added(document())
+        doc['extensionsUsed'].append(ADDED)
+        write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensionsUsed', out)
+
+    def test_other_extension_stays_when_a_has_no_extensions(self):
+        doc_a, doc_b = document(), with_added(document())
+        del doc_a['extensions']
+        del doc_b['extensions']['VRMC_vrm']
+        doc_b['extensions']['VRVLOG_other'] = {'schemaVersion': 1}
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions', out)
+
+    def test_other_required_app_version_stays_when_a_has_none(self):
+        doc = with_added(document())
+        doc['asset']['extras']['VRVLOG_requiredAppVersions']['VRVLOG_other'] = '1.0.0'
+        write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras/VRVLOG_requiredAppVersions', out)
+
+    def test_other_asset_extras_stay_when_a_has_no_extras(self):
+        doc_a = document()
+        del doc_a['asset']['extras']
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras', out)
+
+    def test_name_twice_in_b_when_a_lists_it_without_the_extension_mismatches(self):
+        doc_a, doc_b = document(), with_added(document())
+        doc_a['extensionsUsed'] = [ADDED]
+        doc_b['extensionsUsed'].append(ADDED)
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensionsUsed', out)
+
+    def test_extension_in_both_with_changed_content_mismatches(self):
+        write(self.a, 'A001_1', result('A001', 1), with_added(document(), value={'schemaVersion': 1, 'items': []}))
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions/%s/items' % ADDED, out)
+        self.assertNotIn('added extension allowed', out)
+
+    def test_extension_only_in_a_mismatches(self):
+        write(self.a, 'A001_1', result('A001', 1), with_added(document()))
+        write(self.b, 'A001_1', result('A001', 1), document())
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions/' + ADDED, out)
+        self.assertNotIn('added extension allowed', out)
+
+    def test_other_added_extension_mismatches(self):
+        write(self.b, 'A001_1', result('A001', 1), with_added(document(), name='VRVLOG_other'))
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions/VRVLOG_other', out)
+        self.assertIn('/extensionsUsed', out)
+        self.assertIn('/asset/extras/VRVLOG_requiredAppVersions', out)
+        write(self.b, 'A001_1', result('A001', 1), with_added(with_added(document()), name='VRVLOG_other'))
+        code, out, _ = run_main([self.a, self.b, '--allow-added-extension', ADDED,
+                                 '--allow-added-extension', 'VRVLOG_other'])
+        self.assertEqual(0, code, out)
+        self.assertIn('added extension allowed: VRVLOG_other', out)
+
+    def test_extensions_used_keeps_entries_that_a_also_has(self):
+        doc_a, doc_b = document(), with_added(document())
+        doc_a['extensionsUsed'] = ['VRMC_vrm']
+        doc_b['extensionsUsed'] = ['VRMC_vrm', ADDED]
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        self.assertEqual(0, self.run_allowed()[0])
+        # NAME is removed even when it is not last, and the order of the rest is compared.
+        doc_b['extensionsUsed'] = [ADDED, 'VRMC_vrm']
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        self.assertEqual(0, self.run_allowed()[0])
+        # An empty list in A is kept in B after removing NAME, so the two still match.
+        doc_a['extensionsUsed'] = []
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        doc_b['extensionsUsed'] = [ADDED]
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        self.assertEqual(0, self.run_allowed()[0])
+        # Another added entry in extensionsUsed is still a difference.
+        doc_b['extensionsUsed'] = [ADDED, 'VRVLOG_other']
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensionsUsed', out)
+
+    def test_required_app_versions_allows_only_the_entry_of_name(self):
+        doc_a, doc_b = document(), with_added(document())
+        doc_a['asset']['extras']['VRVLOG_requiredAppVersions'] = {'VRVLOG_kept': '1.0.0'}
+        doc_b['asset']['extras']['VRVLOG_requiredAppVersions']['VRVLOG_kept'] = '1.0.0'
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        self.assertEqual(0, self.run_allowed()[0])
+        # A changed version of another extension is still a difference.
+        doc_b['asset']['extras']['VRVLOG_requiredAppVersions']['VRVLOG_kept'] = '1.0.1'
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras/VRVLOG_requiredAppVersions/VRVLOG_kept', out)
+        # A version for NAME that A already has is compared, not removed.
+        doc_a['asset']['extras']['VRVLOG_requiredAppVersions'][ADDED] = '0.9.0'
+        doc_b['asset']['extras']['VRVLOG_requiredAppVersions']['VRVLOG_kept'] = '1.0.0'
+        write(self.a, 'A001_1', result('A001', 1), doc_a)
+        write(self.b, 'A001_1', result('A001', 1), doc_b)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras/VRVLOG_requiredAppVersions/' + ADDED, out)
+
+    def test_required_app_versions_not_in_the_per_extension_form_is_a_difference(self):
+        doc = with_added(document())
+        doc['asset']['extras']['VRVLOG_requiredAppVersions'] = '1.0.0'
+        write(self.b, 'A001_1', result('A001', 1), doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/asset/extras/VRVLOG_requiredAppVersions', out)
+
+    def test_diff_paths_is_not_affected(self):
+        code, out, _ = run_main(['--diff-paths', self.a / 'A001_1.vrm', self.b / 'A001_1.vrm',
+                                 '--allow-added-extension', ADDED])
+        self.assertEqual(1, code, out)
+        self.assertEqual(['/asset/extras/VRVLOG_requiredAppVersions', '/extensions/' + ADDED, '/extensionsUsed'],
+                         out.split())
+
+    def test_input_documents_are_not_changed(self):
+        doc_a, doc_b = document(), with_added(document())
+        before = copy.deepcopy(doc_b)
+        _, removed = compare.remove_added_extensions(doc_a, doc_b, [ADDED])
+        self.assertEqual(before, doc_b)
+        self.assertEqual([{'name': ADDED, 'bytes': ADDED_BYTES}], removed)
+
+
+    def test_container_that_b_already_had_empty_stays_a_difference(self):
+        doc_a = {'asset': {'version': '2.0'}}
+        doc_b = {'asset': {'version': '2.0', 'extras': {compare.REQUIRED_APP_VERSIONS: {}}},
+                 'extensions': {}, 'extensionsUsed': []}
+        stripped, removed = compare.remove_added_extensions(doc_a, doc_b, [ADDED])
+        self.assertEqual(doc_b, stripped)
+        self.assertEqual([], removed)
+
+    def test_containers_emptied_by_the_removal_go_away_when_a_lacks_them(self):
+        doc_a = {'asset': {'version': '2.0'}}
+        doc_b = {'asset': {'version': '2.0', 'extras': {compare.REQUIRED_APP_VERSIONS: {ADDED: '1.0.0'}}},
+                 'extensions': {ADDED: {'schemaVersion': 1}}, 'extensionsUsed': [ADDED]}
+        stripped, removed = compare.remove_added_extensions(doc_a, doc_b, [ADDED])
+        self.assertEqual(doc_a, stripped)
+        self.assertEqual([ADDED], [item['name'] for item in removed])
 
 
 if __name__ == '__main__':

@@ -13,6 +13,17 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       Prints every glb JSON path that differs between two files. Use it on two runs of the
       same package to find paths that change on every export (see VOLATILE and VOLATILE_SUB).
       The JSON is compared as is, without removing or masking anything.
+  --allow-added-extension NAME (repeatable, with two directories only)
+      For a change that adds the root extension NAME and should change nothing else. NAME must
+      start with VRVLOG_. It cannot be used with --runs: two runs of the same package must have
+      the same extensions, so an extension in only one of them is a difference. When B
+      has extensions[NAME] and A does not, it is removed from B before hashing, together with
+      NAME in extensionsUsed and in asset.extras.VRVLOG_requiredAppVersions when A does not
+      have those entries (a list or object left empty is removed when A does not have it).
+      NAME that A also has, and every other extension, are compared as before; warnings,
+      expressions and the BIN chunk are never relaxed. Each row lists the removed names with
+      the length of their JSON as information only, and the summary counts the pairs where an
+      extension was removed.
 
 Checked for each pair:
   1. success or failure, and the failure text
@@ -29,6 +40,7 @@ Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs
 2 = usage, I/O or format errors.
 """
 import argparse
+import copy
 import hashlib
 import json
 import re
@@ -40,6 +52,9 @@ GLB_MAGIC = b"glTF"
 JSON_CHUNK = 0x4E4F534A
 BIN_CHUNK = 0x004E4942
 MAX_PATHS = 8
+# asset.extras key that maps each VRVLOG_ extension in extensionsUsed to the lowest app version
+# (Formats/Runtime/AvatarFormatVersions.cs).
+REQUIRED_APP_VERSIONS = "VRVLOG_requiredAppVersions"
 
 # glb JSON paths that change on every export even with the same input and package. Found by
 # running each avatar twice with the same package and comparing run 1 with run 2 using
@@ -54,6 +69,11 @@ VOLATILE_SUB = [
     # export, while the image bytes in BIN stay the same. Found with --diff-paths on two runs of
     # one package.
     ("/images/*/name", r"(__VRVlog_Emission)_[0-9a-f]{32}$", r"\1_<guid>"),
+    # A bone that the avatar's build steps merge into another armature gets "$" and a new random
+    # GUID at the end of its name on every build, before the exporter sees it. The name in front
+    # of "$" and everything else about the node are still compared. Found the same way, on
+    # avatars whose outfits are merged at build time.
+    ("/nodes/*/name", r"\$[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$", r"$<guid>"),
 ]
 
 
@@ -134,6 +154,49 @@ def strip_volatile(value, patterns=None, path="", subs=None):
     return value
 
 
+def remove_added_extensions(json_a, json_b, names):
+    """Return (copy of json_b, [{"name", "bytes"}]) without the root extensions in names that B has
+    and A does not. Their extensionsUsed entries and asset.extras.VRVLOG_requiredAppVersions
+    entries are removed only when A does not have them either; a list or object left empty is
+    removed only when A does not have that key (asset.extras too, which the exporter creates for
+    the versions when it is missing). "bytes" is the length of the extension's compact JSON.
+    Anything that A also has is kept and compared."""
+    def member(container, key):
+        return container.get(key) if isinstance(container, dict) else None
+
+    json_b = copy.deepcopy(json_b)
+    removed = []
+    ext_a, ext_b = member(json_a, "extensions"), member(json_b, "extensions")
+    used_a, used_b = member(json_a, "extensionsUsed"), member(json_b, "extensionsUsed")
+    asset_b = member(json_b, "asset")
+    extras_a, extras_b = member(member(json_a, "asset"), "extras"), member(asset_b, "extras")
+    req_a, req_b = member(extras_a, REQUIRED_APP_VERSIONS), member(extras_b, REQUIRED_APP_VERSIONS)
+    emptied_used = emptied_req = False
+    for name in names:
+        # The entries that go with an extension are only removed together with the extension itself.
+        if not (isinstance(ext_b, dict) and name in ext_b) or (isinstance(ext_a, dict) and name in ext_a):
+            continue
+        text = json.dumps(ext_b.pop(name), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        removed.append({"name": name, "bytes": len(text.encode("utf-8"))})
+        if isinstance(used_b, list) and name in used_b and not (isinstance(used_a, list) and name in used_a):
+            # One entry goes with one extension; a second entry with the same name stays a difference.
+            used_b.remove(name)
+            emptied_used = not used_b
+        if isinstance(req_b, dict) and name in req_b and not (isinstance(req_a, dict) and name in req_a):
+            del req_b[name]
+            emptied_req = not req_b
+    # Only a container that this removal emptied goes away; one that B already had empty stays a difference.
+    if removed and ext_b == {} and "extensions" not in json_a:
+        del json_b["extensions"]
+    if emptied_used and "extensionsUsed" not in json_a:
+        del json_b["extensionsUsed"]
+    if emptied_req and not (isinstance(extras_a, dict) and REQUIRED_APP_VERSIONS in extras_a):
+        del extras_b[REQUIRED_APP_VERSIONS]
+        if extras_b == {} and not (isinstance(member(json_a, "asset"), dict) and "extras" in json_a["asset"]):
+            del asset_b["extras"]
+    return json_b, removed
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -199,7 +262,7 @@ def load_result(directory, stem):
     return result, (vrm if vrm.exists() else None)
 
 
-def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None):
+def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed_extensions=()):
     if patterns is None:
         patterns = volatile_patterns()
     if subs is None:
@@ -232,6 +295,10 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None):
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
+    if allowed_extensions:
+        json_b, removed = remove_added_extensions(json_a, json_b, allowed_extensions)
+        if removed:
+            row["allowed_extensions"] = removed
     sa, sb = strip_volatile(json_a, patterns, subs=subs), strip_volatile(json_b, patterns, subs=subs)
     ha, hb = normalized_json_hash(sa), normalized_json_hash(sb)
     row["json_hash"] = ha[:16]
@@ -279,6 +346,8 @@ def print_rows(rows):
             mark, row["a"], row["b"], row.get("ok"), row.get("warnings"), row.get("expressions"), row.get("file_equal")))
         for issue in row["issues"]:
             print("     - " + issue)
+        for extension in row.get("allowed_extensions", []):
+            print("     i added extension allowed: %s (%d bytes of JSON)" % (extension["name"], extension["bytes"]))
 
 
 def main(argv=None):
@@ -291,6 +360,9 @@ def main(argv=None):
     parser.add_argument("--ignore-missing", action="store_true",
                         help="skip results that exist in only one of the two directories")
     parser.add_argument("--json", action="store_true", help="print the full result as JSON")
+    parser.add_argument("--allow-added-extension", action="append", default=[], metavar="NAME",
+                        help="remove the root extension NAME from B before hashing when A does not have it"
+                             " (repeatable; not used by --diff-paths)")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exit_:
@@ -299,6 +371,13 @@ def main(argv=None):
     if modes != 1 or (args.dirs and len(args.dirs) != 2):
         parser.print_usage(sys.stderr)
         print("ERROR pass two result directories, --runs or --diff-paths", file=sys.stderr)
+        return 2
+    if args.runs and args.allow_added_extension:
+        print("ERROR --allow-added-extension cannot be used with --runs", file=sys.stderr)
+        return 2
+    not_vrvlog = [name for name in args.allow_added_extension if not name.startswith("VRVLOG_")]
+    if not_vrvlog:
+        print("ERROR --allow-added-extension takes only VRVLOG_ extensions: " + ", ".join(not_vrvlog), file=sys.stderr)
         return 2
     try:
         if args.diff_paths:
@@ -309,7 +388,8 @@ def main(argv=None):
                 print(path)
             return 1 if paths else 0
         patterns, subs = volatile_patterns(), volatile_subs()
-        rows = [compare_pair(*pair, patterns=patterns, subs=subs) for pair in plan_pairs(args)]
+        rows = [compare_pair(*pair, patterns=patterns, subs=subs, allowed_extensions=args.allow_added_extension)
+                for pair in plan_pairs(args)]
     except (OSError, ValueError) as error:
         print("ERROR " + str(error), file=sys.stderr)
         return 2
@@ -319,6 +399,9 @@ def main(argv=None):
     else:
         print_rows(rows)
         print("%d pairs, %d mismatched" % (len(rows), len(mismatched)))
+        if args.allow_added_extension:
+            allowed = sum(1 for row in rows if row.get("allowed_extensions"))
+            print("allowed extension removed in %d of %d pairs" % (allowed, len(rows)))
     return 0 if rows and not mismatched else 1
 
 
