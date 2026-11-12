@@ -658,6 +658,7 @@ namespace VRVlog.LilToonExporter.Tests
             var children = direct.children;
             children[0].directBlendParameter = "Gone";
             holder.AddChild(onInt, 2);
+            fx.layers[layer].stateMachine.AddState("Direct again").motion = direct;
             children[1].directBlendParameter = "BlendX";
             direct.children = children;
             var machine = fx.layers[layer].stateMachine;
@@ -683,8 +684,9 @@ namespace VRVlog.LilToonExporter.Tests
             // the holder, the 2D tree on two ints once, and three options. A
             // name nothing declares plays as written, but in a tree held by
             // another tree, which Unity plays by what the others leave, and on
-            // a direct weight, which was not measured: two more.
-            Assert.That(data.Omitted.Where(o => o.Kind == "unreadParameter").Sum(o => o.Count), Is.EqualTo(9));
+            // a direct weight, which was not measured, here under two states:
+            // three more.
+            Assert.That(data.Omitted.Where(o => o.Kind == "unreadParameter").Sum(o => o.Count), Is.EqualTo(10));
         }
 
         // A clip keeps up to MaximumKeysPerClip keys. A curve that does not
