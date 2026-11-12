@@ -961,7 +961,8 @@ namespace VRVlog.LilToonExporter.Tests
         // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
         // bone and the shown object beside it. A finger pose beside the face is left out; a body pose, an IK goal
         // or the root keeps a clip no gesture enters unsupported. A material swap keeps the clip unsupported. A hand pose that
-        // only holds the face shapes at rest is not a face.
+        // only holds the face shapes at rest is not a face. A particle setting or a PhysBone switch changes nothing in the
+        // VRM and the export skips it for any face, so the board ignores it too, gesture or not.
         [TestCase("transform", true, 80f, "usable")]
         [TestCase("transform", false, 80f, "usable")]
         [TestCase("active", true, 80f, "usable")]
@@ -973,6 +974,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ik", false, 80f, "unsupported")]
         [TestCase("root", false, 80f, "unsupported")]
         [TestCase("material", true, 80f, "unsupported")]
+        [TestCase("particle", true, 80f, "usable")]
+        [TestCase("particle", false, 80f, "usable")]
+        [TestCase("physbone", false, 80f, "usable")]
         [TestCase("transform", true, 0f, "noface")]
         [TestCase("finger", false, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
@@ -1009,7 +1013,8 @@ namespace VRVlog.LilToonExporter.Tests
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
                     var gaze = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
                     var automatic = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip); automatic.Automatic = true;
-                    var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body");
+                    var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body") ||
+                        extra == "particle" || extra == "physbone";
                     Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
                     Assert.That(session.PresetError(ExpressionPreset.happy, preset), Is.Null);
                     var named = binding.path + " / " + binding.propertyName;
@@ -1047,6 +1052,11 @@ namespace VRVlog.LilToonExporter.Tests
                 case "ik": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHandT.x"), 0.2f);
                 case "root": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "RootT.x"), 0.2f);
                 case "material": return (EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), 0.5f);
+                case "particle": return (EditorCurveBinding.FloatCurve("Front", typeof(ParticleSystem), "EmissionModule.rateOverTime.scalar"), 20);
+                case "physbone":
+                    var physBone = OptionalTools.Find(PhysBoneSpringExport.PhysBoneType);
+                    if (physBone == null) Assert.Ignore("Install the VRChat SDK.");
+                    return (EditorCurveBinding.FloatCurve("Front", physBone, "m_Enabled"), 0);
                 default: throw new System.ArgumentOutOfRangeException(nameof(extra), extra, null);
             }
         }

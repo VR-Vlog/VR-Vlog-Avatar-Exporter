@@ -1,0 +1,23 @@
+# 使われていない訳「そのマテリアルの表現」を消す
+
+- 日付: 2026-11-11
+- 対象: `Editor/Locales/*.json`
+
+## 背景
+
+4 言語の訳の表に「そのマテリアルの表現」の項目が残っていた。コードとテストのどこからも `ExporterLocalization.T` に渡されておらず、画面にも出ない。以前の「その材質の表現」を言い換えたときに残ったもの。
+
+## 決定
+
+- 4 言語（英語・韓国語・中国語の簡体と繁体）の表からこの 1 項目を消す。
+
+## 検討した代替案と不採用理由
+
+- 使われていない項目をまとめて探して消す: 文字列の中に変数を埋める文や組み立てる文があり、コードに同じ文字が無いだけでは使われていないと言えない。項目ごとに確かめる手間がかかるので、今回はこの 1 項目だけにした。
+
+## 確かめたこと
+
+- `git grep` でこの文字列がコード・テスト・ドキュメントに無いこと。
+- 4 つの表が JSON として読め、項目の数が 1 つずつ減ったこと。
+- 訳の表を読むテスト（`OptimizationLocalizationTests`・`ExportFallbackConfirmationTests`・`ExpressionNameInferenceTests`・`GazeRangeSectionTests`・`AppTransferFlowTests`・`UnusedMorphTargetsTests`）の 196 件が通ること。
+- `Tools/validate.py` が通ること。

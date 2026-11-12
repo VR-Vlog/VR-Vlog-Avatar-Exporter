@@ -305,6 +305,7 @@ namespace VRVlog.LilToonExporter
             EditorApplication.hierarchyChanged -= GimmicksChanged;
             // Closing the board cancels a transfer on its last page, as closing the transfer window does.
             CancelTransferPanel();
+            SaveGazeRange();
             pending = null; Cleanup(); CloseChildWindows(); ReleaseStyles(); gazeSection.Dispose();
         }
 
@@ -772,10 +773,19 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // A save that stored nothing (the console warns only once) shows here
+        // until a save is written. It is read on Layout, as a save may fail
+        // later in the same frame (the gaze slider saves when it lets go).
+        string saveProblem;
+
         void DrawFeedback()
         {
+            if (Event.current.type == EventType.Layout) saveProblem = ExportSettingsStore.Problem;
+            else if (saveProblem != ExportSettingsStore.Problem) Repaint();
             if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(error, MessageType.Error);
             else if (!string.IsNullOrEmpty(status)) EditorGUILayout.LabelField(status, EditorStyles.wordWrappedMiniLabel);
+            // Beside the result, so an export still shows where it went.
+            if (!string.IsNullOrEmpty(saveProblem)) EditorGUILayout.HelpBox(saveProblem, MessageType.Warning);
         }
 
         // The objects left out follow the avatar's saved export settings. When the
@@ -818,6 +828,8 @@ namespace VRVlog.LilToonExporter
         // poses saved for the avatar are read.
         void PrepareWith(GameObject[] objects, PoseExportOptions keptPoses = null)
         {
+            // Saved first, so a rebuild during a drag reads back what the slider shows.
+            SaveGazeRange();
             Cleanup();
             try
             {
@@ -2244,20 +2256,28 @@ namespace VRVlog.LilToonExporter
                 Source = source,
                 Avatar = session?.Copy,
                 Preview = preview,
-                ShowNeutralFace = () =>
-                {
-                    var shown = session.CurrentFace();
-                    session.ShowFace(session.Baseline);
-                    return () => session.ShowFace(shown);
-                }
+                ShowNeutralFace = session == null ? null
+                    : GazeRangeSection.NeutralFace<ExperimentalExpressionCaptureSession.Pose>(session.CurrentFace, session.ShowFace, () => session.Baseline)
             };
             var changed = gazeSection.Draw(target, gazeRange);
-            if (changed == null) return;
-            gazeRange = changed;
-            var settings = ExportSettingsStore.Load(source);
-            settings.Gaze = changed.Copy();
-            ExportSettingsStore.Save(source, settings);
+            if (changed != null)
+            {
+                gazeRange = changed;
+                gazeRangeUnsaved.Changed(source);
+            }
+            // The export reads gazeRange, so it never waits for this save.
+            SaveGazeRange(now: false);
         }
+
+        readonly GazeRangeSection.Unsaved gazeRangeUnsaved = new GazeRangeSection.Unsaved();
+
+        // Never throws: closing, leaving the avatar and rebuilding clean up after it.
+        void SaveGazeRange(bool now = true) => gazeRangeUnsaved.Save(avatar =>
+        {
+            var settings = ExportSettingsStore.Load(avatar);
+            settings.Gaze = gazeRange.Copy();
+            ExportSettingsStore.Save(avatar, settings);
+        }, now);
 
         internal static string BlinkSettingLabel(BlinkExportMode mode)
         {
@@ -2828,6 +2848,7 @@ namespace VRVlog.LilToonExporter
 
         void ChangeAvatar()
         {
+            SaveGazeRange();
             Cleanup(); CloseChildWindows();
             autoLightweight = true;
             gazeRange = new GazeRangeOptions();

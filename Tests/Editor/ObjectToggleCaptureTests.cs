@@ -261,6 +261,62 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clone); }
         }
 
+        // An aim with an offset turns a node above its object (#770). The
+        // toggles still switch the object itself: the node holds nothing else.
+        [Test]
+        public void AnAimWithAnOffsetKeepsItsObjectInTheToggle()
+        {
+            using var avatar = new ToggleAvatar();
+            var clone = Object.Instantiate(avatar.Source);
+            try
+            {
+                var hat = clone.transform.Find("Hat");
+                var anchor = new GameObject("Anchor").transform;
+                anchor.SetParent(clone.transform, false);
+                anchor.localPosition = new Vector3(0, 1, 0);
+                var look = new GameObject("Look").transform;
+                look.SetParent(clone.transform, false);
+                look.position = hat.position + Vector3.right;
+                var visor = new GameObject("Visor").transform;
+                visor.SetParent(hat, false);
+                visor.gameObject.AddComponent<MeshFilter>().sharedMesh = hat.GetComponent<MeshFilter>().sharedMesh;
+                visor.gameObject.AddComponent<MeshRenderer>().sharedMaterial = hat.GetComponent<MeshRenderer>().sharedMaterial;
+                void Aim(Transform target)
+                {
+                    var aim = target.gameObject.AddComponent<UnityEngine.Animations.AimConstraint>();
+                    aim.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = look, weight = 1 });
+                    aim.aimVector = Vector3.forward; aim.constraintActive = true;
+                }
+                Aim(hat);
+                Aim(visor);
+                var follow = visor.gameObject.AddComponent<UnityEngine.Animations.PositionConstraint>();
+                follow.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = anchor, weight = 1 });
+                follow.constraintActive = true;
+                hat.rotation = visor.rotation = Quaternion.identity;
+
+                var warnings = new List<string>();
+                var capture = ObjectToggleCapture.Capture(clone, null, warnings);
+                Assert.That(capture, Is.Not.Null, string.Join("\n", warnings));
+                var fallbacks = new ExportFallbackReport();
+                ConstraintExport.Convert(avatar.Source, clone, warnings, fallbacks, capture);
+
+                Assert.That(fallbacks.Results.Select(entry => entry.Reason), Is.EquivalentTo(new[]
+                    { ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedPosition }));
+                Assert.That(hat.parent.name, Is.EqualTo("Hat-" + ConstraintExport.RelayName));
+                Assert.That(visor.parent.name, Is.EqualTo("Visor-" + ConstraintExport.RelayName));
+                Assert.That(visor.parent.parent, Is.SameAs(anchor));
+
+                var nodes = clone.GetComponentsInChildren<Transform>(true).Select(transform => transform.gameObject).ToList();
+                string Name(int node) => nodes[node].name;
+                var data = capture.Resolve(nodes.IndexOf, warnings);
+                var group = data.GroupFor("Hat");
+                Assert.That(group.Targets.Select(Name), Is.EqualTo(new[] { "Hat", "Visor" }));
+                Assert.That(States(group), Is.EqualTo(new[] { "0:FF", "1:TT" }));
+                Assert.DoesNotThrow(() => ObjectToggleData.Write(data));
+            }
+            finally { Object.DestroyImmediate(clone); }
+        }
+
         // Only the parameters a layer that can switch objects reads are
         // played; any other leaves every object as its default does.
         [Test]

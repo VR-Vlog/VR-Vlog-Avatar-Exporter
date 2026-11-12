@@ -427,6 +427,29 @@ namespace VRVlog.LilToonExporter.Tests
             }));
         }
 
+        // A face no hand gesture enters that also shows a particle effect and
+        // sets its emission is a face on the board and in the VRM: the particle
+        // settings change nothing a VRM carries, so neither the board nor the
+        // export stops on them, gesture or not.
+        [Test]
+        public void AFaceThatAlsoDrivesAParticleIsWritten()
+        {
+            using var scene = new Scene();
+            var effect = new GameObject("Effect", typeof(ParticleSystem));
+            effect.transform.SetParent(scene.Fixture.Source.transform, false);
+            effect.SetActive(false);
+            var smile = scene.Add(Clip("Smile", Held(Shape, 80), Held(Shown("Effect"), 1),
+                Held(EditorCurveBinding.FloatCurve("Effect", typeof(ParticleSystem), "EmissionModule.rateOverTime.scalar"), 20)));
+            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source))
+                Assert.That(session.ClipErrors(new[] { smile })[smile], Is.Null);
+            var warnings = new List<string>();
+            var bytes = scene.Export(warnings, smile);
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
+            var custom = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"];
+            Assert.That(custom.Keys, Is.EqualTo(new[] { "Smile" }), string.Join("\n", warnings));
+            Assert.That((List<object>)((Dictionary<string, object>)custom["Smile"])["morphTargetBinds"], Has.Count.EqualTo(1));
+        }
+
         static List<object> PresetBinds(byte[] bytes, string preset)
         {
             var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
