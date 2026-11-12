@@ -11,8 +11,7 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       run 2 of the same package, to confirm the base is deterministic).
   compare-exports.py --diff-paths <vrmA> <vrmB>
       Prints every glb JSON path that differs between two files. Use it on two runs of the
-      same package to find paths that change on every export (see VOLATILE, VOLATILE_SUB and
-      VOLATILE_WARNING_SUB).
+      same package to find paths that change on every export (see VOLATILE and VOLATILE_SUB).
       The JSON is compared as is, without removing or masking anything.
   --allow-added-extension NAME (repeatable, with two directories only)
       For a change that adds the root extension NAME and should change nothing else. NAME must
@@ -28,14 +27,19 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
 
 Checked for each pair:
   1. success or failure, and the failure text
-  2. warnings (the entries of the export details log), in order, after masking the
-     VOLATILE_WARNING_SUB parts
+  2. warnings (the entries of the export details log), in order. A GUID in a warning is not
+     compared where it belongs to a merged bone of the same output: where a node has it at the
+     end of the bone's name and the warning has that name in front of it. Which nodes have it is
+     compared in its place (see warning_parts). Every other GUID is compared as it is.
   3. expressions: count, names, preset or custom, order, and every field of each expression
      (morphTargetBinds with node, index and weight, materialColorBinds, textureTransformBinds,
      isBinary, overrideBlink / overrideLookAt / overrideMouth and anything else). VRM 0.x
      blendShapeGroups are compared the same way.
   4. sha256 of the glb JSON chunk after removing VOLATILE paths and masking the VOLATILE_SUB
-     parts of string values, and sha256 of the BIN chunk
+     parts of string values, and sha256 of the BIN chunk. A value with a masked part in only
+     one of the two is a difference, even when the text after masking is the same. The parts
+     that change only between launches of the editor (VOLATILE_SUB_BETWEEN_LAUNCHES) are masked
+     when two directories are compared and compared as they are with --runs.
 Whole-file byte equality is reported as information only.
 
 Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs,
@@ -61,6 +65,15 @@ REQUIRED_APP_VERSIONS = "VRVLOG_requiredAppVersions"
 # The form of the GUID that the avatar's build steps put in the names they generate.
 GUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
 
+# What the exporter puts behind the name of a bone for the end joint it adds below it (and " 2",
+# " 3" when the name is taken).
+END_JOINT = r"(-VRVlog Spring Endpoint(?: [0-9]+)?)?"
+
+# The name of a node for a bone that the build steps merged into another armature, or for the end
+# joint below it: the bone's name with "$" (group 1) and a GUID that is new on every build
+# (group 2). A warning about the bone has the same name and GUID.
+MERGED_BONE = re.compile(r"(.*\$)(" + GUID + r")" + END_JOINT, re.DOTALL)
+
 # glb JSON paths that change on every export even with the same input and package. Found by
 # running each avatar twice with the same package and comparing run 1 with run 2 using
 # --diff-paths; "*" matches any one key or index. Only these are removed before hashing.
@@ -82,17 +95,21 @@ VOLATILE_SUB = [
     # has "ConstraintRef " between "$" and the GUID, and the end joint the exporter adds below
     # such a bone has the bone's name followed by "-VRVlog Spring Endpoint" (and " 2", " 3" when
     # the name is taken).
-    ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + r"(-VRVlog Spring Endpoint(?: [0-9]+)?)?$", r"$\1<guid>\2"),
+    ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + END_JOINT + r"$", r"$\1<guid>\2"),
     # A spring is named after its first bone, so it carries the same GUID.
     ("/extensions/VRMC_springBone/springs/*/name", r"\$" + GUID + r"$", r"$<guid>"),
 ]
 
-# (regex, replacement) for the parts of a warning that change on every export. A warning about a
-# bone that the build steps merged starts with the bone's name, "$", the new GUID and ": ". Only
-# the GUID is masked; the name, the text and the order of the warnings are still compared. The
-# GUID has to end the part in front of the first ": ", so one inside the text is left as it is.
-VOLATILE_WARNING_SUB = [
-    (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
+# Like VOLATILE_SUB, for string values that change only from one launch of the editor to the next.
+# Two directories hold the results of two launches, so these are masked when two directories are
+# compared. The two runs that --runs compares come from one launch and give the same value, so
+# they are compared there as they are.
+VOLATILE_SUB_BETWEEN_LAUNCHES = [
+    # A clip that the avatar's build steps write anew gets a name that ends with a new 32-digit ID,
+    # a new GUID and a number. The text in front of them and the clip itself are still compared,
+    # and the rest of the file refers to clips by index. Found by comparing two exports of the same
+    # avatars made in two launches of the editor.
+    ("/extensions/VRVLOG_avatar_animator/clips/*/name", r"__[0-9a-f]{32}__" + GUID + r"_[0-9]+$", r"__<generated>"),
 ]
 
 
@@ -154,57 +171,88 @@ def volatile_subs(entries=None):
             for p, regex, replacement in (VOLATILE_SUB if entries is None else entries)]
 
 
-def strip_volatile(value, patterns=None, path="", subs=None):
+def strip_volatile(value, patterns=None, path="", subs=None, masked=None):
     """Copy of value without the dictionary entries whose path matches a VOLATILE pattern, and
-    with the VOLATILE_SUB replacements applied to matching string values."""
+    with the replacements of subs (VOLATILE_SUB when it is not given) applied to matching string
+    values. The path of each value that a replacement changed is added to the list masked, when
+    it is given."""
     if patterns is None:
         patterns = volatile_patterns()
     if subs is None:
         subs = volatile_subs()
     if isinstance(value, dict):
-        return {key: strip_volatile(item, patterns, "%s/%s" % (path, key), subs) for key, item in value.items()
-                if not any(p.match("%s/%s" % (path, key)) for p in patterns)}
+        return {key: strip_volatile(item, patterns, "%s/%s" % (path, key), subs, masked)
+                for key, item in value.items() if not any(p.match("%s/%s" % (path, key)) for p in patterns)}
     if isinstance(value, list):
-        return [strip_volatile(item, patterns, "%s/%d" % (path, index), subs) for index, item in enumerate(value)]
+        return [strip_volatile(item, patterns, "%s/%d" % (path, index), subs, masked)
+                for index, item in enumerate(value)]
     if isinstance(value, str):
+        before = value
         for path_pattern, regex, replacement in subs:
             if path_pattern.match(path):
                 value = regex.sub(replacement, value)
+        if masked is not None and value != before:
+            masked.append(path)
     return value
 
 
-def mask_warnings(warnings, entries=None):
-    """Copy of the warnings with the VOLATILE_WARNING_SUB replacements applied to each string."""
-    subs = [(re.compile(regex), replacement)
-            for regex, replacement in (VOLATILE_WARNING_SUB if entries is None else entries)]
-    result = []
-    for warning in warnings:
-        if isinstance(warning, str):
-            for regex, replacement in subs:
-                warning = regex.sub(replacement, warning)
-        result.append(warning)
-    return result
+def merged_bones(document):
+    """GUID -> [(the bone's name with "$", node index)] for the nodes of the document that have the
+    name of a merged bone or of the end joint below one (MERGED_BONE)."""
+    bones = {}
+    for index, node in enumerate(document.get("nodes") or []):
+        name = node.get("name") if isinstance(node, dict) else None
+        match = MERGED_BONE.fullmatch(name) if isinstance(name, str) else None
+        if match:
+            bones.setdefault(match.group(2), []).append((match.group(1), index))
+    return bones
 
 
-def warning_targets(warnings, document, entries=None):
-    """For each warning, the indices of the nodes whose name holds the GUID that mask_warnings
-    masks in it, or None when nothing is masked. Two bones with the same name differ only in
-    that GUID, so this tells which of them a warning is about."""
-    subs = [re.compile(regex) for regex, _ in (VOLATILE_WARNING_SUB if entries is None else entries)]
-    guid = re.compile(GUID)
-    names = [node.get("name") if isinstance(node, dict) else None for node in document.get("nodes") or []]
-    result = []
-    for warning in warnings:
-        found = None
-        if isinstance(warning, str):
-            for regex in subs:
-                match = regex.search(warning)
-                masked = guid.findall(match.group(0)) if match else []
-                if masked:
-                    found = [i for i, name in enumerate(names) if isinstance(name, str) and masked[-1] in name]
-                    break
-        result.append(found)
-    return result
+def warning_parts(warning, bones):
+    """The warning cut at each GUID that belongs to a merged bone of the same output (bones is the
+    merged_bones of that output): the text up to the GUID, the indices of that bone's nodes, the
+    text up to the next such GUID, ..., the rest of the text. A GUID belongs to a bone when a node
+    has it at the end of the bone's name and the warning has that name in front of it.
+
+    The build steps make that GUID anew on every build, so it differs between any two exports and
+    says nothing by itself; which nodes have it says what the warning is about. Two bones with the
+    same name differ only in that GUID, so the indices also tell which of them a warning is about.
+    Every other GUID stays in the text and is compared as it is, because it is not known to change
+    on every export. The indices are a tuple, which no warning read from JSON can be, so text is
+    never taken for them."""
+    if not isinstance(warning, str):
+        return [warning]
+    parts, last = [], 0
+    for match in re.finditer(GUID, warning):
+        nodes = tuple(index for name, index in bones.get(match.group(0), ())
+                      if warning.endswith(name, 0, match.start()))
+        if nodes:
+            parts += [warning[last:match.start()], nodes]
+            last = match.end()
+    return parts + [warning[last:]]
+
+
+def warning_issues(warnings_a, warnings_b, json_a, json_b):
+    """The issue, in a list, for the first warning that differs between two results, or an empty
+    list. The warnings are compared in order as warning_parts gives them, each with the merged
+    bones of its own output. A result without an output is given an empty document: it has no
+    bones, so every GUID in its warnings is compared as it is."""
+    bones_a, bones_b = merged_bones(json_a), merged_bones(json_b)
+    parts_a = [warning_parts(warning, bones_a) for warning in warnings_a]
+    parts_b = [warning_parts(warning, bones_b) for warning in warnings_b]
+    if parts_a == parts_b:
+        return []
+    first = next((i for i, (x, y) in enumerate(zip(parts_a, parts_b)) if x != y), min(len(parts_a), len(parts_b)))
+
+    def shown(warnings, parts):
+        """The warning as it was written, with the nodes that stand for its GUIDs."""
+        if first >= len(warnings):
+            return "None"
+        nodes = [str(list(part)) for part in parts[first] if isinstance(part, tuple)]
+        return repr(warnings[first]) + (" (nodes %s)" % " / ".join(nodes) if nodes else "")
+
+    return ["warnings differ (%d vs %d), first at #%d: %s vs %s" % (
+        len(warnings_a), len(warnings_b), first, shown(warnings_a, parts_a), shown(warnings_b, parts_b))]
 
 
 def remove_added_extensions(json_a, json_b, names):
@@ -332,26 +380,16 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
     if ra.get("failure") != rb.get("failure"):
         issues.append("failure text differs: %r vs %r" % (ra.get("failure"), rb.get("failure")))
     wa, wb = ra.get("warnings") or [], rb.get("warnings") or []
-    ma, mb = mask_warnings(wa), mask_warnings(wb)
-    if ma != mb:
-        first = next((i for i, (x, y) in enumerate(zip(ma, mb)) if x != y), min(len(wa), len(wb)))
-        issues.append("warnings differ (%d vs %d), first at #%d: %r vs %r" % (
-            len(wa), len(wb), first, wa[first] if first < len(wa) else None, wb[first] if first < len(wb) else None))
     row["ok"] = ra.get("ok")
     row["warnings"] = len(wa)
+    file_a, json_a, bin_a = read_glb(va) if va is not None else (b"", {}, b"")
+    file_b, json_b, bin_b = read_glb(vb) if vb is not None else (b"", {}, b"")
+    issues += warning_issues(wa, wb, json_a, json_b)
     if (va is None) != (vb is None):
         issues.append("vrm missing in " + ("A" if va is None else "B"))
         return row
     if va is None:
         return row
-    file_a, json_a, bin_a = read_glb(va)
-    file_b, json_b, bin_b = read_glb(vb)
-    if ma == mb:
-        ta, tb = warning_targets(wa, json_a), warning_targets(wb, json_b)
-        if ta != tb:
-            first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
-            issues.append("warnings are about different nodes, first at #%d: %r (nodes %s) vs %r (nodes %s)" % (
-                first, wa[first], ta[first], wb[first], tb[first]))
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
@@ -359,13 +397,21 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         json_b, removed = remove_added_extensions(json_a, json_b, allowed_extensions)
         if removed:
             row["allowed_extensions"] = removed
-    sa, sb = strip_volatile(json_a, patterns, subs=subs), strip_volatile(json_b, patterns, subs=subs)
+    pa, pb = [], []
+    sa = strip_volatile(json_a, patterns, subs=subs, masked=pa)
+    sb = strip_volatile(json_b, patterns, subs=subs, masked=pb)
     ha, hb = normalized_json_hash(sa), normalized_json_hash(sb)
     row["json_hash"] = ha[:16]
     row["bin_hash"] = sha256(bin_a)[:16]
     if ha != hb:
         paths = diff_paths(sa, sb)
         issues.append("normalized JSON chunk differs at %d paths: %s" % (len(paths), ", ".join(paths[:MAX_PATHS])))
+    elif set(pa) != set(pb):
+        # The text is the same after masking, but only one of the two had the part that is masked:
+        # the other already was the text that the replacement gives.
+        paths = sorted(set(pa) ^ set(pb))
+        issues.append("VOLATILE_SUB masked a value in only one of the two at %d paths: %s" % (
+            len(paths), ", ".join(paths[:MAX_PATHS])))
     if sha256(bin_a) != sha256(bin_b):
         issues.append("BIN chunk differs (%d vs %d bytes)" % (len(bin_a), len(bin_b)))
     row["file_equal"] = file_a == file_b
@@ -447,7 +493,8 @@ def main(argv=None):
             for path in paths:
                 print(path)
             return 1 if paths else 0
-        patterns, subs = volatile_patterns(), volatile_subs()
+        patterns = volatile_patterns()
+        subs = volatile_subs(VOLATILE_SUB if args.runs else VOLATILE_SUB + VOLATILE_SUB_BETWEEN_LAUNCHES)
         rows = [compare_pair(*pair, patterns=patterns, subs=subs, allowed_extensions=args.allow_added_extension)
                 for pair in plan_pairs(args)]
     except (OSError, ValueError) as error:

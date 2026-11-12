@@ -1,5 +1,7 @@
 # 書き出し結果の比較で、ビルドのたびに変わる名前のGUIDを伏せる範囲を広げる
 
+> 同じ日の[書き出し結果の比較で、警告にある統合された骨のGUIDをノードの番号に置き換えて比べ、ビルドが作り直すクリップの名前を伏せる](2026-11-12-compare-mask-listed-names.md)で一部を置き換えた（警告のGUIDは、位置で伏せる`VOLATILE_WARNING_SUB`をやめ、出力のノードの名前にあるGUIDだけをノードの番号に置き換えて比べる）。
+
 - 日付: 2026-11-12
 - 対象: `Tools/compare-exports.py`（`VOLATILE_SUB`、`VOLATILE_WARNING_SUB`、コンソールへの出力）、`Tools/test-compare-exports.py`、`CONTRIBUTING.md`
 

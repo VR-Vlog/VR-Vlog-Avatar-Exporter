@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -17,6 +18,8 @@ compare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(compare)
 
 BINARY = struct.pack('<9f', 0, 0, 0, 1, 0, 0, 0, 1, 0)
+# A bone's name with the GUID that the avatar's build steps put at its end, as it appears in a warning.
+BONE = re.compile(r'[^ ,:]+\$' + compare.GUID)
 
 
 def pack_glb(document, binary=BINARY):
@@ -239,9 +242,22 @@ class CompareExportsTests(unittest.TestCase):
         self.assertEqual(1, code, out)
         self.assertIn('/extensions/VRMC_springBone/colliderGroups/1/name', out)
 
-    def warning_pair(self, warnings_a, warnings_b):
-        write(self.a, 'A1_1', result('A1', 1, warnings=warnings_a), document())
-        write(self.b, 'A1_1', result('A1', 1, warnings=warnings_b), document())
+    def warning_pair(self, warnings_a, warnings_b, bones=True):
+        """One pair with the given warnings. With bones, each output has a node for every
+        "<name>$<GUID>" in its warnings, as an export has for the bones its warnings name."""
+        for directory, warnings in ((self.a, warnings_a), (self.b, warnings_b)):
+            doc = document()
+            if bones:
+                doc['nodes'] += [{'name': name} for warning in warnings for name in BONE.findall(warning)]
+            write(directory, 'A1_1', result('A1', 1, warnings=warnings), doc)
+        return run_main([self.a, self.b])
+
+    def node_pair(self, names_a, names_b, warning_a, warning_b):
+        """One pair with one warning each and, behind "Hips", nodes of the given names."""
+        for directory, names, warning in ((self.a, names_a, warning_a), (self.b, names_b, warning_b)):
+            doc = document()
+            doc['nodes'] = [{'name': 'Hips'}] + [{'name': name} for name in names]
+            write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
         return run_main([self.a, self.b])
 
     def test_warning_about_a_merged_bone_ignores_only_the_guid(self):
@@ -264,28 +280,287 @@ class CompareExportsTests(unittest.TestCase):
         text = ': Gravity is not carried over'
 
         def pair(target_b):
-            for directory, first, second, target in ((self.a, guids[0], guids[1], guids[0]),
-                                                     (self.b, guids[2], guids[3], target_b)):
-                doc = document()
-                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + first}, {'name': 'Hair$' + second},
-                                {'name': 'Hair$' + first + '-VRVlog Spring Endpoint'}]
-                write(directory, 'A1_1', result('A1', 1, warnings=['Hair$' + target + text]), doc)
-            return run_main([self.a, self.b])
+            names_a = ['Hair$' + guids[0], 'Hair$' + guids[1], 'Hair$' + guids[0] + '-VRVlog Spring Endpoint']
+            names_b = ['Hair$' + guids[2], 'Hair$' + guids[3], 'Hair$' + guids[2] + '-VRVlog Spring Endpoint']
+            return self.node_pair(names_a, names_b, 'Hair$' + guids[0] + text, 'Hair$' + target_b + text)
 
         code, out, _ = pair(guids[2])
         self.assertEqual(0, code, out)
         code, out, _ = pair(guids[3])
         self.assertEqual(1, code, out)
-        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('warnings differ (1 vs 1), first at #0', out)
         self.assertIn('(nodes [1, 3])', out)
         self.assertIn('(nodes [2])', out)
 
-    def test_guid_elsewhere_in_a_warning_exit_1(self):
-        for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done',
-                     'Head: no reference to Skirt.L$%s: skipped'):
+    def test_guid_of_a_merged_bone_is_ignored_wherever_the_warning_has_it(self):
+        # What tells that a GUID changes on every build is the node that has it, not where it is in
+        # the warning: at the start, in a list, or in the middle of the text.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Skirt.L$%s was merged',
+                     'Head: no reference to Skirt.L$%s: skipped', 'Kept: Skirt.L$%s,Tail', 'Kept: Skirt.L$%s and Tail',
+                     'Kept: Tail, Skirt.L$%s', 'Follows Skirt.L$%s -> Hips'):
             code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B])
+            self.assertEqual(0, code, form + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
+            # The text around the GUID is still compared.
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B + '.'])
             self.assertEqual(1, code, form + ': ' + out)
             self.assertIn('warnings differ (1 vs 1), first at #0', out)
+
+    def test_warning_that_lists_merged_bones_ignores_only_the_guids(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        form = 'Parts kept where they are: Skirt.L$%s, Tail$%s'
+        code, out, _ = self.warning_pair([form % (guids[0], guids[1]), 'Shape A was dropped'],
+                                         [form % (guids[2], guids[3]), 'Shape A was dropped'])
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+        one = 'Parts kept where they are: Tail$%s'
+        code, out, _ = self.warning_pair([one % guids[0]], [one % guids[2]])
+        self.assertEqual(0, code, out)
+        # A warning that starts with a bone's name can also name another bone at its end.
+        both = 'Skirt.L$%s: Collides with Tail$%s'
+        code, out, _ = self.warning_pair([both % (guids[0], guids[1])], [both % (guids[2], guids[3])])
+        self.assertEqual(0, code, out)
+        for form_b in ('Parts kept where they are: Skirt.R$%s, Tail$%s',
+                       'Parts kept where they are: Tail$%s, Skirt.L$%s',
+                       'Parts moved: Skirt.L$%s, Tail$%s',
+                       'Parts kept where they are: Skirt.L$%s, Tail$%s, Ribbon',
+                       'Parts kept where they are: Skirt.L$%s, Tail$%sx',
+                       'Parts kept where they are: Skirt.L$%s and Tail$%s'):
+            code, out, _ = self.warning_pair([form % (guids[0], guids[1])], [form_b % (guids[2], guids[3])])
+            self.assertEqual(1, code, form_b + ': ' + out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+        for warnings_b in (['Parts kept where they are: Skirt.L$' + guids[2]],
+                           ['Parts kept where they are: Skirt.L, Tail$' + guids[3]],
+                           [form % (guids[2], guids[3]), 'Shape A was dropped']):
+            code, out, _ = self.warning_pair([form % (guids[0], guids[1])], warnings_b)
+            self.assertEqual(1, code, repr(warnings_b) + ': ' + out)
+            self.assertIn('warnings differ', out)
+
+    def test_listed_bone_that_moves_to_another_bone_of_the_same_name_exit_1(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 7)]
+        form = 'Parts kept where they are: Tail$%s, Hair$%s'
+
+        def pair(listed_b):
+            return self.node_pair(['Hair$' + guids[0], 'Hair$' + guids[1], 'Tail$' + guids[2]],
+                                  ['Hair$' + guids[3], 'Hair$' + guids[4], 'Tail$' + guids[5]],
+                                  form % (guids[2], guids[0]), form % (guids[5], listed_b))
+
+        code, out, _ = pair(guids[3])
+        self.assertEqual(0, code, out)
+        code, out, _ = pair(guids[4])
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings differ (1 vs 1), first at #0', out)
+        self.assertIn('(nodes [3] / [1])', out)
+        self.assertIn('(nodes [3] / [2])', out)
+
+    def test_guid_that_no_node_has_is_compared(self):
+        # Only the GUID in the name of an exported bone is known to change on every build, so a GUID
+        # that no node has in its name has to be the same, wherever it is in the warning.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s',
+                     'Lookup failed: asset$%s', 'Lookup failed: asset$%s, other', 'Merged %s: done', 'Kept: Tail, %s'):
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B], bones=False)
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+            self.assertIn(self.GUID_A, out)
+            self.assertIn(self.GUID_B, out)
+            self.assertNotIn('(nodes', out)
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_A], bones=False)
+            self.assertEqual(0, code, form + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_guid_of_a_bone_that_only_one_output_has_exit_1(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        form = 'Parts kept where they are: Tail$%s, Skirt.L$%s'
+        code, out, _ = self.node_pair(['Tail$' + guids[0], 'Skirt.L$' + guids[1]], ['Tail$' + guids[2]],
+                                      form % (guids[0], guids[1]), form % (guids[2], guids[3]))
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings differ (1 vs 1), first at #0', out)
+        self.assertIn('(nodes [1] / [2])', out)
+        self.assertIn('(nodes [1])', out)
+
+    def test_pair_that_failed_to_export_compares_every_guid(self):
+        # Without an output there is no node that has the GUID, so it has to be the same.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s'):
+            for directory, guid in ((self.a, self.GUID_A), (self.b, self.GUID_B)):
+                write(directory, 'A2_1', result('A2', 1, ok=False, warnings=[form % guid]))
+            code, out, _ = run_main([self.a, self.b])
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('3 pairs, 1 mismatched', out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+            self.assertIn(self.GUID_A, out)
+            self.assertIn(self.GUID_B, out)
+            write(self.b, 'A2_1', result('A2', 1, ok=False, warnings=[form % self.GUID_A]))
+            code, out, _ = run_main([self.a, self.b])
+            self.assertEqual(0, code, form + ': ' + out)
+            self.assertIn('3 pairs, 0 mismatched', out)
+
+    def test_text_in_place_of_the_guid_exit_1(self):
+        # Nothing is written in place of a GUID before the warnings are compared, so no text in a
+        # warning can pass for the GUID of a bone.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s'):
+            for text in ('<guid>', '(1,)', '[1]', ''):
+                for bones in (True, False):
+                    code, out, _ = self.warning_pair([form % self.GUID_A], [form % text], bones=bones)
+                    self.assertEqual(1, code, form + ' ' + text + ': ' + out)
+                    self.assertIn('warnings differ (1 vs 1), first at #0', out)
+
+    def test_guid_that_changes_places_with_other_text_exit_1(self):
+        # A bone can be named "Hair$<guid>" or anything else. With the two names in the other
+        # order, the same node stands for the GUID in both warnings, but at another place.
+        names = ['Hair$' + self.GUID_A, 'Hair$<guid>']
+        for first, second in (('Parts kept where they are: Hair$%s, Hair$<guid>',
+                               'Parts kept where they are: Hair$<guid>, Hair$%s'),
+                              ('Hair$%s: Collides with Hair$<guid>', 'Hair$<guid>: Collides with Hair$%s')):
+            for form_a, form_b in ((first, second), (second, first)):
+                code, out, _ = self.node_pair(names, names, form_a % self.GUID_A, form_b % self.GUID_A)
+                self.assertEqual(1, code, form_a + ': ' + out)
+                self.assertIn('warnings differ (1 vs 1), first at #0', out)
+                self.assertEqual(2, out.count('(nodes [1])'), out)
+            code, out, _ = self.node_pair(names, names, first % self.GUID_A, first % self.GUID_A)
+            self.assertEqual(0, code, first + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_warning_parts_cut_the_warning_at_the_guids_of_merged_bones(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        doc = {'nodes': [{'name': 'Hips'}, {'name': 'Skirt.L$' + guids[0]}, {'name': 'Tail$' + guids[1]},
+                         {'name': 'Hair$' + guids[2]}, {'name': 'Hair$' + guids[2] + '-VRVlog Spring Endpoint 2'},
+                         {'name': 'Hair$ConstraintRef ' + guids[2]}, {'name': 'Hair$' + guids[2] + 'x'}, {}, 'no node']}
+        bones = compare.merged_bones(doc)
+        self.assertEqual({guids[0]: [('Skirt.L$', 1)], guids[1]: [('Tail$', 2)], guids[2]: [('Hair$', 3), ('Hair$', 4)]}, bones)
+        for form, texts in (('Skirt.L$%s, Tail$%s: Collide with Hair$%s', ('Skirt.L$', ', Tail$', ': Collide with Hair$', '')),
+                            ('Skirt.L$%s: Collides with Tail$%s, Hair$%s', ('Skirt.L$', ': Collides with Tail$', ', Hair$', '')),
+                            ('Parts kept where they are: Skirt.L$%s, Tail$%s, Hair$%s.',
+                             ('Parts kept where they are: Skirt.L$', ', Tail$', ', Hair$', '.'))):
+            self.assertEqual([texts[0], (1,), texts[1], (2,), texts[2], (3, 4), texts[3]],
+                             compare.warning_parts(form % tuple(guids[:3]), bones), form)
+        # A GUID that is not behind the name of its bone, and one that no bone has, stay in the text.
+        text = 'Tail$%s: no reference to %s, Skirt.L$%s or Hair$%s' % (guids[1], guids[2], guids[2], guids[3])
+        self.assertEqual(['Tail$', (2,), ': no reference to %s, Skirt.L$%s or Hair$%s' % (guids[2], guids[2], guids[3])],
+                         compare.warning_parts(text, bones))
+        self.assertEqual([text], compare.warning_parts(text, {}))
+        self.assertEqual(['Shape A was dropped'], compare.warning_parts('Shape A was dropped', bones))
+        # An entry that is not text is compared as it is.
+        self.assertEqual([{'text': text}], compare.warning_parts({'text': text}, bones))
+        self.assertEqual({}, compare.merged_bones({}))
+
+    def test_guid_of_a_node_that_the_warning_does_not_name_is_compared(self):
+        # A GUID belongs to a bone only when a node has the name that the warning has in front of
+        # the GUID, with the GUID at its end. A node that has the GUID elsewhere in its name, has
+        # another name in front of it, or has "ConstraintRef " in front of it is not that bone.
+        both = (self.GUID_A, self.GUID_B)
+        for names in (['Archive$%s$%s' % both], ['Archive$%s$%s' % both, 'Archive$%s$%s' % both[::-1]],
+                      ['Tail$%s' % self.GUID_A, 'Tail$%s' % self.GUID_B, 'Pair %s %s' % both],
+                      ['asset$ConstraintRef %s' % self.GUID_A, 'asset$ConstraintRef %s' % self.GUID_B],
+                      ['asset$%sx' % self.GUID_A, 'asset$%sx' % self.GUID_B],
+                      ['Merged$%s' % self.GUID_A, 'Merged$%s' % self.GUID_B]):
+            for form in ('Lookup failed: asset$%s', 'asset$%s: Gravity is not carried over', 'Lookup failed: asset$%s, other',
+                         'Lookup failed: asset$ConstraintRef %s', 'Merged %s: done'):
+                code, out, _ = self.node_pair(names, names, form % self.GUID_A, form % self.GUID_B)
+                self.assertEqual(1, code, repr(names) + ' ' + form + ': ' + out)
+                self.assertIn('warnings differ (1 vs 1), first at #0', out)
+                self.assertNotIn('(nodes', out)
+                code, out, _ = self.node_pair(names, names, form % self.GUID_A, form % self.GUID_A)
+                self.assertEqual(0, code, repr(names) + ' ' + form + ': ' + out)
+        # The bone itself and the end joint below it are the nodes of that bone.
+        names = ['asset$%s', 'asset$%s-VRVlog Spring Endpoint 2', 'asset$ConstraintRef %s']
+        code, out, _ = self.node_pair([name % self.GUID_A for name in names], [name % self.GUID_B for name in names],
+                                      'Lookup failed: asset$' + self.GUID_A, 'Lookup failed: asset$' + self.GUID_B)
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_guid_behind_a_longer_name_is_compared_by_its_node(self):
+        # Where a name starts in a warning cannot be told from its text, so "asset-Hair$<GUID>" has
+        # the name of the node "Hair$<GUID>" in front of the GUID. The GUID is still that node's in
+        # both outputs, or the pair differs: the build steps give every bone its own GUID.
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        form = 'Lookup failed: asset-Hair$%s'
+        code, out, _ = self.node_pair(['Hair$' + guids[0]], ['Hair$' + guids[1]], form % guids[0], form % guids[1])
+        self.assertEqual(0, code, out)
+        # The GUID of another node.
+        code, out, _ = self.node_pair(['Hair$' + guids[0], 'Hair$' + guids[2]], ['Hair$' + guids[1], 'Hair$' + guids[3]],
+                                      form % guids[0], form % guids[3])
+        self.assertEqual(1, code, out)
+        self.assertIn('(nodes [1])', out)
+        self.assertIn('(nodes [2])', out)
+        # A GUID that no node of that output has.
+        for names_b, guid_b in ((['Hair$' + guids[0]], guids[1]), (['Hair$' + guids[1]], guids[0]), (['Hair$' + guids[1]], guids[3])):
+            code, out, _ = self.node_pair(['Hair$' + guids[0]], names_b, form % guids[0], form % guid_b)
+            self.assertEqual(1, code, repr(names_b) + ' ' + guid_b + ': ' + out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+
+    def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0, runs=False):
+        """Two exports with a clip of each name: A1_1 of two directories (two launches of the editor),
+        or with runs the two runs of one directory (one launch)."""
+        places = ((self.a, 1), (self.a, 2)) if runs else ((self.a, 1), (self.b, 1))
+        for (directory, run), name, duration in zip(places, (name_a, name_b), (1.0, duration_b)):
+            doc = document()
+            doc['extensions'][extension] = {'schemaVersion': 1, key: [{'name': 'Idle', 'duration': 2.0},
+                                                                    {'name': name, 'duration': duration}]}
+            write(directory, 'A1_%d' % run, result('A1', run), doc)
+        return run_main(['--runs', self.a, '1', '2'] if runs else [self.a, self.b])
+
+    def test_generated_clip_name_difference_is_ignored(self):
+        made_a = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
+        made_b = 'Made__fedcba9876543210fedcba9876543210__' + self.GUID_B + '_21'
+        path = '/extensions/VRVLOG_avatar_animator/clips/1/'
+        code, out, _ = self.clip_pair(made_a, made_b)
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+        for name_b in ('Other' + made_b[4:], made_b + 'x', made_b[:-3], made_b.replace('__f', '_f'), made_b.replace(self.GUID_B, '1'),
+                       'Made__fedcba98__' + self.GUID_B + '_21', 'Made'):
+            code, out, _ = self.clip_pair(made_a, name_b)
+            self.assertEqual(1, code, name_b + ': ' + out)
+            self.assertIn(path + 'name', out)
+        # The clip under a generated name is still compared.
+        code, out, _ = self.clip_pair(made_a, made_b, duration_b=1.5)
+        self.assertEqual(1, code, out)
+        self.assertIn(path + 'duration', out)
+        # Only the names of the clips of this extension take the form.
+        for extension, key in (('VRVLOG_avatar_animator', 'layers'), ('VRVLOG_other', 'clips')):
+            code, out, _ = self.clip_pair(made_a, made_b, extension=extension, key=key)
+            self.assertEqual(1, code, extension + ' ' + key + ': ' + out)
+            self.assertIn('/extensions/%s/%s/1/name' % (extension, key), out)
+
+    def test_generated_clip_name_is_compared_between_two_runs_of_one_launch(self):
+        # The names change from one launch of the editor to the next. --runs compares two runs of
+        # one launch, where they stay the same, so a difference there is reported.
+        made_a = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
+        for made_b in (made_a[:-2] + '21', 'Made__fedcba9876543210fedcba9876543210__' + self.GUID_B + '_21'):
+            code, out, _ = self.clip_pair(made_a, made_b, runs=True)
+            self.assertEqual(1, code, made_b + ': ' + out)
+            self.assertIn('/extensions/VRVLOG_avatar_animator/clips/1/name', out)
+            self.assertIn('1 pairs, 1 mismatched', out)
+        code, out, _ = self.clip_pair(made_a, made_a, runs=True)
+        self.assertEqual(0, code, out)
+        self.assertIn('1 pairs, 0 mismatched', out)
+        # A name that changes on every export is masked between two runs as well.
+        for run, guid in ((1, self.GUID_A), (2, self.GUID_B)):
+            doc = document()
+            doc['nodes'].append({'name': 'Skirt.L$' + guid})
+            write(self.a, 'A1_%d' % run, result('A1', run), doc)
+        code, out, _ = run_main(['--runs', self.a, '1', '2'])
+        self.assertEqual(0, code, out)
+        self.assertIn('1 pairs, 0 mismatched', out)
+
+    def test_value_that_already_is_the_masked_text_exit_1(self):
+        # A rule replaces the part that changes with a fixed text. A value that already is that
+        # text has no such part, so it is not the same as a value that had one.
+        made = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
+        pairs = ((self.emission_image_pair, 'Body_Main__VRVlog_Emission_' + '0123456789abcdef' * 2,
+                  'Body_Main__VRVlog_Emission_<guid>', '/images/1/name'),
+                 (self.merged_bone_pair, 'Skirt.L$' + self.GUID_A, 'Skirt.L$<guid>', '/nodes/1/name'),
+                 (self.merged_bone_pair, 'Hand$ConstraintRef ' + self.GUID_A, 'Hand$ConstraintRef <guid>', '/nodes/1/name'),
+                 (self.spring_pair, 'Skirt.L$' + self.GUID_A, 'Skirt.L$<guid>', '/extensions/VRMC_springBone/springs/1/name'),
+                 (self.clip_pair, made, 'Made__<generated>', '/extensions/VRVLOG_avatar_animator/clips/1/name'))
+        for pair, name_a, name_b, path in pairs:
+            for names in ((name_a, name_b), (name_b, name_a)):
+                code, out, _ = pair(*names)
+                self.assertEqual(1, code, path + ': ' + out)
+                self.assertIn('VOLATILE_SUB masked a value in only one of the two at 1 paths: ' + path, out)
+            # The same text in both is the same value.
+            code, out, _ = pair(name_b, name_b)
+            self.assertEqual(0, code, path + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
 
     def test_differing_warning_reports_the_unmasked_text(self):
         text = ': Gravity is not carried over'
