@@ -30,7 +30,8 @@ Checked for each pair:
   1. success or failure, and the failure text
   2. warnings (the entries of the export details log), in order, after masking the
      VOLATILE_WARNING_SUB parts. A masked GUID is ignored only where a node of the output has
-     it in its name; the nodes that have it are compared instead.
+     it in its name; the nodes that have it are compared instead, and so is the place of each
+     masked GUID in its warning.
   3. expressions: count, names, preset or custom, order, and every field of each expression
      (morphTargetBinds with node, index and weight, materialColorBinds, textureTransformBinds,
      isBinary, overrideBlink / overrideLookAt / overrideMouth and anything else). VRM 0.x
@@ -106,7 +107,8 @@ VOLATILE_SUB = [
 # A GUID anywhere else in the text is left as it is. A masked GUID that no node name of the
 # output holds is compared as well (see warning_targets), and so is every masked GUID of a pair
 # that failed to export and has no output: only the GUID in the name of an exported bone is
-# known to change on every export.
+# known to change on every export. The place of each masked GUID in its warning is compared too,
+# so text that already is what the mask leaves is not taken for a masked GUID.
 VOLATILE_WARNING_SUB = [
     (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
     (r"\$" + GUID + r"(?=, |$)", r"$<guid>"),
@@ -195,39 +197,56 @@ def strip_volatile(value, patterns=None, path="", subs=None, masked=None):
     return value
 
 
+def warning_subs(entries=None):
+    return [(re.compile(regex), replacement)
+            for regex, replacement in (VOLATILE_WARNING_SUB if entries is None else entries)]
+
+
+def mask_warning(warning, subs):
+    """The warning after the VOLATILE_WARNING_SUB replacements and, for each GUID that they masked,
+    in the order of the text: (where the replacement that masked it ends in the returned text, the
+    GUID). A match can start in front of the GUID it masks, so the masked one is the last in it."""
+    guid = re.compile(GUID)
+    spots = []
+    for regex, replacement in subs:
+        pieces, last, grown, steps, fresh = [], 0, 0, [], []
+        for match in regex.finditer(warning):
+            new = match.expand(replacement)
+            pieces += [warning[last:match.start()], new]
+            last = match.end()
+            grown += len(new) - len(match.group(0))
+            steps.append((last, grown))
+            found = guid.findall(match.group(0))
+            if found:
+                fresh.append((last + grown, found[-1]))
+        # What an earlier replacement masked moves by how much the matches in front of it grew.
+        spots = [(end + next((by for stop, by in reversed(steps) if stop <= end), 0), one)
+                 for end, one in spots] + fresh
+        warning = "".join(pieces) + warning[last:]
+    return warning, sorted(spots)
+
+
 def mask_warnings(warnings, entries=None):
     """Copy of the warnings with the VOLATILE_WARNING_SUB replacements applied to each string."""
-    subs = [(re.compile(regex), replacement)
-            for regex, replacement in (VOLATILE_WARNING_SUB if entries is None else entries)]
-    result = []
-    for warning in warnings:
-        if isinstance(warning, str):
-            for regex, replacement in subs:
-                warning = regex.sub(replacement, warning)
-        result.append(warning)
-    return result
+    subs = warning_subs(entries)
+    return [mask_warning(warning, subs)[0] if isinstance(warning, str) else warning for warning in warnings]
 
 
 def warning_targets(warnings, document, entries=None):
-    """For each warning, one entry for each GUID that mask_warnings masks in it: the indices of the
-    nodes whose name holds that GUID, or the GUID itself when no node has it. None when nothing is
-    masked. Two bones with the same name differ only in that GUID, so the indices tell which of
-    them a warning is about. A GUID that is not part of a node's name is not known to change on
-    every export, so it is compared as it is."""
-    subs = [re.compile(regex) for regex, _ in (VOLATILE_WARNING_SUB if entries is None else entries)]
-    guid = re.compile(GUID)
+    """For each warning, one entry for each GUID that mask_warnings masks in it, in the order of the
+    text: (where its replacement ends in the masked warning, the indices of the nodes whose name
+    holds that GUID, or the GUID itself when no node has it). None when nothing is masked. Two
+    bones with the same name differ only in that GUID, so the indices tell which of them a warning
+    is about. A GUID that is not part of a node's name is not known to change on every export, so
+    it is compared as it is. The place tells a masked GUID from text that already was what the
+    replacement leaves."""
+    subs = warning_subs(entries)
     names = [node.get("name") if isinstance(node, dict) else None for node in document.get("nodes") or []]
     result = []
     for warning in warnings:
-        found = None
-        if isinstance(warning, str):
-            # A match can start in front of the GUID it masks, so the masked one is the last in it.
-            masked = [guid.findall(match.group(0))[-1] for regex in subs for match in regex.finditer(warning)
-                      if guid.search(match.group(0))]
-            if masked:
-                found = [[i for i, name in enumerate(names) if isinstance(name, str) and one in name] or one
-                         for one in masked]
-        result.append(found)
+        spots = mask_warning(warning, subs)[1] if isinstance(warning, str) else []
+        result.append([(end, [i for i, name in enumerate(names) if isinstance(name, str) and one in name] or one)
+                       for end, one in spots] or None)
     return result
 
 
@@ -236,17 +255,23 @@ def node_lists(targets):
     two GUIDs, and "no node has <GUID>" in place of the indices for a GUID that is in no node's name."""
     if not targets:
         return "nodes %s" % (targets,)
-    parts = [str(nodes) if isinstance(nodes, list) else "no node has " + nodes for nodes in targets]
-    return ("nodes " if any(isinstance(nodes, list) for nodes in targets) else "") + " / ".join(parts)
+    parts = [str(nodes) if isinstance(nodes, list) else "no node has " + nodes for _, nodes in targets]
+    return ("nodes " if any(isinstance(nodes, list) for _, nodes in targets) else "") + " / ".join(parts)
 
 
 def target_issues(warnings_a, warnings_b, json_a, json_b):
-    """The issue, in a list, for the first warning whose masked GUIDs are not about the same nodes
-    in the two documents; an empty list when all are. The warnings are the same after masking."""
+    """The issue, in a list, for the first warning whose masked GUIDs are not about the same nodes,
+    or not at the same places of the warning, in the two documents; an empty list when all are.
+    The warnings are the same after masking."""
     ta, tb = warning_targets(warnings_a, json_a), warning_targets(warnings_b, json_b)
     if ta == tb:
         return []
     first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
+    xa, xb = ta[first] or [], tb[first] or []
+    if [nodes for _, nodes in xa] == [nodes for _, nodes in xb]:
+        # The same nodes, so what differs is where in the warning the masked GUIDs are.
+        return ["warnings have the masked GUIDs at different places, first at #%d: %r (at %s) vs %r (at %s)" % (
+            first, warnings_a[first], [end for end, _ in xa], warnings_b[first], [end for end, _ in xb])]
     return ["warnings are about different nodes, first at #%d: %r (%s) vs %r (%s)" % (
         first, warnings_a[first], node_lists(ta[first]), warnings_b[first], node_lists(tb[first]))]
 

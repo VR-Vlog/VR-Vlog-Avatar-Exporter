@@ -401,6 +401,51 @@ class CompareExportsTests(unittest.TestCase):
             self.assertIn('(no node has ' + self.GUID_A + ')', out)
             self.assertIn('(nodes None)', out)
 
+    def test_masked_guid_that_changes_places_with_text_like_the_mask_exit_1(self):
+        # A bone can be named "Hair$<guid>", which is also what the mask leaves of "Hair$" and a
+        # GUID. With the two names in the other order, the warning is the same text after masking
+        # and its masked GUID is in the name of the same node; only the place of the masked GUID
+        # tells the two warnings apart.
+        def pair(warning_a, warning_b):
+            for directory, warning in ((self.a, warning_a), (self.b, warning_b)):
+                doc = document()
+                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + self.GUID_A}, {'name': 'Hair$<guid>'}]
+                write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
+            return run_main([self.a, self.b])
+
+        for first, second, places in (('Parts kept where they are: Hair$%s, Hair$<guid>',
+                                       'Parts kept where they are: Hair$<guid>, Hair$%s', ('(at [38])', '(at [51])')),
+                                      ('Hair$%s: Collides with Hair$<guid>',
+                                       'Hair$<guid>: Collides with Hair$%s', ('(at [11])', '(at [38])'))):
+            for form_a, form_b in ((first, second), (second, first)):
+                code, out, _ = pair(form_a % self.GUID_A, form_b % self.GUID_A)
+                self.assertEqual(1, code, form_a + ': ' + out)
+                self.assertIn('warnings have the masked GUIDs at different places, first at #0', out)
+                for place in places:
+                    self.assertIn(place, out)
+            code, out, _ = pair(first % self.GUID_A, first % self.GUID_A)
+            self.assertEqual(0, code, first + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_masked_guids_are_found_at_their_places(self):
+        # The GUID in front of the first ": " is masked first and the ones in front of ", " after
+        # it, although one of them can come earlier in the text. Each is still found where its
+        # replacement ends in the masked warning, in the order of the text.
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 4)]
+        subs = compare.warning_subs()
+        for form in ('Skirt.L$%s, Tail$%s: Collide with Hair$%s', 'Skirt.L$%s: Collides with Tail$%s, Hair$%s',
+                     'Parts kept where they are: Skirt.L$%s, Tail$%s, Hair$%s'):
+            text, spots = compare.mask_warning(form % tuple(guids), subs)
+            self.assertEqual(form % (('<guid>',) * 3), text)
+            self.assertEqual(guids, [one for _, one in spots], form)
+            self.assertEqual([found.end() for found in re.finditer(r'\$<guid>', text)], [end for end, _ in spots], form)
+            code, out, _ = self.warning_pair([form % tuple(guids)], [form % tuple(reversed(guids))])
+            self.assertEqual(0, code, form + ': ' + out)
+        # A GUID that is not masked, and text that already is what the mask leaves, are not listed.
+        text, spots = compare.mask_warning('Skirt.L$<guid>, Tail$%s: Collide with %s' % (guids[0], guids[1]), subs)
+        self.assertEqual('Skirt.L$<guid>, Tail$<guid>: Collide with ' + guids[1], text)
+        self.assertEqual([(len('Skirt.L$<guid>, Tail$<guid>'), guids[0])], spots)
+
     def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
         for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
             doc = document()
