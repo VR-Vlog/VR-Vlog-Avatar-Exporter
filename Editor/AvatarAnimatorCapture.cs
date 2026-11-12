@@ -208,36 +208,42 @@ namespace VRVlog.LilToonExporter
         }
 
         // A synced layer runs the source layer's machines with its own motions
-        // and state behaviours. Unity plays the first layer at weight 1 whatever
-        // its default weight says.
+        // and state behaviours. Unity plays the first layer at weight 1 and as an
+        // override layer, whatever its default weight and blending mode say.
         AvatarAnimatorData.Layer ReadLayer(AnimatorControllerLayer layer, int layerIndex, int source, AnimatorControllerLayer synced)
         {
             var result = new AvatarAnimatorData.Layer
             {
                 Name = layer.name ?? "", Weight = layerIndex == 0 ? 1 : layer.defaultWeight,
-                Blending = layer.blendingMode == AnimatorLayerBlendingMode.Additive ? "additive" : "override",
+                Blending = layerIndex != 0 && layer.blendingMode == AnimatorLayerBlendingMode.Additive ? "additive" : "override",
                 SyncedLayer = source, SyncedLayerAffectsTiming = synced != null && layer.syncedLayerAffectsTiming
             };
             var rootMachine = synced != null ? synced.stateMachine : layer.stateMachine;
             if (rootMachine == null) { result.Machines.Add(new AvatarAnimatorData.Machine { Name = result.Name }); return result; }
 
             // Flatten the machines (root first, each before its children) and
-            // their states, so transitions can name any of them.
+            // their states, so transitions can name any of them. A machine under
+            // two parents belongs to the one reached first. The walk keeps its
+            // own stack: how deep the machines nest is up to the controller.
             var machines = new List<(AnimatorStateMachine Machine, AnimatorStateMachine Parent)>();
             var machineIndex = new Dictionary<AnimatorStateMachine, int>();
             var states = new List<(AnimatorState State, int Machine)>();
             var stateIndex = new Dictionary<AnimatorState, int>();
-            void Flatten(AnimatorStateMachine machine, AnimatorStateMachine parent)
+            var pending = new Stack<(AnimatorStateMachine Machine, AnimatorStateMachine Parent)>();
+            pending.Push((rootMachine, null));
+            while (pending.Count > 0)
             {
-                if (machine == null || machineIndex.ContainsKey(machine)) return;
+                var (machine, parent) = pending.Pop();
+                if (machine == null || machineIndex.ContainsKey(machine)) continue;
                 var index = machines.Count;
                 machineIndex[machine] = index;
                 machines.Add((machine, parent));
                 foreach (var child in machine.states)
                     if (child.state != null && !stateIndex.ContainsKey(child.state)) { stateIndex[child.state] = states.Count; states.Add((child.state, index)); }
-                foreach (var child in machine.stateMachines) Flatten(child.stateMachine, machine);
+                // Pushed last to first, so the first child is the next one out.
+                var children = machine.stateMachines;
+                for (var next = children.Length - 1; next >= 0; next--) pending.Push((children[next].stateMachine, machine));
             }
-            Flatten(rootMachine, null);
 
             foreach (var (machine, parent) in machines)
             {

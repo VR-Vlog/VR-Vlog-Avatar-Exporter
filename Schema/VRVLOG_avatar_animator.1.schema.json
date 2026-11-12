@@ -298,6 +298,7 @@
           "description": "The default weight. The first layer is always 1, as Unity plays it whatever its default weight says."
         },
         "blending": {
+          "description": "The first layer is always override, as Unity does not take its blending mode into account.",
           "enum": [
             "override",
             "additive"

@@ -115,11 +115,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(oneD.Children[1].Motion, Is.EqualTo(twoD.Children[0].Motion), "A clip used twice is written once.");
         }
 
-        // Unity plays the first layer at weight 1 whatever its default weight
-        // says. A synced layer keeps its source and Timing option with a copy
+        // Unity plays the first layer at weight 1 and as an override layer,
+        // whatever its default weight and blending mode say; a later layer keeps
+        // both. A synced layer keeps its source and Timing option with a copy
         // of the source's machines and its own motions; a clip its Cycle Offset.
         [Test]
-        public void ExportWritesTheFirstLayerAtFullWeightSyncedLayersAndCycleOffsets()
+        public void ExportWritesTheFirstLayerAsUnityPlaysItSyncedLayersAndCycleOffsets()
         {
             using var avatar = new AnimatorAvatar();
             var fx = avatar.Fx;
@@ -132,6 +133,8 @@ namespace VRVlog.LilToonExporter.Tests
             var layers = fx.layers;
             var syncedIndex = layers.Length - 1;
             layers[0].defaultWeight = 0;
+            layers[0].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[hatIndex].blendingMode = AnimatorLayerBlendingMode.Additive;
             layers[syncedIndex].defaultWeight = 0;
             layers[syncedIndex].syncedLayerIndex = hatIndex;
             layers[syncedIndex].syncedLayerAffectsTiming = true;
@@ -140,11 +143,11 @@ namespace VRVlog.LilToonExporter.Tests
 
             var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
             var written = data.Controllers.Single().Layers;
-            Assert.That((written[0].Weight, written[0].SyncedLayer, written[0].SyncedLayerAffectsTiming), Is.EqualTo((1d, -1, false)));
+            Assert.That((written[0].Weight, written[0].Blending, written[0].SyncedLayer, written[0].SyncedLayerAffectsTiming), Is.EqualTo((1d, "override", -1, false)));
             var hat = written[hatIndex];
-            Assert.That((hat.SyncedLayer, hat.SyncedLayerAffectsTiming), Is.EqualTo((-1, false)));
+            Assert.That((hat.Blending, hat.SyncedLayer, hat.SyncedLayerAffectsTiming), Is.EqualTo(("additive", -1, false)));
             var copy = written[syncedIndex];
-            Assert.That((copy.Name, copy.Weight, copy.SyncedLayer, copy.SyncedLayerAffectsTiming), Is.EqualTo(("Hat synced", 0d, hatIndex, true)));
+            Assert.That((copy.Name, copy.Weight, copy.Blending, copy.SyncedLayer, copy.SyncedLayerAffectsTiming), Is.EqualTo(("Hat synced", 0d, "override", hatIndex, true)));
             Assert.That(copy.States.Select(s => s.Name), Is.EqualTo(hat.States.Select(s => s.Name)), "The synced layer holds a copy of its source's machines.");
             Assert.That(copy.Machines.Single().AnyStateTransitions, Has.Count.EqualTo(2));
             foreach (var state in copy.States)
@@ -418,6 +421,73 @@ namespace VRVlog.LilToonExporter.Tests
                 else Assert.That(report.Fallbacks.Results.Single(result => result.Stage != null).Reason, Is.EqualTo(AvatarAnimatorCapture.TooDeep));
             }
         }
+
+        // Machines are written root first, each before its children and the
+        // children in Unity's order. A machine two parents hold is written
+        // once, under the parent reached first: here A, which is walked
+        // before the root's second child.
+        [Test]
+        public void MachinesAreWrittenEachBeforeItsChildrenAndASharedOneUnderTheParentReachedFirst()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            fx.AddLayer("Tree");
+            var root = fx.layers.Last().stateMachine;
+            var a = root.AddStateMachine("A");
+            var b = root.AddStateMachine("B");
+            var c = a.AddStateMachine("C");
+            a.AddStateMachine(b, Vector3.zero);
+            // States are made in another order than the machines: the walk decides.
+            foreach (var machine in new[] { b, c, a, root }) machine.AddState(machine.name + " state");
+            root.AddEntryTransition(b);
+
+            var tree = Captured(avatar).Controllers.Single().Layers.Last();
+            Assert.That(tree.Machines.Select(m => (m.Name, m.Parent)), Is.EqualTo(new[] { ("Tree", -1), ("A", 0), ("C", 1), ("B", 1) }));
+            Assert.That(tree.States.Select(s => (s.Name, s.Machine)), Is.EqualTo(new[] { ("Tree state", 0), ("A state", 1), ("C state", 2), ("B state", 3) }));
+            Assert.That(tree.Machines[0].EntryTransitions.Single().ToMachine, Is.EqualTo(3));
+        }
+
+        // A state on a synced layer is written with the behaviours that layer
+        // itself sets for it. They are the ones Unity reports as effective for
+        // the state on that layer: none without an override, and not those of
+        // the layer it is synced to.
+        [Test]
+        public void ASyncedLayerIsWrittenWithTheBehavioursEffectiveOnIt()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var nestedIndex = Array.FindIndex(fx.layers, l => l.name == "Nested");
+            var inner = fx.layers[nestedIndex].stateMachine.stateMachines.Single().stateMachine.states.Single().state;
+            var names = new[] { "No override", "Own driver", "Emptied" };
+            foreach (var name in names) fx.AddLayer(name);
+            var layers = fx.layers;
+            var first = layers.Length - names.Length;
+            for (var index = first; index < layers.Length; index++)
+            {
+                layers[index].defaultWeight = 0;
+                layers[index].syncedLayerIndex = nestedIndex;
+            }
+            fx.layers = layers;
+            // The driver is made on the state and moved to the synced layer.
+            var source = inner.behaviours;
+            var own = ParameterDriverExpressionTests.Driver(inner, ParameterDriverExpressionTests.Op("Set", "BlendX", 1));
+            inner.behaviours = source;
+            fx.SetStateEffectiveBehaviours(inner, first + 1, new[] { own });
+            fx.SetStateEffectiveBehaviours(inner, first + 2, Array.Empty<StateMachineBehaviour>());
+
+            var data = Captured(avatar);
+            var written = data.Controllers.Single().Layers;
+            string Sets(int layer) => string.Join(" ", written[layer].States.Single().Behaviours.Select(b => data.Parameters[b.Operations.Single().Parameter].Name));
+            Assert.That(Sets(nestedIndex), Is.EqualTo("BlendY"), "The layer that owns the machines keeps its own.");
+            Assert.That(names.Select((name, offset) => (name, fx.GetStateEffectiveBehaviours(inner, first + offset)?.Length ?? 0, Sets(first + offset))),
+                Is.EqualTo(new[] { ("No override", 0, ""), ("Own driver", 1, "BlendX"), ("Emptied", 0, "") }),
+                "The layer, how many behaviours Unity reports as effective for the state on it, and the parameters the written ones set.");
+        }
+
+        // What the stage reads from the avatar as it stands, through the
+        // format's own checks. No object has a node here, so no curve is kept.
+        static AvatarAnimatorData Captured(AnimatorAvatar avatar) =>
+            AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null).Resolve(_ => -1)));
 
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>
             AvatarAnimatorData.Read(((Dictionary<string, object>)json["extensions"])[AvatarAnimatorData.Extension]);

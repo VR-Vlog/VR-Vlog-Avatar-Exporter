@@ -73,7 +73,8 @@ namespace VRVlog.AvatarAnimator
         // A synced layer (SyncedLayer, the index of its source layer, or -1)
         // holds a copy of the source layer's machines with its own motions and
         // state behaviours. The source is the layer that owns the machines, so
-        // it is never a synced layer itself. Weight is 1 for the first layer, as Unity plays it.
+        // it is never a synced layer itself. The first layer has Weight 1 and
+        // Blending override, as Unity plays it.
         public sealed class Layer
         {
             public string Name, Blending = "override";
