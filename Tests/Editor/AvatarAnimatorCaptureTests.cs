@@ -584,6 +584,30 @@ namespace VRVlog.LilToonExporter.Tests
             machine.AddStateMachineTransition(inner, after).solo = true;
             Assert.That(Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Nested").Machines[1].ExitTransitions.Count, Is.EqualTo(3),
                 "Unity takes a transition out of a machine whatever its Mute and Solo.");
+
+            // The root's Any State and Entry transitions are written as Unity
+            // takes them too, and a trigger reads If alone.
+            var fx = avatar.Fx;
+            fx.AddParameter("Jump", AnimatorControllerParameterType.Trigger);
+            fx.AddLayer("Solo");
+            var root = fx.layers.Last().stateMachine;
+            var (a, b) = (root.AddState("A"), root.AddState("B"));
+            var anyMuted = root.AddAnyStateTransition(a);
+            anyMuted.AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            anyMuted.mute = true;
+            root.AddAnyStateTransition(b).AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            root.AddAnyStateTransition(a).AddCondition(AnimatorConditionMode.If, 0, "Jump");
+            root.AddAnyStateTransition(b).AddCondition(AnimatorConditionMode.IfNot, 0, "Jump");
+            root.AddEntryTransition(a).AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            var entrySolo = root.AddEntryTransition(b);
+            entrySolo.AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            entrySolo.solo = true;
+            var data = Captured(avatar);
+            var written = data.Controllers.Single().Layers.Single(l => l.Name == "Solo").Machines[0];
+            string Modes(IEnumerable<AvatarAnimatorData.Transition> transitions) =>
+                string.Join(", ", transitions.Select(t => string.Join(" ", t.Conditions.Select(c => c.Mode + ":" + data.Parameters[c.Parameter].Name))));
+            Assert.That(Modes(written.AnyStateTransitions), Is.EqualTo("ifNot:Hat, if:Jump"));
+            Assert.That(Modes(written.EntryTransitions), Is.EqualTo("ifNot:Hat"));
         }
 
         // Unity looks at the Any State transitions of a layer's root machine
@@ -623,7 +647,9 @@ namespace VRVlog.LilToonExporter.Tests
                 return tree;
             }
             Tree("1D gone", BlendTreeType.Simple1D, "Gone");
-            Tree("1D int", BlendTreeType.Simple1D, "GestureLeft");
+            var onInt = Tree("1D int", BlendTreeType.Simple1D, "GestureLeft");
+            fx.layers[layer].stateMachine.AddState("1D int again").motion = onInt;
+            Tree("2D int", BlendTreeType.SimpleDirectional2D, "GestureLeft", "GestureLeft");
             Tree("2D gone", BlendTreeType.SimpleDirectional2D, "Blend", "Gone");
             var holder = Tree("Holder", BlendTreeType.Simple1D, "Blend");
             holder.AddChild(Tree("1D gone again", BlendTreeType.Simple1D, "Gone"), 1);
@@ -631,6 +657,7 @@ namespace VRVlog.LilToonExporter.Tests
             direct.AddChild(clip);
             var children = direct.children;
             children[0].directBlendParameter = "Gone";
+            holder.AddChild(onInt, 2);
             children[1].directBlendParameter = "BlendX";
             direct.children = children;
             var machine = fx.layers[layer].stateMachine;
@@ -644,18 +671,20 @@ namespace VRVlog.LilToonExporter.Tests
 
             var data = Captured(avatar);
             var states = data.Controllers.Single().Layers.Single(l => l.Name == "Unreadable").States.ToDictionary(s => s.Name);
-            Assert.That(new[] { "1D gone", "1D int", "2D gone", "1D gone again" }.Select(name => states[name].Motion), Is.All.EqualTo(-1));
-            Assert.That(data.Motions[states["Holder"].Motion].Children.Select(child => child.Motion < 0 ? "none" : data.Motions[child.Motion].Type), Is.EqualTo(new[] { "clip", "none" }));
+            Assert.That(new[] { "1D gone", "1D int", "1D int again", "2D int", "2D gone", "1D gone again" }.Select(name => states[name].Motion), Is.All.EqualTo(-1));
+            Assert.That(data.Motions[states["Holder"].Motion].Children.Select(child => child.Motion < 0 ? "none" : data.Motions[child.Motion].Type), Is.EqualTo(new[] { "clip", "none", "none" }));
             Assert.That(data.Motions[states["Direct"].Motion].Children.Select(child => data.Parameters[child.DirectParameter.Value].Name), Is.EqualTo(new[] { "BlendX" }));
             string Options(string name) => string.Join(" ", new[] { states[name].SpeedParameter, states[name].TimeParameter, states[name].CycleOffsetParameter }
                 .Select(index => index == null ? "off" : data.Parameters[index.Value].Name));
             Assert.That((Options("Options gone"), Options("Options float"), Options("Options int")), Is.EqualTo(("off off off", "Blend Blend Blend", "off off off")));
             Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
             // Unity reads some other float for a parameter of another type, so
-            // those uses are counted: the 1D tree on an int and three options.
-            // A name nothing declares plays as written, but in a tree held by
-            // another tree, which Unity plays by what the others leave: one more.
-            Assert.That(data.Omitted.Where(o => o.Kind == "unreadParameter").Sum(o => o.Count), Is.EqualTo(5));
+            // each use is counted: the 1D tree on an int under two states and in
+            // the holder, the 2D tree on two ints once, and three options. A
+            // name nothing declares plays as written, but in a tree held by
+            // another tree, which Unity plays by what the others leave, and on
+            // a direct weight, which was not measured: two more.
+            Assert.That(data.Omitted.Where(o => o.Kind == "unreadParameter").Sum(o => o.Count), Is.EqualTo(9));
         }
 
         // A clip keeps up to MaximumKeysPerClip keys. A curve that does not

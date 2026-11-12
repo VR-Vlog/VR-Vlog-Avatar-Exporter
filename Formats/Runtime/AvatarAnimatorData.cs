@@ -377,6 +377,12 @@ namespace VRVlog.AvatarAnimator
                 data.Parameters.Add(parameter);
             }
             var parameterCount = data.Parameters.Count;
+            // Menu controls point at Expression Parameters only.
+            int Expression(object value, bool none = false)
+            {
+                var index = Index(value, parameterCount, none);
+                return index < 0 || data.Parameters[index].Origin == "expression" ? index : throw Json.Bad();
+            }
 
             foreach (var raw in menus)
             {
@@ -389,9 +395,9 @@ namespace VRVlog.AvatarAnimator
                     if (c.ContainsKey("menu")) keys.Add("menu");
                     Json.Obj(rawControl, keys.ToArray());
                     var control = new Control { Name = Name(c["name"]), Type = Choice(c["type"], ControlTypes), Value = Json.Number(c["value"]) };
-                    if (c.ContainsKey("parameter")) control.Parameter = Index(c["parameter"], parameterCount);
+                    if (c.ContainsKey("parameter")) control.Parameter = Expression(c["parameter"]);
                     if (c.ContainsKey("menu")) control.Menu = control.Type == "subMenu" ? Index(c["menu"], menus.Count) : throw Json.Bad();
-                    foreach (var sub in Json.Arr(c["subParameters"], 0, 64)) control.SubParameters.Add(Index(sub, parameterCount, true));
+                    foreach (var sub in Json.Arr(c["subParameters"], 0, 64)) control.SubParameters.Add(Expression(sub, true));
                     foreach (var label in Json.Arr(c["labels"], 0, 64)) control.Labels.Add(Name(label));
                     menu.Controls.Add(control);
                 }

@@ -48,13 +48,14 @@ namespace VRVlog.LilToonExporter.Tests
             data.Parameters.Add(new AvatarAnimatorData.Parameter { Name = "Hat", Type = "bool", Default = 1, Origin = "expression", ExpressionType = "bool", Saved = true, Synced = true });
             data.Parameters.Add(new AvatarAnimatorData.Parameter { Name = "Blend", Type = "float", Default = .5, Origin = "animator" });
             data.Parameters.Add(new AvatarAnimatorData.Parameter { Name = "GestureLeft", Type = "int", Default = 0, Origin = "builtin" });
+            data.Parameters.Add(new AvatarAnimatorData.Parameter { Name = "Size", Type = "float", Default = 0, Origin = "expression", ExpressionType = "float", Saved = false, Synced = true });
             var root = new AvatarAnimatorData.Menu();
             root.Controls.Add(new AvatarAnimatorData.Control { Name = "Hat", Type = "toggle", Parameter = 0, Value = 1 });
             var more = new AvatarAnimatorData.Control { Name = "More", Type = "subMenu", Menu = 1 };
             root.Controls.Add(more);
             var sub = new AvatarAnimatorData.Menu();
             var radial = new AvatarAnimatorData.Control { Name = "", Type = "radial" };
-            radial.SubParameters.Add(1); radial.SubParameters.Add(-1); radial.Labels.Add("Size");
+            radial.SubParameters.Add(3); radial.SubParameters.Add(-1); radial.Labels.Add("Size");
             sub.Controls.Add(radial);
             sub.Controls.Add(new AvatarAnimatorData.Control { Name = "Back", Type = "subMenu", Menu = 0 });
             data.Menus.Add(root); data.Menus.Add(sub);
@@ -128,7 +129,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(read.Parameters[1].ExpressionType, Is.Null);
             Assert.That(read.Menus[0].Controls[0].Parameter, Is.EqualTo(0));
             Assert.That(read.Menus[1].Controls[0].Parameter, Is.Null);
-            Assert.That(read.Menus[1].Controls[0].SubParameters, Is.EqualTo(new[] { 1, -1 }));
+            Assert.That(read.Menus[1].Controls[0].SubParameters, Is.EqualTo(new[] { 3, -1 }));
             Assert.That(read.Menus[1].Controls[1].Menu, Is.EqualTo(0), "A submenu may point back to an earlier menu.");
             var layer = read.Controllers[0].Layers[0];
             Assert.That(layer.Machines[1].Parent, Is.EqualTo(0));
@@ -172,9 +173,15 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 0, "entryTransitions", 0)["toMachine"] = 2L);
             Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 0)["motion"] = 3L);
             Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 0)["motion"] = -2L);
-            Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 0, "transitions", 0, "conditions", 0)["parameter"] = 3L);
+            Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 0, "transitions", 0, "conditions", 0)["parameter"] = 4L);
             Rejects(json => At(json, "menus", 0, "controls", 1)["menu"] = 2L);
             Rejects(json => At(json, "menus", 0, "controls", 0)["parameter"] = -1L);
+            // Menu controls point at Expression Parameters only.
+            Rejects(json => At(json, "menus", 0, "controls", 0)["parameter"] = 1L);
+            Rejects(json => ((List<object>)At(json, "menus", 1, "controls", 0)["subParameters"])[0] = 2L);
+            // A copy has a source and nothing else has.
+            Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 0).Remove("source"));
+            Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 1)["source"] = 2L);
             Rejects(json => At(json, "motions", 0)["clip"] = 2L);
             Rejects(json => At(json, "clips", 0, "tracks", 0)["target"] = 1L);
             // The root machine has no parent; every other machine follows its parent.
