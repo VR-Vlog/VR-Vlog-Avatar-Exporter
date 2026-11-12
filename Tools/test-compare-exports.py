@@ -3,7 +3,10 @@ import copy
 import importlib.util
 import io
 import json
+import os
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -182,6 +185,139 @@ class CompareExportsTests(unittest.TestCase):
         code, out, _ = run_main([self.a, self.b])
         self.assertEqual(1, code, out)
         self.assertIn('/meshes/0/name', out)
+
+    GUID_A, GUID_B = '01234567-89ab-cdef-0123-456789abcdef', 'fedcba98-7654-3210-fedc-ba9876543210'
+
+    def test_constraint_helper_guid_difference_is_ignored(self):
+        code, out, _ = self.merged_bone_pair('Hand$ConstraintRef ' + self.GUID_A, 'Hand$ConstraintRef ' + self.GUID_B)
+        self.assertEqual(0, code, out)
+        for name_b in ('Foot$ConstraintRef ' + self.GUID_B, 'Hand$OtherRef ' + self.GUID_B,
+                       'Hand$ConstraintRef  ' + self.GUID_B, 'Hand$' + self.GUID_B):
+            code, out, _ = self.merged_bone_pair('Hand$ConstraintRef ' + self.GUID_A, name_b)
+            self.assertEqual(1, code, name_b + ': ' + out)
+            self.assertIn('/nodes/1/name', out)
+        # A form that was not seen stays a difference even when only the GUID differs.
+        for form in ('Hand$OtherRef %s', 'Hand$ConstraintRef  %s', 'Hand$%s-Other Endpoint', 'Hand$%sx'):
+            code, out, _ = self.merged_bone_pair(form % self.GUID_A, form % self.GUID_B)
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('/nodes/1/name', out)
+
+    def test_spring_end_joint_below_a_merged_bone_is_ignored(self):
+        for suffix in ('-VRVlog Spring Endpoint', '-VRVlog Spring Endpoint 2', '-VRVlog Spring Endpoint 13'):
+            code, out, _ = self.merged_bone_pair('Tail$' + self.GUID_A + suffix, 'Tail$' + self.GUID_B + suffix)
+            self.assertEqual(0, code, suffix + ': ' + out)
+        for suffix_a, suffix_b in (('-VRVlog Spring Endpoint', '-VRVlog Spring Endpoint 2'),
+                                   ('-VRVlog Spring Endpoint', ''),
+                                   ('-VRVlog Spring Endpoint x', '-VRVlog Spring Endpoint x'),
+                                   ('-Other Endpoint', '-Other Endpoint'),
+                                   (' VRVlog Spring Endpoint', ' VRVlog Spring Endpoint')):
+            code, out, _ = self.merged_bone_pair('Tail$' + self.GUID_A + suffix_a, 'Tail$' + self.GUID_B + suffix_b)
+            self.assertEqual(1, code, repr((suffix_a, suffix_b)) + ': ' + out)
+            self.assertIn('/nodes/1/name', out)
+
+    def spring_pair(self, name_a, name_b, key='springs'):
+        for directory, name in ((self.a, name_a), (self.b, name_b)):
+            doc = document()
+            doc['extensions']['VRMC_springBone'] = {'specVersion': '1.0', key: [{'name': 'Hair'}, {'name': name}]}
+            write(directory, 'A1_1', result('A1', 1), doc)
+        return run_main([self.a, self.b])
+
+    def test_spring_named_after_a_merged_bone_is_ignored(self):
+        code, out, _ = self.spring_pair('Skirt.L$' + self.GUID_A, 'Skirt.L$' + self.GUID_B)
+        self.assertEqual(0, code, out)
+        for name_b in ('Skirt.R$' + self.GUID_B, 'Skirt.L$' + self.GUID_B + 'x', 'Skirt.L'):
+            code, out, _ = self.spring_pair('Skirt.L$' + self.GUID_A, name_b)
+            self.assertEqual(1, code, name_b + ': ' + out)
+            self.assertIn('/extensions/VRMC_springBone/springs/1/name', out)
+        # A spring name takes only the plain form, not the forms of node names.
+        for form in ('Skirt.L$%sx', 'Skirt.L$ConstraintRef %s', 'Skirt.L$%s-VRVlog Spring Endpoint'):
+            code, out, _ = self.spring_pair(form % self.GUID_A, form % self.GUID_B)
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('/extensions/VRMC_springBone/springs/1/name', out)
+        # Only the names of springs carry the GUID; the other lists of the extension are compared as is.
+        code, out, _ = self.spring_pair('Skirt.L$' + self.GUID_A, 'Skirt.L$' + self.GUID_B, key='colliderGroups')
+        self.assertEqual(1, code, out)
+        self.assertIn('/extensions/VRMC_springBone/colliderGroups/1/name', out)
+
+    def warning_pair(self, warnings_a, warnings_b):
+        write(self.a, 'A1_1', result('A1', 1, warnings=warnings_a), document())
+        write(self.b, 'A1_1', result('A1', 1, warnings=warnings_b), document())
+        return run_main([self.a, self.b])
+
+    def test_warning_about_a_merged_bone_ignores_only_the_guid(self):
+        text = ': Gravity is not carried over'
+        code, out, _ = self.warning_pair(['Skirt.L$' + self.GUID_A + text, 'Shape A was dropped'],
+                                         ['Skirt.L$' + self.GUID_B + text, 'Shape A was dropped'])
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+        for warnings_b in (['Skirt.R$' + self.GUID_B + text, 'Shape A was dropped'],
+                           ['Skirt.L$' + self.GUID_B + ': Stiffness is not carried over', 'Shape A was dropped'],
+                           ['Shape A was dropped', 'Skirt.L$' + self.GUID_B + text],
+                           ['Skirt.L$' + self.GUID_B + text],
+                           ['Skirt.L' + text, 'Shape A was dropped']):
+            code, out, _ = self.warning_pair(['Skirt.L$' + self.GUID_A + text, 'Shape A was dropped'], warnings_b)
+            self.assertEqual(1, code, repr(warnings_b) + ': ' + out)
+            self.assertIn('warnings differ', out)
+
+    def test_warning_that_moves_to_another_bone_of_the_same_name_exit_1(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        text = ': Gravity is not carried over'
+
+        def pair(target_b):
+            for directory, first, second, target in ((self.a, guids[0], guids[1], guids[0]),
+                                                     (self.b, guids[2], guids[3], target_b)):
+                doc = document()
+                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + first}, {'name': 'Hair$' + second},
+                                {'name': 'Hair$' + first + '-VRVlog Spring Endpoint'}]
+                write(directory, 'A1_1', result('A1', 1, warnings=['Hair$' + target + text]), doc)
+            return run_main([self.a, self.b])
+
+        code, out, _ = pair(guids[2])
+        self.assertEqual(0, code, out)
+        code, out, _ = pair(guids[3])
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('(nodes [1, 3])', out)
+        self.assertIn('(nodes [2])', out)
+
+    def test_guid_elsewhere_in_a_warning_exit_1(self):
+        for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done',
+                     'Head: no reference to Skirt.L$%s: skipped'):
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B])
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+
+    def test_differing_warning_reports_the_unmasked_text(self):
+        text = ': Gravity is not carried over'
+        code, out, _ = self.warning_pair(['Skirt.L$' + self.GUID_A + text, 'Shape A was dropped'],
+                                         ['Skirt.L$' + self.GUID_B + text, 'Shape B was dropped'])
+        self.assertEqual(1, code, out)
+        self.assertIn('first at #1', out)
+        self.assertIn('Shape B was dropped', out)
+        code, out, _ = self.warning_pair(['Skirt.L$' + self.GUID_A + text], ['Skirt.R$' + self.GUID_B + text])
+        self.assertIn(self.GUID_A, out)
+        self.assertIn(self.GUID_B, out)
+
+    def run_script(self, argv, encoding):
+        env = dict(os.environ, PYTHONIOENCODING=encoding, PYTHONUTF8='0')
+        return subprocess.run([sys.executable, str(Path(__file__).with_name('compare-exports.py'))] + [str(a) for a in argv],
+                              capture_output=True, env=env)
+
+    def test_text_the_console_cannot_encode_does_not_stop_the_report(self):
+        # U+2014 is in cp932 on Windows only as a different character and not at all in ascii.
+        write(self.b, 'A1_1', result('A1', 1, warnings=('Stage left out — é failed',)), document())
+        done = self.run_script([self.a, self.b], 'ascii')
+        self.assertEqual(1, done.returncode, done.stderr)
+        self.assertEqual(b'', done.stderr)
+        self.assertIn(b'2 pairs, 1 mismatched', done.stdout)
+        self.assertIn(b'\\u2014', done.stdout)
+        done = self.run_script([self.a, self.b, '--json'], 'ascii')
+        self.assertEqual(1, done.returncode, done.stderr)
+        report = json.loads(done.stdout.decode('ascii'))
+        self.assertEqual(1, report['mismatched'])
+        self.assertIn('— é', report['rows'][0]['issues'][0])
+        done = self.run_script([self.a, self.b, '--json'], 'utf-8')
+        self.assertIn('— é'.encode('utf-8'), done.stdout)
 
     def test_missing_vrm_exit_1(self):
         (self.b / 'A1_1.vrm').unlink()
