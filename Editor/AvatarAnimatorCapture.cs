@@ -21,6 +21,7 @@ namespace VRVlog.LilToonExporter
         // Why the stage was left out, listed after the stage's name.
         internal const string TooLargeReason = "データが上限の{0}MBを超えています。";
         internal const string TooDeepReason = "BlendTreeの入れ子が上限の{0}階層を超えています。";
+        internal const string TooManyMotionsReason = "BlendTreeに含まれるモーションが上限の{0}個を超えています。";
 
         // The largest extension JSON (UTF-8 bytes) written. Tests lower it.
         internal const int MaximumMegabytes = 4;
@@ -28,6 +29,7 @@ namespace VRVlog.LilToonExporter
 
         internal static string TooLarge => ExporterLocalization.Format(TooLargeReason, MaximumMegabytes);
         internal static string TooDeep => ExporterLocalization.Format(TooDeepReason, AvatarAnimatorData.MaximumBlendTreeDepth);
+        internal static string TooManyMotions => ExporterLocalization.Format(TooManyMotionsReason, AvatarAnimatorData.MaximumExpandedMotions);
 
         readonly AvatarAnimatorData data = new AvatarAnimatorData();
         // Curve targets stay GameObjects until the output nodes are known.
@@ -40,10 +42,21 @@ namespace VRVlog.LilToonExporter
         readonly IReadOnlyDictionary<GameObject, bool> rest;
         readonly Dictionary<string, int> parameterIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         readonly HashSet<string> controllerParameters = new HashSet<string>(StringComparer.Ordinal);
+        // The names Expression Parameters or the FX controller declare.
+        readonly HashSet<string> declared = new HashSet<string>(StringComparer.Ordinal);
         readonly Dictionary<AnimationClip, AnimationClip> overrides;
         readonly Dictionary<Motion, int> motionIndex = new Dictionary<Motion, int>();
+        // Blend trees left out because Unity cannot read a parameter they
+        // blend by: true when one has another type, false when none is declared.
+        readonly Dictionary<Motion, bool> unreadTrees = new Dictionary<Motion, bool>();
+        // The uses of a parameter Unity cannot read inside each of
+        // data.Motions, counted again wherever the motion is used.
+        readonly List<int> unread = new List<int>();
         // Blend trees nested in each of data.Motions, itself included.
         readonly List<int> nesting = new List<int>();
+        // The motions each of data.Motions expands to, itself included; it
+        // stops counting past the limit.
+        readonly List<int> expanded = new List<int>();
         readonly Dictionary<AnimationClip, int> clipIndex = new Dictionary<AnimationClip, int>();
 
         AvatarAnimatorCapture(GameObject root, IReadOnlyDictionary<GameObject, bool> rest, Dictionary<AnimationClip, AnimationClip> overrides)
@@ -76,7 +89,7 @@ namespace VRVlog.LilToonExporter
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller));
-            // Menus last: they name only parameters the table already has.
+            // Menus name only parameters that Expression Parameters declare.
             if (expressions) capture.ReadMenus(Member(descriptor, "expressionsMenu"));
             return capture;
         }
@@ -139,6 +152,7 @@ namespace VRVlog.LilToonExporter
                 var name = Member(parameter, "name") as string;
                 var type = ExpressionType(Member(parameter, "valueType")?.ToString());
                 if (string.IsNullOrEmpty(name) || type == null || parameterIndex.ContainsKey(name)) continue;
+                declared.Add(name);
                 parameterIndex[name] = data.Parameters.Count;
                 data.Parameters.Add(new AvatarAnimatorData.Parameter
                 {
@@ -153,6 +167,7 @@ namespace VRVlog.LilToonExporter
             {
                 if (parameter == null || !seen.Add(parameter.name)) continue;
                 controllerParameters.Add(parameter.name);
+                declared.Add(parameter.name);
                 var type = parameter.type == AnimatorControllerParameterType.Bool ? "bool" : parameter.type == AnimatorControllerParameterType.Int ? "int"
                     : parameter.type == AnimatorControllerParameterType.Trigger ? "trigger" : "float";
                 if (parameterIndex.TryGetValue(parameter.name, out var index)) { data.Parameters[index].Type = type; continue; }
@@ -167,15 +182,33 @@ namespace VRVlog.LilToonExporter
 
         static string ExpressionType(string valueType) => valueType == "Bool" ? "bool" : valueType == "Int" ? "int" : valueType == "Float" ? "float" : null;
 
-        // A name that no table declares reads as Unity reads a missing
-        // parameter: a float at 0.
-        int Parameter(string name)
+        // The FX controller's parameter of that name when it is of one of the
+        // types given, or -1. Unity reads only what its controller declares,
+        // and each use takes only its own types: a name that Expression
+        // Parameters alone declare, or nothing does, is no parameter here.
+        int ControllerParameter(string name, params string[] types)
         {
-            name = name ?? "";
-            if (parameterIndex.TryGetValue(name, out var index)) return index;
-            parameterIndex[name] = data.Parameters.Count;
-            data.Parameters.Add(new AvatarAnimatorData.Parameter { Name = name, Type = "float", Origin = "animator", Default = 0 });
-            return data.Parameters.Count - 1;
+            if (name == null || !controllerParameters.Contains(name)) return -1;
+            var index = parameterIndex[name];
+            return types.Contains(data.Parameters[index].Type) ? index : -1;
+        }
+
+        // The parameter a state option reads, or -1. On a name the controller
+        // does not declare Unity plays the option as unset, as written here.
+        // On a parameter of another type Unity reads some other float instead,
+        // which the data cannot say: that is counted.
+        int ReadParameter(string name, string type)
+        {
+            var index = ControllerParameter(name, type);
+            if (index < 0 && name != null && controllerParameters.Contains(name)) Omit("unreadParameter");
+            return index;
+        }
+
+        // A state option on a parameter Unity cannot read is off.
+        int? StateParameter(bool active, string name, string type)
+        {
+            var index = active ? ReadParameter(name, type) : -1;
+            return index < 0 ? (int?)null : index;
         }
 
         AvatarAnimatorData.Controller ReadController(AnimatorController controller)
@@ -252,9 +285,14 @@ namespace VRVlog.LilToonExporter
                     Name = machine.name ?? "", Parent = parent == null ? -1 : machineIndex[parent],
                     DefaultState = machine.defaultState != null && stateIndex.TryGetValue(machine.defaultState, out var start) ? start : -1
                 };
-                Transitions(machine.entryTransitions, entry.EntryTransitions, stateIndex, machineIndex);
-                Transitions(machine.anyStateTransitions, entry.AnyStateTransitions, stateIndex, machineIndex);
-                if (parent != null) Transitions(parent.GetStateMachineTransitions(machine), entry.ExitTransitions, stateIndex, machineIndex);
+                // Mute and Solo silence the transitions of Entry, of Any State
+                // and of a state. Unity takes a transition out of a machine
+                // whatever its own Mute and Solo, and looks at Any State
+                // transitions on the root alone: it never takes one that a
+                // machine inside another holds.
+                Transitions(AnimatorConditions.Enabled(machine.entryTransitions), entry.EntryTransitions, stateIndex, machineIndex);
+                if (parent == null) Transitions(AnimatorConditions.Enabled(machine.anyStateTransitions), entry.AnyStateTransitions, stateIndex, machineIndex);
+                else Transitions(parent.GetStateMachineTransitions(machine), entry.ExitTransitions, stateIndex, machineIndex);
                 Behaviours(machine.behaviours, entry.Behaviours);
                 result.Machines.Add(entry);
             }
@@ -263,14 +301,14 @@ namespace VRVlog.LilToonExporter
                 var entry = new AvatarAnimatorData.State
                 {
                     Name = state.name ?? "", Machine = machine,
-                    Motion = MotionIndex(synced != null ? layer.GetOverrideMotion(state) : state.motion),
+                    Motion = StateMotion(synced != null ? layer.GetOverrideMotion(state) : state.motion),
                     WriteDefaults = state.writeDefaultValues, Speed = state.speed, CycleOffset = state.cycleOffset, Mirror = state.mirror,
-                    SpeedParameter = state.speedParameterActive ? Parameter(state.speedParameter) : (int?)null,
-                    CycleOffsetParameter = state.cycleOffsetParameterActive ? Parameter(state.cycleOffsetParameter) : (int?)null,
-                    MirrorParameter = state.mirrorParameterActive ? Parameter(state.mirrorParameter) : (int?)null,
-                    TimeParameter = state.timeParameterActive ? Parameter(state.timeParameter) : (int?)null
+                    SpeedParameter = StateParameter(state.speedParameterActive, state.speedParameter, "float"),
+                    CycleOffsetParameter = StateParameter(state.cycleOffsetParameterActive, state.cycleOffsetParameter, "float"),
+                    MirrorParameter = StateParameter(state.mirrorParameterActive, state.mirrorParameter, "bool"),
+                    TimeParameter = StateParameter(state.timeParameterActive, state.timeParameter, "float")
                 };
-                Transitions(state.transitions, entry.Transitions, stateIndex, machineIndex);
+                Transitions(AnimatorConditions.Enabled(state.transitions), entry.Transitions, stateIndex, machineIndex);
                 Behaviours(synced != null ? layer.GetOverrideBehaviours(state) : state.behaviours, entry.Behaviours);
                 result.States.Add(entry);
             }
@@ -278,7 +316,10 @@ namespace VRVlog.LilToonExporter
         }
 
         // Unity's order is kept: an earlier transition wins. A transition
-        // without a destination, which Unity never takes, is left out.
+        // Unity never takes is left out: one without a destination, one with
+        // a condition Unity cannot read, and, by the caller, one that Mute or
+        // Solo silences. A Solo transition silences the others of its list
+        // even when Unity never takes it either.
         void Transitions(IEnumerable<AnimatorTransitionBase> transitions, List<AvatarAnimatorData.Transition> into,
             Dictionary<AnimatorState, int> states, Dictionary<AnimatorStateMachine, int> machines)
         {
@@ -286,7 +327,7 @@ namespace VRVlog.LilToonExporter
             foreach (var transition in transitions)
             {
                 if (transition == null) continue;
-                var result = new AvatarAnimatorData.Transition { Mute = transition.mute, Solo = transition.solo };
+                var result = new AvatarAnimatorData.Transition();
                 if (transition.destinationState != null && states.TryGetValue(transition.destinationState, out var state)) result.ToState = state;
                 else if (transition.destinationStateMachine != null && machines.TryGetValue(transition.destinationStateMachine, out var machine)) result.ToMachine = machine;
                 else if (transition.isExit) result.Exit = true;
@@ -299,14 +340,21 @@ namespace VRVlog.LilToonExporter
                     result.InterruptionSource = Interruption(timed.interruptionSource);
                     result.OrderedInterruption = timed.orderedInterruption; result.CanTransitionToSelf = timed.canTransitionToSelf;
                 }
-                foreach (var condition in transition.conditions)
-                {
-                    var mode = Mode(condition.mode);
-                    if (mode == null) continue;
-                    result.Conditions.Add(new AvatarAnimatorData.Condition { Parameter = Parameter(condition.parameter), Mode = mode, Threshold = condition.threshold });
-                }
+                var conditions = transition.conditions.Select(Condition).ToList();
+                if (conditions.Contains(null)) continue;
+                result.Conditions.AddRange(conditions);
                 into.Add(result);
             }
+        }
+
+        // Null for a condition Unity cannot read: of a mode it has no name
+        // for, on a name its controller does not declare, or of a mode that
+        // is not one of the parameter type's.
+        AvatarAnimatorData.Condition Condition(AnimatorCondition condition)
+        {
+            var mode = Mode(condition.mode);
+            var parameter = mode == null ? -1 : ControllerParameter(condition.parameter, AvatarAnimatorData.ConditionTypes(mode));
+            return parameter < 0 ? null : new AvatarAnimatorData.Condition { Parameter = parameter, Mode = mode, Threshold = condition.threshold };
         }
 
         static string Interruption(TransitionInterruptionSource source)
@@ -352,17 +400,25 @@ namespace VRVlog.LilToonExporter
             if (VrChatSdkTypes.Is(behaviour, VrChatSdkTypes.ParameterDriver))
             {
                 var result = new AvatarAnimatorData.Behaviour { Type = "parameterDriver", LocalOnly = Member(behaviour, "localOnly") is bool local && local };
-                foreach (var operation in Items(Member(behaviour, "parameters")))
+                // A driver with an operation of a type this format has no name
+                // for is left out whole, and counted as a behaviour.
+                var operations = Items(Member(behaviour, "parameters")).ToList();
+                if (operations.Any(operation => OperationType(operation) == null)) return null;
+                foreach (var operation in operations)
                 {
-                    var type = Member(operation, "type")?.ToString();
-                    type = type == "Set" ? "set" : type == "Add" ? "add" : type == "Random" ? "random" : type == "Copy" ? "copy" : null;
-                    if (type == null) return null;
+                    var type = OperationType(operation);
                     // Only copy reads its source; the other types may keep a stale name.
                     var source = type == "copy" ? Member(operation, "source") as string : null;
+                    // An operation on a name that neither Expression Parameters
+                    // nor the FX controller declare, left behind when the
+                    // parameter was deleted, has nothing to set: it is counted
+                    // and not written.
+                    var name = Member(operation, "name") as string;
+                    if (name == null || !declared.Contains(name) || type == "copy" && (source == null || !declared.Contains(source))) { Omit("operation"); continue; }
                     result.Operations.Add(new AvatarAnimatorData.Operation
                     {
-                        Type = type, Parameter = Parameter(Member(operation, "name") as string),
-                        Source = string.IsNullOrEmpty(source) ? (int?)null : Parameter(source),
+                        Type = type, Parameter = parameterIndex[name],
+                        Source = source == null ? (int?)null : parameterIndex[source],
                         Value = Number(Member(operation, "value")), ValueMin = Number(Member(operation, "valueMin")),
                         ValueMax = Number(Member(operation, "valueMax")), Chance = Number(Member(operation, "chance")),
                         ConvertRange = Member(operation, "convertRange") is bool convert && convert,
@@ -411,6 +467,18 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
+        static string OperationType(object operation)
+        {
+            switch (Member(operation, "type")?.ToString())
+            {
+                case "Set": return "set";
+                case "Add": return "add";
+                case "Random": return "random";
+                case "Copy": return "copy";
+                default: return null;
+            }
+        }
+
         static string Playable(object value)
         {
             switch (value?.ToString())
@@ -440,32 +508,85 @@ namespace VRVlog.LilToonExporter
                 motionIndex[motion] = index;
                 data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = ClipIndex(clip) });
                 nesting.Add(0);
+                expanded.Add(1);
+                unread.Add(0);
                 return index;
             }
             if (!(motion is BlendTree tree)) return -1;
+            // A 1D or 2D tree blended by a parameter Unity cannot read plays
+            // nothing: it is no motion, wherever it is held.
+            var direct = tree.blendType == BlendTreeType.Direct;
+            var names = direct ? new string[0] : tree.blendType == BlendTreeType.Simple1D ? new[] { tree.blendParameter } : new[] { tree.blendParameter, tree.blendParameterY };
+            var blend = names.Select(name => ControllerParameter(name, "float")).ToArray();
+            if (blend.Contains(-1))
+            {
+                unreadTrees[motion] = names.Where((name, i) => blend[i] < 0).Any(name => name != null && controllerParameters.Contains(name));
+                motionIndex[motion] = -1;
+                return -1;
+            }
             if (depth > AvatarAnimatorData.MaximumBlendTreeDepth) throw new InvalidOperationException(TooDeep);
             index = data.Motions.Count;
             motionIndex[motion] = index;
             var result = new AvatarAnimatorData.Motion { Type = "blendTree", BlendType = BlendType(tree.blendType) };
             data.Motions.Add(result);
             nesting.Add(1);
-            if (tree.blendType == BlendTreeType.Simple1D) result.Parameters.Add(Parameter(tree.blendParameter));
-            else if (tree.blendType != BlendTreeType.Direct) { result.Parameters.Add(Parameter(tree.blendParameter)); result.Parameters.Add(Parameter(tree.blendParameterY)); }
+            expanded.Add(1);
+            unread.Add(0);
+            var inside = 0;
+            result.Parameters.AddRange(blend);
             using (var serialized = new SerializedObject(tree))
                 result.NormalizedBlendValues = serialized.FindProperty("m_NormalizedBlendValues")?.boolValue ?? false;
             foreach (var child in tree.children)
             {
+                // A child of a direct tree weighted by a parameter Unity cannot
+                // read has no weight: it is left out. Unity reads some other
+                // float for one of another type, and what it does with an
+                // undeclared weight was not measured, so both are counted.
+                var weight = direct ? ControllerParameter(child.directBlendParameter, "float") : -1;
+                if (direct && weight < 0)
+                {
+                    if (child.directBlendParameter != null) inside++;
+                    continue;
+                }
                 var childIndex = MotionIndex(child.motion, depth + 1);
-                if (childIndex >= 0) nesting[index] = Math.Max(nesting[index], nesting[childIndex] + 1);
+                inside += Unread(child.motion, childIndex, true);
+                if (childIndex >= 0)
+                {
+                    nesting[index] = Math.Max(nesting[index], nesting[childIndex] + 1);
+                    expanded[index] = Math.Min(expanded[index] + expanded[childIndex], AvatarAnimatorData.MaximumExpandedMotions + 1);
+                }
                 result.Children.Add(new AvatarAnimatorData.Child
                 {
                     Motion = childIndex, Threshold = child.threshold, X = child.position.x, Y = child.position.y,
                     TimeScale = child.timeScale, CycleOffset = child.cycleOffset, Mirror = child.mirror,
-                    DirectParameter = tree.blendType == BlendTreeType.Direct ? Parameter(child.directBlendParameter) : (int?)null
+                    DirectParameter = direct ? weight : (int?)null
                 });
             }
+            unread[index] = inside;
             if (nesting[index] > AvatarAnimatorData.MaximumBlendTreeDepth) throw new InvalidOperationException(TooDeep);
+            if (expanded[index] > AvatarAnimatorData.MaximumExpandedMotions) throw new InvalidOperationException(TooManyMotions);
             return index;
+        }
+
+        // The motion a state plays, counting what it leaves out at this use.
+        int StateMotion(Motion motion)
+        {
+            var index = MotionIndex(motion);
+            Omit("unreadParameter", Unread(motion, index, false));
+            return index;
+        }
+
+        // The uses of a parameter Unity cannot read that one use of a motion
+        // brings: those inside a written motion, or the tree itself when it
+        // was left out. On a parameter of another type Unity reads some other
+        // float, and a tree on an undeclared name held by another tree plays by
+        // what the other children leave; directly under a state that tree
+        // plays nothing, as written.
+        int Unread(Motion motion, int index, bool held)
+        {
+            if (index >= 0) return unread[index];
+            if (motion is AnimationClip original && overrides.TryGetValue(original, out var replaced)) motion = replaced;
+            return motion != null && unreadTrees.TryGetValue(motion, out var otherType) && (otherType || held) ? 1 : 0;
         }
 
         static string BlendType(BlendTreeType type)
@@ -498,14 +619,15 @@ namespace VRVlog.LilToonExporter
                 var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
                 if (target == null) { Omit("missingNode"); continue; }
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                if (curve == null || curve.length == 0) { Omit("other"); continue; }
-                // A curve the contract does not take (a key past an hour, a
-                // value that is not a number, more keys than a clip may hold)
-                // is left out alone, so the rest of the avatar is still written.
+                // A curve the contract does not take (more keys than the clip
+                // has room left for, a key past an hour, a value that is not a
+                // number) is left out alone, so the rest of the avatar is still
+                // written. The keys are counted before the curve is converted,
+                // which keeps every key: a curve too long is not converted.
+                if (curve == null || curve.length == 0 || keys + curve.length > AvatarAnimatorData.MaximumKeysPerClip) { Omit("other"); continue; }
                 var converted = VrChatGestureExpressions.ConvertCurve(curve);
                 try { converted.Validate(); }
                 catch (InvalidOperationException) { Omit("other"); continue; }
-                if (keys + converted.Keys.Count > AvatarAnimatorData.MaximumKeysPerClip) { Omit("other"); continue; }
                 keys += converted.Keys.Count;
                 tracks.Add((Target(target.gameObject), converted));
             }
@@ -535,7 +657,10 @@ namespace VRVlog.LilToonExporter
             return "other";
         }
 
-        void Omit(string kind) => omitted[kind] = (omitted.TryGetValue(kind, out var count) ? count : 0) + 1;
+        void Omit(string kind, int times = 1)
+        {
+            if (times > 0) omitted[kind] = (omitted.TryGetValue(kind, out var count) ? count : 0) + times;
+        }
 
         // The menus reached from the root menu, each asset once, so a submenu
         // that opens an earlier menu points back to it.
@@ -553,6 +678,10 @@ namespace VRVlog.LilToonExporter
                 pending.Enqueue((menu, entry));
                 return data.Menus.Count - 1;
             }
+            // A control sets only what Expression Parameters declare, as
+            // VRChat's menu does: any other name is no parameter to it.
+            int ExpressionParameter(object named) =>
+                Member(named, "name") is string name && parameterIndex.TryGetValue(name, out var index) && data.Parameters[index].Origin == "expression" ? index : -1;
             MenuIndex(asset);
             while (pending.Count > 0)
             {
@@ -562,11 +691,10 @@ namespace VRVlog.LilToonExporter
                     var type = ControlType(Member(control, "type")?.ToString());
                     if (type == null) continue;
                     var entry = new AvatarAnimatorData.Control { Name = Member(control, "name") as string ?? "", Type = type, Value = Number(Member(control, "value")) };
-                    var parameter = Member(Member(control, "parameter"), "name") as string;
-                    if (!string.IsNullOrEmpty(parameter) && parameterIndex.TryGetValue(parameter, out var index)) entry.Parameter = index;
+                    var parameter = ExpressionParameter(Member(control, "parameter"));
+                    if (parameter >= 0) entry.Parameter = parameter;
                     if (type == "subMenu" && Member(control, "subMenu") is UnityEngine.Object subMenu && subMenu != null) entry.Menu = MenuIndex(subMenu);
-                    foreach (var sub in Items(Member(control, "subParameters")))
-                        entry.SubParameters.Add(Member(sub, "name") is string name && name.Length > 0 && parameterIndex.TryGetValue(name, out var subIndex) ? subIndex : -1);
+                    foreach (var sub in Items(Member(control, "subParameters"))) entry.SubParameters.Add(ExpressionParameter(sub));
                     foreach (var label in Items(Member(control, "labels"))) entry.Labels.Add(Member(label, "name") as string ?? "");
                     into.Controls.Add(entry);
                 }

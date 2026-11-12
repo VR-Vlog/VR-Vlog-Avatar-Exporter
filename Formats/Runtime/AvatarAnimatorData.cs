@@ -21,6 +21,9 @@ namespace VRVlog.AvatarAnimator
         public const int MaximumKeysPerClip = 16384;
         // A blend tree of clips is 1 deep; each tree inside a tree adds 1.
         public const int MaximumBlendTreeDepth = 32;
+        // The motions under one motion, itself included, counting a tree
+        // once for each parent that holds it: what playing one state walks.
+        public const int MaximumExpandedMotions = 4096;
 
         public static readonly string[] ParameterTypes = { "bool", "int", "float", "trigger" };
         public static readonly string[] ParameterOrigins = { "expression", "animator", "builtin" };
@@ -29,6 +32,13 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] Blendings = { "override", "additive" };
         public static readonly string[] InterruptionSources = { "none", "source", "destination", "sourceThenDestination", "destinationThenSource" };
         public static readonly string[] ConditionModes = { "if", "ifNot", "greater", "less", "equals", "notEqual" };
+        static readonly string[] IfTypes = { "bool", "trigger" }, IfNotTypes = { "bool" }, NumberTypes = { "float", "int" }, IntegerTypes = { "int" };
+
+        // The parameter types Unity takes a condition of that mode on: on a
+        // parameter of another type it never takes the transition. A trigger
+        // is only waited for with If.
+        public static string[] ConditionTypes(string mode) =>
+            mode == "if" ? IfTypes : mode == "ifNot" ? IfNotTypes : mode == "greater" || mode == "less" ? NumberTypes : IntegerTypes;
         public static readonly string[] OperationTypes = { "set", "add", "random", "copy" };
         public static readonly string[] TrackingValues = { "noChange", "tracking", "animation" };
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
@@ -36,7 +46,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
         public static readonly string[] Properties = { "active" };
         // The order the omitted kinds are written in.
-        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour" };
+        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
         public readonly List<Menu> Menus = new List<Menu>();
@@ -114,7 +124,7 @@ namespace VRVlog.AvatarAnimator
         public sealed class Transition
         {
             public int? ToState, ToMachine;
-            public bool Exit, Mute, Solo, Timed;
+            public bool Exit, Timed;
             public bool HasExitTime, HasFixedDuration, OrderedInterruption, CanTransitionToSelf;
             public double ExitTime, Duration, Offset;
             public string InterruptionSource = "none";
@@ -269,7 +279,6 @@ namespace VRVlog.AvatarAnimator
             if (t.ToState.HasValue) result["toState"] = (long)t.ToState.Value;
             if (t.ToMachine.HasValue) result["toMachine"] = (long)t.ToMachine.Value;
             if (t.Exit) result["exit"] = true;
-            result["mute"] = t.Mute; result["solo"] = t.Solo;
             if (t.Timed)
             {
                 result["hasExitTime"] = t.HasExitTime; result["exitTime"] = t.ExitTime;
@@ -368,6 +377,12 @@ namespace VRVlog.AvatarAnimator
                 data.Parameters.Add(parameter);
             }
             var parameterCount = data.Parameters.Count;
+            // Menu controls point at Expression Parameters only.
+            int Expression(object value, bool none = false)
+            {
+                var index = Index(value, parameterCount, none);
+                return index < 0 || data.Parameters[index].Origin == "expression" ? index : throw Json.Bad();
+            }
 
             foreach (var raw in menus)
             {
@@ -380,9 +395,9 @@ namespace VRVlog.AvatarAnimator
                     if (c.ContainsKey("menu")) keys.Add("menu");
                     Json.Obj(rawControl, keys.ToArray());
                     var control = new Control { Name = Name(c["name"]), Type = Choice(c["type"], ControlTypes), Value = Json.Number(c["value"]) };
-                    if (c.ContainsKey("parameter")) control.Parameter = Index(c["parameter"], parameterCount);
+                    if (c.ContainsKey("parameter")) control.Parameter = Expression(c["parameter"]);
                     if (c.ContainsKey("menu")) control.Menu = control.Type == "subMenu" ? Index(c["menu"], menus.Count) : throw Json.Bad();
-                    foreach (var sub in Json.Arr(c["subParameters"], 0, 64)) control.SubParameters.Add(Index(sub, parameterCount, true));
+                    foreach (var sub in Json.Arr(c["subParameters"], 0, 64)) control.SubParameters.Add(Expression(sub, true));
                     foreach (var label in Json.Arr(c["labels"], 0, 64)) control.Labels.Add(Name(label));
                     menu.Controls.Add(control);
                 }
@@ -399,7 +414,27 @@ namespace VRVlog.AvatarAnimator
                 // The source of a synced layer owns its machines: it is not synced itself.
                 foreach (var layer in controller.Layers)
                     if (layer.SyncedLayer >= 0 && controller.Layers[layer.SyncedLayer].SyncedLayer >= 0) throw Json.Bad();
+                // A condition is of a mode Unity takes on its parameter's type,
+                // and a state option reads a float, Mirror a bool.
+                foreach (var layer in controller.Layers)
+                {
+                    foreach (var transition in layer.Machines.SelectMany(m => m.EntryTransitions.Concat(m.AnyStateTransitions).Concat(m.ExitTransitions))
+                        .Concat(layer.States.SelectMany(s => s.Transitions)))
+                        foreach (var condition in transition.Conditions) Reads(condition.Parameter, ConditionTypes(condition.Mode));
+                    foreach (var state in layer.States)
+                    {
+                        Reads(state.SpeedParameter, "float"); Reads(state.CycleOffsetParameter, "float"); Reads(state.TimeParameter, "float");
+                        Reads(state.MirrorParameter, "bool");
+                    }
+                }
                 data.Controllers.Add(controller);
+            }
+
+            // Each use of a parameter takes its own types: Unity does not read
+            // the value of a parameter of another type there.
+            void Reads(int? parameter, params string[] types)
+            {
+                if (parameter.HasValue && Array.IndexOf(types, data.Parameters[parameter.Value].Type) < 0) throw Json.Bad();
             }
 
             for (var index = 0; index < motions.Count; index++)
@@ -418,6 +453,7 @@ namespace VRVlog.AvatarAnimator
                     var direct = motion.BlendType == "direct";
                     var axes = direct ? 0 : motion.BlendType == "1d" ? 1 : 2;
                     foreach (var p in Json.Arr(m["parameters"], axes, axes)) motion.Parameters.Add(Index(p, parameterCount));
+                    foreach (var parameter in motion.Parameters) Reads(parameter, "float");
                     motion.NormalizedBlendValues = Flag(m["normalizedBlendValues"]);
                     foreach (var rawChild in Json.Arr(m["children"], 0, 1024))
                     {
@@ -432,15 +468,18 @@ namespace VRVlog.AvatarAnimator
                             TimeScale = Json.Number(ch["timeScale"]), CycleOffset = Json.Number(ch["cycleOffset"]), Mirror = Flag(ch["mirror"])
                         };
                         if (direct) child.DirectParameter = Index(ch["directParameter"], parameterCount);
+                        Reads(child.DirectParameter, "float");
                         motion.Children.Add(child);
                     }
                 }
                 data.Motions.Add(motion);
             }
-            // A blend tree must not contain itself, and trees nest at most
-            // MaximumBlendTreeDepth deep. Walked without recursion: the input
+            // A blend tree must not contain itself, trees nest at most
+            // MaximumBlendTreeDepth deep, and one motion expands to at most
+            // MaximumExpandedMotions. Walked without recursion: the input
             // decides how deep this goes.
             var height = new int[data.Motions.Count]; // 0 = not seen, -1 = on the path, else trees below + 1
+            var expanded = new int[data.Motions.Count]; // set with height; stops counting past the limit
             var path = new Stack<(int Motion, int Next)>();
             for (var start = 0; start < data.Motions.Count; start++)
             {
@@ -462,9 +501,16 @@ namespace VRVlog.AvatarAnimator
                         continue;
                     }
                     var below = 0;
-                    foreach (var child in children) if (child.Motion >= 0) below = Math.Max(below, height[child.Motion]);
+                    var size = 1;
+                    foreach (var child in children)
+                    {
+                        if (child.Motion < 0) continue;
+                        below = Math.Max(below, height[child.Motion]);
+                        size = Math.Min(size + expanded[child.Motion], MaximumExpandedMotions + 1);
+                    }
                     height[motion] = data.Motions[motion].Type == "clip" ? 1 : Math.Max(below, 1) + 1;
-                    if (height[motion] > MaximumBlendTreeDepth + 1) throw Json.Bad();
+                    expanded[motion] = size;
+                    if (height[motion] > MaximumBlendTreeDepth + 1 || size > MaximumExpandedMotions) throw Json.Bad();
                 }
             }
 
@@ -525,13 +571,13 @@ namespace VRVlog.AvatarAnimator
             Transition ReadOne(object rawTransition, bool timed)
             {
                 var t = Json.Obj(rawTransition);
-                var keys = new List<string> { "mute", "solo", "conditions" };
+                var keys = new List<string> { "conditions" };
                 if (timed) keys.AddRange(new[] { "hasExitTime", "exitTime", "hasFixedDuration", "duration", "offset", "interruptionSource", "orderedInterruption", "canTransitionToSelf" });
                 var destinations = new[] { "toState", "toMachine", "exit" }.Where(t.ContainsKey).ToList();
                 if (destinations.Count != 1) throw Json.Bad();
                 keys.Add(destinations[0]);
                 Json.Obj(t, keys.ToArray());
-                var transition = new Transition { Mute = Flag(t["mute"]), Solo = Flag(t["solo"]), Timed = timed };
+                var transition = new Transition { Timed = timed };
                 if (t.ContainsKey("toState")) transition.ToState = Index(t["toState"], states.Count);
                 if (t.ContainsKey("toMachine")) transition.ToMachine = Index(t["toMachine"], machines.Count);
                 if (t.ContainsKey("exit")) transition.Exit = t["exit"] is bool exit && exit ? true : throw Json.Bad();
@@ -562,7 +608,9 @@ namespace VRVlog.AvatarAnimator
                 ReadAll(m["entryTransitions"], machine.EntryTransitions, false);
                 ReadAll(m["anyStateTransitions"], machine.AnyStateTransitions, true);
                 ReadAll(m["exitTransitions"], machine.ExitTransitions, false);
-                if (index == 0 && machine.ExitTransitions.Count > 0) throw Json.Bad();
+                // Only a machine inside another is left through Exit, and
+                // Unity looks at Any State transitions on the root alone.
+                if ((index == 0 ? machine.ExitTransitions : machine.AnyStateTransitions).Count > 0) throw Json.Bad();
                 ReadBehaviours(m["behaviours"], machine.Behaviours, parameterCount);
                 layer.Machines.Add(machine);
             }
@@ -603,6 +651,8 @@ namespace VRVlog.AvatarAnimator
                         {
                             var o = Json.Obj(rawOperation);
                             var keys = new List<string> { "type", "parameter", "value", "valueMin", "valueMax", "chance", "convertRange", "sourceMin", "sourceMax", "destMin", "destMax" };
+                            // A copy has a source and nothing else has.
+                            if (o.ContainsKey("source") != (o.ContainsKey("type") && o["type"] as string == "copy")) throw Json.Bad();
                             if (o.ContainsKey("source")) keys.Add("source");
                             Json.Obj(o, keys.ToArray());
                             behaviour.Operations.Add(new Operation
