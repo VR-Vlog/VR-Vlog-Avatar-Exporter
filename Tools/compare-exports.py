@@ -29,9 +29,9 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
 Checked for each pair:
   1. success or failure, and the failure text
   2. warnings (the entries of the export details log), in order, after masking the
-     VOLATILE_WARNING_SUB parts. A masked GUID is ignored only where a node of the output has
-     it in its name; the nodes that have it are compared instead, and so is the place of each
-     masked GUID in its warning.
+     VOLATILE_WARNING_SUB parts. A masked GUID is ignored only where the output has a node for
+     the bone that the warning names there; those nodes are compared instead, and so is the
+     place of each masked GUID in its warning.
   3. expressions: count, names, preset or custom, order, and every field of each expression
      (morphTargetBinds with node, index and weight, materialColorBinds, textureTransformBinds,
      isBinary, overrideBlink / overrideLookAt / overrideMouth and anything else). VRM 0.x
@@ -64,6 +64,14 @@ REQUIRED_APP_VERSIONS = "VRVLOG_requiredAppVersions"
 # The form of the GUID that the avatar's build steps put in the names they generate.
 GUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
 
+# What the exporter puts behind the name of a bone for the end joint it adds below it (and " 2",
+# " 3" when the name is taken).
+END_JOINT = r"(-VRVlog Spring Endpoint(?: [0-9]+)?)?"
+
+# The name of a node for a bone that the build steps merged, or for the end joint below it: the
+# bone's name with "$" (group 1) and the GUID that changes on every build (group 2).
+MERGED_BONE = re.compile(r"(.*\$)(" + GUID + r")" + END_JOINT, re.DOTALL)
+
 # glb JSON paths that change on every export even with the same input and package. Found by
 # running each avatar twice with the same package and comparing run 1 with run 2 using
 # --diff-paths; "*" matches any one key or index. Only these are removed before hashing.
@@ -85,7 +93,7 @@ VOLATILE_SUB = [
     # has "ConstraintRef " between "$" and the GUID, and the end joint the exporter adds below
     # such a bone has the bone's name followed by "-VRVlog Spring Endpoint" (and " 2", " 3" when
     # the name is taken).
-    ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + r"(-VRVlog Spring Endpoint(?: [0-9]+)?)?$", r"$\1<guid>\2"),
+    ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + END_JOINT + r"$", r"$\1<guid>\2"),
     # A spring is named after its first bone, so it carries the same GUID.
     ("/extensions/VRMC_springBone/springs/*/name", r"\$" + GUID + r"$", r"$<guid>"),
     # A clip that the avatar's build steps write anew on every build gets a name that ends with a
@@ -104,11 +112,12 @@ VOLATILE_SUB = [
 #      in front of the first ": ".
 #   2. A warning that lists bones separates their names with ", ", so the GUID is followed by
 #      ", " or ends the warning.
-# A GUID anywhere else in the text is left as it is. A masked GUID that no node name of the
-# output holds is compared as well (see warning_targets), and so is every masked GUID of a pair
-# that failed to export and has no output: only the GUID in the name of an exported bone is
-# known to change on every export. The place of each masked GUID in its warning is compared too,
-# so text that already is what the mask leaves is not taken for a masked GUID.
+# A GUID anywhere else in the text is left as it is. A masked GUID is compared as well, unless the
+# output has a node for the bone that the warning names there: a node whose name is the text in
+# front of the GUID and that GUID (see warning_targets). So is every masked GUID of a pair that
+# failed to export and has no output: only the GUID in the name of an exported bone is known to
+# change on every export. The place of each masked GUID in its warning is compared too, so text
+# that already is what the mask leaves is not taken for a masked GUID.
 VOLATILE_WARNING_SUB = [
     (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
     (r"\$" + GUID + r"(?=, |$)", r"$<guid>"),
@@ -205,7 +214,8 @@ def warning_subs(entries=None):
 def mask_warning(warning, subs):
     """The warning after the VOLATILE_WARNING_SUB replacements and, for each GUID that they masked,
     in the order of the text: (where the replacement that masked it ends in the returned text, the
-    GUID). A match can start in front of the GUID it masks, so the masked one is the last in it."""
+    text in front of that GUID, the GUID). A match can start in front of the GUID it masks, so the
+    masked one is the last in it."""
     guid = re.compile(GUID)
     spots = []
     for regex, replacement in subs:
@@ -216,12 +226,12 @@ def mask_warning(warning, subs):
             last = match.end()
             grown += len(new) - len(match.group(0))
             steps.append((last, grown))
-            found = guid.findall(match.group(0))
+            found = list(guid.finditer(match.group(0)))
             if found:
-                fresh.append((last + grown, found[-1]))
+                fresh.append((last + grown, warning[:match.start() + found[-1].start()], found[-1].group(0)))
         # What an earlier replacement masked moves by how much the matches in front of it grew.
-        spots = [(end + next((by for stop, by in reversed(steps) if stop <= end), 0), one)
-                 for end, one in spots] + fresh
+        spots = [(end + next((by for stop, by in reversed(steps) if stop <= end), 0), front, one)
+                 for end, front, one in spots] + fresh
         warning = "".join(pieces) + warning[last:]
     return warning, sorted(spots)
 
@@ -234,25 +244,31 @@ def mask_warnings(warnings, entries=None):
 
 def warning_targets(warnings, document, entries=None):
     """For each warning, one entry for each GUID that mask_warnings masks in it, in the order of the
-    text: (where its replacement ends in the masked warning, the indices of the nodes whose name
-    holds that GUID, or the GUID itself when no node has it). None when nothing is masked. Two
-    bones with the same name differ only in that GUID, so the indices tell which of them a warning
-    is about. A GUID that is not part of a node's name is not known to change on every export, so
-    it is compared as it is. The place tells a masked GUID from text that already was what the
-    replacement leaves."""
+    text: (where its replacement ends in the masked warning, the indices of the nodes for the bone
+    that the warning names there, or the GUID itself when there is no such node). None when
+    nothing is masked. A node is for that bone when its name is a merged bone's (MERGED_BONE) with
+    that GUID and the warning has the same name in front of the GUID. Two bones with the same name
+    differ only in that GUID, so the indices tell which of them a warning is about. A GUID that is
+    not that part of a node's name is not known to change on every export, so it is compared as it
+    is. The place tells a masked GUID from text that already was what the replacement leaves."""
     subs = warning_subs(entries)
-    names = [node.get("name") if isinstance(node, dict) else None for node in document.get("nodes") or []]
+    bones = {}
+    for index, node in enumerate(document.get("nodes") or []):
+        name = node.get("name") if isinstance(node, dict) else None
+        match = MERGED_BONE.fullmatch(name) if isinstance(name, str) else None
+        if match:
+            bones.setdefault(match.group(2), []).append((match.group(1), index))
     result = []
     for warning in warnings:
         spots = mask_warning(warning, subs)[1] if isinstance(warning, str) else []
-        result.append([(end, [i for i, name in enumerate(names) if isinstance(name, str) and one in name] or one)
-                       for end, one in spots] or None)
+        result.append([(end, [index for name, index in bones.get(one, []) if front.endswith(name)] or one)
+                       for end, front, one in spots] or None)
     return result
 
 
 def node_lists(targets):
     """The entries of warning_targets for one warning as text: "nodes [1, 3]", "nodes [1] / [4]" for
-    two GUIDs, and "no node has <GUID>" in place of the indices for a GUID that is in no node's name."""
+    two GUIDs, and "no node has <GUID>" in place of the indices when no node is for a bone with it."""
     if not targets:
         return "nodes %s" % (targets,)
     parts = [str(nodes) if isinstance(nodes, list) else "no node has " + nodes for _, nodes in targets]

@@ -437,14 +437,53 @@ class CompareExportsTests(unittest.TestCase):
                      'Parts kept where they are: Skirt.L$%s, Tail$%s, Hair$%s'):
             text, spots = compare.mask_warning(form % tuple(guids), subs)
             self.assertEqual(form % (('<guid>',) * 3), text)
-            self.assertEqual(guids, [one for _, one in spots], form)
-            self.assertEqual([found.end() for found in re.finditer(r'\$<guid>', text)], [end for end, _ in spots], form)
+            self.assertEqual(guids, [one for _, _, one in spots], form)
+            self.assertEqual([found.end() for found in re.finditer(r'\$<guid>', text)], [end for end, _, _ in spots], form)
+            # The text in front of each GUID ends with the name that the GUID belongs to.
+            self.assertEqual(['Skirt.L$', 'Tail$', 'Hair$'], [front[-len(name):] for name, (_, front, _) in
+                                                             zip(('Skirt.L$', 'Tail$', 'Hair$'), spots)], form)
             code, out, _ = self.warning_pair([form % tuple(guids)], [form % tuple(reversed(guids))])
             self.assertEqual(0, code, form + ': ' + out)
         # A GUID that is not masked, and text that already is what the mask leaves, are not listed.
         text, spots = compare.mask_warning('Skirt.L$<guid>, Tail$%s: Collide with %s' % (guids[0], guids[1]), subs)
         self.assertEqual('Skirt.L$<guid>, Tail$<guid>: Collide with ' + guids[1], text)
-        self.assertEqual([(len('Skirt.L$<guid>, Tail$<guid>'), guids[0])], spots)
+        self.assertEqual([(len('Skirt.L$<guid>, Tail$<guid>'), 'Skirt.L$<guid>, Tail$', guids[0])], spots)
+
+    def test_masked_guid_of_a_node_that_the_warning_does_not_name_is_compared(self):
+        # A masked GUID is the part of a bone's name that changes only when a node has the name
+        # that the warning has there. A node that has the GUID elsewhere in its name, has another
+        # name in front of it, or has "ConstraintRef " in front of it is not that bone.
+        def pair(names, warning_a, warning_b):
+            for directory, warning in ((self.a, warning_a), (self.b, warning_b)):
+                doc = document()
+                doc['nodes'] = [{'name': 'Hips'}] + [{'name': name} for name in names]
+                write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
+            return run_main([self.a, self.b])
+
+        both = (self.GUID_A, self.GUID_B)
+        for names in (['Archive$%s$%s' % both], ['Archive$%s$%s' % both, 'Archive$%s$%s' % both[::-1]],
+                      ['Tail$%s' % self.GUID_A, 'Tail$%s' % self.GUID_B, 'Pair %s %s' % both],
+                      ['asset$ConstraintRef %s' % self.GUID_A, 'asset$ConstraintRef %s' % self.GUID_B],
+                      ['asset$%sx' % self.GUID_A, 'asset$%sx' % self.GUID_B]):
+            for form in ('Lookup failed: asset$%s', 'asset$%s: Gravity is not carried over', 'Lookup failed: asset$%s, other'):
+                code, out, _ = pair(names, form % self.GUID_A, form % self.GUID_B)
+                self.assertEqual(1, code, repr(names) + ' ' + form + ': ' + out)
+                self.assertIn('warnings are about different nodes, first at #0', out)
+                self.assertIn('(no node has ' + self.GUID_A + ')', out)
+                self.assertIn('(no node has ' + self.GUID_B + ')', out)
+                code, out, _ = pair(names, form % self.GUID_A, form % self.GUID_A)
+                self.assertEqual(0, code, repr(names) + ' ' + form + ': ' + out)
+        # The bone itself and the end joint below it are the nodes of that bone.
+        end = len('Lookup failed: asset$<guid>')
+        for directory, guid in ((self.a, self.GUID_A), (self.b, self.GUID_B)):
+            doc = document()
+            doc['nodes'] = [{'name': 'Hips'}, {'name': 'asset$' + guid}, {'name': 'asset$' + guid + '-VRVlog Spring Endpoint 2'},
+                            {'name': 'asset$ConstraintRef ' + guid}]
+            write(directory, 'A1_1', result('A1', 1, warnings=['Lookup failed: asset$' + guid]), doc)
+            self.assertEqual([[(end, [1, 2])]], compare.warning_targets(['Lookup failed: asset$' + guid], doc))
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
 
     def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
         for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
