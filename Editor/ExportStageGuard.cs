@@ -42,6 +42,7 @@ namespace VRVlog.LilToonExporter
         ObjectToggles,
         ExpressionGestures,
         FxRest,
+        AvatarAnimator,
     }
 
     // The steps a user sees. Each stage belongs to one phase; the stages stay
@@ -205,6 +206,8 @@ namespace VRVlog.LilToonExporter
                 [ExportStage.ExpressionGestures] = ("ハンドジェスチャーの表情", ExportPhase.Expressions, ExportOutcome.Omitted),
                 // Left out, the face and body keep the export copy's values.
                 [ExportStage.FxRest] = ("FXの通常時の顔・体形", ExportPhase.Expressions, ExportOutcome.Approximated),
+                // Left out, the file has no copy of the FX controller and menus.
+                [ExportStage.AvatarAnimator] = ("FXとメニューの動き", ExportPhase.Expressions, ExportOutcome.Omitted),
             };
 
         internal static string Label(ExportStage stage) => Stages.TryGetValue(stage, out var row) ? row.Label : stage.ToString();

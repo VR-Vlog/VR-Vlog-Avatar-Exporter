@@ -171,7 +171,7 @@ namespace VRVlog.Expressions
                 }).ToList()
             }).ToList();
 
-        static Dictionary<string, object> WriteCurve(Curve curve) => new Dictionary<string, object>
+        internal static Dictionary<string, object> WriteCurve(Curve curve) => new Dictionary<string, object>
         {
             ["preWrap"] = curve.PreWrap, ["postWrap"] = curve.PostWrap,
             ["keys"] = curve.Keys.Select(k => (object)new List<object>
@@ -300,7 +300,7 @@ namespace VRVlog.Expressions
             return result;
         }
 
-        static Curve ReadCurve(Dictionary<string, object> c, ref int keyCount)
+        internal static Curve ReadCurve(Dictionary<string, object> c, ref int keyCount)
         {
             var curve = new Curve { PreWrap = Json.Text(c["preWrap"]), PostWrap = Json.Text(c["postWrap"]) };
             foreach (var rawKey in Json.Arr(c["keys"]))

@@ -26,6 +26,8 @@ namespace VRVlog.AvatarFormats
             [(Expressions.ExpressionGestureData.Extension, Expressions.ExpressionGestureData.SchemaVersion)] = "1.0.8",
             // Provisional: see Documentation~/decisions/2026-10-25-lipsync-dominant-viseme.md.
             [(Expressions.LipSyncData.Extension, Expressions.LipSyncData.SchemaVersion)] = "1.0.9",
+            // Provisional: see Documentation~/decisions/2026-11-12-avatar-animator-extension.md.
+            [(AvatarAnimator.AvatarAnimatorData.Extension, AvatarAnimator.AvatarAnimatorData.SchemaVersion)] = "1.2.8",
         };
 
         public static string RequiredAppVersion(string extension, int schemaVersion) =>

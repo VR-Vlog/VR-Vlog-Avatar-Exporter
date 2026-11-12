@@ -1,0 +1,1074 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_avatar_animator/1/schema.json",
+  "title": "VRVLOG_avatar_animator 1",
+  "description": "The avatar's VRChat FX controller, Expression Menu and Expression Parameters as written in the avatar, read by the exporter from the prepared copy. Every index points into a table of this extension: parameters, menus, the layer's machines and states, motions, clips and targets; -1 means none where allowed. Machines of a layer are flattened in preorder: machine 0 is the layer's root with parent -1 and no exit transitions, every other machine follows its parent. Entry and exit transitions carry no timing; state and Any State transitions do. Every transition has exactly one of toState, toMachine and exit. Clips keep curves for GameObject activeSelf only, one curve per track and target, with at most 16384 keys per clip; other curves and unsupported behaviours are counted in omitted by kind, in the order of the enumeration, and leave out kinds with no entries. A target's rest is activeSelf before the exporter changed the avatar. expressions is reserved and empty in schema 1. Rules that span entries are validated by the shared reader (AvatarAnimatorData.Read): index ranges, blend trees without cycles, unique targets per clip and unique (node, property) over targets. Node indices must be less than the glTF node count.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "parameters",
+    "menus",
+    "expressions",
+    "controllers",
+    "motions",
+    "clips",
+    "targets",
+    "omitted"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "parameters": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 8192,
+      "items": {
+        "$ref": "#/$defs/parameter"
+      }
+    },
+    "menus": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 1024,
+      "items": {
+        "$ref": "#/$defs/menu"
+      }
+    },
+    "expressions": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 0,
+      "items": true
+    },
+    "controllers": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 1,
+      "items": {
+        "$ref": "#/$defs/controller"
+      }
+    },
+    "motions": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 65536,
+      "items": {
+        "$ref": "#/$defs/motion"
+      }
+    },
+    "clips": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 16384,
+      "items": {
+        "$ref": "#/$defs/clip"
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 65536,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    },
+    "omitted": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 9,
+      "items": {
+        "$ref": "#/$defs/omission"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "parameter": {
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "default",
+        "origin"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "type": {
+          "enum": [
+            "bool",
+            "int",
+            "float",
+            "trigger"
+          ]
+        },
+        "default": {
+          "type": "number"
+        },
+        "origin": {
+          "enum": [
+            "expression",
+            "animator",
+            "builtin"
+          ]
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "synced": {
+          "type": "boolean"
+        },
+        "expressionType": {
+          "enum": [
+            "bool",
+            "int",
+            "float"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "origin": {
+            "const": "expression"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "saved",
+          "synced",
+          "expressionType"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "saved"
+              ]
+            },
+            {
+              "required": [
+                "synced"
+              ]
+            },
+            {
+              "required": [
+                "expressionType"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "menu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controls"
+      ],
+      "properties": {
+        "controls": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/control"
+          }
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "value",
+        "subParameters",
+        "labels"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "type": {
+          "enum": [
+            "toggle",
+            "button",
+            "radial",
+            "twoAxis",
+            "fourAxis",
+            "subMenu"
+          ]
+        },
+        "value": {
+          "type": "number"
+        },
+        "subParameters": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "integer",
+            "minimum": -1
+          }
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "parameter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "menu": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "controller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "playable",
+        "layers"
+      ],
+      "properties": {
+        "playable": {
+          "const": "fx"
+        },
+        "layers": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/layer"
+          }
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "weight",
+        "blending",
+        "machines",
+        "states"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "blending": {
+          "enum": [
+            "override",
+            "additive"
+          ]
+        },
+        "machines": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/machine"
+          }
+        },
+        "states": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16384,
+          "items": {
+            "$ref": "#/$defs/state"
+          }
+        }
+      }
+    },
+    "machine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "parent",
+        "defaultState",
+        "entryTransitions",
+        "anyStateTransitions",
+        "exitTransitions",
+        "behaviours"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "parent": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "defaultState": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "entryTransitions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/untimedTransition"
+          }
+        },
+        "anyStateTransitions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/timedTransition"
+          }
+        },
+        "exitTransitions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/untimedTransition"
+          }
+        },
+        "behaviours": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/behaviour"
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "machine",
+        "motion",
+        "writeDefaults",
+        "speed",
+        "cycleOffset",
+        "mirror",
+        "transitions",
+        "behaviours"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "machine": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "motion": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "writeDefaults": {
+          "type": "boolean"
+        },
+        "speed": {
+          "type": "number"
+        },
+        "cycleOffset": {
+          "type": "number"
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "transitions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/timedTransition"
+          }
+        },
+        "behaviours": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/behaviour"
+          }
+        },
+        "speedParameter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cycleOffsetParameter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mirrorParameter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeParameter": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "timedTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mute",
+        "solo",
+        "conditions",
+        "hasExitTime",
+        "exitTime",
+        "hasFixedDuration",
+        "duration",
+        "offset",
+        "interruptionSource",
+        "orderedInterruption",
+        "canTransitionToSelf"
+      ],
+      "properties": {
+        "mute": {
+          "type": "boolean"
+        },
+        "solo": {
+          "type": "boolean"
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "hasExitTime": {
+          "type": "boolean"
+        },
+        "exitTime": {
+          "type": "number"
+        },
+        "hasFixedDuration": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "offset": {
+          "type": "number"
+        },
+        "interruptionSource": {
+          "enum": [
+            "none",
+            "source",
+            "destination",
+            "sourceThenDestination",
+            "destinationThenSource"
+          ]
+        },
+        "orderedInterruption": {
+          "type": "boolean"
+        },
+        "canTransitionToSelf": {
+          "type": "boolean"
+        },
+        "toState": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toMachine": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exit": {
+          "const": true
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "toState"
+          ]
+        },
+        {
+          "required": [
+            "toMachine"
+          ]
+        },
+        {
+          "required": [
+            "exit"
+          ]
+        }
+      ]
+    },
+    "untimedTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mute",
+        "solo",
+        "conditions"
+      ],
+      "properties": {
+        "mute": {
+          "type": "boolean"
+        },
+        "solo": {
+          "type": "boolean"
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "toState": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toMachine": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exit": {
+          "const": true
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "toState"
+          ]
+        },
+        {
+          "required": [
+            "toMachine"
+          ]
+        },
+        {
+          "required": [
+            "exit"
+          ]
+        }
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parameter",
+        "mode",
+        "threshold"
+      ],
+      "properties": {
+        "parameter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mode": {
+          "enum": [
+            "if",
+            "ifNot",
+            "greater",
+            "less",
+            "equals",
+            "notEqual"
+          ]
+        },
+        "threshold": {
+          "type": "number"
+        }
+      }
+    },
+    "behaviour": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "localOnly",
+            "operations"
+          ],
+          "properties": {
+            "type": {
+              "const": "parameterDriver"
+            },
+            "localOnly": {
+              "type": "boolean"
+            },
+            "operations": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 1024,
+              "items": {
+                "$ref": "#/$defs/operation"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "minProperties": 2,
+          "maxProperties": 33,
+          "description": "One key per tracking part, from the SDK field name without the tracking prefix (trackingHead is head).",
+          "properties": {
+            "type": {
+              "const": "trackingControl"
+            }
+          },
+          "propertyNames": {
+            "pattern": "^(type|[a-z][A-Za-z0-9]{0,63})$"
+          },
+          "additionalProperties": {
+            "enum": [
+              "noChange",
+              "tracking",
+              "animation"
+            ]
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "playable",
+            "layer",
+            "goalWeight",
+            "blendDuration"
+          ],
+          "properties": {
+            "type": {
+              "const": "layerControl"
+            },
+            "playable": {
+              "enum": [
+                "action",
+                "fx",
+                "gesture",
+                "additive"
+              ]
+            },
+            "layer": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "goalWeight": {
+              "type": "number"
+            },
+            "blendDuration": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "playable",
+            "goalWeight",
+            "blendDuration"
+          ],
+          "properties": {
+            "type": {
+              "const": "playableLayerControl"
+            },
+            "playable": {
+              "enum": [
+                "action",
+                "fx",
+                "gesture",
+                "additive",
+                "sitting"
+              ]
+            },
+            "goalWeight": {
+              "type": "number"
+            },
+            "blendDuration": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameter",
+        "value",
+        "valueMin",
+        "valueMax",
+        "chance",
+        "convertRange",
+        "sourceMin",
+        "sourceMax",
+        "destMin",
+        "destMax"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "set",
+            "add",
+            "random",
+            "copy"
+          ]
+        },
+        "parameter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": "number"
+        },
+        "valueMin": {
+          "type": "number"
+        },
+        "valueMax": {
+          "type": "number"
+        },
+        "chance": {
+          "type": "number"
+        },
+        "convertRange": {
+          "type": "boolean"
+        },
+        "sourceMin": {
+          "type": "number"
+        },
+        "sourceMax": {
+          "type": "number"
+        },
+        "destMin": {
+          "type": "number"
+        },
+        "destMax": {
+          "type": "number"
+        },
+        "source": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "motion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "clip"
+          ],
+          "properties": {
+            "type": {
+              "const": "clip"
+            },
+            "clip": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "blendType",
+            "parameters",
+            "normalizedBlendValues",
+            "children"
+          ],
+          "properties": {
+            "type": {
+              "const": "blendTree"
+            },
+            "blendType": {
+              "enum": [
+                "1d",
+                "2dSimpleDirectional",
+                "2dFreeformDirectional",
+                "2dFreeformCartesian",
+                "direct"
+              ]
+            },
+            "parameters": {
+              "description": "One for 1d, two for the 2d types, none for direct.",
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 2,
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "normalizedBlendValues": {
+              "type": "boolean"
+            },
+            "children": {
+              "description": "Children of a direct tree have directParameter; others do not.",
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 1024,
+              "items": {
+                "$ref": "#/$defs/child"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "child": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "motion",
+        "threshold",
+        "position",
+        "timeScale",
+        "cycleOffset",
+        "mirror"
+      ],
+      "properties": {
+        "motion": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "position": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "timeScale": {
+          "type": "number"
+        },
+        "cycleOffset": {
+          "type": "number"
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "directParameter": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "duration",
+        "loop",
+        "tracks"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "tracks": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/track"
+          }
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "curves"
+      ],
+      "properties": {
+        "target": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "curves": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/curve"
+          }
+        }
+      }
+    },
+    "curve": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preWrap",
+        "postWrap",
+        "keys"
+      ],
+      "properties": {
+        "preWrap": {
+          "enum": [
+            "clamp",
+            "loop",
+            "pingPong"
+          ]
+        },
+        "postWrap": {
+          "enum": [
+            "clamp",
+            "loop",
+            "pingPong"
+          ]
+        },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16384,
+          "items": {
+            "$ref": "#/$defs/key"
+          }
+        }
+      }
+    },
+    "key": {
+      "description": "[time, value, inTangent, outTangent, inWeight, outWeight]. A null tangent is stepped.",
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "minimum": -3600,
+          "type": "number",
+          "maximum": 3600
+        },
+        {
+          "minimum": -10000,
+          "type": "number",
+          "maximum": 10000
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "minimum": 0,
+          "type": "number",
+          "maximum": 1
+        },
+        {
+          "minimum": 0,
+          "type": "number",
+          "maximum": 1
+        }
+      ],
+      "items": false
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "property",
+        "rest"
+      ],
+      "properties": {
+        "node": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "property": {
+          "const": "active"
+        },
+        "rest": {
+          "enum": [
+            0,
+            1
+          ]
+        }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "count"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "blendShape",
+            "material",
+            "transform",
+            "enabled",
+            "parameter",
+            "muscle",
+            "other",
+            "missingNode",
+            "behaviour"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
