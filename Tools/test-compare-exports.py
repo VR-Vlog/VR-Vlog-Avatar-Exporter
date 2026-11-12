@@ -252,6 +252,14 @@ class CompareExportsTests(unittest.TestCase):
             write(directory, 'A1_1', result('A1', 1, warnings=warnings), doc)
         return run_main([self.a, self.b])
 
+    def node_pair(self, names_a, names_b, warning_a, warning_b):
+        """One pair with one warning each and, behind "Hips", nodes of the given names."""
+        for directory, names, warning in ((self.a, names_a, warning_a), (self.b, names_b, warning_b)):
+            doc = document()
+            doc['nodes'] = [{'name': 'Hips'}] + [{'name': name} for name in names]
+            write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
+        return run_main([self.a, self.b])
+
     def test_warning_about_a_merged_bone_ignores_only_the_guid(self):
         text = ': Gravity is not carried over'
         code, out, _ = self.warning_pair(['Skirt.L$' + self.GUID_A + text, 'Shape A was dropped'],
@@ -272,29 +280,29 @@ class CompareExportsTests(unittest.TestCase):
         text = ': Gravity is not carried over'
 
         def pair(target_b):
-            for directory, first, second, target in ((self.a, guids[0], guids[1], guids[0]),
-                                                     (self.b, guids[2], guids[3], target_b)):
-                doc = document()
-                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + first}, {'name': 'Hair$' + second},
-                                {'name': 'Hair$' + first + '-VRVlog Spring Endpoint'}]
-                write(directory, 'A1_1', result('A1', 1, warnings=['Hair$' + target + text]), doc)
-            return run_main([self.a, self.b])
+            names_a = ['Hair$' + guids[0], 'Hair$' + guids[1], 'Hair$' + guids[0] + '-VRVlog Spring Endpoint']
+            names_b = ['Hair$' + guids[2], 'Hair$' + guids[3], 'Hair$' + guids[2] + '-VRVlog Spring Endpoint']
+            return self.node_pair(names_a, names_b, 'Hair$' + guids[0] + text, 'Hair$' + target_b + text)
 
         code, out, _ = pair(guids[2])
         self.assertEqual(0, code, out)
         code, out, _ = pair(guids[3])
         self.assertEqual(1, code, out)
-        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('warnings differ (1 vs 1), first at #0', out)
         self.assertIn('(nodes [1, 3])', out)
         self.assertIn('(nodes [2])', out)
 
-    def test_guid_elsewhere_in_a_warning_exit_1(self):
-        for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done',
-                     'Head: no reference to Skirt.L$%s: skipped',
-                     # In a list, the GUID has to be followed by ", " or end the warning.
-                     'Kept: Skirt.L$%sx, Tail', 'Kept: Skirt.L$%s,Tail', 'Kept: Skirt.L$%s and Tail', 'Kept: Tail, Skirt.L$%sx',
-                     'Kept: Tail, Skirt.L$ConstraintRef %s', 'Kept: Tail, %s'):
+    def test_guid_of_a_merged_bone_is_ignored_wherever_the_warning_has_it(self):
+        # What tells that a GUID changes on every build is the node that has it, not where it is in
+        # the warning: at the start, in a list, or in the middle of the text.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Skirt.L$%s was merged',
+                     'Head: no reference to Skirt.L$%s: skipped', 'Kept: Skirt.L$%s,Tail', 'Kept: Skirt.L$%s and Tail',
+                     'Kept: Tail, Skirt.L$%s', 'Follows Skirt.L$%s -> Hips'):
             code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B])
+            self.assertEqual(0, code, form + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
+            # The text around the GUID is still compared.
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B + '.'])
             self.assertEqual(1, code, form + ': ' + out)
             self.assertIn('warnings differ (1 vs 1), first at #0', out)
 
@@ -330,160 +338,155 @@ class CompareExportsTests(unittest.TestCase):
 
     def test_listed_bone_that_moves_to_another_bone_of_the_same_name_exit_1(self):
         guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 7)]
+        form = 'Parts kept where they are: Tail$%s, Hair$%s'
 
         def pair(listed_b):
-            for directory, first, second, tail, listed in ((self.a, guids[0], guids[1], guids[2], guids[0]),
-                                                           (self.b, guids[3], guids[4], guids[5], listed_b)):
-                doc = document()
-                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + first}, {'name': 'Hair$' + second},
-                                {'name': 'Tail$' + tail}]
-                warning = 'Parts kept where they are: Tail$%s, Hair$%s' % (tail, listed)
-                write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
-            return run_main([self.a, self.b])
+            return self.node_pair(['Hair$' + guids[0], 'Hair$' + guids[1], 'Tail$' + guids[2]],
+                                  ['Hair$' + guids[3], 'Hair$' + guids[4], 'Tail$' + guids[5]],
+                                  form % (guids[2], guids[0]), form % (guids[5], listed_b))
 
         code, out, _ = pair(guids[3])
         self.assertEqual(0, code, out)
         code, out, _ = pair(guids[4])
         self.assertEqual(1, code, out)
-        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('warnings differ (1 vs 1), first at #0', out)
         self.assertIn('(nodes [3] / [1])', out)
         self.assertIn('(nodes [3] / [2])', out)
 
-    def test_masked_guid_that_no_node_has_is_compared(self):
-        # Only the GUID in the name of an exported bone is known to change on every export, so a
-        # GUID that sits where a bone's name would end but is in no node's name has to be the same.
+    def test_guid_that_no_node_has_is_compared(self):
+        # Only the GUID in the name of an exported bone is known to change on every build, so a GUID
+        # that no node has in its name has to be the same, wherever it is in the warning.
         for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s',
-                     'Lookup failed: asset$%s', 'Lookup failed: asset$%s, other'):
+                     'Lookup failed: asset$%s', 'Lookup failed: asset$%s, other', 'Merged %s: done', 'Kept: Tail, %s'):
             code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B], bones=False)
             self.assertEqual(1, code, form + ': ' + out)
-            self.assertIn('warnings are about different nodes, first at #0', out)
-            self.assertIn('(no node has ' + self.GUID_A + ')', out)
-            self.assertIn('(no node has ' + self.GUID_B + ')', out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+            self.assertIn(self.GUID_A, out)
+            self.assertIn(self.GUID_B, out)
+            self.assertNotIn('(nodes', out)
             code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_A], bones=False)
             self.assertEqual(0, code, form + ': ' + out)
             self.assertIn('2 pairs, 0 mismatched', out)
 
-    def test_masked_guid_that_only_one_output_has_exit_1(self):
+    def test_guid_of_a_bone_that_only_one_output_has_exit_1(self):
         guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
-        for directory, tail, skirt, kept in ((self.a, guids[0], guids[1], True), (self.b, guids[2], guids[3], False)):
-            doc = document()
-            doc['nodes'] += [{'name': 'Tail$' + tail}] + ([{'name': 'Skirt.L$' + skirt}] if kept else [])
-            warning = 'Parts kept where they are: Tail$%s, Skirt.L$%s' % (tail, skirt)
-            write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
-        code, out, _ = run_main([self.a, self.b])
+        form = 'Parts kept where they are: Tail$%s, Skirt.L$%s'
+        code, out, _ = self.node_pair(['Tail$' + guids[0], 'Skirt.L$' + guids[1]], ['Tail$' + guids[2]],
+                                      form % (guids[0], guids[1]), form % (guids[2], guids[3]))
         self.assertEqual(1, code, out)
-        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('warnings differ (1 vs 1), first at #0', out)
         self.assertIn('(nodes [1] / [2])', out)
-        self.assertIn('(nodes [1] / no node has ' + guids[3] + ')', out)
+        self.assertIn('(nodes [1])', out)
 
-    def test_pair_that_failed_to_export_compares_masked_guids(self):
-        # Without an output there is no node name to find the GUID in, so it has to be the same.
+    def test_pair_that_failed_to_export_compares_every_guid(self):
+        # Without an output there is no node that has the GUID, so it has to be the same.
         for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s'):
             for directory, guid in ((self.a, self.GUID_A), (self.b, self.GUID_B)):
                 write(directory, 'A2_1', result('A2', 1, ok=False, warnings=[form % guid]))
             code, out, _ = run_main([self.a, self.b])
             self.assertEqual(1, code, form + ': ' + out)
             self.assertIn('3 pairs, 1 mismatched', out)
-            self.assertIn('warnings are about different nodes, first at #0', out)
-            self.assertIn('(no node has ' + self.GUID_A + ')', out)
-            self.assertIn('(no node has ' + self.GUID_B + ')', out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+            self.assertIn(self.GUID_A, out)
+            self.assertIn(self.GUID_B, out)
             write(self.b, 'A2_1', result('A2', 1, ok=False, warnings=[form % self.GUID_A]))
             code, out, _ = run_main([self.a, self.b])
             self.assertEqual(0, code, form + ': ' + out)
             self.assertIn('3 pairs, 0 mismatched', out)
 
-    def test_warning_that_already_is_the_masked_text_exit_1(self):
-        # "$<guid>" is what the mask leaves; a warning that already has it names no bone.
+    def test_text_in_place_of_the_guid_exit_1(self):
+        # Nothing is written in place of a GUID before the warnings are compared, so no text in a
+        # warning can pass for the GUID of a bone.
         for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s'):
-            code, out, _ = self.warning_pair([form % self.GUID_A], [form % '<guid>'], bones=False)
-            self.assertEqual(1, code, form + ': ' + out)
-            self.assertIn('warnings are about different nodes, first at #0', out)
-            self.assertIn('(no node has ' + self.GUID_A + ')', out)
-            self.assertIn('(nodes None)', out)
+            for text in ('<guid>', '(1,)', '[1]', ''):
+                for bones in (True, False):
+                    code, out, _ = self.warning_pair([form % self.GUID_A], [form % text], bones=bones)
+                    self.assertEqual(1, code, form + ' ' + text + ': ' + out)
+                    self.assertIn('warnings differ (1 vs 1), first at #0', out)
 
-    def test_masked_guid_that_changes_places_with_text_like_the_mask_exit_1(self):
-        # A bone can be named "Hair$<guid>", which is also what the mask leaves of "Hair$" and a
-        # GUID. With the two names in the other order, the warning is the same text after masking
-        # and its masked GUID is in the name of the same node; only the place of the masked GUID
-        # tells the two warnings apart.
-        def pair(warning_a, warning_b):
-            for directory, warning in ((self.a, warning_a), (self.b, warning_b)):
-                doc = document()
-                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + self.GUID_A}, {'name': 'Hair$<guid>'}]
-                write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
-            return run_main([self.a, self.b])
-
-        for first, second, places in (('Parts kept where they are: Hair$%s, Hair$<guid>',
-                                       'Parts kept where they are: Hair$<guid>, Hair$%s', ('(at [38])', '(at [51])')),
-                                      ('Hair$%s: Collides with Hair$<guid>',
-                                       'Hair$<guid>: Collides with Hair$%s', ('(at [11])', '(at [38])'))):
+    def test_guid_that_changes_places_with_other_text_exit_1(self):
+        # A bone can be named "Hair$<guid>" or anything else. With the two names in the other
+        # order, the same node stands for the GUID in both warnings, but at another place.
+        names = ['Hair$' + self.GUID_A, 'Hair$<guid>']
+        for first, second in (('Parts kept where they are: Hair$%s, Hair$<guid>',
+                               'Parts kept where they are: Hair$<guid>, Hair$%s'),
+                              ('Hair$%s: Collides with Hair$<guid>', 'Hair$<guid>: Collides with Hair$%s')):
             for form_a, form_b in ((first, second), (second, first)):
-                code, out, _ = pair(form_a % self.GUID_A, form_b % self.GUID_A)
+                code, out, _ = self.node_pair(names, names, form_a % self.GUID_A, form_b % self.GUID_A)
                 self.assertEqual(1, code, form_a + ': ' + out)
-                self.assertIn('warnings have the masked GUIDs at different places, first at #0', out)
-                for place in places:
-                    self.assertIn(place, out)
-            code, out, _ = pair(first % self.GUID_A, first % self.GUID_A)
+                self.assertIn('warnings differ (1 vs 1), first at #0', out)
+                self.assertEqual(2, out.count('(nodes [1])'), out)
+            code, out, _ = self.node_pair(names, names, first % self.GUID_A, first % self.GUID_A)
             self.assertEqual(0, code, first + ': ' + out)
             self.assertIn('2 pairs, 0 mismatched', out)
 
-    def test_masked_guids_are_found_at_their_places(self):
-        # The GUID in front of the first ": " is masked first and the ones in front of ", " after
-        # it, although one of them can come earlier in the text. Each is still found where its
-        # replacement ends in the masked warning, in the order of the text.
-        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 4)]
-        subs = compare.warning_subs()
-        for form in ('Skirt.L$%s, Tail$%s: Collide with Hair$%s', 'Skirt.L$%s: Collides with Tail$%s, Hair$%s',
-                     'Parts kept where they are: Skirt.L$%s, Tail$%s, Hair$%s'):
-            text, spots = compare.mask_warning(form % tuple(guids), subs)
-            self.assertEqual(form % (('<guid>',) * 3), text)
-            self.assertEqual(guids, [one for _, _, one in spots], form)
-            self.assertEqual([found.end() for found in re.finditer(r'\$<guid>', text)], [end for end, _, _ in spots], form)
-            # The text in front of each GUID ends with the name that the GUID belongs to.
-            self.assertEqual(['Skirt.L$', 'Tail$', 'Hair$'], [front[-len(name):] for name, (_, front, _) in
-                                                             zip(('Skirt.L$', 'Tail$', 'Hair$'), spots)], form)
-            code, out, _ = self.warning_pair([form % tuple(guids)], [form % tuple(reversed(guids))])
-            self.assertEqual(0, code, form + ': ' + out)
-        # A GUID that is not masked, and text that already is what the mask leaves, are not listed.
-        text, spots = compare.mask_warning('Skirt.L$<guid>, Tail$%s: Collide with %s' % (guids[0], guids[1]), subs)
-        self.assertEqual('Skirt.L$<guid>, Tail$<guid>: Collide with ' + guids[1], text)
-        self.assertEqual([(len('Skirt.L$<guid>, Tail$<guid>'), 'Skirt.L$<guid>, Tail$', guids[0])], spots)
+    def test_warning_parts_cut_the_warning_at_the_guids_of_merged_bones(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        doc = {'nodes': [{'name': 'Hips'}, {'name': 'Skirt.L$' + guids[0]}, {'name': 'Tail$' + guids[1]},
+                         {'name': 'Hair$' + guids[2]}, {'name': 'Hair$' + guids[2] + '-VRVlog Spring Endpoint 2'},
+                         {'name': 'Hair$ConstraintRef ' + guids[2]}, {'name': 'Hair$' + guids[2] + 'x'}, {}, 'no node']}
+        bones = compare.merged_bones(doc)
+        self.assertEqual({guids[0]: [('Skirt.L$', 1)], guids[1]: [('Tail$', 2)], guids[2]: [('Hair$', 3), ('Hair$', 4)]}, bones)
+        for form, texts in (('Skirt.L$%s, Tail$%s: Collide with Hair$%s', ('Skirt.L$', ', Tail$', ': Collide with Hair$', '')),
+                            ('Skirt.L$%s: Collides with Tail$%s, Hair$%s', ('Skirt.L$', ': Collides with Tail$', ', Hair$', '')),
+                            ('Parts kept where they are: Skirt.L$%s, Tail$%s, Hair$%s.',
+                             ('Parts kept where they are: Skirt.L$', ', Tail$', ', Hair$', '.'))):
+            self.assertEqual([texts[0], (1,), texts[1], (2,), texts[2], (3, 4), texts[3]],
+                             compare.warning_parts(form % tuple(guids[:3]), bones), form)
+        # A GUID that is not behind the name of its bone, and one that no bone has, stay in the text.
+        text = 'Tail$%s: no reference to %s, Skirt.L$%s or Hair$%s' % (guids[1], guids[2], guids[2], guids[3])
+        self.assertEqual(['Tail$', (2,), ': no reference to %s, Skirt.L$%s or Hair$%s' % (guids[2], guids[2], guids[3])],
+                         compare.warning_parts(text, bones))
+        self.assertEqual([text], compare.warning_parts(text, {}))
+        self.assertEqual(['Shape A was dropped'], compare.warning_parts('Shape A was dropped', bones))
+        # An entry that is not text is compared as it is.
+        self.assertEqual([{'text': text}], compare.warning_parts({'text': text}, bones))
+        self.assertEqual({}, compare.merged_bones({}))
 
-    def test_masked_guid_of_a_node_that_the_warning_does_not_name_is_compared(self):
-        # A masked GUID is the part of a bone's name that changes only when a node has the name
-        # that the warning has there. A node that has the GUID elsewhere in its name, has another
-        # name in front of it, or has "ConstraintRef " in front of it is not that bone.
-        def pair(names, warning_a, warning_b):
-            for directory, warning in ((self.a, warning_a), (self.b, warning_b)):
-                doc = document()
-                doc['nodes'] = [{'name': 'Hips'}] + [{'name': name} for name in names]
-                write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
-            return run_main([self.a, self.b])
-
+    def test_guid_of_a_node_that_the_warning_does_not_name_is_compared(self):
+        # A GUID belongs to a bone only when a node has the name that the warning has in front of
+        # the GUID, with the GUID at its end. A node that has the GUID elsewhere in its name, has
+        # another name in front of it, or has "ConstraintRef " in front of it is not that bone.
         both = (self.GUID_A, self.GUID_B)
         for names in (['Archive$%s$%s' % both], ['Archive$%s$%s' % both, 'Archive$%s$%s' % both[::-1]],
                       ['Tail$%s' % self.GUID_A, 'Tail$%s' % self.GUID_B, 'Pair %s %s' % both],
                       ['asset$ConstraintRef %s' % self.GUID_A, 'asset$ConstraintRef %s' % self.GUID_B],
-                      ['asset$%sx' % self.GUID_A, 'asset$%sx' % self.GUID_B]):
-            for form in ('Lookup failed: asset$%s', 'asset$%s: Gravity is not carried over', 'Lookup failed: asset$%s, other'):
-                code, out, _ = pair(names, form % self.GUID_A, form % self.GUID_B)
+                      ['asset$%sx' % self.GUID_A, 'asset$%sx' % self.GUID_B],
+                      ['Merged$%s' % self.GUID_A, 'Merged$%s' % self.GUID_B]):
+            for form in ('Lookup failed: asset$%s', 'asset$%s: Gravity is not carried over', 'Lookup failed: asset$%s, other',
+                         'Lookup failed: asset$ConstraintRef %s', 'Merged %s: done'):
+                code, out, _ = self.node_pair(names, names, form % self.GUID_A, form % self.GUID_B)
                 self.assertEqual(1, code, repr(names) + ' ' + form + ': ' + out)
-                self.assertIn('warnings are about different nodes, first at #0', out)
-                self.assertIn('(no node has ' + self.GUID_A + ')', out)
-                self.assertIn('(no node has ' + self.GUID_B + ')', out)
-                code, out, _ = pair(names, form % self.GUID_A, form % self.GUID_A)
+                self.assertIn('warnings differ (1 vs 1), first at #0', out)
+                self.assertNotIn('(nodes', out)
+                code, out, _ = self.node_pair(names, names, form % self.GUID_A, form % self.GUID_A)
                 self.assertEqual(0, code, repr(names) + ' ' + form + ': ' + out)
         # The bone itself and the end joint below it are the nodes of that bone.
-        end = len('Lookup failed: asset$<guid>')
-        for directory, guid in ((self.a, self.GUID_A), (self.b, self.GUID_B)):
-            doc = document()
-            doc['nodes'] = [{'name': 'Hips'}, {'name': 'asset$' + guid}, {'name': 'asset$' + guid + '-VRVlog Spring Endpoint 2'},
-                            {'name': 'asset$ConstraintRef ' + guid}]
-            write(directory, 'A1_1', result('A1', 1, warnings=['Lookup failed: asset$' + guid]), doc)
-            self.assertEqual([[(end, [1, 2])]], compare.warning_targets(['Lookup failed: asset$' + guid], doc))
-        code, out, _ = run_main([self.a, self.b])
+        names = ['asset$%s', 'asset$%s-VRVlog Spring Endpoint 2', 'asset$ConstraintRef %s']
+        code, out, _ = self.node_pair([name % self.GUID_A for name in names], [name % self.GUID_B for name in names],
+                                      'Lookup failed: asset$' + self.GUID_A, 'Lookup failed: asset$' + self.GUID_B)
         self.assertEqual(0, code, out)
         self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_guid_behind_a_longer_name_is_compared_by_its_node(self):
+        # Where a name starts in a warning cannot be told from its text, so "asset-Hair$<GUID>" has
+        # the name of the node "Hair$<GUID>" in front of the GUID. The GUID is still that node's in
+        # both outputs, or the pair differs: the build steps give every bone its own GUID.
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        form = 'Lookup failed: asset-Hair$%s'
+        code, out, _ = self.node_pair(['Hair$' + guids[0]], ['Hair$' + guids[1]], form % guids[0], form % guids[1])
+        self.assertEqual(0, code, out)
+        # The GUID of another node.
+        code, out, _ = self.node_pair(['Hair$' + guids[0], 'Hair$' + guids[2]], ['Hair$' + guids[1], 'Hair$' + guids[3]],
+                                      form % guids[0], form % guids[3])
+        self.assertEqual(1, code, out)
+        self.assertIn('(nodes [1])', out)
+        self.assertIn('(nodes [2])', out)
+        # A GUID that no node of that output has.
+        for names_b, guid_b in ((['Hair$' + guids[0]], guids[1]), (['Hair$' + guids[1]], guids[0]), (['Hair$' + guids[1]], guids[3])):
+            code, out, _ = self.node_pair(['Hair$' + guids[0]], names_b, form % guids[0], form % guid_b)
+            self.assertEqual(1, code, repr(names_b) + ' ' + guid_b + ': ' + out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
 
     def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
         for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
