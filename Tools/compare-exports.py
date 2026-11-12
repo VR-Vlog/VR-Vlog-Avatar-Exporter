@@ -11,7 +11,8 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       run 2 of the same package, to confirm the base is deterministic).
   compare-exports.py --diff-paths <vrmA> <vrmB>
       Prints every glb JSON path that differs between two files. Use it on two runs of the
-      same package to find paths that change on every export (see VOLATILE and VOLATILE_SUB).
+      same package to find paths that change on every export (see VOLATILE, VOLATILE_SUB and
+      VOLATILE_WARNING_SUB).
       The JSON is compared as is, without removing or masking anything.
   --allow-added-extension NAME (repeatable, with two directories only)
       For a change that adds the root extension NAME and should change nothing else. NAME must
@@ -27,7 +28,8 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
 
 Checked for each pair:
   1. success or failure, and the failure text
-  2. warnings (the entries of the export details log), in order
+  2. warnings (the entries of the export details log), in order, after masking the
+     VOLATILE_WARNING_SUB parts
   3. expressions: count, names, preset or custom, order, and every field of each expression
      (morphTargetBinds with node, index and weight, materialColorBinds, textureTransformBinds,
      isBinary, overrideBlink / overrideLookAt / overrideMouth and anything else). VRM 0.x
@@ -56,6 +58,9 @@ MAX_PATHS = 8
 # (Formats/Runtime/AvatarFormatVersions.cs).
 REQUIRED_APP_VERSIONS = "VRVLOG_requiredAppVersions"
 
+# The form of the GUID that the avatar's build steps put in the names they generate.
+GUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+
 # glb JSON paths that change on every export even with the same input and package. Found by
 # running each avatar twice with the same package and comparing run 1 with run 2 using
 # --diff-paths; "*" matches any one key or index. Only these are removed before hashing.
@@ -72,8 +77,21 @@ VOLATILE_SUB = [
     # A bone that the avatar's build steps merge into another armature gets "$" and a new random
     # GUID at the end of its name on every build, before the exporter sees it. The name in front
     # of "$" and everything else about the node are still compared. Found the same way, on
-    # avatars whose outfits are merged at build time.
-    ("/nodes/*/name", r"\$[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$", r"$<guid>"),
+    # avatars whose outfits are merged at build time. Two more forms of the same name were found
+    # by comparing two exports of the same avatars: an object the build steps add for a constraint
+    # has "ConstraintRef " between "$" and the GUID, and the end joint the exporter adds below
+    # such a bone has the bone's name followed by "-VRVlog Spring Endpoint" (and " 2", " 3" when
+    # the name is taken).
+    ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + r"(-VRVlog Spring Endpoint(?: [0-9]+)?)?$", r"$\1<guid>\2"),
+    # A spring is named after its first bone, so it carries the same GUID.
+    ("/extensions/VRMC_springBone/springs/*/name", r"\$" + GUID + r"$", r"$<guid>"),
+]
+
+# (regex, replacement) for the parts of a warning that change on every export. A warning about a
+# bone that the build steps merged starts with the bone's name, "$", the new GUID and ": ". Only
+# the GUID is masked; the name, the text and the order of the warnings are still compared.
+VOLATILE_WARNING_SUB = [
+    (r"\$" + GUID + r"(?=: )", r"$<guid>"),
 ]
 
 
@@ -152,6 +170,19 @@ def strip_volatile(value, patterns=None, path="", subs=None):
             if path_pattern.match(path):
                 value = regex.sub(replacement, value)
     return value
+
+
+def mask_warnings(warnings, entries=None):
+    """Copy of the warnings with the VOLATILE_WARNING_SUB replacements applied to each string."""
+    subs = [(re.compile(regex), replacement)
+            for regex, replacement in (VOLATILE_WARNING_SUB if entries is None else entries)]
+    result = []
+    for warning in warnings:
+        if isinstance(warning, str):
+            for regex, replacement in subs:
+                warning = regex.sub(replacement, warning)
+        result.append(warning)
+    return result
 
 
 def remove_added_extensions(json_a, json_b, names):
@@ -279,8 +310,9 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
     if ra.get("failure") != rb.get("failure"):
         issues.append("failure text differs: %r vs %r" % (ra.get("failure"), rb.get("failure")))
     wa, wb = ra.get("warnings") or [], rb.get("warnings") or []
-    if wa != wb:
-        first = next((i for i, (x, y) in enumerate(zip(wa, wb)) if x != y), min(len(wa), len(wb)))
+    ma, mb = mask_warnings(wa), mask_warnings(wb)
+    if ma != mb:
+        first = next((i for i, (x, y) in enumerate(zip(ma, mb)) if x != y), min(len(wa), len(wb)))
         issues.append("warnings differ (%d vs %d), first at #%d: %r vs %r" % (
             len(wa), len(wb), first, wa[first] if first < len(wa) else None, wb[first] if first < len(wb) else None))
     row["ok"] = ra.get("ok")
@@ -395,7 +427,14 @@ def main(argv=None):
         return 2
     mismatched = [row for row in rows if row["issues"]]
     if args.json:
-        print(json.dumps({"pairs": len(rows), "mismatched": len(mismatched), "rows": rows}, ensure_ascii=False, indent=1))
+        report = {"pairs": len(rows), "mismatched": len(mismatched), "rows": rows}
+        text = json.dumps(report, ensure_ascii=False, indent=1)
+        try:
+            text.encode(getattr(sys.stdout, "encoding", None) or "utf-8")
+        except UnicodeEncodeError:
+            # The console cannot show every character: escape them so the output stays JSON.
+            text = json.dumps(report, indent=1)
+        print(text)
     else:
         print_rows(rows)
         print("%d pairs, %d mismatched" % (len(rows), len(mismatched)))
@@ -406,4 +445,8 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # Names and warnings can hold characters that the console's code page cannot encode; print
+    # those escaped instead of stopping in the middle of the report.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(errors="backslashreplace")
     raise SystemExit(main())
