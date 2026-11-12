@@ -484,6 +484,271 @@ namespace VRVlog.LilToonExporter.Tests
                 "The layer, how many behaviours Unity reports as effective for the state on it, and the parameters the written ones set.");
         }
 
+        // A Parameter Driver sets only what Expression Parameters or the FX
+        // controller declare. The same operations are read without and with
+        // the declaration of Gone: without it, those that set Gone or copy from
+        // it are counted and not written, Gone is no parameter, and the rest
+        // are written as they are with it.
+        [Test]
+        public void ADriverOperationOnANameNothingDeclaresIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var inner = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine.stateMachines.Single().stateMachine.states.Single().state;
+            ParameterDriverExpressionTests.Driver(inner,
+                ParameterDriverExpressionTests.Op("Set", "Gone", 1), ParameterDriverExpressionTests.Op("Add", "BlendX", 2),
+                ParameterDriverExpressionTests.Op("Copy", "BlendY", 0, "Gone"), ParameterDriverExpressionTests.Op("Copy", "Gone", 0, "BlendX"),
+                ParameterDriverExpressionTests.Op("Set", "Hat", 1));
+
+            (string Operations, int NotWritten, bool Parameter) Written()
+            {
+                var data = Captured(avatar);
+                var driver = data.Controllers.Single().Layers.Single(l => l.Name == "Nested").States.Single().Behaviours[1];
+                string Name(int? index) => index == null ? "" : " " + data.Parameters[index.Value].Name;
+                return (string.Join(", ", driver.Operations.Select(o => o.Type + Name(o.Parameter) + " " + o.Value + Name(o.Source))),
+                    data.Omitted.Where(o => o.Kind == "operation").Sum(o => o.Count), data.Parameters.Any(p => p.Name == "Gone"));
+            }
+
+            Assert.That(Written(), Is.EqualTo(("add BlendX 2, set Hat 1", 3, false)));
+            avatar.Fx.AddParameter("Gone", AnimatorControllerParameterType.Float);
+            Assert.That(Written(), Is.EqualTo(("set Gone 1, add BlendX 2, copy BlendY 0 Gone, copy Gone 0 BlendX, set Hat 1", 0, true)));
+        }
+
+        // Unity never takes a transition with a condition it cannot read: on a
+        // name its controller does not declare, of a mode that is not one of
+        // the parameter type's (If and IfNot are a bool's, Greater and Less a
+        // float's and an int's, Equals and NotEqual an int's), or of a mode it
+        // has no name for. Such a transition is not written, whatever its
+        // other conditions, and the name becomes no parameter.
+        [Test]
+        public void ATransitionWithAConditionUnityCannotReadIsNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var states = avatar.Fx.layers.Single(l => l.name == "Hat").stateMachine.states.Select(s => s.state).ToArray();
+            var (off, on) = (states.Single(s => s.name == "Hat 0"), states.Single(s => s.name == "Hat 1"));
+            void Add(params (AnimatorConditionMode Mode, string Parameter)[] conditions)
+            {
+                var transition = off.AddTransition(on);
+                foreach (var (mode, parameter) in conditions) transition.AddCondition(mode, 0, parameter);
+            }
+            Add((AnimatorConditionMode.IfNot, "Hat"));
+            Add((AnimatorConditionMode.Less, "Gone"));
+            Add((AnimatorConditionMode.If, "Hat"), (AnimatorConditionMode.Greater, "Gone"));
+            Add((AnimatorConditionMode.If, "Blend"));
+            Add((AnimatorConditionMode.Equals, "Blend"));
+            Add((AnimatorConditionMode.Greater, "Hat"));
+            Add((AnimatorConditionMode.If, "GestureLeft"));
+            Add((AnimatorConditionMode.If, "Hat"), ((AnimatorConditionMode)5, "Hat"));
+            Add((AnimatorConditionMode.Less, "Blend"), (AnimatorConditionMode.Greater, "GestureLeft"), (AnimatorConditionMode.NotEqual, "GestureLeft"));
+            Assert.That(off.transitions[7].conditions.Select(c => (int)c.mode), Is.EqualTo(new[] { (int)AnimatorConditionMode.If, 5 }), "Unity keeps the mode as it is set.");
+
+            var data = Captured(avatar);
+            var written = data.Controllers.Single().Layers.Single(l => l.Name == "Hat").States.Single(s => s.Name == "Hat 0").Transitions;
+            Assert.That(written.Select(t => string.Join(" ", t.Conditions.Select(c => c.Mode + ":" + data.Parameters[c.Parameter].Name))),
+                Is.EqualTo(new[] { "ifNot:Hat", "less:Blend greater:GestureLeft notEqual:GestureLeft" }));
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // Unity never takes a muted transition, nor one that is not Solo
+        // beside one that is. Neither is written, so the written transitions
+        // are taken in order with nothing else to look at.
+        [Test]
+        public void MutedTransitionsAndThoseBesideASoloOneAreNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var states = avatar.Fx.layers.Single(l => l.name == "Hat").stateMachine.states.Select(s => s.state).ToArray();
+            var (off, on) = (states.Single(s => s.name == "Hat 0"), states.Single(s => s.name == "Hat 1"));
+            var first = off.AddTransition(on);
+            first.AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            var second = off.AddTransition(on);
+            second.AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            string Written() => string.Join(", ", Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Hat").States.Single(s => s.Name == "Hat 0")
+                .Transitions.Select(t => string.Join(" ", t.Conditions.Select(c => c.Mode))));
+            Assert.That(Written(), Is.EqualTo("ifNot, if"));
+            first.mute = true;
+            Assert.That(Written(), Is.EqualTo("if"));
+            first.mute = false; second.solo = true;
+            Assert.That(Written(), Is.EqualTo("if"));
+            second.mute = true;
+            Assert.That(Written(), Is.EqualTo(""), "A muted Solo transition still silences the others.");
+            second.mute = false; second.solo = false;
+            var gone = off.AddTransition(on);
+            gone.solo = true;
+            gone.AddCondition(AnimatorConditionMode.Greater, 0, "Gone");
+            Assert.That(Written(), Is.EqualTo(""), "So does a Solo transition with a condition Unity cannot read.");
+
+            var machine = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine;
+            var inner = machine.stateMachines.Single().stateMachine;
+            var after = machine.AddState("After");
+            machine.AddStateMachineTransition(inner, after).mute = true;
+            machine.AddStateMachineTransition(inner, after).solo = true;
+            Assert.That(Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Nested").Machines[1].ExitTransitions.Count, Is.EqualTo(3),
+                "Unity takes a transition out of a machine whatever its Mute and Solo.");
+        }
+
+        // Unity looks at the Any State transitions of a layer's root machine
+        // alone: it never takes one that a machine inside another holds.
+        [Test]
+        public void AnAnyStateTransitionOfAMachineInsideAnotherIsNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var machine = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine;
+            var inner = machine.stateMachines.Single().stateMachine;
+            var state = inner.states.Single().state;
+            machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            inner.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            var machines = Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Nested").Machines;
+            Assert.That(machines.Select(m => string.Join(" ", m.AnyStateTransitions.Select(t => t.Conditions.Single().Mode))), Is.EqualTo(new[] { "if", "" }));
+        }
+
+        // What Unity plays when a motion or a state option names a parameter
+        // its controller does not declare as a float: a 1D or 2D tree plays
+        // nothing, a child of a direct tree has no weight, and the state
+        // option is off.
+        [Test]
+        public void ATreeOrStateOptionOnAParameterUnityCannotReadIsWrittenAsUnityPlaysIt()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            fx.AddLayer("Unreadable");
+            var layer = fx.layers.Length - 1;
+            var clip = avatar.Clip("Unreadable");
+            BlendTree Tree(string state, BlendTreeType type, string x, string y = null)
+            {
+                fx.CreateBlendTreeInController(state, out var tree, layer);
+                tree.blendType = type;
+                tree.blendParameter = x;
+                if (y != null) tree.blendParameterY = y;
+                tree.AddChild(clip, 0);
+                return tree;
+            }
+            Tree("1D gone", BlendTreeType.Simple1D, "Gone");
+            Tree("1D int", BlendTreeType.Simple1D, "GestureLeft");
+            Tree("2D gone", BlendTreeType.SimpleDirectional2D, "Blend", "Gone");
+            var holder = Tree("Holder", BlendTreeType.Simple1D, "Blend");
+            holder.AddChild(Tree("1D gone again", BlendTreeType.Simple1D, "Gone"), 1);
+            var direct = Tree("Direct", BlendTreeType.Direct, "Blend");
+            direct.AddChild(clip);
+            var children = direct.children;
+            children[0].directBlendParameter = "Gone";
+            children[1].directBlendParameter = "BlendX";
+            direct.children = children;
+            var machine = fx.layers[layer].stateMachine;
+            foreach (var (name, parameter) in new[] { ("Options gone", "Gone"), ("Options float", "Blend") })
+            {
+                var state = machine.AddState(name);
+                state.motion = clip;
+                state.speedParameterActive = state.timeParameterActive = state.cycleOffsetParameterActive = true;
+                state.speedParameter = state.timeParameter = state.cycleOffsetParameter = parameter;
+            }
+
+            var data = Captured(avatar);
+            var states = data.Controllers.Single().Layers.Single(l => l.Name == "Unreadable").States.ToDictionary(s => s.Name);
+            Assert.That(new[] { "1D gone", "1D int", "2D gone", "1D gone again" }.Select(name => states[name].Motion), Is.All.EqualTo(-1));
+            Assert.That(data.Motions[states["Holder"].Motion].Children.Select(child => child.Motion < 0 ? "none" : data.Motions[child.Motion].Type), Is.EqualTo(new[] { "clip", "none" }));
+            Assert.That(data.Motions[states["Direct"].Motion].Children.Select(child => data.Parameters[child.DirectParameter.Value].Name), Is.EqualTo(new[] { "BlendX" }));
+            string Options(string name) => string.Join(" ", new[] { states[name].SpeedParameter, states[name].TimeParameter, states[name].CycleOffsetParameter }
+                .Select(index => index == null ? "off" : data.Parameters[index.Value].Name));
+            Assert.That((Options("Options gone"), Options("Options float")), Is.EqualTo(("off off off", "Blend Blend Blend")));
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // A clip keeps up to MaximumKeysPerClip keys. A curve that does not
+        // fit in what the curves before it left is counted and not written;
+        // one that fills the clip exactly is written.
+        [Test]
+        public void ACurveOverTheKeysLeftInItsClipIsCountedNotWritten()
+        {
+            foreach (var (keys, fits) in new[] { (AvatarAnimatorData.MaximumKeysPerClip - 2, true), (AvatarAnimatorData.MaximumKeysPerClip - 1, false) })
+            {
+                using var avatar = new AnimatorAvatar();
+                // No object has a node here: a curve that is kept is counted as missingNode.
+                (int Other, int Kept) Counts()
+                {
+                    var data = Captured(avatar);
+                    int Count(string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
+                    return (Count("other"), Count("missingNode"));
+                }
+                var before = Counts();
+                // Two curves, of 2 keys and of the keys given, whichever Unity lists first.
+                var clip = avatar.Clip("Long", ("Glasses", true));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"),
+                    new AnimationCurve(Enumerable.Range(0, keys).Select(index => new Keyframe(index / 60f, index % 2)).ToArray()));
+                avatar.Fx.AddLayer("Long");
+                avatar.Fx.layers.Last().stateMachine.AddState("Long").motion = clip;
+                var after = Counts();
+                Assert.That((after.Other - before.Other, after.Kept - before.Kept), Is.EqualTo(fits ? (0, 2) : (1, 1)), keys + " keys");
+            }
+        }
+
+        // A tree is written once and played under each tree that holds it.
+        // Eleven trees, each holding the next twice and the last a clip
+        // twice, expand to 4095 motions. With one more clip under the first
+        // they are 4096, the most the format allows; a second clip leaves the
+        // stage out, and the export still succeeds.
+        [Test]
+        public void BlendTreesExpandingOverTheLimitLeaveTheStageOut()
+        {
+            Assert.That(AvatarAnimatorData.MaximumExpandedMotions, Is.EqualTo(4096));
+            foreach (var clips in new[] { 1, 2 })
+            {
+                using var avatar = new AnimatorAvatar();
+                var fx = avatar.Fx;
+                fx.AddLayer("Wide");
+                fx.CreateBlendTreeInController("Wide", out var top, fx.layers.Length - 1);
+                var clip = avatar.Clip("Wide");
+                var tree = top;
+                for (var level = 0; level < 11; level++)
+                {
+                    tree.blendType = BlendTreeType.Simple1D;
+                    tree.blendParameter = "Blend";
+                    if (level == 10) { tree.AddChild(clip, 0); tree.AddChild(clip, 1); break; }
+                    var child = tree.CreateBlendTreeChild(0);
+                    tree.AddChild(child, 1);
+                    tree = child;
+                }
+                for (var extra = 0; extra < clips; extra++) top.AddChild(clip, 2 + extra);
+
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+                var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+                var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
+                Assert.That(written, Is.EqualTo(clips == 1), clips + " clips");
+                if (written)
+                {
+                    Assert.That(Read(json).Motions.Count, Is.LessThan(64), "A tree that two places hold is written once.");
+                    Assert.That(report.Fallbacks.Results.Any(result => result.Stage != null), Is.False);
+                }
+                else
+                {
+                    var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                    Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+                    Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.TooManyMotions));
+                    Assert.That(entry.Reason, Does.Contain(AvatarAnimatorData.MaximumExpandedMotions.ToString()));
+                    Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+                }
+            }
+        }
+
+        // A control sets only what Expression Parameters declare, as VRChat's
+        // menu does. One that names a parameter of the FX controller alone,
+        // or a name nothing declares, is written without a parameter.
+        [Test]
+        public void AMenuControlNamesOnlyWhatExpressionParametersDeclare()
+        {
+            using var avatar = new AnimatorAvatar();
+            AnimatorAvatar.Control(avatar.RootMenu, "Animator only", "Toggle", "BlendX", 1);
+            AnimatorAvatar.Control(avatar.RootMenu, "Nothing", "Toggle", "Gone", 1);
+            AnimatorAvatar.SubParameters(AnimatorAvatar.Control(avatar.RootMenu, "Puppet", "TwoAxisPuppet"), "Blend", "BlendX");
+
+            var data = Captured(avatar);
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+            var controls = data.Menus[0].Controls.ToDictionary(c => c.Name);
+            Assert.That(data.Parameters[controls["Hat"].Parameter.Value].Name, Is.EqualTo("Hat"));
+            Assert.That(controls["Animator only"].Parameter, Is.Null);
+            Assert.That(controls["Nothing"].Parameter, Is.Null);
+            Assert.That(controls["Puppet"].SubParameters.Select(index => index < 0 ? "" : data.Parameters[index].Name), Is.EqualTo(new[] { "Blend", "" }));
+        }
+
         // What the stage reads from the avatar as it stands, through the
         // format's own checks. No object has a node here, so no curve is kept.
         static AvatarAnimatorData Captured(AnimatorAvatar avatar) =>
@@ -522,6 +787,7 @@ namespace VRVlog.LilToonExporter.Tests
             readonly AttachmentConnectionTests.Fixture avatar;
             internal GameObject Source => avatar.Source;
             internal AnimatorController Fx => fx;
+            internal ScriptableObject RootMenu { get; private set; }
             readonly string directory;
             readonly List<Object> owned = new List<Object>();
             readonly Type menuType;
@@ -559,16 +825,11 @@ namespace VRVlog.LilToonExporter.Tests
                     }
 
                     var root = Menu();
+                    RootMenu = root;
                     var more = Menu();
                     Control(root, "Hat", "Toggle", "Hat", 1);
                     Control(root, "More", "SubMenu", subMenu: more);
-                    var radial = Control(more, "Size", "RadialPuppet");
-                    var subParameters = radial.GetType().GetField("subParameters");
-                    var subParameter = Activator.CreateInstance(subParameters.FieldType.GetElementType());
-                    VrcAvatar.Set(subParameter, "name", "Blend");
-                    var array = Array.CreateInstance(subParameters.FieldType.GetElementType(), 1);
-                    array.SetValue(subParameter, 0);
-                    subParameters.SetValue(radial, array);
+                    SubParameters(Control(more, "Size", "RadialPuppet"), "Blend");
                     EditorUtility.SetDirty(more);
 
                     var parameters = ScriptableObject.CreateInstance(parameterType);
@@ -681,7 +942,20 @@ namespace VRVlog.LilToonExporter.Tests
                 return menu;
             }
 
-            static object Control(ScriptableObject menu, string name, string type, string parameterName = null, float value = 0, ScriptableObject subMenu = null)
+            internal static void SubParameters(object control, params string[] names)
+            {
+                var field = control.GetType().GetField("subParameters");
+                var rows = Array.CreateInstance(field.FieldType.GetElementType(), names.Length);
+                for (var i = 0; i < names.Length; i++)
+                {
+                    var row = Activator.CreateInstance(field.FieldType.GetElementType());
+                    VrcAvatar.Set(row, "name", names[i]);
+                    rows.SetValue(row, i);
+                }
+                field.SetValue(control, rows);
+            }
+
+            internal static object Control(ScriptableObject menu, string name, string type, string parameterName = null, float value = 0, ScriptableObject subMenu = null)
             {
                 var controls = (IList)VrChatExpressionMenu.Member(menu, "controls");
                 var control = Activator.CreateInstance(controls.GetType().GetGenericArguments()[0]);

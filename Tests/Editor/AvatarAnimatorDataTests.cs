@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using VRVlog.AvatarAnimator;
 using VRVlog.Expressions;
@@ -91,7 +92,7 @@ namespace VRVlog.LilToonExporter.Tests
 
             data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = 0 });
             var tree = new AvatarAnimatorData.Motion { Type = "blendTree", BlendType = "2dFreeformCartesian" };
-            tree.Parameters.Add(1); tree.Parameters.Add(2);
+            tree.Parameters.Add(1); tree.Parameters.Add(1);
             tree.Children.Add(new AvatarAnimatorData.Child { Motion = 0, X = -1, Y = .5 });
             tree.Children.Add(new AvatarAnimatorData.Child { Motion = 2, X = 1, Mirror = true });
             data.Motions.Add(tree);
@@ -111,6 +112,7 @@ namespace VRVlog.LilToonExporter.Tests
             data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Rest = 0 });
             data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 2 });
             data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "behaviour", Count = 1 });
+            data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "operation", Count = 3 });
             return data;
         }
 
@@ -245,21 +247,104 @@ namespace VRVlog.LilToonExporter.Tests
             var motions = (List<object>)json["motions"];
             var first = motions.Count;
             for (var index = 0; index < trees; index++)
+                motions.Add(Tree(outerFirst ? (index == trees - 1 ? 0 : first + index + 1) : (index == 0 ? 0 : first + index - 1)));
+        }
+
+        // A direct blend tree that holds the motions given, in that order.
+        static Dictionary<string, object> Tree(params int[] children) => new Dictionary<string, object>
+        {
+            ["type"] = "blendTree", ["blendType"] = "direct", ["parameters"] = new List<object>(), ["normalizedBlendValues"] = false,
+            ["children"] = children.Select(child => (object)new Dictionary<string, object>
             {
-                var inner = outerFirst ? (index == trees - 1 ? 0 : first + index + 1) : (index == 0 ? 0 : first + index - 1);
-                motions.Add(new Dictionary<string, object>
-                {
-                    ["type"] = "blendTree", ["blendType"] = "direct", ["parameters"] = new List<object>(), ["normalizedBlendValues"] = false,
-                    ["children"] = new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["motion"] = (long)inner, ["threshold"] = 0.0, ["position"] = new List<object> { 0.0, 0.0 },
-                            ["timeScale"] = 1.0, ["cycleOffset"] = 0.0, ["mirror"] = false, ["directParameter"] = 1L
-                        }
-                    }
-                });
+                ["motion"] = (long)child, ["threshold"] = 0.0, ["position"] = new List<object> { 0.0, 0.0 },
+                ["timeScale"] = 1.0, ["cycleOffset"] = 0.0, ["mirror"] = false, ["directParameter"] = 1L
+            }).ToList()
+        };
+
+        // Adds trees on top of the first clip: each of the doubled ones holds
+        // the one before it twice, so the n-th expands to 2^(n+1) - 1 motions,
+        // and a last tree holds the last of them twice and the clip as often
+        // as given.
+        static void Widen(Dictionary<string, object> json, int doubled, int clips)
+        {
+            var motions = (List<object>)json["motions"];
+            var inner = 0;
+            for (var level = 0; level < doubled; level++)
+            {
+                motions.Add(Tree(inner, inner));
+                inner = motions.Count - 1;
             }
+            motions.Add(Tree(new[] { inner, inner }.Concat(Enumerable.Repeat(0, clips)).ToArray()));
+        }
+
+        // Unity takes If and IfNot on a bool or a trigger, Greater and Less on
+        // a float or an int, Equals and NotEqual on an int. A condition of
+        // another mode never holds in Unity, so it is not data to play.
+        [Test]
+        public void ReadRejectsAConditionOfAModeThatIsNotItsParametersTypes()
+        {
+            // Parameters 0, 1 and 2 are a bool, a float and an int.
+            void Set(Dictionary<string, object> json, string mode, int parameter)
+            {
+                var condition = At(json, "controllers", 0, "layers", 0, "states", 0, "transitions", 0, "conditions", 0);
+                condition["mode"] = mode;
+                condition["parameter"] = (long)parameter;
+            }
+            foreach (var (mode, types) in new[] { ("if", "100"), ("ifNot", "100"), ("greater", "011"), ("less", "011"), ("equals", "001"), ("notEqual", "001") })
+                for (var parameter = 0; parameter < 3; parameter++)
+                {
+                    if (types[parameter] == '0') { Rejects(json => Set(json, mode, parameter)); continue; }
+                    var json = Json(Sample());
+                    Set(json, mode, parameter);
+                    Assert.DoesNotThrow(() => AvatarAnimatorData.Read(json), mode + " on parameter " + parameter);
+                }
+            // A trigger is only waited for: If is the one mode Unity takes on it.
+            Assert.That(new[] { "if", "ifNot" }.Select(mode => string.Join(" ", AvatarAnimatorData.ConditionTypes(mode))), Is.EqualTo(new[] { "bool trigger", "bool" }));
+        }
+
+        // Unity looks at Any State transitions on a layer's root machine
+        // alone: one on a machine inside another is not data to play.
+        [Test]
+        public void ReadRejectsAnyStateTransitionsOnAMachineInsideAnother()
+        {
+            List<object> Any(Dictionary<string, object> json, int machine) => (List<object>)At(json, "controllers", 0, "layers", 0, "machines", machine)["anyStateTransitions"];
+            Rejects(json => Any(json, 1).Add(Any(json, 0)[0]));
+        }
+
+        // A blend tree, a child of a direct tree and a state's Speed, Motion
+        // Time and Cycle Offset read a float, and Mirror reads a bool. Unity
+        // does not read the value of a parameter of another type there.
+        [Test]
+        public void ReadRejectsATreeOrAStateOptionOnAParameterOfAnotherType()
+        {
+            // Parameters 0, 1 and 2 are a bool, a float and an int.
+            Dictionary<string, object> State(Dictionary<string, object> json) => At(json, "controllers", 0, "layers", 0, "states", 1);
+            Rejects(json => ((List<object>)At(json, "motions", 1)["parameters"])[1] = 2L);
+            Rejects(json => At(json, "motions", 2, "children", 0)["directParameter"] = 0L);
+            foreach (var (key, type) in new[] { ("speedParameter", 1L), ("cycleOffsetParameter", 1L), ("timeParameter", 1L), ("mirrorParameter", 0L) })
+            {
+                Rejects(json => State(json)[key] = 2L);
+                Rejects(json => State(json)[key] = 1L - type);
+                var json = Json(Sample());
+                State(json)[key] = type;
+                Assert.DoesNotThrow(() => AvatarAnimatorData.Read(json), key);
+            }
+        }
+
+        // A tree is written once and played under each tree that holds it:
+        // the motions one motion expands to are counted with every repeat,
+        // without recursion and without counting past the limit.
+        [Test]
+        public void ReadRejectsBlendTreesThatExpandOverTheLimit()
+        {
+            Assert.That(AvatarAnimatorData.MaximumExpandedMotions, Is.EqualTo(4096));
+            // Ten doubled trees expand to 2047: the last tree to 1 + 2 * 2047 + clips.
+            var json = Json(Sample());
+            Widen(json, 10, 1);
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(json));
+            Rejects(changed => Widen(changed, 10, 2));
+            // 2^33 - 1 motions, in trees nested as deep as the format allows.
+            Rejects(changed => Widen(changed, AvatarAnimatorData.MaximumBlendTreeDepth - 1, 0));
         }
 
         // The depth is checked without recursion: a chain as long as the motion
