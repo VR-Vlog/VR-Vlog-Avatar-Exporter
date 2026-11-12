@@ -633,7 +633,7 @@ namespace VRVlog.LilToonExporter.Tests
             children[1].directBlendParameter = "BlendX";
             direct.children = children;
             var machine = fx.layers[layer].stateMachine;
-            foreach (var (name, parameter) in new[] { ("Options gone", "Gone"), ("Options float", "Blend") })
+            foreach (var (name, parameter) in new[] { ("Options gone", "Gone"), ("Options float", "Blend"), ("Options int", "GestureLeft") })
             {
                 var state = machine.AddState(name);
                 state.motion = clip;
@@ -648,8 +648,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Motions[states["Direct"].Motion].Children.Select(child => data.Parameters[child.DirectParameter.Value].Name), Is.EqualTo(new[] { "BlendX" }));
             string Options(string name) => string.Join(" ", new[] { states[name].SpeedParameter, states[name].TimeParameter, states[name].CycleOffsetParameter }
                 .Select(index => index == null ? "off" : data.Parameters[index.Value].Name));
-            Assert.That((Options("Options gone"), Options("Options float")), Is.EqualTo(("off off off", "Blend Blend Blend")));
+            Assert.That((Options("Options gone"), Options("Options float"), Options("Options int")), Is.EqualTo(("off off off", "Blend Blend Blend", "off off off")));
             Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+            // Unity reads some other float for a parameter of another type, so
+            // those uses are counted: the 1D tree on an int and three options.
+            // A name nothing declares plays as written and is not counted.
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameterType").Sum(o => o.Count), Is.EqualTo(4));
         }
 
         // A clip keeps up to MaximumKeysPerClip keys. A curve that does not

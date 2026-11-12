@@ -187,10 +187,21 @@ namespace VRVlog.LilToonExporter
             return types.Contains(data.Parameters[index].Type) ? index : -1;
         }
 
-        // A state option on a parameter Unity cannot read is off to Unity.
+        // The parameter a blend tree, a direct weight or a state option reads,
+        // or -1. On a name the controller does not declare Unity plays it as
+        // written here. On a parameter of another type Unity reads some other
+        // float instead, which the data cannot say: that is counted.
+        int ReadParameter(string name, string type)
+        {
+            var index = ControllerParameter(name, type);
+            if (index < 0 && name != null && controllerParameters.Contains(name)) Omit("parameterType");
+            return index;
+        }
+
+        // A state option on a parameter Unity cannot read is off.
         int? StateParameter(bool active, string name, string type)
         {
-            var index = active ? ControllerParameter(name, type) : -1;
+            var index = active ? ReadParameter(name, type) : -1;
             return index < 0 ? (int?)null : index;
         }
 
@@ -498,8 +509,8 @@ namespace VRVlog.LilToonExporter
             // A 1D or 2D tree blended by a parameter Unity cannot read plays
             // nothing: it is no motion, wherever it is held.
             var direct = tree.blendType == BlendTreeType.Direct;
-            var blend = direct ? new int[0] : tree.blendType == BlendTreeType.Simple1D ? new[] { ControllerParameter(tree.blendParameter, "float") }
-                : new[] { ControllerParameter(tree.blendParameter, "float"), ControllerParameter(tree.blendParameterY, "float") };
+            var blend = direct ? new int[0] : tree.blendType == BlendTreeType.Simple1D ? new[] { ReadParameter(tree.blendParameter, "float") }
+                : new[] { ReadParameter(tree.blendParameter, "float"), ReadParameter(tree.blendParameterY, "float") };
             if (blend.Contains(-1)) { motionIndex[motion] = -1; return -1; }
             if (depth > AvatarAnimatorData.MaximumBlendTreeDepth) throw new InvalidOperationException(TooDeep);
             index = data.Motions.Count;
@@ -515,7 +526,7 @@ namespace VRVlog.LilToonExporter
             {
                 // A child of a direct tree weighted by a parameter Unity cannot
                 // read has no weight: it is left out.
-                var weight = direct ? ControllerParameter(child.directBlendParameter, "float") : -1;
+                var weight = direct ? ReadParameter(child.directBlendParameter, "float") : -1;
                 if (direct && weight < 0) continue;
                 var childIndex = MotionIndex(child.motion, depth + 1);
                 if (childIndex >= 0)
