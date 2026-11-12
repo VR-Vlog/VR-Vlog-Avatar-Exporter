@@ -259,6 +259,27 @@ class CompareExportsTests(unittest.TestCase):
             self.assertEqual(1, code, repr(warnings_b) + ': ' + out)
             self.assertIn('warnings differ', out)
 
+    def test_warning_that_moves_to_another_bone_of_the_same_name_exit_1(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        text = ': Gravity is not carried over'
+
+        def pair(target_b):
+            for directory, first, second, target in ((self.a, guids[0], guids[1], guids[0]),
+                                                     (self.b, guids[2], guids[3], target_b)):
+                doc = document()
+                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + first}, {'name': 'Hair$' + second},
+                                {'name': 'Hair$' + first + '-VRVlog Spring Endpoint'}]
+                write(directory, 'A1_1', result('A1', 1, warnings=['Hair$' + target + text]), doc)
+            return run_main([self.a, self.b])
+
+        code, out, _ = pair(guids[2])
+        self.assertEqual(0, code, out)
+        code, out, _ = pair(guids[3])
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('(nodes [1, 3])', out)
+        self.assertIn('(nodes [2])', out)
+
     def test_guid_elsewhere_in_a_warning_exit_1(self):
         for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done',
                      'Head: no reference to Skirt.L$%s: skipped'):

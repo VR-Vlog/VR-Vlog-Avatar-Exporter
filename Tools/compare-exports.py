@@ -186,6 +186,27 @@ def mask_warnings(warnings, entries=None):
     return result
 
 
+def warning_targets(warnings, document, entries=None):
+    """For each warning, the indices of the nodes whose name holds the GUID that mask_warnings
+    masks in it, or None when nothing is masked. Two bones with the same name differ only in
+    that GUID, so this tells which of them a warning is about."""
+    subs = [re.compile(regex) for regex, _ in (VOLATILE_WARNING_SUB if entries is None else entries)]
+    guid = re.compile(GUID)
+    names = [node.get("name") if isinstance(node, dict) else None for node in document.get("nodes") or []]
+    result = []
+    for warning in warnings:
+        found = None
+        if isinstance(warning, str):
+            for regex in subs:
+                match = regex.search(warning)
+                masked = guid.findall(match.group(0)) if match else []
+                if masked:
+                    found = [i for i, name in enumerate(names) if isinstance(name, str) and masked[-1] in name]
+                    break
+        result.append(found)
+    return result
+
+
 def remove_added_extensions(json_a, json_b, names):
     """Return (copy of json_b, [{"name", "bytes"}]) without the root extensions in names that B has
     and A does not. Their extensionsUsed entries and asset.extras.VRVLOG_requiredAppVersions
@@ -325,6 +346,12 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         return row
     file_a, json_a, bin_a = read_glb(va)
     file_b, json_b, bin_b = read_glb(vb)
+    if ma == mb:
+        ta, tb = warning_targets(wa, json_a), warning_targets(wb, json_b)
+        if ta != tb:
+            first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
+            issues.append("warnings are about different nodes, first at #%d: %r (nodes %s) vs %r (nodes %s)" % (
+                first, wa[first], ta[first], wb[first], tb[first]))
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
