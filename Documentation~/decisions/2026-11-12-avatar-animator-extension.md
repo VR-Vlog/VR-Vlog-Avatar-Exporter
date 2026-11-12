@@ -43,6 +43,7 @@
 
 - 有限でない数値（遷移の時間・条件のしきい値・ステートの速度など）や、表の上限を超える件数、1024文字を超える名前が1つでもあると、拡張の全体が外れる。読む側と同じ検査（`AvatarAnimatorData.Read`）を書く前にも通し、決まりの外のデータを書かないため。外れたときは結果一覧と警告に「FXとメニューの動き」として出て、書き出しは続く。曲線だけは1本ずつ外す（上記）
 - FXのパラメーターを動かす曲線（アバターのルートのAnimatorに付く曲線）は書かず、`omitted`の`parameter`に件数だけを書く。この曲線の値を条件にした遷移は、書いたデータだけを再生しても起きない。92体では合わせて193本あった。曲線の行き先にパラメーターを足す形式の追加が要るので、`blendShape`の次の変更で書く。アプリ側の再生はまだ無く、それまでに出る挙動は無い（Codexレビューの指摘を今回は見送った理由）
+- Parameter DriverのRandomで同じ値を続けて選ばない設定（VRChat SDK 3.10.2で足された）は書かない。確かめに使ったSDKは3.10.1でこの設定が無く、項目の名前と挙動を実物で確かめられないため。設定のあるアバターでも、今は普通のRandomとして書く。SDKを上げて確かめてから形式に足す（Codexレビューの指摘を今回は見送った理由）
 - レイヤーのAvatar Maskは書かない。マスクの対象（ボーンとTransformのパス）をアプリ側のノードにどう対応させるかを決めていないため。マスクで隠れる部分も、アプリ側ではマスクの無いレイヤーとして動く
 - 同じ体を2回書き出したとき、拡張の内容が一致するかはビルドツールが付ける名前に左右される。レイヤー・ステート・クリップの名前はビルドの処理が付けたものをそのまま書き、その名前が書き出しのたびに変わることがあるため
 
@@ -50,8 +51,8 @@
 
 - 読む時点から書き込みまでの間に、記述子とFXを書き換える処理が無いことをコードを読んで確かめた。FXに書き込むのは、書き出しが自分で作る調査用のコントローラーだけだった
 - `AvatarAnimatorCaptureTests`で、FaultInjectionでこの段の4回の呼び出しのそれぞれを失敗させ、失敗で止める設定と止めない設定の両方で、書き出しが成功し、通常の書き出しから拡張・`extensionsUsed`の1項目・必要バージョンの1項目を外すとJSONとBINチャンクが一致し、結果一覧と警告にこの段が出ることを確かめる
-- EditModeテスト（`AvatarAnimatorDataTests`、`AvatarAnimatorCaptureTests`、`ObjectToggleCaptureTests`、`ExpressionGestureTests`、`ExportStageGuardTests`、`ExportAppearanceReportLanguageTests`）は131件が通る
+- EditModeテスト（`AvatarAnimatorDataTests`、`AvatarAnimatorCaptureTests`、`ObjectToggleCaptureTests`、`ExpressionGestureTests`、`ExportStageGuardTests`、`ExportAppearanceReportLanguageTests`）は133件が通る
 - 9体を2回ずつ書き出し、変更の前（`feature/full-reproduction`）と`Tools/compare-exports.py --allow-added-extension VRVLOG_avatar_animator`で比べた。`18 pairs, 0 mismatched`で、足した拡張のほかはJSONもBINチャンクも一致した。同じ9体の1回目と2回目（`--runs`）も`9 pairs, 0 mismatched`で、この9体では拡張の内容も2回で一致した
-- 92体（書き出せた89体と、変更の前後とも同じ理由で書き出せない3体）を1回ずつ書き出し、同じように比べた。`92 pairs, 0 mismatched`だった。89体のうち77体に拡張が付き、大きさは最小13,939バイト、中央値41,863バイト、最大956,521バイトだった。拡張の無い12体には「FXとメニューの動き」の警告が無く、上の「拡張の全体が外れる」に当たった体は0だった。12体に書く対象が無いことは、1体ずつは確かめていない
+- 92体（書き出せた89体と、変更の前後とも同じ理由で書き出せない3体）を1回ずつ書き出し、同じように比べた。`92 pairs, 0 mismatched`だった。89体のうち77体に拡張が付き、大きさは最小13,939バイト、中央値41,866バイト、最大956,521バイトだった。拡張の無い12体には「FXとメニューの動き」の警告が無く、上の「拡張の全体が外れる」に当たった体は0だった。12体に書く対象が無いことは、1体ずつは確かめていない
 - 92体で書かなかった曲線は、`blendShape`が229,510本、Transformが11,796本、筋肉の値が10,611本、マテリアルが1,886本だった。`blendShape`は次の変更で書く
 - アプリでの読み込みは確かめていない
