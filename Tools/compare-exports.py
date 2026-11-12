@@ -29,13 +29,15 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
 Checked for each pair:
   1. success or failure, and the failure text
   2. warnings (the entries of the export details log), in order, after masking the
-     VOLATILE_WARNING_SUB parts
+     VOLATILE_WARNING_SUB parts. A masked GUID is ignored only where a node of the output has
+     it in its name; the nodes that have it are compared instead.
   3. expressions: count, names, preset or custom, order, and every field of each expression
      (morphTargetBinds with node, index and weight, materialColorBinds, textureTransformBinds,
      isBinary, overrideBlink / overrideLookAt / overrideMouth and anything else). VRM 0.x
      blendShapeGroups are compared the same way.
   4. sha256 of the glb JSON chunk after removing VOLATILE paths and masking the VOLATILE_SUB
-     parts of string values, and sha256 of the BIN chunk
+     parts of string values, and sha256 of the BIN chunk. A value with a masked part in only
+     one of the two is a difference, even when the text after masking is the same.
 Whole-file byte equality is reported as information only.
 
 Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs,
@@ -101,9 +103,10 @@ VOLATILE_SUB = [
 #      in front of the first ": ".
 #   2. A warning that lists bones separates their names with ", ", so the GUID is followed by
 #      ", " or ends the warning.
-# A GUID anywhere else in the text is left as it is. When the pair has output files, a masked GUID
-# that no node name of the output holds is compared as well (see warning_targets): only the GUID
-# in the name of an exported bone is known to change on every export.
+# A GUID anywhere else in the text is left as it is. A masked GUID that no node name of the
+# output holds is compared as well (see warning_targets), and so is every masked GUID of a pair
+# that failed to export and has no output: only the GUID in the name of an exported bone is
+# known to change on every export.
 VOLATILE_WARNING_SUB = [
     (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
     (r"\$" + GUID + r"(?=, |$)", r"$<guid>"),
@@ -168,22 +171,27 @@ def volatile_subs(entries=None):
             for p, regex, replacement in (VOLATILE_SUB if entries is None else entries)]
 
 
-def strip_volatile(value, patterns=None, path="", subs=None):
+def strip_volatile(value, patterns=None, path="", subs=None, masked=None):
     """Copy of value without the dictionary entries whose path matches a VOLATILE pattern, and
-    with the VOLATILE_SUB replacements applied to matching string values."""
+    with the VOLATILE_SUB replacements applied to matching string values. The path of each value
+    that a replacement changed is added to the list masked, when it is given."""
     if patterns is None:
         patterns = volatile_patterns()
     if subs is None:
         subs = volatile_subs()
     if isinstance(value, dict):
-        return {key: strip_volatile(item, patterns, "%s/%s" % (path, key), subs) for key, item in value.items()
-                if not any(p.match("%s/%s" % (path, key)) for p in patterns)}
+        return {key: strip_volatile(item, patterns, "%s/%s" % (path, key), subs, masked)
+                for key, item in value.items() if not any(p.match("%s/%s" % (path, key)) for p in patterns)}
     if isinstance(value, list):
-        return [strip_volatile(item, patterns, "%s/%d" % (path, index), subs) for index, item in enumerate(value)]
+        return [strip_volatile(item, patterns, "%s/%d" % (path, index), subs, masked)
+                for index, item in enumerate(value)]
     if isinstance(value, str):
+        before = value
         for path_pattern, regex, replacement in subs:
             if path_pattern.match(path):
                 value = regex.sub(replacement, value)
+        if masked is not None and value != before:
+            masked.append(path)
     return value
 
 
@@ -230,6 +238,17 @@ def node_lists(targets):
         return "nodes %s" % (targets,)
     parts = [str(nodes) if isinstance(nodes, list) else "no node has " + nodes for nodes in targets]
     return ("nodes " if any(isinstance(nodes, list) for nodes in targets) else "") + " / ".join(parts)
+
+
+def target_issues(warnings_a, warnings_b, json_a, json_b):
+    """The issue, in a list, for the first warning whose masked GUIDs are not about the same nodes
+    in the two documents; an empty list when all are. The warnings are the same after masking."""
+    ta, tb = warning_targets(warnings_a, json_a), warning_targets(warnings_b, json_b)
+    if ta == tb:
+        return []
+    first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
+    return ["warnings are about different nodes, first at #%d: %r (%s) vs %r (%s)" % (
+        first, warnings_a[first], node_lists(ta[first]), warnings_b[first], node_lists(tb[first]))]
 
 
 def remove_added_extensions(json_a, json_b, names):
@@ -368,15 +387,14 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         issues.append("vrm missing in " + ("A" if va is None else "B"))
         return row
     if va is None:
+        # A pair that failed to export has no node names, so its masked GUIDs are compared as they are.
+        if ma == mb:
+            issues += target_issues(wa, wb, {}, {})
         return row
     file_a, json_a, bin_a = read_glb(va)
     file_b, json_b, bin_b = read_glb(vb)
     if ma == mb:
-        ta, tb = warning_targets(wa, json_a), warning_targets(wb, json_b)
-        if ta != tb:
-            first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
-            issues.append("warnings are about different nodes, first at #%d: %r (%s) vs %r (%s)" % (
-                first, wa[first], node_lists(ta[first]), wb[first], node_lists(tb[first])))
+        issues += target_issues(wa, wb, json_a, json_b)
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
@@ -384,13 +402,21 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         json_b, removed = remove_added_extensions(json_a, json_b, allowed_extensions)
         if removed:
             row["allowed_extensions"] = removed
-    sa, sb = strip_volatile(json_a, patterns, subs=subs), strip_volatile(json_b, patterns, subs=subs)
+    pa, pb = [], []
+    sa = strip_volatile(json_a, patterns, subs=subs, masked=pa)
+    sb = strip_volatile(json_b, patterns, subs=subs, masked=pb)
     ha, hb = normalized_json_hash(sa), normalized_json_hash(sb)
     row["json_hash"] = ha[:16]
     row["bin_hash"] = sha256(bin_a)[:16]
     if ha != hb:
         paths = diff_paths(sa, sb)
         issues.append("normalized JSON chunk differs at %d paths: %s" % (len(paths), ", ".join(paths[:MAX_PATHS])))
+    elif set(pa) != set(pb):
+        # The text is the same after masking, but only one of the two had the part that is masked:
+        # the other already was the text that the replacement gives.
+        paths = sorted(set(pa) ^ set(pb))
+        issues.append("VOLATILE_SUB masked a value in only one of the two at %d paths: %s" % (
+            len(paths), ", ".join(paths[:MAX_PATHS])))
     if sha256(bin_a) != sha256(bin_b):
         issues.append("BIN chunk differs (%d vs %d bytes)" % (len(bin_a), len(bin_b)))
     row["file_equal"] = file_a == file_b

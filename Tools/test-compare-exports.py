@@ -376,6 +376,31 @@ class CompareExportsTests(unittest.TestCase):
         self.assertIn('(nodes [1] / [2])', out)
         self.assertIn('(nodes [1] / no node has ' + guids[3] + ')', out)
 
+    def test_pair_that_failed_to_export_compares_masked_guids(self):
+        # Without an output there is no node name to find the GUID in, so it has to be the same.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s'):
+            for directory, guid in ((self.a, self.GUID_A), (self.b, self.GUID_B)):
+                write(directory, 'A2_1', result('A2', 1, ok=False, warnings=[form % guid]))
+            code, out, _ = run_main([self.a, self.b])
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('3 pairs, 1 mismatched', out)
+            self.assertIn('warnings are about different nodes, first at #0', out)
+            self.assertIn('(no node has ' + self.GUID_A + ')', out)
+            self.assertIn('(no node has ' + self.GUID_B + ')', out)
+            write(self.b, 'A2_1', result('A2', 1, ok=False, warnings=[form % self.GUID_A]))
+            code, out, _ = run_main([self.a, self.b])
+            self.assertEqual(0, code, form + ': ' + out)
+            self.assertIn('3 pairs, 0 mismatched', out)
+
+    def test_warning_that_already_is_the_masked_text_exit_1(self):
+        # "$<guid>" is what the mask leaves; a warning that already has it names no bone.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s'):
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % '<guid>'], bones=False)
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('warnings are about different nodes, first at #0', out)
+            self.assertIn('(no node has ' + self.GUID_A + ')', out)
+            self.assertIn('(nodes None)', out)
+
     def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
         for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
             doc = document()
@@ -405,6 +430,26 @@ class CompareExportsTests(unittest.TestCase):
             code, out, _ = self.clip_pair(made_a, made_b, extension=extension, key=key)
             self.assertEqual(1, code, extension + ' ' + key + ': ' + out)
             self.assertIn('/extensions/%s/%s/1/name' % (extension, key), out)
+
+    def test_value_that_already_is_the_masked_text_exit_1(self):
+        # A rule replaces the part that changes with a fixed text. A value that already is that
+        # text has no such part, so it is not the same as a value that had one.
+        made = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
+        pairs = ((self.emission_image_pair, 'Body_Main__VRVlog_Emission_' + '0123456789abcdef' * 2,
+                  'Body_Main__VRVlog_Emission_<guid>', '/images/1/name'),
+                 (self.merged_bone_pair, 'Skirt.L$' + self.GUID_A, 'Skirt.L$<guid>', '/nodes/1/name'),
+                 (self.merged_bone_pair, 'Hand$ConstraintRef ' + self.GUID_A, 'Hand$ConstraintRef <guid>', '/nodes/1/name'),
+                 (self.spring_pair, 'Skirt.L$' + self.GUID_A, 'Skirt.L$<guid>', '/extensions/VRMC_springBone/springs/1/name'),
+                 (self.clip_pair, made, 'Made__<generated>', '/extensions/VRVLOG_avatar_animator/clips/1/name'))
+        for pair, name_a, name_b, path in pairs:
+            for names in ((name_a, name_b), (name_b, name_a)):
+                code, out, _ = pair(*names)
+                self.assertEqual(1, code, path + ': ' + out)
+                self.assertIn('VOLATILE_SUB masked a value in only one of the two at 1 paths: ' + path, out)
+            # The same text in both is the same value.
+            code, out, _ = pair(name_b, name_b)
+            self.assertEqual(0, code, path + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
 
     def test_differing_warning_reports_the_unmasked_text(self):
         text = ': Gravity is not carried over'
