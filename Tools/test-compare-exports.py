@@ -282,10 +282,94 @@ class CompareExportsTests(unittest.TestCase):
 
     def test_guid_elsewhere_in_a_warning_exit_1(self):
         for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done',
-                     'Head: no reference to Skirt.L$%s: skipped'):
+                     'Head: no reference to Skirt.L$%s: skipped',
+                     # In a list, the GUID has to be followed by ", " or end the warning.
+                     'Kept: Skirt.L$%sx, Tail', 'Kept: Skirt.L$%s,Tail', 'Kept: Skirt.L$%s and Tail', 'Kept: Tail, Skirt.L$%sx',
+                     'Kept: Tail, Skirt.L$ConstraintRef %s', 'Kept: Tail, %s'):
             code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B])
             self.assertEqual(1, code, form + ': ' + out)
             self.assertIn('warnings differ (1 vs 1), first at #0', out)
+
+    def test_warning_that_lists_merged_bones_ignores_only_the_guids(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        form = 'Parts kept where they are: Skirt.L$%s, Tail$%s'
+        code, out, _ = self.warning_pair([form % (guids[0], guids[1]), 'Shape A was dropped'],
+                                         [form % (guids[2], guids[3]), 'Shape A was dropped'])
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+        one = 'Parts kept where they are: Tail$%s'
+        code, out, _ = self.warning_pair([one % guids[0]], [one % guids[2]])
+        self.assertEqual(0, code, out)
+        # A warning that starts with a bone's name can also name another bone at its end.
+        both = 'Skirt.L$%s: Collides with Tail$%s'
+        code, out, _ = self.warning_pair([both % (guids[0], guids[1])], [both % (guids[2], guids[3])])
+        self.assertEqual(0, code, out)
+        for form_b in ('Parts kept where they are: Skirt.R$%s, Tail$%s',
+                       'Parts kept where they are: Tail$%s, Skirt.L$%s',
+                       'Parts moved: Skirt.L$%s, Tail$%s',
+                       'Parts kept where they are: Skirt.L$%s, Tail$%s, Ribbon',
+                       'Parts kept where they are: Skirt.L$%s, Tail$%sx',
+                       'Parts kept where they are: Skirt.L$%s and Tail$%s'):
+            code, out, _ = self.warning_pair([form % (guids[0], guids[1])], [form_b % (guids[2], guids[3])])
+            self.assertEqual(1, code, form_b + ': ' + out)
+            self.assertIn('warnings differ (1 vs 1), first at #0', out)
+        for warnings_b in (['Parts kept where they are: Skirt.L$' + guids[2]],
+                           ['Parts kept where they are: Skirt.L, Tail$' + guids[3]],
+                           [form % (guids[2], guids[3]), 'Shape A was dropped']):
+            code, out, _ = self.warning_pair([form % (guids[0], guids[1])], warnings_b)
+            self.assertEqual(1, code, repr(warnings_b) + ': ' + out)
+            self.assertIn('warnings differ', out)
+
+    def test_listed_bone_that_moves_to_another_bone_of_the_same_name_exit_1(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 7)]
+
+        def pair(listed_b):
+            for directory, first, second, tail, listed in ((self.a, guids[0], guids[1], guids[2], guids[0]),
+                                                           (self.b, guids[3], guids[4], guids[5], listed_b)):
+                doc = document()
+                doc['nodes'] = [{'name': 'Hips'}, {'name': 'Hair$' + first}, {'name': 'Hair$' + second},
+                                {'name': 'Tail$' + tail}]
+                warning = 'Parts kept where they are: Tail$%s, Hair$%s' % (tail, listed)
+                write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
+            return run_main([self.a, self.b])
+
+        code, out, _ = pair(guids[3])
+        self.assertEqual(0, code, out)
+        code, out, _ = pair(guids[4])
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('(nodes [3] / [1])', out)
+        self.assertIn('(nodes [3] / [2])', out)
+
+    def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
+        for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
+            doc = document()
+            doc['extensions'][extension] = {'schemaVersion': 1, key: [{'name': 'Idle', 'duration': 2.0},
+                                                                    {'name': name, 'duration': duration}]}
+            write(directory, 'A1_1', result('A1', 1), doc)
+        return run_main([self.a, self.b])
+
+    def test_generated_clip_name_difference_is_ignored(self):
+        made_a = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
+        made_b = 'Made__fedcba9876543210fedcba9876543210__' + self.GUID_B + '_21'
+        path = '/extensions/VRVLOG_avatar_animator/clips/1/'
+        code, out, _ = self.clip_pair(made_a, made_b)
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+        for name_b in ('Other' + made_b[4:], made_b + 'x', made_b[:-3], made_b.replace('__f', '_f'), made_b.replace(self.GUID_B, '1'),
+                       'Made__fedcba98__' + self.GUID_B + '_21', 'Made'):
+            code, out, _ = self.clip_pair(made_a, name_b)
+            self.assertEqual(1, code, name_b + ': ' + out)
+            self.assertIn(path + 'name', out)
+        # The clip under a generated name is still compared.
+        code, out, _ = self.clip_pair(made_a, made_b, duration_b=1.5)
+        self.assertEqual(1, code, out)
+        self.assertIn(path + 'duration', out)
+        # Only the names of the clips of this extension take the form.
+        for extension, key in (('VRVLOG_avatar_animator', 'layers'), ('VRVLOG_other', 'clips')):
+            code, out, _ = self.clip_pair(made_a, made_b, extension=extension, key=key)
+            self.assertEqual(1, code, extension + ' ' + key + ': ' + out)
+            self.assertIn('/extensions/%s/%s/1/name' % (extension, key), out)
 
     def test_differing_warning_reports_the_unmasked_text(self):
         text = ': Gravity is not carried over'

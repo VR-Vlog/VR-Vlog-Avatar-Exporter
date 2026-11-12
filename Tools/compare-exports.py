@@ -85,14 +85,26 @@ VOLATILE_SUB = [
     ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + r"(-VRVlog Spring Endpoint(?: [0-9]+)?)?$", r"$\1<guid>\2"),
     # A spring is named after its first bone, so it carries the same GUID.
     ("/extensions/VRMC_springBone/springs/*/name", r"\$" + GUID + r"$", r"$<guid>"),
+    # A clip that the avatar's build steps write anew on every build gets a name that ends with a
+    # new 32-digit ID, a new GUID and a number. The text in front of them and the clip itself are
+    # still compared, and the rest of the file refers to clips by index. Found by comparing two
+    # exports of the same avatars made in two launches of the editor; two exports made in one
+    # launch give the same names.
+    ("/extensions/VRVLOG_avatar_animator/clips/*/name", r"__[0-9a-f]{32}__" + GUID + r"_[0-9]+$", r"__<generated>"),
 ]
 
-# (regex, replacement) for the parts of a warning that change on every export. A warning about a
-# bone that the build steps merged starts with the bone's name, "$", the new GUID and ": ". Only
-# the GUID is masked; the name, the text and the order of the warnings are still compared. The
-# GUID has to end the part in front of the first ": ", so one inside the text is left as it is.
+# (regex, replacement) for the parts of a warning that change on every export: the GUID in the
+# name of a bone that the build steps merged (the name, "$" and the new GUID). Only the GUID is
+# masked; the names, the text and the order of the warnings are still compared. The GUID is
+# masked only where it ends a name, in the two forms found in exports:
+#   1. A warning about one bone starts with the bone's name and ": ", so the GUID ends the part
+#      in front of the first ": ".
+#   2. A warning that lists bones separates their names with ", ", so the GUID is followed by
+#      ", " or ends the warning.
+# A GUID anywhere else in the text is left as it is.
 VOLATILE_WARNING_SUB = [
     (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
+    (r"\$" + GUID + r"(?=, |$)", r"$<guid>"),
 ]
 
 
@@ -187,9 +199,9 @@ def mask_warnings(warnings, entries=None):
 
 
 def warning_targets(warnings, document, entries=None):
-    """For each warning, the indices of the nodes whose name holds the GUID that mask_warnings
-    masks in it, or None when nothing is masked. Two bones with the same name differ only in
-    that GUID, so this tells which of them a warning is about."""
+    """For each warning, one list for each GUID that mask_warnings masks in it, with the indices
+    of the nodes whose name holds that GUID, or None when nothing is masked. Two bones with the
+    same name differ only in that GUID, so this tells which of them a warning is about."""
     subs = [re.compile(regex) for regex, _ in (VOLATILE_WARNING_SUB if entries is None else entries)]
     guid = re.compile(GUID)
     names = [node.get("name") if isinstance(node, dict) else None for node in document.get("nodes") or []]
@@ -197,14 +209,18 @@ def warning_targets(warnings, document, entries=None):
     for warning in warnings:
         found = None
         if isinstance(warning, str):
-            for regex in subs:
-                match = regex.search(warning)
-                masked = guid.findall(match.group(0)) if match else []
-                if masked:
-                    found = [i for i, name in enumerate(names) if isinstance(name, str) and masked[-1] in name]
-                    break
+            # A match can start in front of the GUID it masks, so the masked one is the last in it.
+            masked = [guid.findall(match.group(0))[-1] for regex in subs for match in regex.finditer(warning)
+                      if guid.search(match.group(0))]
+            if masked:
+                found = [[i for i, name in enumerate(names) if isinstance(name, str) and one in name] for one in masked]
         result.append(found)
     return result
+
+
+def node_lists(targets):
+    """The lists of warning_targets for one warning as text: "[1, 3]", or "[1] / [4]" for two GUIDs."""
+    return " / ".join(str(nodes) for nodes in targets) if targets else str(targets)
 
 
 def remove_added_extensions(json_a, json_b, names):
@@ -351,7 +367,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         if ta != tb:
             first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
             issues.append("warnings are about different nodes, first at #%d: %r (nodes %s) vs %r (nodes %s)" % (
-                first, wa[first], ta[first], wb[first], tb[first]))
+                first, wa[first], node_lists(ta[first]), wb[first], node_lists(tb[first])))
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
