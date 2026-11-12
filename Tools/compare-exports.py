@@ -101,7 +101,9 @@ VOLATILE_SUB = [
 #      in front of the first ": ".
 #   2. A warning that lists bones separates their names with ", ", so the GUID is followed by
 #      ", " or ends the warning.
-# A GUID anywhere else in the text is left as it is.
+# A GUID anywhere else in the text is left as it is. When the pair has output files, a masked GUID
+# that no node name of the output holds is compared as well (see warning_targets): only the GUID
+# in the name of an exported bone is known to change on every export.
 VOLATILE_WARNING_SUB = [
     (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
     (r"\$" + GUID + r"(?=, |$)", r"$<guid>"),
@@ -199,9 +201,11 @@ def mask_warnings(warnings, entries=None):
 
 
 def warning_targets(warnings, document, entries=None):
-    """For each warning, one list for each GUID that mask_warnings masks in it, with the indices
-    of the nodes whose name holds that GUID, or None when nothing is masked. Two bones with the
-    same name differ only in that GUID, so this tells which of them a warning is about."""
+    """For each warning, one entry for each GUID that mask_warnings masks in it: the indices of the
+    nodes whose name holds that GUID, or the GUID itself when no node has it. None when nothing is
+    masked. Two bones with the same name differ only in that GUID, so the indices tell which of
+    them a warning is about. A GUID that is not part of a node's name is not known to change on
+    every export, so it is compared as it is."""
     subs = [re.compile(regex) for regex, _ in (VOLATILE_WARNING_SUB if entries is None else entries)]
     guid = re.compile(GUID)
     names = [node.get("name") if isinstance(node, dict) else None for node in document.get("nodes") or []]
@@ -213,14 +217,19 @@ def warning_targets(warnings, document, entries=None):
             masked = [guid.findall(match.group(0))[-1] for regex in subs for match in regex.finditer(warning)
                       if guid.search(match.group(0))]
             if masked:
-                found = [[i for i, name in enumerate(names) if isinstance(name, str) and one in name] for one in masked]
+                found = [[i for i, name in enumerate(names) if isinstance(name, str) and one in name] or one
+                         for one in masked]
         result.append(found)
     return result
 
 
 def node_lists(targets):
-    """The lists of warning_targets for one warning as text: "[1, 3]", or "[1] / [4]" for two GUIDs."""
-    return " / ".join(str(nodes) for nodes in targets) if targets else str(targets)
+    """The entries of warning_targets for one warning as text: "nodes [1, 3]", "nodes [1] / [4]" for
+    two GUIDs, and "no node has <GUID>" in place of the indices for a GUID that is in no node's name."""
+    if not targets:
+        return "nodes %s" % (targets,)
+    parts = [str(nodes) if isinstance(nodes, list) else "no node has " + nodes for nodes in targets]
+    return ("nodes " if any(isinstance(nodes, list) for nodes in targets) else "") + " / ".join(parts)
 
 
 def remove_added_extensions(json_a, json_b, names):
@@ -366,7 +375,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         ta, tb = warning_targets(wa, json_a), warning_targets(wb, json_b)
         if ta != tb:
             first = next(i for i, (x, y) in enumerate(zip(ta, tb)) if x != y)
-            issues.append("warnings are about different nodes, first at #%d: %r (nodes %s) vs %r (nodes %s)" % (
+            issues.append("warnings are about different nodes, first at #%d: %r (%s) vs %r (%s)" % (
                 first, wa[first], node_lists(ta[first]), wb[first], node_lists(tb[first])))
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)

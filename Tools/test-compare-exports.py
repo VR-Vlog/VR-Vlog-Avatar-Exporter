@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -17,6 +18,8 @@ compare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(compare)
 
 BINARY = struct.pack('<9f', 0, 0, 0, 1, 0, 0, 0, 1, 0)
+# A bone's name with the GUID that the avatar's build steps put at its end, as it appears in a warning.
+BONE = re.compile(r'[^ ,:]+\$' + compare.GUID)
 
 
 def pack_glb(document, binary=BINARY):
@@ -239,9 +242,14 @@ class CompareExportsTests(unittest.TestCase):
         self.assertEqual(1, code, out)
         self.assertIn('/extensions/VRMC_springBone/colliderGroups/1/name', out)
 
-    def warning_pair(self, warnings_a, warnings_b):
-        write(self.a, 'A1_1', result('A1', 1, warnings=warnings_a), document())
-        write(self.b, 'A1_1', result('A1', 1, warnings=warnings_b), document())
+    def warning_pair(self, warnings_a, warnings_b, bones=True):
+        """One pair with the given warnings. With bones, each output has a node for every
+        "<name>$<GUID>" in its warnings, as an export has for the bones its warnings name."""
+        for directory, warnings in ((self.a, warnings_a), (self.b, warnings_b)):
+            doc = document()
+            if bones:
+                doc['nodes'] += [{'name': name} for warning in warnings for name in BONE.findall(warning)]
+            write(directory, 'A1_1', result('A1', 1, warnings=warnings), doc)
         return run_main([self.a, self.b])
 
     def test_warning_about_a_merged_bone_ignores_only_the_guid(self):
@@ -340,6 +348,33 @@ class CompareExportsTests(unittest.TestCase):
         self.assertIn('warnings are about different nodes, first at #0', out)
         self.assertIn('(nodes [3] / [1])', out)
         self.assertIn('(nodes [3] / [2])', out)
+
+    def test_masked_guid_that_no_node_has_is_compared(self):
+        # Only the GUID in the name of an exported bone is known to change on every export, so a
+        # GUID that sits where a bone's name would end but is in no node's name has to be the same.
+        for form in ('Skirt.L$%s: Gravity is not carried over', 'Parts kept where they are: Tail, Skirt.L$%s',
+                     'Lookup failed: asset$%s', 'Lookup failed: asset$%s, other'):
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B], bones=False)
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('warnings are about different nodes, first at #0', out)
+            self.assertIn('(no node has ' + self.GUID_A + ')', out)
+            self.assertIn('(no node has ' + self.GUID_B + ')', out)
+            code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_A], bones=False)
+            self.assertEqual(0, code, form + ': ' + out)
+            self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_masked_guid_that_only_one_output_has_exit_1(self):
+        guids = ['%08x-89ab-cdef-0123-456789abcdef' % number for number in range(1, 5)]
+        for directory, tail, skirt, kept in ((self.a, guids[0], guids[1], True), (self.b, guids[2], guids[3], False)):
+            doc = document()
+            doc['nodes'] += [{'name': 'Tail$' + tail}] + ([{'name': 'Skirt.L$' + skirt}] if kept else [])
+            warning = 'Parts kept where they are: Tail$%s, Skirt.L$%s' % (tail, skirt)
+            write(directory, 'A1_1', result('A1', 1, warnings=[warning]), doc)
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(1, code, out)
+        self.assertIn('warnings are about different nodes, first at #0', out)
+        self.assertIn('(nodes [1] / [2])', out)
+        self.assertIn('(nodes [1] / no node has ' + guids[3] + ')', out)
 
     def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
         for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
