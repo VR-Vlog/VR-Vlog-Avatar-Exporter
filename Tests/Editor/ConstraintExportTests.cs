@@ -48,7 +48,7 @@ namespace VRVlog.LilToonExporter.Tests
                 return constraint;
             }
 
-            internal ConstraintExport.Result Convert() => ConstraintExport.Convert(Source, Copy, Warnings, Report);
+            internal ConstraintExport.Result Convert(params Transform[] animated) => ConstraintExport.Convert(Source, Copy, Warnings, Report, null, animated);
             internal ExportResultEntry Entry => Report.Results.Single();
             public void Dispose() { Object.DestroyImmediate(Copy); Object.DestroyImmediate(Source); }
         }
@@ -884,6 +884,39 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Is.Empty);
             Assert.That(f.Report.Results.Single(r => r.Name == "B (AimConstraint)").Reason, Is.EqualTo(ConstraintExport.OmittedRest));
             Assert.That(f.Report.Results.Single(r => r.Name == "B (ParentConstraint)").Outcome, Is.EqualTo(ExportOutcome.Kept));
+        }
+
+        // A rotation on the same target was written before aims with offsets
+        // were; the aim no longer takes the target from it.
+        [Test]
+        public void AnAimWithAnOffsetLeavesARotationConstraintOnTheSameTarget()
+        {
+            using var f = new Fixture();
+            f.Constraint<AimConstraint>(f.B, 1, f.Other).aimVector = Vector3.forward;
+            f.B.rotation = Quaternion.LookRotation(f.Other.position - f.B.position) * Quaternion.Euler(0, 40, 0);
+            f.A.localRotation = f.B.localRotation;
+            f.Constraint<RotationConstraint>(f.B, 1, f.A);
+            f.Convert();
+            Assert.That(f.B.parent, Is.EqualTo(f.Parent));
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Is.Empty);
+            Assert.That(f.B.GetComponent<Vrm10RotationConstraint>().Source, Is.EqualTo(f.A));
+            Assert.That(f.Report.Results.Single(r => r.Name == "B (AimConstraint)").Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+            Assert.That(f.Report.Results.Single(r => r.Name == "B (RotationConstraint)").Outcome, Is.EqualTo(ExportOutcome.Kept));
+        }
+
+        // Expression tracks hold local values, which a node above the target
+        // would shift; below the target they stay the same.
+        [TestCase(true)][TestCase(false)]
+        public void AnAimWithAnOffsetLeavesATargetThatAnExpressionMovesUnderItsParent(bool target)
+        {
+            using var f = new Fixture();
+            var mesh = Fixture.Child(f.B, "Mesh", new Vector3(0, .05f, .1f));
+            f.Constraint<AimConstraint>(f.B, 1, f.Other).aimVector = Vector3.forward;
+            f.B.rotation = Quaternion.LookRotation(f.Other.position - f.B.position) * Quaternion.Euler(0, 40, 0);
+            f.Convert(target ? f.B : mesh);
+            Assert.That(f.B.parent == f.Parent, Is.EqualTo(target));
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), target ? Is.Empty : Has.Length.EqualTo(1));
+            Assert.That(f.Entry.Reason, Is.EqualTo(target ? ConstraintExport.OmittedRest : ConstraintExport.ApproximatedAim));
         }
 
         // The node went under the target's own source first; taken out, it
