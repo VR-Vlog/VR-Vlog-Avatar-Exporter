@@ -37,7 +37,9 @@ Checked for each pair:
      blendShapeGroups are compared the same way.
   4. sha256 of the glb JSON chunk after removing VOLATILE paths and masking the VOLATILE_SUB
      parts of string values, and sha256 of the BIN chunk. A value with a masked part in only
-     one of the two is a difference, even when the text after masking is the same.
+     one of the two is a difference, even when the text after masking is the same. The parts
+     that change only between launches of the editor (VOLATILE_SUB_BETWEEN_LAUNCHES) are masked
+     when two directories are compared and compared as they are with --runs.
 Whole-file byte equality is reported as information only.
 
 Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs,
@@ -96,11 +98,17 @@ VOLATILE_SUB = [
     ("/nodes/*/name", r"\$(ConstraintRef )?" + GUID + END_JOINT + r"$", r"$\1<guid>\2"),
     # A spring is named after its first bone, so it carries the same GUID.
     ("/extensions/VRMC_springBone/springs/*/name", r"\$" + GUID + r"$", r"$<guid>"),
-    # A clip that the avatar's build steps write anew on every build gets a name that ends with a
-    # new 32-digit ID, a new GUID and a number. The text in front of them and the clip itself are
-    # still compared, and the rest of the file refers to clips by index. Found by comparing two
-    # exports of the same avatars made in two launches of the editor; two exports made in one
-    # launch give the same names.
+]
+
+# Like VOLATILE_SUB, for string values that change only from one launch of the editor to the next.
+# Two directories hold the results of two launches, so these are masked when two directories are
+# compared. The two runs that --runs compares come from one launch and give the same value, so
+# they are compared there as they are.
+VOLATILE_SUB_BETWEEN_LAUNCHES = [
+    # A clip that the avatar's build steps write anew gets a name that ends with a new 32-digit ID,
+    # a new GUID and a number. The text in front of them and the clip itself are still compared,
+    # and the rest of the file refers to clips by index. Found by comparing two exports of the same
+    # avatars made in two launches of the editor.
     ("/extensions/VRVLOG_avatar_animator/clips/*/name", r"__[0-9a-f]{32}__" + GUID + r"_[0-9]+$", r"__<generated>"),
 ]
 
@@ -165,8 +173,9 @@ def volatile_subs(entries=None):
 
 def strip_volatile(value, patterns=None, path="", subs=None, masked=None):
     """Copy of value without the dictionary entries whose path matches a VOLATILE pattern, and
-    with the VOLATILE_SUB replacements applied to matching string values. The path of each value
-    that a replacement changed is added to the list masked, when it is given."""
+    with the replacements of subs (VOLATILE_SUB when it is not given) applied to matching string
+    values. The path of each value that a replacement changed is added to the list masked, when
+    it is given."""
     if patterns is None:
         patterns = volatile_patterns()
     if subs is None:
@@ -484,7 +493,8 @@ def main(argv=None):
             for path in paths:
                 print(path)
             return 1 if paths else 0
-        patterns, subs = volatile_patterns(), volatile_subs()
+        patterns = volatile_patterns()
+        subs = volatile_subs(VOLATILE_SUB if args.runs else VOLATILE_SUB + VOLATILE_SUB_BETWEEN_LAUNCHES)
         rows = [compare_pair(*pair, patterns=patterns, subs=subs, allowed_extensions=args.allow_added_extension)
                 for pair in plan_pairs(args)]
     except (OSError, ValueError) as error:

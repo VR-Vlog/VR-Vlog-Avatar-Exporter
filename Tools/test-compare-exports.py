@@ -488,13 +488,16 @@ class CompareExportsTests(unittest.TestCase):
             self.assertEqual(1, code, repr(names_b) + ' ' + guid_b + ': ' + out)
             self.assertIn('warnings differ (1 vs 1), first at #0', out)
 
-    def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0):
-        for directory, name, duration in ((self.a, name_a, 1.0), (self.b, name_b, duration_b)):
+    def clip_pair(self, name_a, name_b, extension='VRVLOG_avatar_animator', key='clips', duration_b=1.0, runs=False):
+        """Two exports with a clip of each name: A1_1 of two directories (two launches of the editor),
+        or with runs the two runs of one directory (one launch)."""
+        places = ((self.a, 1), (self.a, 2)) if runs else ((self.a, 1), (self.b, 1))
+        for (directory, run), name, duration in zip(places, (name_a, name_b), (1.0, duration_b)):
             doc = document()
             doc['extensions'][extension] = {'schemaVersion': 1, key: [{'name': 'Idle', 'duration': 2.0},
                                                                     {'name': name, 'duration': duration}]}
-            write(directory, 'A1_1', result('A1', 1), doc)
-        return run_main([self.a, self.b])
+            write(directory, 'A1_%d' % run, result('A1', run), doc)
+        return run_main(['--runs', self.a, '1', '2'] if runs else [self.a, self.b])
 
     def test_generated_clip_name_difference_is_ignored(self):
         made_a = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
@@ -517,6 +520,27 @@ class CompareExportsTests(unittest.TestCase):
             code, out, _ = self.clip_pair(made_a, made_b, extension=extension, key=key)
             self.assertEqual(1, code, extension + ' ' + key + ': ' + out)
             self.assertIn('/extensions/%s/%s/1/name' % (extension, key), out)
+
+    def test_generated_clip_name_is_compared_between_two_runs_of_one_launch(self):
+        # The names change from one launch of the editor to the next. --runs compares two runs of
+        # one launch, where they stay the same, so a difference there is reported.
+        made_a = 'Made__0123456789abcdef0123456789abcdef__' + self.GUID_A + '_13'
+        for made_b in (made_a[:-2] + '21', 'Made__fedcba9876543210fedcba9876543210__' + self.GUID_B + '_21'):
+            code, out, _ = self.clip_pair(made_a, made_b, runs=True)
+            self.assertEqual(1, code, made_b + ': ' + out)
+            self.assertIn('/extensions/VRVLOG_avatar_animator/clips/1/name', out)
+            self.assertIn('1 pairs, 1 mismatched', out)
+        code, out, _ = self.clip_pair(made_a, made_a, runs=True)
+        self.assertEqual(0, code, out)
+        self.assertIn('1 pairs, 0 mismatched', out)
+        # A name that changes on every export is masked between two runs as well.
+        for run, guid in ((1, self.GUID_A), (2, self.GUID_B)):
+            doc = document()
+            doc['nodes'].append({'name': 'Skirt.L$' + guid})
+            write(self.a, 'A1_%d' % run, result('A1', run), doc)
+        code, out, _ = run_main(['--runs', self.a, '1', '2'])
+        self.assertEqual(0, code, out)
+        self.assertIn('1 pairs, 0 mismatched', out)
 
     def test_value_that_already_is_the_masked_text_exit_1(self):
         # A rule replaces the part that changes with a fixed text. A value that already is that
