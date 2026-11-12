@@ -250,7 +250,8 @@ class CompareExportsTests(unittest.TestCase):
             self.assertIn('warnings differ', out)
 
     def test_guid_elsewhere_in_a_warning_exit_1(self):
-        for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done'):
+        for form in ('Skirt.L$%s was merged', 'Merged %s: done', 'Skirt.L$ConstraintRef %s: done', 'Skirt.L$%sx: done',
+                     'Head: no reference to Skirt.L$%s: skipped'):
             code, out, _ = self.warning_pair([form % self.GUID_A], [form % self.GUID_B])
             self.assertEqual(1, code, form + ': ' + out)
             self.assertIn('warnings differ (1 vs 1), first at #0', out)

@@ -89,9 +89,10 @@ VOLATILE_SUB = [
 
 # (regex, replacement) for the parts of a warning that change on every export. A warning about a
 # bone that the build steps merged starts with the bone's name, "$", the new GUID and ": ". Only
-# the GUID is masked; the name, the text and the order of the warnings are still compared.
+# the GUID is masked; the name, the text and the order of the warnings are still compared. The
+# GUID has to end the part in front of the first ": ", so one inside the text is left as it is.
 VOLATILE_WARNING_SUB = [
-    (r"\$" + GUID + r"(?=: )", r"$<guid>"),
+    (r"^((?:(?!: ).)*)\$" + GUID + r"(?=: )", r"\1$<guid>"),
 ]
 
 
