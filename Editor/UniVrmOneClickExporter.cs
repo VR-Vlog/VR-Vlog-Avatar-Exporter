@@ -858,7 +858,13 @@ namespace VRVlog.LilToonExporter
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
-                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles), () => null);
+                // Expression tracks move bones by local values, which an aim's
+                // added parent would shift; those targets keep their parent.
+                var animated = (expressions ?? new List<VrmMenuExpressions.Expression>()).Concat(presetExpressions)
+                    .SelectMany(expression => expression.Transforms)
+                    .Where(track => track.Property != VRVlog.Expressions.ExpressionTransformAnimation.Active)
+                    .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform).ToArray();
+                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles, animated), () => null);
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // MToon's outline width does not follow the renderer scale that lilToon's
