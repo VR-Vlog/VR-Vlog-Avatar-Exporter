@@ -46,6 +46,8 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<string> declared = new HashSet<string>(StringComparer.Ordinal);
         readonly Dictionary<AnimationClip, AnimationClip> overrides;
         readonly Dictionary<Motion, int> motionIndex = new Dictionary<Motion, int>();
+        // Blend trees left out only because a parameter they read is not declared.
+        readonly HashSet<Motion> undeclaredTrees = new HashSet<Motion>();
         // Blend trees nested in each of data.Motions, itself included.
         readonly List<int> nesting = new List<int>();
         // The motions each of data.Motions expands to, itself included; it
@@ -189,12 +191,13 @@ namespace VRVlog.LilToonExporter
 
         // The parameter a blend tree, a direct weight or a state option reads,
         // or -1. On a name the controller does not declare Unity plays it as
-        // written here. On a parameter of another type Unity reads some other
-        // float instead, which the data cannot say: that is counted.
+        // written here, but for a tree held by another tree. On a parameter of
+        // another type Unity reads some other float instead, which the data
+        // cannot say: that is counted.
         int ReadParameter(string name, string type)
         {
             var index = ControllerParameter(name, type);
-            if (index < 0 && name != null && controllerParameters.Contains(name)) Omit("parameterType");
+            if (index < 0 && name != null && controllerParameters.Contains(name)) Omit("unreadParameter");
             return index;
         }
 
@@ -408,11 +411,11 @@ namespace VRVlog.LilToonExporter
                     // parameter was deleted, has nothing to set: it is counted
                     // and not written.
                     var name = Member(operation, "name") as string;
-                    if (name == null || !declared.Contains(name) || !string.IsNullOrEmpty(source) && !declared.Contains(source)) { Omit("operation"); continue; }
+                    if (name == null || !declared.Contains(name) || type == "copy" && (source == null || !declared.Contains(source))) { Omit("operation"); continue; }
                     result.Operations.Add(new AvatarAnimatorData.Operation
                     {
                         Type = type, Parameter = parameterIndex[name],
-                        Source = string.IsNullOrEmpty(source) ? (int?)null : parameterIndex[source],
+                        Source = source == null ? (int?)null : parameterIndex[source],
                         Value = Number(Member(operation, "value")), ValueMin = Number(Member(operation, "valueMin")),
                         ValueMax = Number(Member(operation, "valueMax")), Chance = Number(Member(operation, "chance")),
                         ConvertRange = Member(operation, "convertRange") is bool convert && convert,
@@ -511,7 +514,13 @@ namespace VRVlog.LilToonExporter
             var direct = tree.blendType == BlendTreeType.Direct;
             var blend = direct ? new int[0] : tree.blendType == BlendTreeType.Simple1D ? new[] { ReadParameter(tree.blendParameter, "float") }
                 : new[] { ReadParameter(tree.blendParameter, "float"), ReadParameter(tree.blendParameterY, "float") };
-            if (blend.Contains(-1)) { motionIndex[motion] = -1; return -1; }
+            if (blend.Contains(-1))
+            {
+                var names = tree.blendType == BlendTreeType.Simple1D ? new[] { tree.blendParameter } : new[] { tree.blendParameter, tree.blendParameterY };
+                if (names.Where((name, i) => blend[i] < 0).All(name => name == null || !controllerParameters.Contains(name))) undeclaredTrees.Add(motion);
+                motionIndex[motion] = -1;
+                return -1;
+            }
             if (depth > AvatarAnimatorData.MaximumBlendTreeDepth) throw new InvalidOperationException(TooDeep);
             index = data.Motions.Count;
             motionIndex[motion] = index;
@@ -529,6 +538,10 @@ namespace VRVlog.LilToonExporter
                 var weight = direct ? ReadParameter(child.directBlendParameter, "float") : -1;
                 if (direct && weight < 0) continue;
                 var childIndex = MotionIndex(child.motion, depth + 1);
+                // Unity plays such a tree by what the other children leave, which
+                // the tree alone does not say. A parameter of another type was
+                // counted where it was read.
+                if (childIndex < 0 && child.motion != null && undeclaredTrees.Contains(child.motion)) Omit("unreadParameter");
                 if (childIndex >= 0)
                 {
                     nesting[index] = Math.Max(nesting[index], nesting[childIndex] + 1);

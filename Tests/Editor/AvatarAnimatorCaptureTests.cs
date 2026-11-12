@@ -497,7 +497,7 @@ namespace VRVlog.LilToonExporter.Tests
             ParameterDriverExpressionTests.Driver(inner,
                 ParameterDriverExpressionTests.Op("Set", "Gone", 1), ParameterDriverExpressionTests.Op("Add", "BlendX", 2),
                 ParameterDriverExpressionTests.Op("Copy", "BlendY", 0, "Gone"), ParameterDriverExpressionTests.Op("Copy", "Gone", 0, "BlendX"),
-                ParameterDriverExpressionTests.Op("Set", "Hat", 1));
+                ParameterDriverExpressionTests.Op("Set", "Hat", 1), ParameterDriverExpressionTests.Op("Copy", "BlendX", 0, ""), ParameterDriverExpressionTests.Op("Copy", "BlendX"));
 
             (string Operations, int NotWritten, bool Parameter) Written()
             {
@@ -508,9 +508,10 @@ namespace VRVlog.LilToonExporter.Tests
                     data.Omitted.Where(o => o.Kind == "operation").Sum(o => o.Count), data.Parameters.Any(p => p.Name == "Gone"));
             }
 
-            Assert.That(Written(), Is.EqualTo(("add BlendX 2, set Hat 1", 3, false)));
+            // A copy from no name has nothing to read: it is counted either way.
+            Assert.That(Written(), Is.EqualTo(("add BlendX 2, set Hat 1", 5, false)));
             avatar.Fx.AddParameter("Gone", AnimatorControllerParameterType.Float);
-            Assert.That(Written(), Is.EqualTo(("set Gone 1, add BlendX 2, copy BlendY 0 Gone, copy Gone 0 BlendX, set Hat 1", 0, true)));
+            Assert.That(Written(), Is.EqualTo(("set Gone 1, add BlendX 2, copy BlendY 0 Gone, copy Gone 0 BlendX, set Hat 1", 2, true)));
         }
 
         // Unity never takes a transition with a condition it cannot read: on a
@@ -652,8 +653,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
             // Unity reads some other float for a parameter of another type, so
             // those uses are counted: the 1D tree on an int and three options.
-            // A name nothing declares plays as written and is not counted.
-            Assert.That(data.Omitted.Where(o => o.Kind == "parameterType").Sum(o => o.Count), Is.EqualTo(4));
+            // A name nothing declares plays as written, but in a tree held by
+            // another tree, which Unity plays by what the others leave: one more.
+            Assert.That(data.Omitted.Where(o => o.Kind == "unreadParameter").Sum(o => o.Count), Is.EqualTo(5));
         }
 
         // A clip keeps up to MaximumKeysPerClip keys. A curve that does not

@@ -46,7 +46,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
         public static readonly string[] Properties = { "active" };
         // The order the omitted kinds are written in.
-        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "parameterType" };
+        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
         public readonly List<Menu> Menus = new List<Menu>();
@@ -645,6 +645,8 @@ namespace VRVlog.AvatarAnimator
                         {
                             var o = Json.Obj(rawOperation);
                             var keys = new List<string> { "type", "parameter", "value", "valueMin", "valueMax", "chance", "convertRange", "sourceMin", "sourceMax", "destMin", "destMax" };
+                            // A copy has a source and nothing else has.
+                            if (o.ContainsKey("source") != (o.ContainsKey("type") && o["type"] as string == "copy")) throw Json.Bad();
                             if (o.ContainsKey("source")) keys.Add("source");
                             Json.Obj(o, keys.ToArray());
                             behaviour.Operations.Add(new Operation
