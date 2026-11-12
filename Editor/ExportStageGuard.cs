@@ -42,6 +42,7 @@ namespace VRVlog.LilToonExporter
         ObjectToggles,
         ExpressionGestures,
         FxRest,
+        AvatarAnimator,
     }
 
     // The steps a user sees. Each stage belongs to one phase; the stages stay
@@ -60,9 +61,10 @@ namespace VRVlog.LilToonExporter
             (ExportStageFailure)ExceptionChain.Find(error, value => value is ExportStageFailure);
     }
 
-    // One guard per export call. In strict mode every stage behaves as before:
+    // One guard per export call. In strict mode a stage behaves as before:
     // the first failure stops the export. Otherwise a failing stage is left out,
-    // recorded in the fallback report, and the export continues.
+    // recorded in the fallback report, and the export continues. A stage run
+    // through Optional is left out in strict mode too.
     internal sealed class ExportStageGuard
     {
         // The user-facing exports (window, app transfer) continue past failing
@@ -101,6 +103,26 @@ namespace VRVlog.LilToonExporter
         }
 
         internal void Run(ExportStage stage, Action body) => Run(stage, () => { body(); return true; }, () => false);
+
+        // Like Run, but a failure is left out in strict mode too. Only for a
+        // stage that adds data earlier files did not have: without it the file
+        // is the one written before the stage existed, so a failure there must
+        // not stop an export that used to succeed. Cancellation and failures of
+        // other stages are still thrown.
+        internal T Optional<T>(ExportStage stage, Func<T> body, Func<T> fallback)
+        {
+            if (omitted.Contains(stage)) return fallback();
+            try
+            {
+                ExportTestHooks.FaultInjection?.Invoke(stage);
+                return body();
+            }
+            catch (Exception error) when (!IsCancellation(error) && ExportStageFailure.Find(error) == null)
+            {
+                Omit(stage, error);
+                return fallback();
+            }
+        }
 
         // Stages that change the export copy: a failure leaves the copy in an
         // unknown state, so it is reported as ExportStageFailure and the whole
@@ -205,6 +227,8 @@ namespace VRVlog.LilToonExporter
                 [ExportStage.ExpressionGestures] = ("ハンドジェスチャーの表情", ExportPhase.Expressions, ExportOutcome.Omitted),
                 // Left out, the face and body keep the export copy's values.
                 [ExportStage.FxRest] = ("FXの通常時の顔・体形", ExportPhase.Expressions, ExportOutcome.Approximated),
+                // Left out, the file has no copy of the FX controller and menus.
+                [ExportStage.AvatarAnimator] = ("FXとメニューの動き", ExportPhase.Expressions, ExportOutcome.Omitted),
             };
 
         internal static string Label(ExportStage stage) => Stages.TryGetValue(stage, out var row) ? row.Label : stage.ToString();

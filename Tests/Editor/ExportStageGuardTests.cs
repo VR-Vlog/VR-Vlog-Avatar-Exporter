@@ -4,6 +4,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using VRVlog.AvatarAnimator;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.Poses;
 using Object = UnityEngine.Object;
@@ -70,7 +71,43 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
-        [TestCaseSource(nameof(Stages))]
+        // AvatarAnimator only adds data that earlier files did not have, so a
+        // strict export leaves it out instead of stopping (ExportStageGuard.Optional).
+        static IEnumerable<string> StagesThatStopAStrictExport => Stages.Where(name => name != nameof(ExportStage.AvatarAnimator));
+
+        [Test]
+        public void AStrictExportLeavesOutAStageThatOnlyAddsData()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon")) { name = "Strict optional" };
+            try
+            {
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                var fired = 0;
+                ExportTestHooks.FaultInjection = current =>
+                {
+                    if (current != ExportStage.AvatarAnimator) return;
+                    fired++;
+                    throw new InvalidOperationException("injected " + current);
+                };
+                var report = new ExportRecoveryReport();
+                var warnings = new List<string>();
+                var bytes = Export(fixture.Source, report, warnings);
+
+                Assert.That(fired, Is.EqualTo(1), "The fixture must reach the stage, and a left-out stage must not run again.");
+                Assert.That(report.Succeeded, Is.True);
+                Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes), "The save check must accept the file.");
+                Assert.That(((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+                var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+                Assert.That(entry.Reason, Is.EqualTo("injected AvatarAnimator"));
+                Assert.That(warnings.Count(warning => warning.Contains("injected AvatarAnimator")), Is.EqualTo(1));
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        [TestCaseSource(nameof(StagesThatStopAStrictExport))]
         public void StrictExportsStillStopAtTheFirstFailure(string stageName)
         {
             NoGraphicsDevice.AllowErrorLogs();
