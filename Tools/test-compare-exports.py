@@ -196,6 +196,11 @@ class CompareExportsTests(unittest.TestCase):
             code, out, _ = self.merged_bone_pair('Hand$ConstraintRef ' + self.GUID_A, name_b)
             self.assertEqual(1, code, name_b + ': ' + out)
             self.assertIn('/nodes/1/name', out)
+        # A form that was not seen stays a difference even when only the GUID differs.
+        for form in ('Hand$OtherRef %s', 'Hand$ConstraintRef  %s', 'Hand$%s-Other Endpoint', 'Hand$%sx'):
+            code, out, _ = self.merged_bone_pair(form % self.GUID_A, form % self.GUID_B)
+            self.assertEqual(1, code, form + ': ' + out)
+            self.assertIn('/nodes/1/name', out)
 
     def test_spring_end_joint_below_a_merged_bone_is_ignored(self):
         for suffix in ('-VRVlog Spring Endpoint', '-VRVlog Spring Endpoint 2', '-VRVlog Spring Endpoint 13'):
@@ -223,6 +228,11 @@ class CompareExportsTests(unittest.TestCase):
         for name_b in ('Skirt.R$' + self.GUID_B, 'Skirt.L$' + self.GUID_B + 'x', 'Skirt.L'):
             code, out, _ = self.spring_pair('Skirt.L$' + self.GUID_A, name_b)
             self.assertEqual(1, code, name_b + ': ' + out)
+            self.assertIn('/extensions/VRMC_springBone/springs/1/name', out)
+        # A spring name takes only the plain form, not the forms of node names.
+        for form in ('Skirt.L$%sx', 'Skirt.L$ConstraintRef %s', 'Skirt.L$%s-VRVlog Spring Endpoint'):
+            code, out, _ = self.spring_pair(form % self.GUID_A, form % self.GUID_B)
+            self.assertEqual(1, code, form + ': ' + out)
             self.assertIn('/extensions/VRMC_springBone/springs/1/name', out)
         # Only the names of springs carry the GUID; the other lists of the extension are compared as is.
         code, out, _ = self.spring_pair('Skirt.L$' + self.GUID_A, 'Skirt.L$' + self.GUID_B, key='colliderGroups')
