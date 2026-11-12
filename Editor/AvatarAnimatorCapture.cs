@@ -176,19 +176,26 @@ namespace VRVlog.LilToonExporter
         {
             var result = new AvatarAnimatorData.Controller { Playable = "fx" };
             var layers = controller.layers;
-            foreach (var layer in layers)
-                result.Layers.Add(ReadLayer(layer, layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < layers.Length ? layers[layer.syncedLayerIndex] : null));
+            for (var index = 0; index < layers.Length; index++)
+            {
+                // A source outside the layers or the layer itself is not synced.
+                var source = layers[index].syncedLayerIndex;
+                if (source < 0 || source >= layers.Length || source == index) source = -1;
+                result.Layers.Add(ReadLayer(layers[index], index, source, source < 0 ? null : layers[source]));
+            }
             return result;
         }
 
         // A synced layer runs the source layer's machines with its own motions
-        // and state behaviours.
-        AvatarAnimatorData.Layer ReadLayer(AnimatorControllerLayer layer, AnimatorControllerLayer synced)
+        // and state behaviours. Unity plays the first layer at weight 1 whatever
+        // its default weight says.
+        AvatarAnimatorData.Layer ReadLayer(AnimatorControllerLayer layer, int layerIndex, int source, AnimatorControllerLayer synced)
         {
             var result = new AvatarAnimatorData.Layer
             {
-                Name = layer.name ?? "", Weight = layer.defaultWeight,
-                Blending = layer.blendingMode == AnimatorLayerBlendingMode.Additive ? "additive" : "override"
+                Name = layer.name ?? "", Weight = layerIndex == 0 ? 1 : layer.defaultWeight,
+                Blending = layer.blendingMode == AnimatorLayerBlendingMode.Additive ? "additive" : "override",
+                SyncedLayer = source, SyncedLayerAffectsTiming = synced != null && layer.syncedLayerAffectsTiming
             };
             var rootMachine = synced != null ? synced.stateMachine : layer.stateMachine;
             if (rootMachine == null) { result.Machines.Add(new AvatarAnimatorData.Machine { Name = result.Name }); return result; }
@@ -323,7 +330,8 @@ namespace VRVlog.LilToonExporter
                     var type = Member(operation, "type")?.ToString();
                     type = type == "Set" ? "set" : type == "Add" ? "add" : type == "Random" ? "random" : type == "Copy" ? "copy" : null;
                     if (type == null) return null;
-                    var source = Member(operation, "source") as string;
+                    // Only copy reads its source; the other types may keep a stale name.
+                    var source = type == "copy" ? Member(operation, "source") as string : null;
                     result.Operations.Add(new AvatarAnimatorData.Operation
                     {
                         Type = type, Parameter = Parameter(Member(operation, "name") as string),
@@ -346,18 +354,20 @@ namespace VRVlog.LilToonExporter
                     if (!field.FieldType.IsEnum || !field.Name.StartsWith("tracking", StringComparison.Ordinal) || field.Name.Length <= 8) continue;
                     var value = field.GetValue(behaviour).ToString();
                     value = value == "NoChange" ? "noChange" : value == "Tracking" ? "tracking" : value == "Animation" ? "animation" : null;
-                    if (value == null) return null;
-                    result.Tracking.Add(new KeyValuePair<string, string>(char.ToLowerInvariant(field.Name[8]) + field.Name.Substring(9), value));
+                    var part = char.ToLowerInvariant(field.Name[8]) + field.Name.Substring(9);
+                    if (value == null || !AvatarAnimatorData.IsTrackingPart(part)) return null;
+                    result.Tracking.Add(new KeyValuePair<string, string>(part, value));
                 }
                 return result.Tracking.Count > 0 ? result : null;
             }
             if (VrChatSdkTypes.Is(behaviour, VrChatSdkTypes.AnimatorLayerControl))
             {
                 var playable = Playable(Member(behaviour, "playable"));
-                if (playable == null || playable == "sitting") return null;
+                var layer = Convert.ToInt32(Member(behaviour, "layer"));
+                if (playable == null || playable == "sitting" || layer < 0) return null;
                 return new AvatarAnimatorData.Behaviour
                 {
-                    Type = "layerControl", Playable = playable, Layer = Convert.ToInt32(Member(behaviour, "layer")),
+                    Type = "layerControl", Playable = playable, Layer = layer,
                     GoalWeight = Number(Member(behaviour, "goalWeight")), BlendDuration = Number(Member(behaviour, "blendDuration"))
                 };
             }
@@ -440,7 +450,8 @@ namespace VRVlog.LilToonExporter
             index = data.Clips.Count;
             clipIndex[clip] = index;
             var tracks = new List<(int, ExpressionAnimationData.Curve)>();
-            data.Clips.Add(new AvatarAnimatorData.Clip { Name = clip.name ?? "", Duration = clip.length, Loop = AnimationUtility.GetAnimationClipSettings(clip).loopTime });
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            data.Clips.Add(new AvatarAnimatorData.Clip { Name = clip.name ?? "", Duration = clip.length, Loop = settings.loopTime, CycleOffset = settings.cycleOffset });
             clipTracks.Add(tracks);
             var keys = 0;
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))

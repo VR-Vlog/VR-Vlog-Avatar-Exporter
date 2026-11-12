@@ -580,7 +580,7 @@ namespace VRVlog.LilToonExporter
                 }, afterTransforming: transformed =>
                 {
                     // activeSelf before the steps below change it; only read.
-                    animatorRest = guard.Run(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Snapshot(clone), () => null);
+                    animatorRest = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Snapshot(clone), () => null);
                     // A lenient export keeps the build passes: lost shapes are
                     // followed by name, and only what cannot be found is left out.
                     var lenient = guard.ContinueOnFailure;
@@ -764,7 +764,7 @@ namespace VRVlog.LilToonExporter
                 guard.Watch(optimizerStage, () => ValidatePreparedHumanoid(source, clone));
                 // The FX, menus and parameters as the build and the optimizer
                 // left them. Only read; nothing below changes the FX.
-                avatarAnimator = guard.Run(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest), () => null);
+                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest), () => null);
                 // The same holds for expressions or materials the optimizer
                 // lost: the routes feed the menu, blink, Lip Sync and tracking
                 // output, so the file is written again without Optimizing.
@@ -915,7 +915,7 @@ namespace VRVlog.LilToonExporter
                         // extension they would show, so a failure writes the file
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
-                        if (avatarAnimator != null) avatarAnimatorData = guard.Run(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode), () => null);
+                        if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
@@ -1053,7 +1053,7 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
-                if (avatarAnimatorData != null) exported = guard.Run(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, warnings), () => exported);
+                if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, warnings), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,

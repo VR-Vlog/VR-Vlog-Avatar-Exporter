@@ -15,7 +15,7 @@
 - 読むのは最適化を終えた複製のアバターの記述子（descriptor）と、そのFX・Expression Menu・Expression Parametersで、`ValidatePreparedHumanoid`の直後に読む。複製・アセット・Animatorには書き込まない
 - 曲線は`GameObject`の`m_IsActive`だけを残し、ほかは種類ごとの件数を`omitted`に書く（`blendShape`・`material`・`transform`・`enabled`・`parameter`・`muscle`・`other`・`missingNode`・`behaviour`の順、0件の種類は書かない）。ビヘイビアはParameter Driver・Tracking Control・Animator Layer Control・Playable Layer Controlだけを書き、ほかは`behaviour`に数える
 - 対象の`rest`は、書き出しの処理が複製の`activeSelf`を変える前の値にする。表示の切替が既定でオフのメッシュをオンにするため、変えた後の値では既定の状態が分からない。変える前の値は`afterTransforming`の最初に記録する
-- `ExportStage.AvatarAnimator`を足し、記録・読み取り・ノードへの対応付け・書き込みの4か所をすべて`guard.Run`で包む。失敗したら拡張だけを外して書き出しを続ける（`Omitted`）。やり直しの書き出しはしない
+- `ExportStage.AvatarAnimator`を足し、記録・読み取り・ノードへの対応付け・書き込みの4か所をすべて`ExportStageGuard.Optional`で包む。失敗したら拡張だけを外して書き出しを続ける（`Omitted`）。やり直しの書き出しはしない。`Optional`は`Run`と違い、失敗で止める設定（`ContinueOnStageFailure`がオフ）でも止めない。この段は以前のファイルに無かったデータを足すだけで、外せばこれまでと同じファイルになるため、この段のせいで今まで書き出せたアバターが書き出せなくなるのを避ける。キャンセルとほかの段の失敗はこれまでどおり止める。外したときは、止めない設定と同じく結果一覧と警告に「FXとメニューの動き」として出る
 - 拡張のJSONが4MiBを超えたら拡張を書かず、警告「FXとメニューの動きの情報が4MiBを超えたため、VRMに含めませんでした。」を出す
 - 拡張は`AvatarFormatRequirements.Write`の直前、ほかの拡張をすべて書いた後に足す。`UnusedMorphTargets`の除去より後なので、その対象の一覧は変えない
 
@@ -26,7 +26,10 @@
 - 遷移は、Entryと子のステートマシンから出る遷移（exitTransitions）にはUnityのデータに時間の項目が無いので、時間の項目を書かない。ステートとAny Stateからの遷移には書く。行き先の無い遷移はUnityでも通らないので書かない
 - Direct以外のブレンドツリーの子には`directParameter`を書かない。Parameter Driverの操作の`source`は、名前があるときだけ書く。メニューの項目の`parameter`と`menu`は、無いときは書かない
 - 名前は空文字を許す。Unityの各名前とSDKのメニュー項目は空を許すため
-- 同期レイヤー（syncedLayerIndex）は、元のレイヤーのステートマシンを使い、モーションとステートのビヘイビアは同期レイヤーの上書きを使う
+- 同期レイヤー（syncedLayerIndex）は、元のレイヤーのステートマシンを複製して持ち、モーションとステートのビヘイビアは同期レイヤーの上書きを使う。あわせて同期元の番号（`syncedLayer`、同期でなければ-1）とTimingの設定（`syncedLayerAffectsTiming`、同期でなければfalse）を常に書く。アプリが複製をそのまま再生しても、同期元と時間を合わせても扱えるようにするため。範囲外や自分自身を指す`syncedLayerIndex`は、同期でないレイヤーとして読む
+- 先頭のレイヤーの`weight`は、`defaultWeight`によらず1を書く。Unityは先頭のレイヤーを常に1で再生する（`ExpressionDependencies`も同じ扱い）
+- クリップの設定のCycle Offsetを`cycleOffset`として常に書く。ステートの`cycleOffset`とは別の値
+- Parameter Driverの操作の`source`は、種類が`copy`のときだけ読む。ほかの種類はSDKが`source`を使わないが、Inspectorで切り替えた前の名前が残っていることがあり、それを読むとパラメーターの表に使われない行が増えるため
 - 曲線のパスが複製に無いものは`missingNode`に数える。出力にノードの無い対象（空のノードの除去やコンストレイントの処理で消えたもの）も、対応付けのときに`missingNode`に数える
 - `expressions`は予約で、schema 1では空の配列だけを許す
 
@@ -36,8 +39,18 @@
 - 失敗したら書き出しをやり直す（`guard.Step`）: 拡張が無くても今のVRMとして使える。やり直すと時間がかかるうえ、ほかの段の結果を変えるおそれがある。その場で外す
 - BlendShapeとマテリアルの曲線も書く: 対象の表し方（メッシュとモーフ、マテリアルとプロパティ）をアプリ側と決めていない。今回は件数だけを書き、次のschemaで足す
 
+## 既知の制限
+
+- 有限でない数値（遷移の時間・条件のしきい値・ステートの速度など）や、表の上限を超える件数、1024文字を超える名前が1つでもあると、拡張の全体が外れる。読む側と同じ検査（`AvatarAnimatorData.Read`）を書く前にも通し、決まりの外のデータを書かないため。外れたときは結果一覧と警告に「FXとメニューの動き」として出て、書き出しは続く。曲線だけは1本ずつ外す（上記）
+- レイヤーのAvatar Maskは書かない。マスクの対象（ボーンとTransformのパス）をアプリ側のノードにどう対応させるかを決めていないため。マスクで隠れる部分も、アプリ側ではマスクの無いレイヤーとして動く
+- 同じ体を2回書き出したとき、拡張の内容が一致するかはビルドツールが付ける名前に左右される。レイヤー・ステート・クリップの名前はビルドの処理が付けたものをそのまま書き、その名前が書き出しのたびに変わることがあるため
+
 ## 確かめたこと
 
 - 読む時点から書き込みまでの間に、記述子とFXを書き換える処理が無いことをコードを読んで確かめた。FXに書き込むのは、書き出しが自分で作る調査用のコントローラーだけだった
-- `AvatarAnimatorCaptureTests`で、FaultInjectionでこの段を失敗させた書き出しと通常の書き出しを比べ、拡張・`extensionsUsed`の1項目・必要バージョンの1項目を外すとJSONとBINチャンクが一致することを確かめる
-- 実際のアバターでの書き出しとアプリでの読み込みは確かめていない
+- `AvatarAnimatorCaptureTests`で、FaultInjectionでこの段の4回の呼び出しのそれぞれを失敗させ、失敗で止める設定と止めない設定の両方で、書き出しが成功し、通常の書き出しから拡張・`extensionsUsed`の1項目・必要バージョンの1項目を外すとJSONとBINチャンクが一致し、結果一覧と警告にこの段が出ることを確かめる
+- EditModeテスト（`AvatarAnimatorDataTests`、`AvatarAnimatorCaptureTests`、`ObjectToggleCaptureTests`、`ExpressionGestureTests`、`ExportStageGuardTests`、`ExportAppearanceReportLanguageTests`）は131件が通る
+- 9体を2回ずつ書き出し、変更の前（`feature/full-reproduction`）と`Tools/compare-exports.py --allow-added-extension VRVLOG_avatar_animator`で比べた。`18 pairs, 0 mismatched`で、足した拡張のほかはJSONもBINチャンクも一致した。同じ9体の1回目と2回目（`--runs`）も`9 pairs, 0 mismatched`で、この9体では拡張の内容も2回で一致した
+- 92体（書き出せた89体と、変更の前後とも同じ理由で書き出せない3体）を1回ずつ書き出し、同じように比べた。`92 pairs, 0 mismatched`だった。89体のうち77体に拡張が付き、大きさは最小13,939バイト、中央値41,863バイト、最大956,521バイトだった。拡張の無い12体には「FXとメニューの動き」の警告が無く、上の「拡張の全体が外れる」に当たった体は0だった。12体に書く対象が無いことは、1体ずつは確かめていない
+- 92体で書かなかった曲線は、`blendShape`が229,510本、Transformが11,796本、筋肉の値が10,611本、マテリアルが1,886本だった。`blendShape`は次の変更で書く
+- アプリでの読み込みは確かめていない

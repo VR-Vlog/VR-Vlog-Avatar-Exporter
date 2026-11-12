@@ -83,6 +83,10 @@ namespace VRVlog.LilToonExporter.Tests
             layer.States.Add(off); layer.States.Add(on); layer.States.Add(inner);
             var controller = new AvatarAnimatorData.Controller();
             controller.Layers.Add(layer);
+            // A synced layer holds a copy of its source's machines.
+            var synced = new AvatarAnimatorData.Layer { Name = "Hat synced", Weight = .5, SyncedLayer = 0, SyncedLayerAffectsTiming = true };
+            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Hat" });
+            controller.Layers.Add(synced);
             data.Controllers.Add(controller);
 
             data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = 0 });
@@ -95,7 +99,7 @@ namespace VRVlog.LilToonExporter.Tests
             direct.Children.Add(new AvatarAnimatorData.Child { Motion = 0, DirectParameter = 1 });
             data.Motions.Add(direct);
 
-            var clip = new AvatarAnimatorData.Clip { Name = "Hat On", Duration = 1d / 60, Loop = false };
+            var clip = new AvatarAnimatorData.Clip { Name = "Hat On", Duration = 1d / 60, Loop = false, CycleOffset = .25 };
             var curve = new ExpressionAnimationData.Curve();
             curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 1, InTangent = null, OutTangent = null });
             curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1d / 60, Value = 0, InTangent = 0, OutTangent = 0 });
@@ -139,6 +143,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(read.Motions[2].Children[0].DirectParameter, Is.EqualTo(1));
             Assert.That(read.Clips[0].Tracks[0].Curves[0].Keys[0].OutTangent, Is.Null, "Stepped keys keep their null tangents.");
             Assert.That(read.Targets[0].Node, Is.EqualTo(3));
+            Assert.That((layer.SyncedLayer, layer.SyncedLayerAffectsTiming), Is.EqualTo((-1, false)));
+            Assert.That((read.Controllers[0].Layers[1].SyncedLayer, read.Controllers[0].Layers[1].SyncedLayerAffectsTiming), Is.EqualTo((0, true)));
+            Assert.That((read.Clips[0].CycleOffset, read.Clips[1].CycleOffset), Is.EqualTo((.25, 0d)));
 
             var json = Json(Sample());
             Assert.That(json["expressions"], Is.Empty);
@@ -207,6 +214,25 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "motions", 1, "children", 0)["directParameter"] = 1L);
             Rejects(json => At(json, "motions", 2, "children", 0).Remove("directParameter"));
             Rejects(json => At(json, "menus", 0, "controls", 0)["menu"] = 1L);
+            Rejects(json => At(json, "controllers", 0, "layers", 0).Remove("syncedLayer"));
+            Rejects(json => At(json, "controllers", 0, "layers", 1).Remove("syncedLayerAffectsTiming"));
+            Rejects(json => At(json, "clips", 0).Remove("cycleOffset"));
+            // Tracking parts are ASCII, as the schema's pattern.
+            Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 0, "behaviours", 0)["h\u00e9ad"] = "noChange");
+            Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 0, "behaviours", 0)["\u0127ead"] = "noChange");
+        }
+
+        [Test]
+        public void ReadRejectsSyncedLayersOutsideTheControllerAndCycleOffsetsThatAreNotFinite()
+        {
+            Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = 2L);
+            Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = 1L);
+            Rejects(json => At(json, "controllers", 0, "layers", 0)["syncedLayer"] = -2L);
+            Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = .5);
+            Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayerAffectsTiming"] = 1L);
+            Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.NaN);
+            Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.PositiveInfinity);
+            Rejects(json => At(json, "clips", 0)["cycleOffset"] = "0.25");
         }
 
         [Test]

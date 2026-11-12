@@ -115,6 +115,63 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(oneD.Children[1].Motion, Is.EqualTo(twoD.Children[0].Motion), "A clip used twice is written once.");
         }
 
+        // Unity plays the first layer at weight 1 whatever its default weight
+        // says. A synced layer keeps its source and Timing option with a copy
+        // of the source's machines and its own motions; a clip its Cycle Offset.
+        [Test]
+        public void ExportWritesTheFirstLayerAtFullWeightSyncedLayersAndCycleOffsets()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var hatIndex = Array.FindIndex(fx.layers, l => l.name == "Hat");
+            var synced = avatar.Clip("Synced");
+            var settings = AnimationUtility.GetAnimationClipSettings(synced);
+            settings.cycleOffset = .25f;
+            AnimationUtility.SetAnimationClipSettings(synced, settings);
+            fx.AddLayer("Hat synced");
+            var layers = fx.layers;
+            var syncedIndex = layers.Length - 1;
+            layers[0].defaultWeight = 0;
+            layers[syncedIndex].defaultWeight = 0;
+            layers[syncedIndex].syncedLayerIndex = hatIndex;
+            layers[syncedIndex].syncedLayerAffectsTiming = true;
+            fx.layers = layers;
+            foreach (var child in layers[hatIndex].stateMachine.states) fx.SetStateEffectiveMotion(child.state, synced, syncedIndex);
+
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var written = data.Controllers.Single().Layers;
+            Assert.That((written[0].Weight, written[0].SyncedLayer, written[0].SyncedLayerAffectsTiming), Is.EqualTo((1d, -1, false)));
+            var hat = written[hatIndex];
+            Assert.That((hat.SyncedLayer, hat.SyncedLayerAffectsTiming), Is.EqualTo((-1, false)));
+            var copy = written[syncedIndex];
+            Assert.That((copy.Name, copy.Weight, copy.SyncedLayer, copy.SyncedLayerAffectsTiming), Is.EqualTo(("Hat synced", 0d, hatIndex, true)));
+            Assert.That(copy.States.Select(s => s.Name), Is.EqualTo(hat.States.Select(s => s.Name)), "The synced layer holds a copy of its source's machines.");
+            Assert.That(copy.Machines.Single().AnyStateTransitions, Has.Count.EqualTo(2));
+            foreach (var state in copy.States)
+            {
+                var clip = data.Clips[data.Motions[state.Motion].Clip];
+                // Saving the clip as an asset names it after its file.
+                Assert.That((clip.Name, clip.CycleOffset), Is.EqualTo((synced.name, .25)), "The synced layer plays its own motions.");
+            }
+            Assert.That(hat.States.Select(s => data.Clips[data.Motions[s.Motion].Clip].CycleOffset), Is.EqualTo(new[] { 0d, 0d }));
+        }
+
+        // Only copy reads its source: a name left in another type's source
+        // adds no parameter.
+        [Test]
+        public void ADriverSourceIsWrittenForCopyOnly()
+        {
+            using var avatar = new AnimatorAvatar();
+            var nested = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine;
+            var inner = nested.stateMachines.Single().stateMachine.states.Single().state;
+            ParameterDriverExpressionTests.Driver(inner, ParameterDriverExpressionTests.Op("Set", "BlendY", 1, "Stale source"));
+
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Stale source"));
+            var behaviours = data.Controllers.Single().Layers.Single(l => l.Name == "Nested").States.Single().Behaviours;
+            Assert.That(behaviours.Select(b => b.Operations.Single().Source), Is.EqualTo(new int?[] { null, null }));
+        }
+
         [Test]
         public void BlendShapeAndMaterialCurvesAreCountedNotWritten()
         {
@@ -147,21 +204,37 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The extension only adds: without it, its extensionsUsed entry and its
         // required version, the file is the one written when the stage fails.
-        [Test]
-        public void TheExtensionLeavesTheRestOfTheFileAsItIs()
+        // The stage runs four times (snapshot, read, node mapping, injection);
+        // a failure in any of them is left out, in strict mode too.
+        [TestCase(1, true)]
+        [TestCase(2, true)]
+        [TestCase(3, true)]
+        [TestCase(4, true)]
+        [TestCase(1, false)]
+        [TestCase(2, false)]
+        [TestCase(3, false)]
+        [TestCase(4, false)]
+        public void TheExtensionLeavesTheRestOfTheFileAsItIs(int failingCall, bool continueOnStageFailure)
         {
             using var avatar = new AnimatorAvatar();
-            var normal = avatar.Export(new List<string>(), null);
             var calls = 0;
+            ExportTestHooks.FaultInjection = stage => { if (stage == ExportStage.AvatarAnimator) calls++; };
+            var normal = avatar.Export(new List<string>(), null);
+            Assert.That(calls, Is.EqualTo(4), "Snapshot, Capture, Resolve and Inject each run once.");
+
+            calls = 0;
             ExportTestHooks.FaultInjection = stage =>
             {
-                if (stage == ExportStage.AvatarAnimator && ++calls == 1) throw new InvalidOperationException("injected avatar animator");
+                if (stage == ExportStage.AvatarAnimator && ++calls == failingCall) throw new InvalidOperationException("injected avatar animator");
             };
-            var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
-            var faulted = avatar.Export(new List<string>(), report);
+            var report = new ExportRecoveryReport { ContinueOnStageFailure = continueOnStageFailure };
+            var warnings = new List<string>();
+            var faulted = avatar.Export(warnings, report);
 
-            Assert.That(calls, Is.EqualTo(1), "An omitted stage does not run again.");
+            Assert.That(report.Succeeded, Is.True);
+            Assert.That(calls, Is.EqualTo(failingCall), "An omitted stage does not run again.");
             Assert.That(report.Fallbacks.Results.Single(result => result.Stage != null).Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+            Assert.That(warnings, Has.Some.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator)));
             var withExtension = GlbDocument.Read(normal);
             Assert.That(withExtension.Json.ContainsKey("extensions") && ((Dictionary<string, object>)withExtension.Json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.True);
             var without = GlbDocument.Read(faulted);
@@ -217,6 +290,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             readonly AttachmentConnectionTests.Fixture avatar;
             internal GameObject Source => avatar.Source;
+            internal AnimatorController Fx => fx;
             readonly string directory;
             readonly List<Object> owned = new List<Object>();
             readonly Type menuType;
@@ -395,7 +469,7 @@ namespace VRVlog.LilToonExporter.Tests
                 return control;
             }
 
-            AnimationClip Clip(string name, params (string Path, bool Active)[] objects)
+            internal AnimationClip Clip(string name, params (string Path, bool Active)[] objects)
             {
                 var clip = new AnimationClip { name = name };
                 foreach (var (path, active) in objects)

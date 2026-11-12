@@ -103,6 +103,26 @@ namespace VRVlog.LilToonExporter
 
         internal void Run(ExportStage stage, Action body) => Run(stage, () => { body(); return true; }, () => false);
 
+        // Like Run, but a failure is left out in strict mode too. Only for a
+        // stage that adds data earlier files did not have: without it the file
+        // is the one written before the stage existed, so a failure there must
+        // not stop an export that used to succeed. Cancellation and failures of
+        // other stages are still thrown.
+        internal T Optional<T>(ExportStage stage, Func<T> body, Func<T> fallback)
+        {
+            if (omitted.Contains(stage)) return fallback();
+            try
+            {
+                ExportTestHooks.FaultInjection?.Invoke(stage);
+                return body();
+            }
+            catch (Exception error) when (!IsCancellation(error) && ExportStageFailure.Find(error) == null)
+            {
+                Omit(stage, error);
+                return fallback();
+            }
+        }
+
         // Stages that change the export copy: a failure leaves the copy in an
         // unknown state, so it is reported as ExportStageFailure and the whole
         // export is restarted with the stage left out (see Retry).

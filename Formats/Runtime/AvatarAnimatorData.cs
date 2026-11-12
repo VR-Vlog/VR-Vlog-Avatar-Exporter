@@ -68,10 +68,15 @@ namespace VRVlog.AvatarAnimator
         public sealed class Controller { public string Playable = "fx"; public readonly List<Layer> Layers = new List<Layer>(); }
 
         // Machines[0] is the layer's root; States lists the states of every machine.
+        // A synced layer (SyncedLayer, the index of its source layer, or -1)
+        // holds a copy of the source layer's machines with its own motions and
+        // state behaviours. Weight is 1 for the first layer, as Unity plays it.
         public sealed class Layer
         {
             public string Name, Blending = "override";
             public double Weight;
+            public int SyncedLayer = -1;
+            public bool SyncedLayerAffectsTiming;
             public readonly List<Machine> Machines = new List<Machine>();
             public readonly List<State> States = new List<State>();
         }
@@ -160,7 +165,7 @@ namespace VRVlog.AvatarAnimator
         public sealed class Clip
         {
             public string Name;
-            public double Duration;
+            public double Duration, CycleOffset;
             public bool Loop;
             public readonly List<Track> Tracks = new List<Track>();
         }
@@ -188,7 +193,7 @@ namespace VRVlog.AvatarAnimator
                 ["motions"] = data.Motions.Select(m => (object)WriteMotion(m)).ToList(),
                 ["clips"] = data.Clips.Select(c => (object)new Dictionary<string, object>
                 {
-                    ["name"] = c.Name, ["duration"] = c.Duration, ["loop"] = c.Loop,
+                    ["name"] = c.Name, ["duration"] = c.Duration, ["loop"] = c.Loop, ["cycleOffset"] = c.CycleOffset,
                     ["tracks"] = c.Tracks.Select(t => (object)new Dictionary<string, object>
                     {
                         ["target"] = (long)t.Target, ["curves"] = t.Curves.Select(curve => (object)ExpressionAnimationData.WriteCurve(curve)).ToList()
@@ -228,6 +233,7 @@ namespace VRVlog.AvatarAnimator
         static Dictionary<string, object> WriteLayer(Layer l) => new Dictionary<string, object>
         {
             ["name"] = l.Name, ["weight"] = l.Weight, ["blending"] = l.Blending,
+            ["syncedLayer"] = (long)l.SyncedLayer, ["syncedLayerAffectsTiming"] = l.SyncedLayerAffectsTiming,
             ["machines"] = l.Machines.Select(m => (object)new Dictionary<string, object>
             {
                 ["name"] = m.Name, ["parent"] = (long)m.Parent, ["defaultState"] = (long)m.DefaultState,
@@ -383,8 +389,9 @@ namespace VRVlog.AvatarAnimator
             {
                 var c = Json.Obj(raw, "playable", "layers");
                 var controller = new Controller { Playable = Choice(c["playable"], "fx") };
-                foreach (var rawLayer in Json.Arr(c["layers"], 0, 1024))
-                    controller.Layers.Add(ReadLayer(rawLayer, parameterCount, motions.Count));
+                var layers = Json.Arr(c["layers"], 0, 1024);
+                for (var index = 0; index < layers.Count; index++)
+                    controller.Layers.Add(ReadLayer(layers[index], index, layers.Count, parameterCount, motions.Count));
                 data.Controllers.Add(controller);
             }
 
@@ -437,8 +444,8 @@ namespace VRVlog.AvatarAnimator
 
             foreach (var raw in clips)
             {
-                var c = Json.Obj(raw, "name", "duration", "loop", "tracks");
-                var clip = new Clip { Name = Name(c["name"]), Duration = Json.Number(c["duration"]), Loop = Flag(c["loop"]) };
+                var c = Json.Obj(raw, "name", "duration", "loop", "cycleOffset", "tracks");
+                var clip = new Clip { Name = Name(c["name"]), Duration = Json.Number(c["duration"]), Loop = Flag(c["loop"]), CycleOffset = Json.Number(c["cycleOffset"]) };
                 if (clip.Duration < 0) throw Json.Bad();
                 var keyCount = 0;
                 var seen = new HashSet<int>();
@@ -477,10 +484,16 @@ namespace VRVlog.AvatarAnimator
             return data;
         }
 
-        static Layer ReadLayer(object raw, int parameterCount, int motionCount)
+        static Layer ReadLayer(object raw, int layerIndex, int layerCount, int parameterCount, int motionCount)
         {
-            var l = Json.Obj(raw, "name", "weight", "blending", "machines", "states");
-            var layer = new Layer { Name = Name(l["name"]), Weight = Json.Number(l["weight"]), Blending = Choice(l["blending"], Blendings) };
+            var l = Json.Obj(raw, "name", "weight", "blending", "syncedLayer", "syncedLayerAffectsTiming", "machines", "states");
+            var layer = new Layer
+            {
+                Name = Name(l["name"]), Weight = Json.Number(l["weight"]), Blending = Choice(l["blending"], Blendings),
+                SyncedLayer = Index(l["syncedLayer"], layerCount, true), SyncedLayerAffectsTiming = Flag(l["syncedLayerAffectsTiming"])
+            };
+            // A layer is not synced to itself.
+            if (layer.SyncedLayer == layerIndex) throw Json.Bad();
             var machines = Json.Arr(l["machines"], 1, 4096);
             var states = Json.Arr(l["states"], 0, 16384);
             Transition ReadOne(object rawTransition, bool timed)
@@ -582,7 +595,7 @@ namespace VRVlog.AvatarAnimator
                         foreach (var pair in b)
                         {
                             if (pair.Key == "type") continue;
-                            if (pair.Key.Length == 0 || pair.Key.Length > 64 || !char.IsLower(pair.Key[0]) || !pair.Key.All(char.IsLetterOrDigit)) throw Json.Bad();
+                            if (!IsTrackingPart(pair.Key)) throw Json.Bad();
                             behaviour.Tracking.Add(new KeyValuePair<string, string>(pair.Key, Choice(pair.Value, TrackingValues)));
                         }
                         break;
@@ -608,6 +621,12 @@ namespace VRVlog.AvatarAnimator
             try { return ExpressionAnimationData.ReadCurve(c, ref keyCount); }
             catch (InvalidOperationException) { throw Json.Bad(); }
         }
+
+        // A trackingControl key: an ASCII lower-case letter, then up to 63 ASCII
+        // letters or digits (the schema's pattern).
+        public static bool IsTrackingPart(string key) =>
+            key != null && key.Length > 0 && key.Length <= 64 && key[0] >= 'a' && key[0] <= 'z' &&
+            key.All(ch => ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9');
 
         static object Get(Dictionary<string, object> owner, string key) => owner.TryGetValue(key, out var value) ? value : null;
 
