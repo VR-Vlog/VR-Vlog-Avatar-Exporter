@@ -227,6 +227,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = 2L);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = 1L);
+            // The source of a synced layer is not synced itself.
+            Rejects(json => At(json, "controllers", 0, "layers", 0)["syncedLayer"] = 1L);
             Rejects(json => At(json, "controllers", 0, "layers", 0)["syncedLayer"] = -2L);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = .5);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayerAffectsTiming"] = 1L);

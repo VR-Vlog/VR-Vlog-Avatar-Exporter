@@ -106,16 +106,14 @@ namespace VRVlog.LilToonExporter
             return data;
         }
 
-        // Leaves the file as it is when the extension would exceed MaximumBytes.
-        internal static byte[] Inject(byte[] bytes, AvatarAnimatorData data, ICollection<string> warnings)
+        // An extension over MaximumBytes is an error: the caller leaves the
+        // stage out and lists it with this reason.
+        internal static byte[] Inject(byte[] bytes, AvatarAnimatorData data)
         {
             if (data == null) return bytes;
             var extension = AvatarAnimatorData.Write(data);
             if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > MaximumBytes)
-            {
-                warnings?.Add(ExporterLocalization.T(TooLargeWarning));
-                return bytes;
-            }
+                throw new InvalidOperationException(ExporterLocalization.T(TooLargeWarning));
             var document = GlbDocument.Read(bytes);
             var nodeCount = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> nodes ? nodes.Count : 0;
             if (data.Targets.Any(target => target.Node >= nodeCount))
@@ -178,12 +176,27 @@ namespace VRVlog.LilToonExporter
             var layers = controller.layers;
             for (var index = 0; index < layers.Length; index++)
             {
-                // A source outside the layers or the layer itself is not synced.
-                var source = layers[index].syncedLayerIndex;
-                if (source < 0 || source >= layers.Length || source == index) source = -1;
+                var source = MachineOwner(layers, index);
                 result.Layers.Add(ReadLayer(layers[index], index, source, source < 0 ? null : layers[source]));
             }
             return result;
+        }
+
+        // The layer whose machines a synced layer runs, or -1 when the layer is
+        // not synced. Unity follows a chain of synced layers to its end. A
+        // source outside the layers counts as none, and a chain that comes back
+        // to a layer it passed is not synced.
+        internal static int MachineOwner(AnimatorControllerLayer[] layers, int index)
+        {
+            var passed = new HashSet<int> { index };
+            var current = index;
+            while (true)
+            {
+                var next = layers[current].syncedLayerIndex;
+                if (next < 0 || next >= layers.Length) return current == index ? -1 : current;
+                if (!passed.Add(next)) return -1;
+                current = next;
+            }
         }
 
         // A synced layer runs the source layer's machines with its own motions

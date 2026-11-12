@@ -156,6 +156,56 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(hat.States.Select(s => data.Clips[data.Motions[s.Motion].Clip].CycleOffset), Is.EqualTo(new[] { 0d, 0d }));
         }
 
+        // Unity runs a layer synced to a synced layer on the machines at the end
+        // of the chain, with the layer's own motions.
+        [Test]
+        public void ALayerSyncedToASyncedLayerIsWrittenWithTheLayerThatOwnsTheMachines()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var hatIndex = Array.FindIndex(fx.layers, l => l.name == "Hat");
+            var once = avatar.Clip("Once");
+            var twice = avatar.Clip("Twice");
+            fx.AddLayer("Hat synced");
+            fx.AddLayer("Hat synced twice");
+            var layers = fx.layers;
+            var first = layers.Length - 2;
+            layers[first].defaultWeight = 0;
+            layers[first].syncedLayerIndex = hatIndex;
+            layers[first + 1].defaultWeight = 0;
+            layers[first + 1].syncedLayerIndex = first;
+            fx.layers = layers;
+            foreach (var child in layers[hatIndex].stateMachine.states)
+            {
+                fx.SetStateEffectiveMotion(child.state, once, first);
+                fx.SetStateEffectiveMotion(child.state, twice, first + 1);
+            }
+
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var written = data.Controllers.Single().Layers;
+            Assert.That(written.Skip(first).Select(l => l.SyncedLayer), Is.EqualTo(new[] { hatIndex, hatIndex }));
+            var copy = written[first + 1];
+            Assert.That(copy.States.Select(s => s.Name), Is.EqualTo(written[hatIndex].States.Select(s => s.Name)));
+            Assert.That(copy.States, Is.Not.Empty);
+            foreach (var state in copy.States)
+                Assert.That(data.Clips[data.Motions[state.Motion].Clip].Name, Is.EqualTo(twice.name), "The layer plays its own motions.");
+        }
+
+        // -1 is a layer that is not synced. A source outside the layers counts as
+        // none, and a chain that comes back to a layer it passed is not synced.
+        [Test]
+        public void TheOwnerOfASyncedLayersMachinesIsTheEndOfTheChain()
+        {
+            AnimatorControllerLayer[] Layers(params int[] sources) =>
+                sources.Select(source => new AnimatorControllerLayer { syncedLayerIndex = source }).ToArray();
+            int[] Owners(params int[] sources) =>
+                Enumerable.Range(0, sources.Length).Select(index => AvatarAnimatorCapture.MachineOwner(Layers(sources), index)).ToArray();
+
+            Assert.That(Owners(-1, 0, 1, 2), Is.EqualTo(new[] { -1, 0, 0, 0 }));
+            Assert.That(Owners(-1, 1, 9, 2), Is.EqualTo(new[] { -1, -1, -1, 2 }), "Itself, outside the layers, and a source whose own source is outside.");
+            Assert.That(Owners(1, 2, 0, 0, -1), Is.EqualTo(new[] { -1, -1, -1, -1, -1 }), "A loop, and a layer whose chain ends in one.");
+        }
+
         // Only copy reads its source: a name left in another type's source
         // adds no parameter.
         [Test]
@@ -245,17 +295,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnExtensionOverTheLimitIsLeftOutWithAWarning()
+        public void AnExtensionOverTheLimitIsLeftOutAndListedWithTheReason()
         {
             using var avatar = new AnimatorAvatar();
             AvatarAnimatorCapture.MaximumBytes = 64;
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+            var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
 
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
             var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
             Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
-            Assert.That(warnings, Has.Member(ExporterLocalization.T(AvatarAnimatorCapture.TooLargeWarning)));
+            var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+            Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+            Assert.That(entry.Reason, Is.EqualTo(ExporterLocalization.T(AvatarAnimatorCapture.TooLargeWarning)));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
         }
 
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>

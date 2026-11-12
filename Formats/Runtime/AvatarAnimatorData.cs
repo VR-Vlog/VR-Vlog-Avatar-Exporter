@@ -70,7 +70,8 @@ namespace VRVlog.AvatarAnimator
         // Machines[0] is the layer's root; States lists the states of every machine.
         // A synced layer (SyncedLayer, the index of its source layer, or -1)
         // holds a copy of the source layer's machines with its own motions and
-        // state behaviours. Weight is 1 for the first layer, as Unity plays it.
+        // state behaviours. The source is the layer that owns the machines, so
+        // it is never a synced layer itself. Weight is 1 for the first layer, as Unity plays it.
         public sealed class Layer
         {
             public string Name, Blending = "override";
@@ -392,6 +393,9 @@ namespace VRVlog.AvatarAnimator
                 var layers = Json.Arr(c["layers"], 0, 1024);
                 for (var index = 0; index < layers.Count; index++)
                     controller.Layers.Add(ReadLayer(layers[index], index, layers.Count, parameterCount, motions.Count));
+                // The source of a synced layer owns its machines: it is not synced itself.
+                foreach (var layer in controller.Layers)
+                    if (layer.SyncedLayer >= 0 && controller.Layers[layer.SyncedLayer].SyncedLayer >= 0) throw Json.Bad();
                 data.Controllers.Add(controller);
             }
 

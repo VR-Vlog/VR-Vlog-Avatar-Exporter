@@ -1053,7 +1053,7 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
-                if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, warnings), () => exported);
+                if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
