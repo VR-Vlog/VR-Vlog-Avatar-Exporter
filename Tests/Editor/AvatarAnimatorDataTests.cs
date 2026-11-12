@@ -237,6 +237,55 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = "0.25");
         }
 
+        // Adds a chain of blend trees on top of the first clip. Outer first puts
+        // the outermost tree at the lowest index, so that the check walks down
+        // the whole chain from one root.
+        static void Nest(Dictionary<string, object> json, int trees, bool outerFirst)
+        {
+            var motions = (List<object>)json["motions"];
+            var first = motions.Count;
+            for (var index = 0; index < trees; index++)
+            {
+                var inner = outerFirst ? (index == trees - 1 ? 0 : first + index + 1) : (index == 0 ? 0 : first + index - 1);
+                motions.Add(new Dictionary<string, object>
+                {
+                    ["type"] = "blendTree", ["blendType"] = "direct", ["parameters"] = new List<object>(), ["normalizedBlendValues"] = false,
+                    ["children"] = new List<object>
+                    {
+                        new Dictionary<string, object>
+                        {
+                            ["motion"] = (long)inner, ["threshold"] = 0.0, ["position"] = new List<object> { 0.0, 0.0 },
+                            ["timeScale"] = 1.0, ["cycleOffset"] = 0.0, ["mirror"] = false, ["directParameter"] = 1L
+                        }
+                    }
+                });
+            }
+        }
+
+        // The depth is checked without recursion: a chain as long as the motion
+        // table allows is rejected like any other data outside the limits.
+        [Test]
+        public void ReadRejectsBlendTreesNestedOverTheLimit()
+        {
+            foreach (var outerFirst in new[] { false, true })
+            {
+                var json = Json(Sample());
+                Nest(json, AvatarAnimatorData.MaximumBlendTreeDepth, outerFirst);
+                Assert.DoesNotThrow(() => AvatarAnimatorData.Read(json));
+                Rejects(changed => Nest(changed, AvatarAnimatorData.MaximumBlendTreeDepth + 1, outerFirst));
+                Rejects(changed => Nest(changed, 60000, outerFirst));
+            }
+            // A tree without children still counts as one level.
+            Rejects(changed =>
+            {
+                Nest(changed, AvatarAnimatorData.MaximumBlendTreeDepth + 1, true);
+                ((List<object>)At(changed, "motions", ((List<object>)changed["motions"]).Count - 1)["children"]).Clear();
+            });
+            // A tracking part must not take the key that names the behaviour.
+            Assert.That(AvatarAnimatorData.IsTrackingPart("type"), Is.False);
+            Assert.That(AvatarAnimatorData.IsTrackingPart("head"), Is.True);
+        }
+
         [Test]
         public void ReadRejectsTablesOverTheirLimits()
         {

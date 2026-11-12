@@ -21,7 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void Reset()
         {
             ExportTestHooks.FaultInjection = null;
-            AvatarAnimatorCapture.MaximumBytes = 4 * 1024 * 1024;
+            AvatarAnimatorCapture.MaximumBytes = AvatarAnimatorCapture.MaximumMegabytes * 1024 * 1024;
         }
 
         [Test]
@@ -308,8 +308,115 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
             var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
             Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
-            Assert.That(entry.Reason, Is.EqualTo(ExporterLocalization.T(AvatarAnimatorCapture.TooLargeWarning)));
+            Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.TooLarge));
+            Assert.That(entry.Reason, Does.Contain(AvatarAnimatorCapture.MaximumMegabytes + "MB"));
             Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+        }
+
+        // An extension of exactly the limit is written; one byte less of
+        // room leaves it out.
+        [Test]
+        public void AnExtensionOfExactlyTheLimitIsWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), new ExportRecoveryReport());
+            var data = Read(GlbDocument.Read(exported).Json);
+            var size = System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+
+            AvatarAnimatorCapture.MaximumBytes = size;
+            var written = Read(GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data)).Json);
+            Assert.That(written.Motions.Count, Is.EqualTo(data.Motions.Count));
+            AvatarAnimatorCapture.MaximumBytes = size - 1;
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data),
+                Throws.InvalidOperationException.With.Message.EqualTo(AvatarAnimatorCapture.TooLarge));
+        }
+
+        // Trees nested as deep as the format allows are written; one level more
+        // leaves the stage out, and the export still succeeds.
+        [Test]
+        public void BlendTreesNestedOverTheLimitLeaveTheStageOut()
+        {
+            foreach (var depth in new[] { AvatarAnimatorData.MaximumBlendTreeDepth, AvatarAnimatorData.MaximumBlendTreeDepth + 1 })
+            {
+                using var avatar = new AnimatorAvatar();
+                var fx = avatar.Fx;
+                fx.AddLayer("Deep");
+                fx.CreateBlendTreeInController("Deep", out var tree, fx.layers.Length - 1);
+                for (var level = 1; level < depth; level++)
+                {
+                    tree.blendType = BlendTreeType.Simple1D;
+                    tree.blendParameter = "Blend";
+                    tree = tree.CreateBlendTreeChild(0);
+                }
+                tree.blendType = BlendTreeType.Simple1D;
+                tree.blendParameter = "Blend";
+                tree.AddChild(avatar.Clip("Deep"), 0);
+
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+                var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+                var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
+                Assert.That(written, Is.EqualTo(depth <= AvatarAnimatorData.MaximumBlendTreeDepth), "depth " + depth);
+                if (written)
+                {
+                    Assert.That(Read(json).Motions.Count(motion => motion.Type == "blendTree"), Is.GreaterThanOrEqualTo(depth));
+                    Assert.That(report.Fallbacks.Results.Any(result => result.Stage != null), Is.False);
+                }
+                else
+                {
+                    var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                    Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+                    Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.TooDeep));
+                    Assert.That(entry.Reason, Does.Contain(AvatarAnimatorData.MaximumBlendTreeDepth.ToString()));
+                    Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+                }
+            }
+        }
+
+        // A tree two parents share is written once and counted at the deeper
+        // of its two places: under the top tree it is 2 deep, at the end of
+        // the chain it is chain + 2 deep.
+        [Test]
+        public void ASharedBlendTreeCountsAtItsDeepestPlace()
+        {
+            foreach (var chain in new[] { AvatarAnimatorData.MaximumBlendTreeDepth - 2, AvatarAnimatorData.MaximumBlendTreeDepth - 1 })
+            {
+                using var avatar = new AnimatorAvatar();
+                var fx = avatar.Fx;
+                fx.AddLayer("Shared");
+                fx.CreateBlendTreeInController("Shared", out var top, fx.layers.Length - 1);
+                top.blendType = BlendTreeType.Simple1D;
+                top.blendParameter = "Blend";
+                var shared = top.CreateBlendTreeChild(0);
+                shared.blendType = BlendTreeType.Simple1D;
+                shared.blendParameter = "Blend";
+                var clip = avatar.Clip("Shared");
+                shared.AddChild(clip, 0);
+                var tree = top;
+                for (var level = 0; level < chain; level++)
+                {
+                    tree = tree.CreateBlendTreeChild(1);
+                    tree.blendType = BlendTreeType.Simple1D;
+                    tree.blendParameter = "Blend";
+                }
+                tree.AddChild(shared, 0);
+                Assert.That(top.children[0].motion, Is.EqualTo(shared), "the shared tree is walked under the top tree first");
+
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+                var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+                var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
+                Assert.That(written, Is.EqualTo(chain + 2 <= AvatarAnimatorData.MaximumBlendTreeDepth), "chain " + chain);
+                if (written)
+                {
+                    var data = Read(json);
+                    var clipIndex = data.Clips.FindIndex(candidate => candidate.Name == clip.name);
+                    var clipMotion = data.Motions.FindIndex(motion => motion.Type == "clip" && motion.Clip == clipIndex);
+                    var sharedIndex = data.Motions.FindIndex(motion => motion.Children.Any(child => child.Motion == clipMotion));
+                    Assert.That(data.Motions.Sum(motion => motion.Children.Count(child => child.Motion == sharedIndex)), Is.EqualTo(2));
+                }
+                else Assert.That(report.Fallbacks.Results.Single(result => result.Stage != null).Reason, Is.EqualTo(AvatarAnimatorCapture.TooDeep));
+            }
         }
 
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>

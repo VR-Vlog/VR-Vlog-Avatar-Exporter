@@ -18,10 +18,16 @@ namespace VRVlog.LilToonExporter
     // Curves are kept for activeSelf only; the others are counted by kind.
     internal sealed class AvatarAnimatorCapture
     {
-        internal const string TooLargeWarning = "FXとメニューの動きの情報が4MiBを超えたため、VRMに含めませんでした。";
+        // Why the stage was left out, listed after the stage's name.
+        internal const string TooLargeReason = "データが上限の{0}MBを超えています。";
+        internal const string TooDeepReason = "BlendTreeの入れ子が上限の{0}階層を超えています。";
 
         // The largest extension JSON (UTF-8 bytes) written. Tests lower it.
-        internal static int MaximumBytes = 4 * 1024 * 1024;
+        internal const int MaximumMegabytes = 4;
+        internal static int MaximumBytes = MaximumMegabytes * 1024 * 1024;
+
+        internal static string TooLarge => ExporterLocalization.Format(TooLargeReason, MaximumMegabytes);
+        internal static string TooDeep => ExporterLocalization.Format(TooDeepReason, AvatarAnimatorData.MaximumBlendTreeDepth);
 
         readonly AvatarAnimatorData data = new AvatarAnimatorData();
         // Curve targets stay GameObjects until the output nodes are known.
@@ -36,6 +42,8 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<string> controllerParameters = new HashSet<string>(StringComparer.Ordinal);
         readonly Dictionary<AnimationClip, AnimationClip> overrides;
         readonly Dictionary<Motion, int> motionIndex = new Dictionary<Motion, int>();
+        // Blend trees nested in each of data.Motions, itself included.
+        readonly List<int> nesting = new List<int>();
         readonly Dictionary<AnimationClip, int> clipIndex = new Dictionary<AnimationClip, int>();
 
         AvatarAnimatorCapture(GameObject root, IReadOnlyDictionary<GameObject, bool> rest, Dictionary<AnimationClip, AnimationClip> overrides)
@@ -113,7 +121,7 @@ namespace VRVlog.LilToonExporter
             if (data == null) return bytes;
             var extension = AvatarAnimatorData.Write(data);
             if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > MaximumBytes)
-                throw new InvalidOperationException(ExporterLocalization.T(TooLargeWarning));
+                throw new InvalidOperationException(TooLarge);
             var document = GlbDocument.Read(bytes);
             var nodeCount = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> nodes ? nodes.Count : 0;
             if (data.Targets.Any(target => target.Node >= nodeCount))
@@ -411,8 +419,11 @@ namespace VRVlog.LilToonExporter
         }
 
         // Each motion asset is written once; an override controller's clips
-        // replace the base controller's.
-        int MotionIndex(Motion motion)
+        // replace the base controller's. Trees nested deeper than the format
+        // allows stop here: depth keeps the nesting from deciding how deep this
+        // recurses, and nesting counts a tree two parents share, walked once,
+        // at the deeper of its places.
+        int MotionIndex(Motion motion, int depth = 1)
         {
             if (motion == null) return -1;
             if (motion is AnimationClip original && overrides.TryGetValue(original, out var replaced)) motion = replaced;
@@ -422,24 +433,32 @@ namespace VRVlog.LilToonExporter
                 index = data.Motions.Count;
                 motionIndex[motion] = index;
                 data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = ClipIndex(clip) });
+                nesting.Add(0);
                 return index;
             }
             if (!(motion is BlendTree tree)) return -1;
+            if (depth > AvatarAnimatorData.MaximumBlendTreeDepth) throw new InvalidOperationException(TooDeep);
             index = data.Motions.Count;
             motionIndex[motion] = index;
             var result = new AvatarAnimatorData.Motion { Type = "blendTree", BlendType = BlendType(tree.blendType) };
             data.Motions.Add(result);
+            nesting.Add(1);
             if (tree.blendType == BlendTreeType.Simple1D) result.Parameters.Add(Parameter(tree.blendParameter));
             else if (tree.blendType != BlendTreeType.Direct) { result.Parameters.Add(Parameter(tree.blendParameter)); result.Parameters.Add(Parameter(tree.blendParameterY)); }
             using (var serialized = new SerializedObject(tree))
                 result.NormalizedBlendValues = serialized.FindProperty("m_NormalizedBlendValues")?.boolValue ?? false;
             foreach (var child in tree.children)
+            {
+                var childIndex = MotionIndex(child.motion, depth + 1);
+                if (childIndex >= 0) nesting[index] = Math.Max(nesting[index], nesting[childIndex] + 1);
                 result.Children.Add(new AvatarAnimatorData.Child
                 {
-                    Motion = MotionIndex(child.motion), Threshold = child.threshold, X = child.position.x, Y = child.position.y,
+                    Motion = childIndex, Threshold = child.threshold, X = child.position.x, Y = child.position.y,
                     TimeScale = child.timeScale, CycleOffset = child.cycleOffset, Mirror = child.mirror,
                     DirectParameter = tree.blendType == BlendTreeType.Direct ? Parameter(child.directBlendParameter) : (int?)null
                 });
+            }
+            if (nesting[index] > AvatarAnimatorData.MaximumBlendTreeDepth) throw new InvalidOperationException(TooDeep);
             return index;
         }
 

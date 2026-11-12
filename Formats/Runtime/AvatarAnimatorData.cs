@@ -19,6 +19,8 @@ namespace VRVlog.AvatarAnimator
         public const int SchemaVersion = 1;
         // The keys of all the curves of one clip, the limit the shared key reader counts to.
         public const int MaximumKeysPerClip = 16384;
+        // A blend tree of clips is 1 deep; each tree inside a tree adds 1.
+        public const int MaximumBlendTreeDepth = 32;
 
         public static readonly string[] ParameterTypes = { "bool", "int", "float", "trigger" };
         public static readonly string[] ParameterOrigins = { "expression", "animator", "builtin" };
@@ -434,17 +436,36 @@ namespace VRVlog.AvatarAnimator
                 }
                 data.Motions.Add(motion);
             }
-            // A blend tree must not contain itself.
-            var visit = new int[data.Motions.Count];
-            void Acyclic(int index)
+            // A blend tree must not contain itself, and trees nest at most
+            // MaximumBlendTreeDepth deep. Walked without recursion: the input
+            // decides how deep this goes.
+            var height = new int[data.Motions.Count]; // 0 = not seen, -1 = on the path, else trees below + 1
+            var path = new Stack<(int Motion, int Next)>();
+            for (var start = 0; start < data.Motions.Count; start++)
             {
-                if (visit[index] == 2) return;
-                if (visit[index] == 1) throw Json.Bad();
-                visit[index] = 1;
-                foreach (var child in data.Motions[index].Children) if (child.Motion >= 0) Acyclic(child.Motion);
-                visit[index] = 2;
+                if (height[start] != 0) continue;
+                height[start] = -1;
+                path.Push((start, 0));
+                while (path.Count > 0)
+                {
+                    var (motion, next) = path.Pop();
+                    var children = data.Motions[motion].Children;
+                    while (next < children.Count && (children[next].Motion < 0 || height[children[next].Motion] > 0)) next++;
+                    if (next < children.Count)
+                    {
+                        var child = children[next].Motion;
+                        if (height[child] == -1) throw Json.Bad();
+                        height[child] = -1;
+                        path.Push((motion, next + 1));
+                        path.Push((child, 0));
+                        continue;
+                    }
+                    var below = 0;
+                    foreach (var child in children) if (child.Motion >= 0) below = Math.Max(below, height[child.Motion]);
+                    height[motion] = data.Motions[motion].Type == "clip" ? 1 : Math.Max(below, 1) + 1;
+                    if (height[motion] > MaximumBlendTreeDepth + 1) throw Json.Bad();
+                }
             }
-            for (var index = 0; index < data.Motions.Count; index++) Acyclic(index);
 
             foreach (var raw in clips)
             {
@@ -629,7 +650,7 @@ namespace VRVlog.AvatarAnimator
         // A trackingControl key: an ASCII lower-case letter, then up to 63 ASCII
         // letters or digits (the schema's pattern).
         public static bool IsTrackingPart(string key) =>
-            key != null && key.Length > 0 && key.Length <= 64 && key[0] >= 'a' && key[0] <= 'z' &&
+            key != null && key != "type" && key.Length > 0 && key.Length <= 64 && key[0] >= 'a' && key[0] <= 'z' &&
             key.All(ch => ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9');
 
         static object Get(Dictionary<string, object> owner, string key) => owner.TryGetValue(key, out var value) ? value : null;

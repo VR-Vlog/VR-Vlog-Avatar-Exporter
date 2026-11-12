@@ -61,9 +61,10 @@ namespace VRVlog.LilToonExporter
             (ExportStageFailure)ExceptionChain.Find(error, value => value is ExportStageFailure);
     }
 
-    // One guard per export call. In strict mode every stage behaves as before:
+    // One guard per export call. In strict mode a stage behaves as before:
     // the first failure stops the export. Otherwise a failing stage is left out,
-    // recorded in the fallback report, and the export continues.
+    // recorded in the fallback report, and the export continues. A stage run
+    // through Optional is left out in strict mode too.
     internal sealed class ExportStageGuard
     {
         // The user-facing exports (window, app transfer) continue past failing
