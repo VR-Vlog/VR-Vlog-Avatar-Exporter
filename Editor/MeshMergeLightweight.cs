@@ -185,11 +185,16 @@ namespace VRVlog.LilToonExporter
             }.Select(item => Convert.ToString(item, CultureInfo.InvariantCulture)));
         }
 
-        // Identity when the donor's mesh space is the host's, as every shared
-        // bone agrees (host bindpose⁻¹ × donor bindpose) or they share none;
-        // null otherwise.
+        // Identity when the donor's mesh space is the host's: they share at
+        // least one bone, every shared bone agrees (host bindpose⁻¹ × donor
+        // bindpose), and both draw from the same space (root bone, or the
+        // renderer when it has none). Null otherwise, including when nothing
+        // can be compared.
         static Matrix4x4? ToHost(SkinnedMeshRenderer host, SkinnedMeshRenderer donor)
         {
+            var hostSpace = host.rootBone != null ? host.rootBone : host.transform;
+            var donorSpace = donor.rootBone != null ? donor.rootBone : donor.transform;
+            if (!Close(hostSpace.localToWorldMatrix, donorSpace.localToWorldMatrix)) return null;
             var hostBones = host.bones;
             var hostPoses = host.sharedMesh.bindposes;
             var hostIndex = new Dictionary<Transform, int>();
@@ -205,7 +210,8 @@ namespace VRVlog.LilToonExporter
                 if (result == null) result = candidate;
                 else if (!Close(result.Value, candidate)) return null;
             }
-            var toHost = result ?? Matrix4x4.identity;
+            if (result == null) return null;
+            var toHost = result.Value;
             // Only the same mesh space: the shader reads the object's own
             // coordinates and axes (position dissolves, the face shadow's
             // directions, a local light direction, the distance to the origin),

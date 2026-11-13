@@ -219,8 +219,8 @@ namespace VRVlog.LilToonExporter
             // pixels, as the app shows no outline. Only when every outline pass
             // is off (what 細い輪郭線を省く writes): a material with ForwardBase
             // off but its additive outline on keeps the width that pass shares.
-            // The additive outline pass tests depth on its own, so under extra
-            // lights the preview can still show an omitted outline's faces.
+            // The additive outline pass tests depth on its own, so its colour
+            // mask is closed too: under extra lights it writes nothing.
             var passEnabled = F.List(spec, "passes").Select(F.Object)
                 .ToDictionary(pass => F.Text(pass, "name"), pass => F.Bool(pass, "enabled"), StringComparer.OrdinalIgnoreCase);
             bool Pass(string name, bool missing) => passEnabled.TryGetValue(name, out var on) ? on : missing;
@@ -230,6 +230,7 @@ namespace VRVlog.LilToonExporter
                 material.SetFloat("_OutlineWidth", 0f);
                 if (material.HasProperty("_OutlineZTest")) material.SetFloat("_OutlineZTest", (float)CompareFunction.Never);
                 if (material.HasProperty("_OutlineZWrite")) material.SetFloat("_OutlineZWrite", 0f);
+                if (material.HasProperty("_OutlineColorMask")) material.SetFloat("_OutlineColorMask", 0f);
                 // A failed depth test still runs the stencil's ZFail: keep the stencil as it is.
                 foreach (var op in new[] { "_OutlineStencilPass", "_OutlineStencilFail", "_OutlineStencilZFail" })
                     if (material.HasProperty(op)) material.SetFloat(op, (float)StencilOp.Keep);

@@ -94,11 +94,16 @@ namespace VRVlog.LilToonExporter.Tests
             var shadowless = Skin("Shadowless", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false);
             // Another mesh space: the shader would read a moved donor's object coordinates differently.
             var moved = Skin("Moved", new Vector3(.2f, .1f, 0f), Quaternion.Euler(0f, 30f, 0f), new[] { shared }, blendShape: false);
+            // No shared bone, so nothing shows the spaces agree; and a root bone turned another way draws in another space.
+            var prop = Child("Prop", root.transform, new Vector3(0f, 1f, .1f));
+            prop.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            var loose = Skin("Loose", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false, bones: new[] { prop, Child("PropTip", prop, Vector3.up * .1f) });
+            var turned = Skin("Turned", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false, rootBone: prop);
             shadowless.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var owned = new List<Mesh>();
             Assert.That(MeshMergeLightweight.Apply(root, owned, new[] { toggled.transform }), Is.Null);
             Assert.That(owned, Is.Empty);
-            Assert.That(new[] { shaped, seeThrough, toggled, shadowless, moved }.All(renderer => renderer.enabled), Is.True);
+            Assert.That(new[] { shaped, seeThrough, toggled, shadowless, moved, loose, turned }.All(renderer => renderer.enabled), Is.True);
         }
 
         [Test]
@@ -219,7 +224,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A quad per material on hips and chest; the renderer's own object
         // sets its mesh space.
-        SkinnedMeshRenderer Skin(string name, Vector3 position, Quaternion rotation, Material[] materials, bool blendShape, Transform[] bones = null)
+        SkinnedMeshRenderer Skin(string name, Vector3 position, Quaternion rotation, Material[] materials, bool blendShape, Transform[] bones = null, Transform rootBone = null)
         {
             bones = bones ?? new[] { hips, chest };
             var holder = Child(name, root.transform, position);
@@ -250,7 +255,7 @@ namespace VRVlog.LilToonExporter.Tests
             var skin = holder.gameObject.AddComponent<SkinnedMeshRenderer>();
             skin.sharedMesh = mesh;
             skin.bones = bones;
-            skin.rootBone = hips;
+            skin.rootBone = rootBone != null ? rootBone : hips;
             skin.sharedMaterials = materials;
             return skin;
         }
