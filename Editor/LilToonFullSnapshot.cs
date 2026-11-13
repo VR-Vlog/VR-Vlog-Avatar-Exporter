@@ -46,14 +46,19 @@ namespace VRVlog.LilToonExporter
         // 自動で軽量化する: write a slot whose feature is switched off as
         // unassigned. The references left out, by texture key; false when off.
         bool omitInactiveSlots;
+        // 細い輪郭線を省く: materials whose outline passes are written switched off.
+        ISet<Material> outlineOmitted;
+        readonly HashSet<Material> outlinesOmitted = new HashSet<Material>();
+        // How many written materials had their outline switched off.
+        internal int OutlinesOmitted => outlinesOmitted.Count;
         readonly HashSet<(Texture, bool)> inactiveReferences = new HashSet<(Texture, bool)>();
         readonly string sourceColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear ? "linear" : "gamma";
 
         internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null,
-            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false)
+            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false, ISet<Material> outlineOmitted=null)
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
-                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots};
+                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots, outlineOmitted=outlineOmitted};
             var selected = new List<(Renderer renderer, Material[] materials)>();
             // Materials of renderers UniVRM does not write as meshes must not
             // create bindings to absent glTF meshes. Their transforms and bones
@@ -203,8 +208,16 @@ namespace VRVlog.LilToonExporter
             // installed pass list unchanged.
             var modes = LilToon234Catalogue.PassLightModes[shader.name];
             var passes = new List<object>();
-            void AddPass(string name, string lightMode) =>
-                passes.Add(new Dictionary<string, object> { {"name", name}, {"lightMode",lightMode}, {"enabled", source.GetShaderPassEnabled(lightMode)} });
+            void AddPass(string name, string lightMode)
+            {
+                var enabled = source.GetShaderPassEnabled(lightMode);
+                if (enabled && outlineOmitted != null && outlineOmitted.Contains(source) && OutlineLightweight.IsOutlinePass(name))
+                {
+                    enabled = false;
+                    outlinesOmitted.Add(source);
+                }
+                passes.Add(new Dictionary<string, object> { {"name", name}, {"lightMode",lightMode}, {"enabled", enabled} });
+            }
             bool HasPass(string name) => passes.Cast<Dictionary<string, object>>().Any(p => (string)p["name"] == name);
             for (var i = 0; i < source.passCount; i++)
             {

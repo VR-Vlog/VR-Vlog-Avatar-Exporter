@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -45,6 +46,9 @@ namespace VRVlog.LilToonExporter
         float distance = 1, yaw, zoom = 1;
         // 自動で軽量化する: on for a new board and for another avatar; the avatar's saved choice applies on preparing.
         bool autoLightweight = true;
+        // The prototype extras of 自動で軽量化する (ExportSettings.MergeMeshes and ThinOutlineMillimeters).
+        bool mergeMeshes;
+        float thinOutlineMillimeters;
         // 視線の動く範囲 the export writes; the section edits it and saves it for the avatar.
         GazeRangeOptions gazeRange = new GazeRangeOptions();
         readonly GazeRangeSection gazeSection = new GazeRangeSection();
@@ -842,6 +846,8 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode != BlinkExportMode.Auto) configuredBlink = storedBlink.Copy();
                 autoLightweight = stored.AutoLightweight;
+                mergeMeshes = stored.MergeMeshes;
+                thinOutlineMillimeters = stored.ThinOutlineMillimeters;
                 gazeRange = (stored.Gaze ?? new GazeRangeOptions()).Copy();
                 session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
@@ -2227,6 +2233,11 @@ namespace VRVlog.LilToonExporter
 
         internal const string AutoLightweightLabel = "自動で軽量化する";
         internal const string AutoLightweightNote = "見た目の変化を抑えてファイルとメモリを小さくします";
+        internal const string MergeMeshesLabel = "同じマテリアルのメッシュをまとめる";
+        internal const string MergeMeshesNote = "見た目を変えずに描画の回数を減らします";
+        internal const string ThinOutlinesLabel = "細い輪郭線を省く";
+        // {0} the width in mm.
+        internal const string ThinOutlinesNote = "幅{0}mm未満の輪郭線を描きません";
 
         // Saved at once for the avatar, like the gimmick choices, so the next
         // board and the quick transfer start from it.
@@ -2245,6 +2256,31 @@ namespace VRVlog.LilToonExporter
             var note = ExporterLocalization.T(AutoLightweightNote);
             var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+            if (!autoLightweight) return;
+            // The extras apply only with 自動で軽量化する on, so they show only then.
+            var merge = DrawLightweightExtra(MergeMeshesLabel, ExporterLocalization.T(MergeMeshesNote), mergeMeshes);
+            var thin = DrawLightweightExtra(ThinOutlinesLabel, string.Format(CultureInfo.InvariantCulture, ExporterLocalization.T(ThinOutlinesNote),
+                (thinOutlineMillimeters > 0f ? thinOutlineMillimeters : OutlineLightweight.DefaultThresholdMillimeters).ToString("0.0", CultureInfo.InvariantCulture)), thinOutlineMillimeters > 0f);
+            var thinMillimeters = thin ? (thinOutlineMillimeters > 0f ? thinOutlineMillimeters : OutlineLightweight.DefaultThresholdMillimeters) : 0f;
+            if (merge == mergeMeshes && thinMillimeters == thinOutlineMillimeters) return;
+            mergeMeshes = merge;
+            thinOutlineMillimeters = thinMillimeters;
+            var stored = ExportSettingsStore.Load(source);
+            stored.MergeMeshes = merge;
+            stored.ThinOutlineMillimeters = thinMillimeters;
+            ExportSettingsStore.Save(source, stored);
+        }
+
+        bool DrawLightweightExtra(string labelSource, string note, bool value)
+        {
+            var label = ExporterLocalization.T(labelSource);
+            var row = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
+            row.xMin += 16;
+            var on = EditorGUI.ToggleLeft(row, new GUIContent(Fit(label, EditorStyles.label, row.width), label), value);
+            var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
+            noteRect.xMin += 16;
+            GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+            return on;
         }
 
         // 視線の動く範囲: the previews draw the neutral face on the board's copy and
@@ -2615,6 +2651,7 @@ namespace VRVlog.LilToonExporter
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
             var lightweight = autoLightweight;
+            var lightweightExtras = new LightweightExtras { MergeMeshes = mergeMeshes, ThinOutlineMillimeters = thinOutlineMillimeters };
             var gaze = gazeRange.Copy();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
@@ -2701,7 +2738,7 @@ namespace VRVlog.LilToonExporter
                 var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
                     from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight, gaze));
+                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight, gaze, lightweightExtras));
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
@@ -2851,6 +2888,8 @@ namespace VRVlog.LilToonExporter
             SaveGazeRange();
             Cleanup(); CloseChildWindows();
             autoLightweight = true;
+            mergeMeshes = false;
+            thinOutlineMillimeters = 0f;
             gazeRange = new GazeRangeOptions();
             licenseOptions = new AvatarLicenseOptions();
             status = null;

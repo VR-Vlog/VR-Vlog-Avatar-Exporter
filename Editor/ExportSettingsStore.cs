@@ -58,6 +58,9 @@ namespace VRVlog.LilToonExporter
             // Missing in entries saved before the option existed: on, the
             // default, because nobody chose. A written false stays off.
             public bool AutoLightweight = true;
+            // Missing in older entries: off.
+            public bool MergeMeshes;
+            public float ThinOutlineMillimeters;
             // 視線の動く範囲. Missing in older entries: all 0, the avatar's own range.
             public GazeRangeOptions Gaze = new GazeRangeOptions();
             // The name of the last successful "アプリに転送". It is not part of
@@ -259,6 +262,8 @@ namespace VRVlog.LilToonExporter
                 PoseNames = poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => new PoseName { Key = item.Key, Value = item.Value }).ToList(),
                 License = (settings.License ?? new AvatarLicenseOptions()).Copy(),
                 AutoLightweight = settings.AutoLightweight,
+                MergeMeshes = settings.MergeMeshes,
+                ThinOutlineMillimeters = settings.ThinOutlineMillimeters,
                 Gaze = (settings.Gaze ?? new GazeRangeOptions()).Validated()
             };
         }
@@ -301,6 +306,7 @@ namespace VRVlog.LilToonExporter
             var settings = new ExportSettings
             {
                 AutoExcludeGimmicks = entry.AutoExcludeGimmicks, AutoLightweight = entry.AutoLightweight,
+                MergeMeshes = entry.MergeMeshes, ThinOutlineMillimeters = OutlineLightweight.ValidThreshold(entry.ThinOutlineMillimeters),
                 Gaze = (entry.Gaze ?? new GazeRangeOptions()).Validated()
             };
             settings.ExcludedObjects.AddRange((entry.Excluded ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());

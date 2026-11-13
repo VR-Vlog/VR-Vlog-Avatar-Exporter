@@ -140,7 +140,7 @@ namespace VRVlog.LilToonExporter
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
             IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null,
             IReadOnlyCollection<AnimationClip> gestureFaces = null, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones = null,
-            GazeRangeOptions gazeRange = null)
+            GazeRangeOptions gazeRange = null, LightweightExtras lightweightExtras = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -170,7 +170,7 @@ namespace VRVlog.LilToonExporter
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
                     authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces,
-                    presetBones, gazeRange);
+                    presetBones, gazeRange, lightweightExtras);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -453,7 +453,7 @@ namespace VRVlog.LilToonExporter
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces,
             IReadOnlyCollection<AnimationClip> gestureFaces, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones,
-            GazeRangeOptions gazeRange)
+            GazeRangeOptions gazeRange, LightweightExtras lightweightExtras = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -786,6 +786,11 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 DropEmptySubmeshes(clone, temporaryMeshes, warnings);
+                // 同じマテリアルのメッシュをまとめる: before any material or
+                // texture is read, so every later step sees the merged copy.
+                MeshMergeLightweight.Result merged = null;
+                if (autoLightweight && lightweightExtras?.MergeMeshes == true)
+                    merged = MeshMergeLightweight.Apply(clone, temporaryMeshes, ShownAndHidden(objectToggles, (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).Concat(presetExpressions)));
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
@@ -805,8 +810,12 @@ namespace VRVlog.LilToonExporter
                 if (autoLightweight)
                     try { lightweight = TexelDensity.Measure(clone); }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                // 細い輪郭線を省く: read from the copy as it is exported.
+                var outlineOmitted = autoLightweight && lightweightExtras != null && lightweightExtras.OmitsOutlines
+                    ? OutlineLightweight.Omitted(ExportRendererSelection.ExportedMeshRenderers(clone), lightweightExtras.ThinOutlineMillimeters) : null;
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
-                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight), () => null) : null;
+                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight,
+                        outlineOmitted: outlineOmitted), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // Another lilToon version may lack a 2.3.4 property a material
                 // needs. Such a material keeps the MToon approximation written
@@ -923,6 +932,8 @@ namespace VRVlog.LilToonExporter
                 if (matcapBakes.Images.Count > 0 && LilToonGlbExtension.StandardCounts(exported).Textures > LilToonMobileProfile.MaximumTextures)
                     throw new MatcapApproximation.OverLimit();
                 if (lightweight?.ResultLine() is string lightened) warnings?.Add(lightened);
+                if (merged?.ResultLine() is string mergedLine) warnings?.Add(mergedLine);
+                if (fullSnapshot != null && OutlineLightweight.ResultLine(fullSnapshot.OutlinesOmitted, lightweightExtras?.ThinOutlineMillimeters ?? 0f) is string thin) warnings?.Add(thin);
                 recoveryReport.Stage = "出力検査";
                 recoveryReport.Phase = ExportPhase.Export;
                 // Output stages transform finished bytes; a failing one keeps the
@@ -1203,6 +1214,17 @@ namespace VRVlog.LilToonExporter
                 owned.Add(copy);
                 ReplaceMesh(skin, filter, copy);
             }
+        }
+
+        // The objects toggles and expressions show and hide: their renderers
+        // keep their own meshes (MeshMergeLightweight).
+        static IEnumerable<Transform> ShownAndHidden(ObjectToggleCapture toggles, IEnumerable<VrmMenuExpressions.Expression> expressions)
+        {
+            var targets = toggles?.Targets.Where(target => target != null).Select(target => target.transform) ?? Enumerable.Empty<Transform>();
+            var tracks = (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).SelectMany(expression => expression.Transforms)
+                .Where(track => track.Property == VRVlog.Expressions.ExpressionTransformAnimation.Active)
+                .Select(track => track.Target is GameObject item ? item.transform : track.Target as Transform).Where(item => item != null);
+            return targets.Concat(tracks).ToList();
         }
 
         // Puts mesh on the skin, keeping its BlendShape weights, or else on the filter.

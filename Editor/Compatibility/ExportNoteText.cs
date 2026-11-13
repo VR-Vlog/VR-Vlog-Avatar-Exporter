@@ -19,6 +19,10 @@ namespace VRVlog.LilToonExporter
         public const string TexturesLightened = "テクスチャ{0}枚を小さくしてメモリ使用量を{1}MB減らしました";
         // {0} the megabytes the VRM file lost to 自動で軽量化する's vertex data step.
         public const string VertexDataLightened = "メッシュの頂点データを詰めてVRMを{0}MB小さくしました";
+        // {0} the meshes 同じマテリアルのメッシュをまとめる joined, {1} the meshes they became, {2} the draws saved.
+        public const string MeshesMerged = "メッシュ{0}個を{1}個にまとめて描画の回数を{2}回減らしました";
+        // {0} the materials whose outline 細い輪郭線を省く left out, {1} the width in millimetres.
+        public const string ThinOutlinesOmitted = "幅{1}mm未満の輪郭線をマテリアル{0}個で省きました";
         // {0} the number of images only other VRM apps show that 自動で軽量化する made smaller, {1} the megabytes the VRM file lost.
         public const string FallbackImagesLightened = "他のVRMアプリ向けの画像{0}枚を小さくしてVRMを{1}MB小さくしました";
         // {0} the number of textures 自動で軽量化する left out because only switched-off lilToon features use them, {1} their megabytes of texture memory.

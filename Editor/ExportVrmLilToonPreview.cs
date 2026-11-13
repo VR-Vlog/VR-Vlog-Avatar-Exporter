@@ -200,6 +200,10 @@ namespace VRVlog.LilToonExporter
             }
             material.shaderKeywords = F.List(spec, "keywords").Cast<string>().ToArray();
             material.renderQueue = F.Int(spec, "renderQueue");
+            // Passes that share a LightMode (FORWARD and FORWARD_OUTLINE are both
+            // ForwardBase) can only be switched together here: one left on keeps
+            // the mode on, so an omitted outline never hides the body with it.
+            var modes = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (var pass in F.List(spec, "passes").Select(F.Object))
             {
                 var name = F.Text(pass, "name"); var index = material.FindPass(name);
@@ -207,8 +211,9 @@ namespace VRVlog.LilToonExporter
                 var mode = shader.FindPassTagValue(index, new ShaderTagId("LightMode")).name;
                 if (!string.Equals(mode, F.Text(pass, "lightMode"), StringComparison.OrdinalIgnoreCase))
                     throw Invalid("インストール済みlilToonの描画方式が保存時と一致しません: " + name);
-                material.SetShaderPassEnabled(mode, F.Bool(pass, "enabled"));
+                modes[mode] = (modes.TryGetValue(mode, out var on) && on) || F.Bool(pass, "enabled");
             }
+            foreach (var mode in modes) material.SetShaderPassEnabled(mode.Key, mode.Value);
             if (!VRVlog.LilToon.LilToon234Catalogue.Shaders[source].StartsWith("ltsmulti", StringComparison.Ordinal))
             {
                 var path = Path.GetFullPath(Path.Combine(Application.dataPath, "../ProjectSettings/lilToonSetting.json"));
