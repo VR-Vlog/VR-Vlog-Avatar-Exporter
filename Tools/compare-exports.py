@@ -613,7 +613,7 @@ def _without_unused_note(wa, wb, removed):
     na, nb = notes(wa), notes(wb)
     if len(na) > 1 or len(nb) > 1 or not na:
         return wa, wb
-    if (na[0][1] if na else 0) - (nb[0][1] if nb else 0) != removed:
+    if na[0][1] - (nb[0][1] if nb else 0) != removed:
         return wa, wb
     drop = lambda warnings, found: [w for i, w in enumerate(warnings) if not found or i != found[0][0]]
     return drop(wa, na), drop(wb, nb)
