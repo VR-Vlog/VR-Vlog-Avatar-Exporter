@@ -206,6 +206,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return Chain();
             yield return Synced();
             yield return ActiveThreshold();
+            yield return ToggleOverRamp();
+            yield return LayersBack();
+            yield return MixedWriteDefaults();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -528,6 +531,79 @@ namespace VRVlog.AvatarAnimator.Comparison
             c.State(synced, "B", -1);
             synced.Machines[0].DefaultState = source.Machines[0].DefaultState;
             c.Input(.3, go, 1).Input(1.1, go, 0);
+            return c.Case;
+        }
+
+        // The common FX shape: a moving lower layer and a toggle layer of
+        // weight 1, Write Defaults off, between an empty state and a clip,
+        // switched at once and over 0.25 s.
+        static Case ToggleOverRamp()
+        {
+            var c = new Builder("toggleOverRamp", 3);
+            var mode = c.Parameter("Mode", "int");
+            var shared = c.Target(0);
+            var alone = c.Target(1);
+            var bottom = c.Layer("Bottom");
+            c.State(bottom, "A", c.Ramp(1, true, shared, 0, 2));
+            var top = c.Layer("Toggle");
+            var off = c.State(top, "Off", -1, writeDefaults: false);
+            var on = c.State(top, "On", c.Constant(1, true, (shared, 5), (alone, 7)), writeDefaults: false);
+            var slow = c.State(top, "Slow", c.Constant(1, true, (shared, 5), (alone, 7)), writeDefaults: false);
+            top.States[off].Transitions.Add(To(on).When(mode, "equals", 1));
+            top.States[off].Transitions.Add(To(slow, duration: .25).When(mode, "equals", 2));
+            top.States[on].Transitions.Add(To(off).When(mode, "equals", 0));
+            top.States[slow].Transitions.Add(To(off, duration: .25).When(mode, "equals", 0));
+            c.Input(.3, mode, 1).Input(.7, mode, 0).Input(1.1, mode, 2).Input(1.6, mode, 0).Input(2.1, mode, 2).Input(2.25, mode, 0);
+            return c.Case;
+        }
+
+        // The layers case and back: empty states moving to their clips again
+        // in a layer of weight 0.3 (Write Defaults on) and 0.6 (off), over
+        // a ramp.
+        static Case LayersBack()
+        {
+            var c = new Builder("layersBack", 2.5);
+            var go = c.Parameter("Go", "bool");
+            var shared = c.Target(0);
+            var alone = c.Target(1);
+            var held = c.Target(0);
+            var bottom = c.Layer("Bottom");
+            c.State(bottom, "A", c.Ramp(1, true, shared, 1, 2));
+            var middle = c.Layer("Middle", weight: .3);
+            var m1 = c.State(middle, "B", c.Ramp(1, true, shared, 5, 6));
+            var m2 = c.State(middle, "Empty", -1);
+            middle.States[m1].Transitions.Add(To(m2, duration: .2).When(go, "if"));
+            middle.States[m2].Transitions.Add(To(m1, duration: .3).When(go, "ifNot"));
+            c.State(middle, "Alone", c.Constant(1, true, (alone, 9)));
+            var top = c.Layer("Top", weight: .6);
+            var t1 = c.State(top, "C", c.Ramp(1, true, held, 4, 5), writeDefaults: false);
+            var t2 = c.State(top, "Empty", -1, writeDefaults: false);
+            top.States[t1].Transitions.Add(To(t2, duration: .2).When(go, "if"));
+            top.States[t2].Transitions.Add(To(t1, duration: .3).When(go, "ifNot"));
+            c.Input(.5, go, 1).Input(1.2, go, 0).Input(1.9, go, 1);
+            return c.Case;
+        }
+
+        // One layer of weight 0.7 with Write Defaults on and off states, with
+        // and without motions, over a ramp.
+        static Case MixedWriteDefaults()
+        {
+            var c = new Builder("mixedWriteDefaults", 3);
+            var mode = c.Parameter("Mode", "int");
+            var shared = c.Target(0);
+            var other = c.Target(1);
+            var bottom = c.Layer("Bottom");
+            c.State(bottom, "A", c.Ramp(1, true, shared, 0, 2));
+            var top = c.Layer("Mixed", weight: .7);
+            var a = c.State(top, "OtherOn", c.Constant(1, true, (other, 3)));
+            var b = c.State(top, "SharedOff", c.Constant(1, true, (shared, 6)), writeDefaults: false);
+            var e = c.State(top, "EmptyOff", -1, writeDefaults: false);
+            var f = c.State(top, "EmptyOn", -1);
+            top.States[a].Transitions.Add(To(b, duration: .2).When(mode, "equals", 1));
+            top.States[b].Transitions.Add(To(e, duration: .2).When(mode, "equals", 2));
+            top.States[e].Transitions.Add(To(f, duration: .2).When(mode, "equals", 3));
+            top.States[f].Transitions.Add(To(a, duration: .2).When(mode, "equals", 0));
+            c.Input(.4, mode, 1).Input(1, mode, 2).Input(1.6, mode, 3).Input(2.2, mode, 0);
             return c.Case;
         }
 

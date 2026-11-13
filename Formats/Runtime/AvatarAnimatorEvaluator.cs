@@ -23,12 +23,17 @@ namespace VRVlog.AvatarAnimator
     // used by a transition is reset once every layer has stepped; M5 Any
     // State transitions are checked only while the layer is not
     // transitioning, and an interrupted transition blends from a still copy;
-    // M6 mid-transition, a state without a motion holds the values from when
-    // the transition started as the source, and as the destination gives the
-    // layers below (Write Defaults) or the layer's own last value, which a
-    // layer without Write Defaults keeps applying while it rests there; a
-    // motion that leaves a target out gives the rest (Write Defaults) or what
-    // the layers below leave; M7 a layer under weight 1 blends over the
+    // M6 for a target a state's motion does not write: mid-transition, when
+    // the other side's motion writes it, a Write Defaults side gives the
+    // rest; otherwise a Write Defaults state leaves it to the layers below,
+    // and a state without Write Defaults gives what the layers below leave
+    // (the last frame's value when none wrote it) and applies it with the
+    // layer's weight. A state without a motion gives, with Write Defaults,
+    // the layers below (the rest when none wrote it); without, the layer's
+    // own last value, held from the start of a transition out of it and
+    // approached frame by frame in a transition into it. A layer with a
+    // state without Write Defaults keeps a value of every target the
+    // controller animates; M7 a layer under weight 1 blends over the
     // layers below it, or over the rest when none wrote the target.
     // M8-M10 stay assumptions: M8 and M10 are VRChat behaviours that plain
     // Unity cannot record, and no recording covers M9. M8 the behaviours of a state run when the transition into
@@ -797,17 +802,6 @@ namespace VRVlog.AvatarAnimator
             }
         }
 
-        bool Value(Side side, LayerRun layer, int state, int target, out double value)
-        {
-            if (side.Stamp[target] == side.Current)
-            {
-                value = side.Value[target];
-                return true;
-            }
-            value = rest[target];
-            return layer.Layer.States[state].WriteDefaults;
-        }
-
         // M6 and M7 decide what a side or a layer that does not write a target leaves.
         void Output(LayerRun layer)
         {
@@ -825,13 +819,16 @@ namespace VRVlog.AvatarAnimator
             if (layer.Transitioning && layer.HeldSerial != serial)
             {
                 layer.HeldSerial = serial;
-                for (var k = 0; k < animated.Length; k++) layer.Held[k] = previous[animated[k]];
+                for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
             for (var k = 0; k < animated.Length; k++)
             {
                 var t = animated[k];
                 // What the layers below leave: this frame's value, else the last frame's.
                 var through = written[t] ? values[t] : previous[t];
+                // Mid-transition the layer holds a target either side's motion writes.
+                var bound = layer.Transitioning && layer.Progress > 0 && (sideB.Stamp[t] == sideB.Current
+                    || (layer.Frozen ? layer.SnapshotWritten[k] : sideA.Stamp[t] == sideA.Current));
                 double value;
                 bool has;
                 if (layer.Frozen)
@@ -840,12 +837,13 @@ namespace VRVlog.AvatarAnimator
                     has = layer.SnapshotWritten[k];
                     if (!has) value = through;
                 }
-                else has = SideValue(sideA, layer, layer.State, t, k, through, out value);
+                else has = SideValue(sideA, layer, layer.State, t, k, through, bound, out value);
                 if (layer.Transitioning)
                 {
-                    var hasB = SideValue(sideB, layer, layer.Next, t, k, through, out var b);
-                    // M6: an empty source holds its values from when the transition started.
-                    if (!layer.Frozen && states[layer.State].Motion < 0) value = layer.Held[k];
+                    var hasB = SideValue(sideB, layer, layer.Next, t, k, through, bound, out var b);
+                    // M6: an empty source without Write Defaults holds the layer's
+                    // values from when the transition started.
+                    if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
                     has |= hasB;
                     value += (b - value) * Math.Min(1, layer.Progress);
                 }
@@ -862,19 +860,32 @@ namespace VRVlog.AvatarAnimator
             }
         }
 
-        // M6: one side's value of a target. A motion that leaves the target out
-        // gives the rest (Write Defaults) or what the layers below leave. A
-        // state without a motion gives what the layers below leave when it has
-        // Write Defaults, else the layer's own last value: a layer resting there
-        // keeps applying it, one moving there blends toward it frame by frame.
-        bool SideValue(Side side, LayerRun layer, int state, int t, int k, double through, out double value)
+        // M6: one side's value of a target its motion does not write. With
+        // Write Defaults: what the layers below leave, or the rest when none
+        // wrote it. Without, a motion passes the layers below through, and a
+        // state without a motion gives the layer's own last value: a layer
+        // resting there keeps applying it, one moving there blends toward it
+        // frame by frame.
+        bool SideValue(Side side, LayerRun layer, int state, int t, int k, double through, bool bound, out double value)
         {
             var s = layer.Layer.States[state];
+            if (s.Motion >= 0 && side.Stamp[t] == side.Current)
+            {
+                value = side.Value[t];
+                return true;
+            }
             if (s.Motion >= 0)
             {
-                if (Value(side, layer, state, t, out value)) return true;
+                // A Write Defaults motion with no weight at all, or one side of a
+                // transition whose other side writes the target, gives the rest;
+                // otherwise the layers below keep the target.
+                if (s.WriteDefaults && (side.Total <= 0 || bound))
+                {
+                    value = rest[t];
+                    return true;
+                }
                 value = through;
-                return written[t];
+                return true;
             }
             if (!s.WriteDefaults)
             {
