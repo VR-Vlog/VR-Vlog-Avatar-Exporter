@@ -87,9 +87,10 @@ namespace VRVlog.LilToonExporter
         // receives why the file was kept unchanged; removed receives
         // "mesh/shape" (or the shape alone for an unnamed mesh) for each
         // target left out. extraBinds are {node, index} binds outside the
-        // file, kept and renumbered in place like the file's own.
+        // file, kept and renumbered in place like the file's own. softBinds
+        // are renumbered without keeping their target: one left out gets -1.
         internal static byte[] Strip(byte[] bytes, ICollection<string> warnings, ICollection<string> removed = null,
-            IEnumerable<Dictionary<string, object>> extraBinds = null)
+            IEnumerable<Dictionary<string, object>> extraBinds = null, IEnumerable<Dictionary<string, object>> softBinds = null)
         {
             if (!Enabled || bytes == null) return bytes;
             var glb = GlbDocument.Read(bytes);
@@ -155,12 +156,16 @@ namespace VRVlog.LilToonExporter
                 CollectBinds(rawAnimations, binds);
             }
             if (extraBinds != null) binds.AddRange(extraBinds);
-            foreach (var bind in binds)
+            var soft = softBinds?.ToList() ?? new List<Dictionary<string, object>>();
+            foreach (var bind in binds.Concat(soft))
             {
                 var mesh = bind.TryGetValue("node", out var rawNode) && Index(rawNode) is int n && n < nodes.Count ? MeshOf(nodes[n] as Dictionary<string, object>, meshes.Count) : -1;
                 if (mesh < 0) continue;
                 // A bind past the targets cannot be renumbered.
-                if (Index(bind.TryGetValue("index", out var rawIndex) ? rawIndex : null) is int index && index < plans[mesh].Count) plans[mesh].Bound.Add(index);
+                if (Index(bind.TryGetValue("index", out var rawIndex) ? rawIndex : null) is int index && index < plans[mesh].Count)
+                {
+                    if (!soft.Contains(bind)) plans[mesh].Bound.Add(index);
+                }
                 else plans[mesh].Skip = true;
             }
 
@@ -202,7 +207,7 @@ namespace VRVlog.LilToonExporter
                     if (node.ContainsKey("weights")) Filter(node, "weights", plan.Map);
             }
             if (!any) return bytes;
-            foreach (var bind in binds)
+            foreach (var bind in binds.Concat(soft))
             {
                 var mesh = bind.TryGetValue("node", out var rawNode) && Index(rawNode) is int n && n < nodes.Count ? MeshOf(nodes[n] as Dictionary<string, object>, meshes.Count) : -1;
                 if (mesh >= 0 && plans[mesh].Map != null) bind["index"] = (long)plans[mesh].Map[(int)Index(bind["index"])];

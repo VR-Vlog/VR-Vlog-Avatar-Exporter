@@ -43,7 +43,7 @@ namespace VRVlog.LilToonExporter
         readonly List<List<(int Morph, ExpressionAnimationData.Curve Curve)>> clipMorphTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
         // The morph targets the last Resolve wrote, each with the
         // {node, index} that UnusedMorphTargets keeps and renumbers.
-        readonly List<(AvatarAnimatorData.Target Target, Dictionary<string, object> Bind)> morphBinds = new List<(AvatarAnimatorData.Target, Dictionary<string, object>)>();
+        readonly List<(AvatarAnimatorData.Target Target, Dictionary<string, object> Bind, bool Soft)> morphBinds = new List<(AvatarAnimatorData.Target, Dictionary<string, object>, bool)>();
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
 
         readonly GameObject root;
@@ -171,12 +171,35 @@ namespace VRVlog.LilToonExporter
 
         // The {node, index} of each morph target written, for
         // UnusedMorphTargets.Strip to keep and renumber.
-        internal IReadOnlyList<Dictionary<string, object>> MorphBinds => morphBinds.Select(bind => bind.Bind).ToList();
+        internal IReadOnlyList<Dictionary<string, object>> MorphBinds => morphBinds.Where(bind => !bind.Soft).Select(bind => bind.Bind).ToList();
 
-        // Takes the indices Strip gave the binds back into the targets.
+        // The {node, index} of each target whose curves only hold a weight the
+        // base already has, for Strip to renumber without keeping: such a
+        // target changes nothing unless something else keeps its shape.
+        internal IReadOnlyList<Dictionary<string, object>> SoftMorphBinds => morphBinds.Where(bind => bind.Soft).Select(bind => bind.Bind).ToList();
+
+        // Takes the indices Strip gave the binds back into the targets. A soft
+        // target whose shape Strip left out goes, with its tracks.
         internal void RenumberMorphs()
         {
-            foreach (var (target, bind) in morphBinds) target.Morph = (int)Convert.ToInt64(bind["index"]);
+            foreach (var (target, bind, _) in morphBinds) target.Morph = (int)Convert.ToInt64(bind["index"]);
+            var gone = new HashSet<AvatarAnimatorData.Target>(morphBinds.Where(bind => bind.Soft && bind.Target.Morph < 0).Select(bind => bind.Target));
+            if (gone.Count == 0) return;
+            morphBinds.RemoveAll(bind => gone.Contains(bind.Target));
+            var map = new int[data.Targets.Count];
+            var kept = new List<AvatarAnimatorData.Target>();
+            for (var i = 0; i < data.Targets.Count; i++)
+            {
+                map[i] = gone.Contains(data.Targets[i]) ? -1 : kept.Count;
+                if (map[i] >= 0) kept.Add(data.Targets[i]);
+            }
+            data.Targets.Clear();
+            data.Targets.AddRange(kept);
+            foreach (var clip in data.Clips)
+            {
+                clip.Tracks.RemoveAll(track => map[track.Target] < 0);
+                foreach (var track in clip.Tracks) track.Target = map[track.Target];
+            }
         }
 
         // The data with glTF node indices. A target the file has no node for
@@ -260,10 +283,17 @@ namespace VRVlog.LilToonExporter
             {
                 Node = nodeIndex, Property = "morph", Morph = morph, Rest = source.Rest, Baked = source.Baked, End = source.End,
             };
-            morphBinds.Add((target, new Dictionary<string, object> { ["node"] = (long)nodeIndex, ["index"] = (long)morph }));
+            // Curves that only hold rest on a base that already shows it change
+            // nothing by themselves: the target stays only if its shape does.
+            var soft = source.Baked == source.Rest &&
+                       clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)));
+            morphBinds.Add((target, new Dictionary<string, object> { ["node"] = (long)nodeIndex, ["index"] = (long)morph }, soft));
             data.Targets.Add(target);
             return data.Targets.Count - 1;
         }
+
+        static bool Holds(ExpressionAnimationData.Curve curve, double value) =>
+            curve.Keys.All(key => key.Value == value && (key.InTangent ?? 0) == 0 && (key.OutTangent ?? 0) == 0);
 
         // An extension over MaximumBytes is an error: the caller leaves the
         // stage out and lists it with this reason.

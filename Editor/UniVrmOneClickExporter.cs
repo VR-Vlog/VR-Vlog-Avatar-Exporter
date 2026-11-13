@@ -1062,14 +1062,15 @@ namespace VRVlog.LilToonExporter
                 // indices follow the renumbering; a file left as it was keeps them.
                 var unstripped = exported;
                 var animatorBinds = avatarAnimatorData != null ? avatarAnimator.MorphBinds : null;
-                var animatorIndices = animatorBinds?.Select(bind => bind["index"]).ToList();
+                var softBinds = avatarAnimatorData != null ? avatarAnimator.SoftMorphBinds : null;
+                var animatorIndices = animatorBinds?.Concat(softBinds).Select(bind => bind["index"]).ToList();
                 exported = guard.Run(ExportStage.UnusedMorphs, () =>
                 {
                     // Normal output, not a fallback: the Console only, no
                     // warning and no result line.
                     var skipped = new List<string>();
                     var removed = new List<string>();
-                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed, animatorBinds);
+                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed, animatorBinds, softBinds);
                     foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
                     // The first 20 names only: a real avatar leaves out hundreds.
                     if (removed.Count > 0)
@@ -1080,7 +1081,10 @@ namespace VRVlog.LilToonExporter
                 if (animatorBinds != null)
                 {
                     if (ReferenceEquals(exported, unstripped))
-                        for (var i = 0; i < animatorBinds.Count; i++) animatorBinds[i]["index"] = animatorIndices[i];
+                    {
+                        var all = animatorBinds.Concat(softBinds).ToList();
+                        for (var i = 0; i < all.Count; i++) all[i]["index"] = animatorIndices[i];
+                    }
                     avatarAnimator.RenumberMorphs();
                 }
                 var marked = false;

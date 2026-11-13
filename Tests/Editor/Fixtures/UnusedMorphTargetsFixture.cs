@@ -438,6 +438,17 @@ namespace VRVlog.LilToonExporter.Tests
             var input = builder.Build();
             check(ReferenceEquals(UnusedMorphTargets.Strip(input, new List<string>(), extraBinds: new[] { bind }), input), "Nothing to remove returns the same bytes");
             check(Int(bind["index"]) == 0, "The bind is left alone");
+
+            // A soft bind follows a target something else keeps and gets -1
+            // for one that goes; it keeps nothing by itself.
+            builder = new Builder();
+            face = builder.Mesh("Face", new[] { "u0", "Blink", "held" });
+            var kept = D("node", (long)face, "index", 1L);
+            var held = D("node", (long)face, "index", 2L);
+            doc = Valid(UnusedMorphTargets.Strip(builder.Build(), new List<string>(), softBinds: new[] { kept, held }), check);
+            check(Names(doc, face).SequenceEqual(new[] { "Blink" }), "A soft bind keeps no target");
+            check(Int(kept["index"]) == 0, "A soft bind follows a kept target");
+            check(Int(held["index"]) == -1, "A soft bind on a removed target gets -1");
         }
 
         public static void Run(Action<bool, string> check)

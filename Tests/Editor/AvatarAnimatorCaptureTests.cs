@@ -250,20 +250,21 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Clips.Where(clip => clip != hatOn).SelectMany(clip => clip.Tracks).Any(t => t.Target == data.Targets.IndexOf(morph)), Is.False);
         }
 
-        // A clip that holds a shape at its scene weight is written too: that
-        // the FX writes the shape is for the reader to weigh against the faces.
+        // Curves that only hold a shape at the weight the base shows change
+        // nothing by themselves: they go with the shape when nothing else keeps it.
         [Test]
-        public void AShapeHeldAtItsSceneWeightIsWritten()
+        public void AShapeOnlyHeldAtItsSceneWeightGoesWithItsUnusedShape()
         {
             using var avatar = new AnimatorAvatar();
             AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var data = Read(json);
 
-            var morph = data.Targets.Single(t => t.Property == "morph");
-            Assert.That((morph.Rest, morph.Baked, morph.End), Is.EqualTo((35d, 35d, 100d)));
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False, "Holding the weight the base shows changes nothing.");
             var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
-            Assert.That(hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph)).Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 35d, 35d }));
-            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }));
+            Assert.That(hatOn.Tracks.Select(t => data.Targets[t.Target].Property), Has.No.Member("morph"));
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }), "Nothing is lost, so nothing is counted.");
+            Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Hair detail"), Is.False, "Nothing else keeps the shape.");
         }
 
         // A curve on a shape the mesh lacks is a blendShape the file cannot
