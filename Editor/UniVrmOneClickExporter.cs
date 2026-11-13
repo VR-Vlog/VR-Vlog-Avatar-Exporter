@@ -787,12 +787,13 @@ namespace VRVlog.LilToonExporter
                             var state = neutral.Get(renderer);
                             var index = state?.OriginalMesh == null ? -1 : state.OriginalMesh.GetBlendShapeIndex(shape);
                             if (index < 0 || index >= state.Weights.Length) continue;
+                            driven.Add((renderer, shape));
                             // Rebase takes the other lip sync shapes and the default mouth off an
-                            // exclusive shape too, which (v - baked) / (end - baked) cannot show:
-                            // it is left out and counted as blendShape.
+                            // exclusive shape too, which (v - baked) / (end - baked) cannot show.
+                            // It keeps its route without endpoints, so the shape and any output
+                            // merged from it are counted as blendShape.
                             if (AvatarBaseShape.ExclusiveShapes(renderer, state.OriginalMesh, visemes?.Renderer, visemes?.Exclusive).Contains(index)) continue;
                             animatorMorphEnds[(renderer.GetInstanceID(), shape)] = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
-                            driven.Add((renderer, shape));
                         }
                         return driven;
                     }, () => null);

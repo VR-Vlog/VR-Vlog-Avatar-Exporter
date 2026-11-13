@@ -66,6 +66,9 @@ namespace VRVlog.LilToonExporter
         // stops counting past the limit.
         readonly List<int> expanded = new List<int>();
         readonly Dictionary<AnimationClip, int> clipIndex = new Dictionary<AnimationClip, int>();
+        // Clips an additive layer plays, and whether the layer read now is one.
+        readonly HashSet<int> additiveClips = new HashSet<int>();
+        bool readingAdditive;
 
         AvatarAnimatorCapture(GameObject root, IReadOnlyDictionary<GameObject, bool> rest, Dictionary<AnimationClip, AnimationClip> overrides)
         {
@@ -245,6 +248,9 @@ namespace VRVlog.LilToonExporter
             var found = morph < 0 || sources == null ? null : sources(renderer, shape);
             if (found == null || found.Count == 0 || found.Distinct().Count() > 1) return OmittedMorph;
             var source = found[0];
+            // An additive layer adds the curve less its reference pose, which
+            // the extension does not carry.
+            if (additiveClips.Any(clip => clipMorphTracks[clip].Any(track => track.Morph == i))) return OmittedMorph;
             // A shape no clip moves off its scene weight changes nothing.
             if (clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)))) return RestingMorph;
             // A target that shows no change cannot carry the weight (B3).
@@ -366,7 +372,9 @@ namespace VRVlog.LilToonExporter
             for (var index = 0; index < layers.Length; index++)
             {
                 var source = MachineOwner(layers, index);
+                readingAdditive = index != 0 && layers[index].blendingMode == AnimatorLayerBlendingMode.Additive;
                 result.Layers.Add(ReadLayer(layers[index], index, source, source < 0 ? null : layers[source]));
+                readingAdditive = false;
             }
             return result;
         }
@@ -720,8 +728,26 @@ namespace VRVlog.LilToonExporter
         int StateMotion(Motion motion)
         {
             var index = MotionIndex(motion);
+            if (readingAdditive) MarkAdditive(index);
             Omit("unreadParameter", Unread(motion, index, false));
             return index;
+        }
+
+        // The clips a written motion plays, through its blend trees. A motion
+        // is cached, so a clip met first in another layer is marked here too.
+        void MarkAdditive(int index)
+        {
+            var pending = new Stack<int>();
+            pending.Push(index);
+            var seen = new HashSet<int>();
+            while (pending.Count > 0)
+            {
+                var motion = pending.Pop();
+                if (motion < 0 || !seen.Add(motion)) continue;
+                var written = data.Motions[motion];
+                if (written.Type == "clip") additiveClips.Add(written.Clip);
+                foreach (var child in written.Children) pending.Push(child.Motion);
+            }
         }
 
         // The uses of a parameter Unity cannot read that one use of a motion

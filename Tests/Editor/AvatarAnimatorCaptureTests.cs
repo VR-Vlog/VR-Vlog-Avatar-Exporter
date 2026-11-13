@@ -279,6 +279,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Nodes(json)[data.Targets.Single(t => t.Property == "morph").Node], Is.EqualTo("Front"));
         }
 
+        // An additive layer adds a shape's curve less its reference pose,
+        // which the extension does not carry: a shape that a clip of such a
+        // layer moves is counted as blendShape, though an override layer plays
+        // the same clip.
+        [Test]
+        public void AShapeAnAdditiveLayerMovesIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Fx.AddLayer("Added");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState("On").motion = avatar.ClipNamed("Hat on");
+            avatar.Fx.layers = layers;
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+
+            Assert.That(data.Controllers.Single().Layers.Last().Blending, Is.EqualTo("additive"));
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
+        }
+
         // The base geometry takes the other Lip Sync shapes and the default
         // mouth off a Lip Sync shape too, which baked and end cannot carry:
         // a curve on one is counted as blendShape.
