@@ -67,6 +67,7 @@ namespace VRVlog.LilToonExporter.Tests
             var driver = new AvatarAnimatorData.Behaviour { Type = "parameterDriver", LocalOnly = true };
             driver.Operations.Add(new AvatarAnimatorData.Operation { Type = "copy", Parameter = 1, Source = 2, ConvertRange = true, SourceMax = 1, DestMax = 2 });
             driver.Operations.Add(new AvatarAnimatorData.Operation { Type = "random", Parameter = 0, Chance = .5 });
+            driver.Operations.Add(new AvatarAnimatorData.Operation { Type = "random", Parameter = 2, ValueMin = 0, ValueMax = 3, PreventRepeats = true });
             top.Behaviours.Add(driver);
             var nested = new AvatarAnimatorData.Machine { Name = "Nested", Parent = 0, DefaultState = 2 };
             nested.ExitTransitions.Add(Transition(exit: true, timed: false));
@@ -87,7 +88,9 @@ namespace VRVlog.LilToonExporter.Tests
             controller.Layers.Add(layer);
             // A synced layer holds a copy of its source's machines.
             var synced = new AvatarAnimatorData.Layer { Name = "Hat synced", Weight = .5, SyncedLayer = 0, SyncedLayerAffectsTiming = true };
-            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Hat" });
+            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Hat", DefaultState = 0 });
+            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Nested", Parent = 0, DefaultState = 2 });
+            foreach (var state in layer.States) synced.States.Add(new AvatarAnimatorData.State { Name = state.Name, Machine = state.Machine, Motion = -1 });
             controller.Layers.Add(synced);
             data.Controllers.Add(controller);
 
@@ -108,9 +111,17 @@ namespace VRVlog.LilToonExporter.Tests
             var track = new AvatarAnimatorData.Track { Target = 0 };
             track.Curves.Add(curve);
             clip.Tracks.Add(track);
+            // Float parameter Blend, driven by the clip.
+            var blend = new AvatarAnimatorData.Track { Target = 1 };
+            blend.Curves.Add(curve);
+            clip.Tracks.Add(blend);
             data.Clips.Add(clip);
             data.Clips.Add(new AvatarAnimatorData.Clip { Name = "Empty", Duration = 0 });
             data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Rest = 0 });
+            // Parameter targets: float Blend with its controller default and a
+            // track, int GestureLeft, which a clip holds at rest, with none.
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "parameter", Node = -1, Parameter = 1, Rest = .25 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "parameter", Node = -1, Parameter = 2, Rest = 2 });
             data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 2 });
             data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "behaviour", Count = 1 });
             data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "operation", Count = 3 });
@@ -146,6 +157,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(read.Motions[2].Children[0].DirectParameter, Is.EqualTo(1));
             Assert.That(read.Clips[0].Tracks[0].Curves[0].Keys[0].OutTangent, Is.Null, "Stepped keys keep their null tangents.");
             Assert.That(read.Targets[0].Node, Is.EqualTo(3));
+            Assert.That(read.Targets.Select(t => (t.Property, t.Node, t.Parameter, t.Rest)),
+                Is.EqualTo(new[] { ("active", 3, 0, 0d), ("parameter", -1, 1, .25), ("parameter", -1, 2, 2d) }));
+            Assert.That(read.Clips[0].Tracks.Select(t => t.Target), Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(layer.Machines[0].Behaviours[0].Operations.Select(o => o.PreventRepeats), Is.EqualTo(new[] { false, false, true }));
             Assert.That((layer.SyncedLayer, layer.SyncedLayerAffectsTiming), Is.EqualTo((-1, false)));
             Assert.That((read.Controllers[0].Layers[1].SyncedLayer, read.Controllers[0].Layers[1].SyncedLayerAffectsTiming), Is.EqualTo((0, true)));
             Assert.That((read.Clips[0].CycleOffset, read.Clips[1].CycleOffset), Is.EqualTo((.25, 0d)));
@@ -156,6 +171,85 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(At(json, "controllers", 0, "layers", 0, "machines", 0, "entryTransitions", 0).ContainsKey("hasExitTime"), Is.False,
                 "Entry and exit transitions have no timing.");
             Assert.That(At(json, "motions", 1, "children", 0).ContainsKey("directParameter"), Is.False);
+            Assert.That(At(json, "targets", 1).Keys, Is.EqualTo(new[] { "property", "parameter", "rest" }), "A parameter target has no node.");
+            Assert.That(At(json, "targets", 0).Keys, Is.EqualTo(new[] { "node", "property", "rest" }));
+            Assert.That(At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 0)["preventRepeats"], Is.EqualTo(false));
+        }
+
+        // Unity moves a float parameter by a curve and holds any other at the
+        // controller's default, so a parameter target is a parameter of the
+        // table, its rest a value of its type, and only a float has tracks.
+        [Test]
+        public void ReadRejectsAParameterTargetOutsideItsTypeOrTheTable()
+        {
+            // Parameters 0, 1 and 2 are a bool, a float and an int; targets 1
+            // and 2 are Blend (float) and GestureLeft (int).
+            Rejects(json => At(json, "targets", 1)["parameter"] = 4L);
+            Rejects(json => At(json, "targets", 1)["parameter"] = -1L);
+            Rejects(json => At(json, "targets", 1)["parameter"] = 2L);
+            Rejects(json =>
+            {
+                At(json, "targets", 2)["parameter"] = 1L;
+                At(json, "targets", 2)["rest"] = 2L;
+            });
+            Rejects(json => At(json, "clips", 0, "tracks", 1)["target"] = 2L);
+            Rejects(json => At(json, "targets", 2)["rest"] = .5);
+            Rejects(json => At(json, "targets", 2)["parameter"] = 0L);
+            Rejects(json => At(json, "targets", 1)["node"] = 3L);
+            Rejects(json => At(json, "targets", 1).Remove("parameter"));
+            Rejects(json => At(json, "targets", 0)["parameter"] = 1L);
+            Rejects(json => At(json, "targets", 0)["rest"] = .5);
+            Rejects(json => At(json, "targets", 1)["rest"] = "0.25");
+            Rejects(json => At(json, "targets", 1)["rest"] = double.NaN);
+            Rejects(json => At(json, "targets", 2)["rest"] = 2147483648L);
+            Rejects(json => At(json, "targets", 2)["rest"] = -2147483649L);
+
+            // Bool and int parameters may be targets at a value of their type.
+            var targets = Json(Sample());
+            At(targets, "targets", 2)["parameter"] = 0L;
+            At(targets, "targets", 2)["rest"] = 1L;
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(targets));
+            targets = Json(Sample());
+            At(targets, "targets", 2)["rest"] = -3L;
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(targets));
+            foreach (var rest in new[] { 2147483647L, -2147483648L })
+            {
+                targets = Json(Sample());
+                At(targets, "targets", 2)["rest"] = rest;
+                Assert.That(AvatarAnimatorData.Read(targets).Targets[2].Rest, Is.EqualTo((double)rest));
+            }
+
+            // Write checks the same contract, without rounding an active rest first.
+            foreach (var rest in new[] { .9, 1.9, -.5 })
+            {
+                var data = Sample();
+                data.Targets[0].Rest = rest;
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(data)).Message, Is.EqualTo(Invalid));
+            }
+        }
+
+        [Test]
+        public void ReadRejectsPreventRepeatsOffARandomIntoAnInt()
+        {
+            Dictionary<string, object> Op(Dictionary<string, object> json, int index) =>
+                At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", index);
+            // A copy, a random into a bool.
+            Rejects(json => Op(json, 0)["preventRepeats"] = true);
+            Rejects(json => Op(json, 1)["preventRepeats"] = true);
+            Rejects(json => { Op(json, 2)["type"] = "set"; });
+            Rejects(json => Op(json, 2)["preventRepeats"] = 1L);
+        }
+
+        // Data written before Prevent Repeats was read has no preventRepeats.
+        [Test]
+        public void ReadTakesAMissingPreventRepeatsAsOff()
+        {
+            var json = Json(Sample());
+            foreach (var index in new[] { 0, 1, 2 })
+                At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", index).Remove("preventRepeats");
+            var data = AvatarAnimatorData.Read(json);
+            Assert.That(data.Controllers[0].Layers[0].Machines[0].Behaviours[0].Operations.Select(o => o.PreventRepeats), Is.EqualTo(new[] { false, false, false }));
+            Assert.That(At(Json(data), "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 0)["preventRepeats"], Is.EqualTo(false), "Written again, it is there.");
         }
 
         [Test]
@@ -183,7 +277,7 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 0).Remove("source"));
             Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 1)["source"] = 2L);
             Rejects(json => At(json, "motions", 0)["clip"] = 2L);
-            Rejects(json => At(json, "clips", 0, "tracks", 0)["target"] = 1L);
+            Rejects(json => At(json, "clips", 0, "tracks", 0)["target"] = 3L);
             // The root machine has no parent; every other machine follows its parent.
             Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 1)["parent"] = 1L);
             Rejects(json => At(json, "controllers", 0, "layers", 0, "machines", 0)["parent"] = 0L);
@@ -241,6 +335,21 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "controllers", 0, "layers", 0)["syncedLayer"] = -2L);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = .5);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayerAffectsTiming"] = 1L);
+            // A synced layer holds a copy of its source's machines and states.
+            // The machine that held the removed state points at none, so only
+            // the shape rejects it.
+            Rejects(json =>
+            {
+                At(json, "controllers", 0, "layers", 1, "machines", 1)["defaultState"] = -1L;
+                ((List<object>)At(json, "controllers", 0, "layers", 1)["states"]).RemoveAt(2);
+            });
+            Rejects(json =>
+            {
+                var machines = (List<object>)At(json, "controllers", 0, "layers", 1)["machines"];
+                var extra = new Dictionary<string, object>(At(json, "controllers", 0, "layers", 1, "machines", 1)) { ["defaultState"] = -1L };
+                machines.Add(extra);
+            });
+            Rejects(json => At(json, "controllers", 0, "layers", 1, "states", 2)["machine"] = 0L);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.NaN);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.PositiveInfinity);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = "0.25");
