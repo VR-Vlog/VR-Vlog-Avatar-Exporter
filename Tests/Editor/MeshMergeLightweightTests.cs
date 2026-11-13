@@ -200,6 +200,9 @@ namespace VRVlog.LilToonExporter.Tests
             var dissolve = Lil("Hidden/lilToonOutline");
             dissolve.SetVector("_DissolveParams", new Vector4(3f, 1f, .5f, .1f));
             Assert.That(MeshMergeLightweight.MergeableMaterial(dissolve), Is.False, "position dissolve");
+            var secondLayer = Lil("Hidden/lilToonOutline");
+            secondLayer.SetVector("_Main2ndDissolveParams", new Vector4(3f, 1f, .5f, .1f));
+            Assert.That(MeshMergeLightweight.MergeableMaterial(secondLayer), Is.False, "position dissolve of the 2nd layer");
             var audioLink = Lil("Hidden/lilToonOutline");
             audioLink.SetFloat("_UseAudioLink", 1f);
             Assert.That(MeshMergeLightweight.MergeableMaterial(audioLink), Is.False, "AudioLink");

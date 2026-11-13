@@ -149,7 +149,8 @@ namespace VRVlog.LilToonExporter
             // Effects computed from the mesh's own coordinates (a position
             // dissolve, AudioLink by position) would move with a donor's
             // vertices when they are carried into the host's mesh space.
-            if (material.HasProperty("_DissolveParams") && material.GetVector("_DissolveParams").x != 0f) return false;
+            foreach (var dissolve in new[] { "_DissolveParams", "_Main2ndDissolveParams", "_Main3rdDissolveParams" })
+                if (material.HasProperty(dissolve) && material.GetVector(dissolve).x != 0f) return false;
             if (Value("_UseAudioLink", 0f) != 0f) return false;
             if (Value("_ZWrite", 1f) != 1f || Value("_ZTest", 4f) != 4f) return false;
             if (Value("_SrcBlend", 1f) != 1f || Value("_DstBlend", 0f) != 0f) return false;

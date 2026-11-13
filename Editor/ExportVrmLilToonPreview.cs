@@ -214,11 +214,19 @@ namespace VRVlog.LilToonExporter
                 modes[mode] = (modes.TryGetValue(mode, out var on) && on) || F.Bool(pass, "enabled");
             }
             foreach (var mode in modes) material.SetShaderPassEnabled(mode.Key, mode.Value);
-            // An outline pass written off whose LightMode stays on for the body
-            // still draws; a zero width draws nothing, as the app shows it.
+            // FORWARD_OUTLINE written off while FORWARD keeps ForwardBase on still
+            // draws here. A zero width, culling front faces, the usual depth test
+            // and no depth bias put its faces on the body's back faces, hidden
+            // behind the body, as the app shows no outline. Only that pass:
+            // FORWARD_ADD_OUTLINE off alone keeps the outline.
             if (material.HasProperty("_OutlineWidth") && F.List(spec, "passes").Select(F.Object).Any(pass =>
-                    F.Text(pass, "name").IndexOf("OUTLINE", StringComparison.OrdinalIgnoreCase) >= 0 && !F.Bool(pass, "enabled")))
+                    string.Equals(F.Text(pass, "name"), "FORWARD_OUTLINE", StringComparison.OrdinalIgnoreCase) && !F.Bool(pass, "enabled")))
+            {
                 material.SetFloat("_OutlineWidth", 0f);
+                if (material.HasProperty("_OutlineCull")) material.SetFloat("_OutlineCull", (float)CullMode.Front);
+                if (material.HasProperty("_OutlineZTest")) material.SetFloat("_OutlineZTest", (float)CompareFunction.LessEqual);
+                if (material.HasProperty("_OutlineZBias")) material.SetFloat("_OutlineZBias", 0f);
+            }
             if (!VRVlog.LilToon.LilToon234Catalogue.Shaders[source].StartsWith("ltsmulti", StringComparison.Ordinal))
             {
                 var path = Path.GetFullPath(Path.Combine(Application.dataPath, "../ProjectSettings/lilToonSetting.json"));
