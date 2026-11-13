@@ -34,7 +34,8 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       "blendShape" entry are removed and the other tracks are numbered again. When a morph target
       was removed, accessors and bufferViews are compared by their content (their own fields and
       bytes) in place of their index, and the BIN chunk through them, and the MB in the warning
-      about packed vertex data is not compared. Each row lists, as
+      about packed vertex data is not compared; the Console line about unused BlendShapes left
+      out is dropped from both sides when B's count is A's less the removed targets. Each row lists, as
       information only, the removed morph targets and the morph targets and omitted blendShape
       count of each side; the summary counts the pairs with morph targets.
 
@@ -601,6 +602,23 @@ def _masked_size(warning):
     return VERTEX_NOTE.sub(r"\1#\2", warning) if isinstance(warning, str) else warning
 
 
+# UnusedMorphTargets' Console line: B leaves out the shapes A does, less the ones it kept.
+UNUSED_NOTE = re.compile(r"^VR Vlog: left (\d+) unused BlendShapes out of the VRM: ", re.S)
+
+
+def _without_unused_note(wa, wb, removed):
+    """Drops the line from both sides when B's count is A's less the removed targets."""
+    def notes(warnings):
+        return [(i, int(m.group(1))) for i, w in enumerate(warnings) if isinstance(w, str) for m in [UNUSED_NOTE.match(w)] if m]
+    na, nb = notes(wa), notes(wb)
+    if len(na) > 1 or len(nb) > 1 or not na:
+        return wa, wb
+    if (na[0][1] if na else 0) - (nb[0][1] if nb else 0) != removed:
+        return wa, wb
+    drop = lambda warnings, found: [w for i, w in enumerate(warnings) if not found or i != found[0][0]]
+    return drop(wa, na), drop(wb, nb)
+
+
 def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed_extensions=(), kept_morphs=False):
     if patterns is None:
         patterns = volatile_patterns()
@@ -631,6 +649,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
             row["kept_morphs"] = {"removed": removed_morphs, "targets": [morphs_a, morphs_b], "blendShape": [blend_a, blend_b]}
         if removed_morphs:
             wa, wb = [_masked_size(w) for w in wa], [_masked_size(w) for w in wb]
+            wa, wb = _without_unused_note(wa, wb, removed_morphs)
     issues += warning_issues(wa, wb, json_a, json_b)
     if (va is None) != (vb is None):
         issues.append("vrm missing in " + ("A" if va is None else "B"))

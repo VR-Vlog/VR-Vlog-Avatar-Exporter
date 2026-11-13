@@ -1121,6 +1121,20 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertTrue(any('warnings differ' in issue for issue in row['issues']), row['issues'])
 
+    def test_the_unused_shape_line_is_dropped_only_when_b_kept_the_removed_targets(self):
+        line = 'VR Vlog: left %d unused BlendShapes out of the VRM: %s'
+        self.base()
+        self.warn(self.a, line % (3, 'Body/Kept, Body/A, Body/B'))
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1)))
+        self.warn(self.b, line % (2, 'Body/A, Body/B'))
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        # A count that the kept target does not explain is still a difference.
+        self.warn(self.b, line % (1, 'Body/A'))
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(any('warnings differ' in issue for issue in row['issues']), row['issues'])
+
     def test_the_extension_counts_are_taken_before_an_added_extension_is_removed(self):
         # A is from before the extension; B adds it and keeps one target for it.
         self.put(self.a, morph_glb(['Smile', 'Wink']))
