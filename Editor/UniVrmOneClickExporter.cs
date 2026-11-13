@@ -793,6 +793,9 @@ namespace VRVlog.LilToonExporter
                             // It keeps its route without endpoints, so the shape and any output
                             // merged from it are counted as blendShape.
                             if (AvatarBaseShape.ExclusiveShapes(renderer, state.OriginalMesh, visemes?.Renderer, visemes?.Exclusive).Contains(index)) continue;
+                            // A shape of several frames need not be linear, and then no
+                            // weight puts its base back: it is counted the same way.
+                            if (state.OriginalMesh.GetBlendShapeFrameCount(index) > 1) continue;
                             animatorMorphEnds[(renderer.GetInstanceID(), shape)] = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
                         }
                         return driven;

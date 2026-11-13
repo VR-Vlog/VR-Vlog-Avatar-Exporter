@@ -250,16 +250,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Clips.Where(clip => clip != hatOn).SelectMany(clip => clip.Tracks).Any(t => t.Target == data.Targets.IndexOf(morph)), Is.False);
         }
 
-        // A clip that holds a shape at its scene weight changes nothing: it is
-        // neither written nor counted.
+        // A clip that holds a shape at its scene weight is written too: that
+        // the FX writes the shape is for the reader to weigh against the faces.
         [Test]
-        public void AShapeHeldAtItsSceneWeightIsNeitherWrittenNorCounted()
+        public void AShapeHeldAtItsSceneWeightIsWritten()
         {
             using var avatar = new AnimatorAvatar();
             AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
             var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
 
-            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            var morph = data.Targets.Single(t => t.Property == "morph");
+            Assert.That((morph.Rest, morph.Baked, morph.End), Is.EqualTo((35d, 35d, 100d)));
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            Assert.That(hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph)).Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 35d, 35d }));
             Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }));
         }
 
@@ -277,6 +280,27 @@ namespace VRVlog.LilToonExporter.Tests
 
             Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1), ("missingNode", 1) }));
             Assert.That(Nodes(json)[data.Targets.Single(t => t.Property == "morph").Node], Is.EqualTo("Front"));
+        }
+
+        // A shape of several frames need not be linear, so no weight may put
+        // its base back: a curve on one is counted as blendShape.
+        [Test]
+        public void AShapeOfSeveralFramesIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var mesh = avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(r => r.name == "Front").sharedMesh;
+            var deltas = new Vector3[mesh.vertexCount];
+            deltas[0] = Vector3.right;
+            mesh.AddBlendShapeFrame("Frames", 50, deltas, null, null);
+            deltas[0] = Vector3.right + Vector3.up;
+            mesh.AddBlendShapeFrame("Frames", 100, deltas, null, null);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, null);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frames"),
+                AnimationCurve.Constant(0, 1f / 60, 80));
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
         }
 
         // An additive layer adds a shape's curve less its reference pose,
@@ -350,27 +374,6 @@ namespace VRVlog.LilToonExporter.Tests
                 if (written) Assert.That((morph.Node, morph.Morph, morph.Rest, morph.Baked, morph.End), Is.EqualTo((0, 0, 35d, 35d, 100d)));
             }
             Assert.That(capture.Resolve(o => o == front ? 0 : -1).Targets.Any(t => t.Property == "morph"), Is.False, "No sources at all.");
-        }
-
-        // A curve that holds the scene weight still moves the shape when the
-        // base geometry shows another weight (a curve baked in was left out):
-        // it is written, and the app puts the shape back with a weight of -0.3.
-        [Test]
-        public void ACurveAtTheSceneWeightIsWrittenWhenTheBaseShowsAnother()
-        {
-            using var avatar = new AnimatorAvatar();
-            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
-            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
-            var front = avatar.Source.transform.Find("Front").gameObject;
-            foreach (var (baked, written) in new[] { (50d, true), (35d, false) })
-            {
-                var data = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) => renderer.gameObject == front && shape == "Hair detail"
-                    ? new[] { new AvatarAnimatorCapture.MorphSource(35, baked, 100) } : Array.Empty<AvatarAnimatorCapture.MorphSource>());
-                var morph = data.Targets.SingleOrDefault(t => t.Property == "morph");
-                Assert.That(morph != null, Is.EqualTo(written), baked.ToString());
-                Assert.That(data.Omitted.Any(o => o.Kind == "blendShape"), Is.False, baked.ToString());
-                if (written) Assert.That((35 - morph.Baked) / (morph.End - morph.Baked), Is.EqualTo(-0.3).Within(1e-9));
-            }
         }
 
         // Shapes that would take the extension past the limit are all

@@ -192,7 +192,7 @@ namespace VRVlog.LilToonExporter
             return data;
         }
 
-        const int MissingMorph = -1, OmittedMorph = -2, RestingMorph = -3;
+        const int MissingMorph = -1, OmittedMorph = -2;
 
         void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, bool writeMorphs)
         {
@@ -224,7 +224,6 @@ namespace VRVlog.LilToonExporter
                     var target = morphMap[morph];
                     if (target == MissingMorph) { missing++; continue; }
                     if (target == OmittedMorph) { lost++; continue; }
-                    if (target == RestingMorph) continue;
                     var track = new AvatarAnimatorData.Track { Target = target };
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
@@ -251,11 +250,9 @@ namespace VRVlog.LilToonExporter
             // An additive layer adds the curve less its reference pose, which
             // the extension does not carry.
             if (additiveClips.Any(clip => clipMorphTracks[clip].Any(track => track.Morph == i))) return OmittedMorph;
-            // A shape no clip moves off its scene weight changes nothing, as
-            // long as the base geometry shows that weight too: one baked from
-            // a curve left out still needs the curves that bring it back.
-            if (source.Baked == source.Rest && clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)))) return RestingMorph;
-            // Past the size limit every other shape is counted.
+            // A curve that holds the scene weight is written too: that the FX
+            // writes the shape is what the reader weighs against the faces.
+            // Past the size limit every shape is counted.
             if (!writeMorphs) return OmittedMorph;
             // A target that shows no change cannot carry the weight (B3).
             if (source.Baked == source.End) return OmittedMorph;
@@ -267,9 +264,6 @@ namespace VRVlog.LilToonExporter
             data.Targets.Add(target);
             return data.Targets.Count - 1;
         }
-
-        static bool Holds(ExpressionAnimationData.Curve curve, double value) =>
-            curve.Keys.All(key => key.Value == value && (key.InTangent ?? 0) == 0 && (key.OutTangent ?? 0) == 0);
 
         // An extension over MaximumBytes is an error: the caller leaves the
         // stage out and lists it with this reason.
