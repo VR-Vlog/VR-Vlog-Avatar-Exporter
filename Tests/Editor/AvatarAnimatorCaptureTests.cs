@@ -354,7 +354,7 @@ namespace VRVlog.LilToonExporter.Tests
             avatar.Fx.layers = layers;
             avatar.Fx.layers.Last().stateMachine.AddState("Referenced").motion = clip;
 
-            var data = Captured(avatar);
+            var data = CapturedWithNodes(avatar);
             Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
             var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Referenced");
             var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
@@ -382,9 +382,7 @@ namespace VRVlog.LilToonExporter.Tests
             avatar.Fx.AddLayer("Full");
             avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
 
-            var nodes = new Dictionary<GameObject, int>();
-            var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
-                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count)));
+            var data = CapturedWithNodes(avatar);
             var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
             var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
             Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 1));
@@ -1020,6 +1018,15 @@ namespace VRVlog.LilToonExporter.Tests
         // curve is kept; parameter curves are.
         static AvatarAnimatorData Captured(AnimatorAvatar avatar) =>
             AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null).Resolve(_ => -1)));
+
+        // Every object is a node, numbered in the order it is asked for, so
+        // activeSelf tracks are kept.
+        static AvatarAnimatorData CapturedWithNodes(AnimatorAvatar avatar)
+        {
+            var nodes = new Dictionary<GameObject, int>();
+            return AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count)));
+        }
 
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>
             AvatarAnimatorData.Read(((Dictionary<string, object>)json["extensions"])[AvatarAnimatorData.Extension]);
