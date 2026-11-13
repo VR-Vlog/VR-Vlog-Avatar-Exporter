@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter
     // lacks follow as new submeshes. A donor is a renderer without
     // BlendShapes, so no expression, blink or mouth shape points to it, and
     // ends disabled like an empty renderer (DisableEmptyMeshRenderers).
-    // Only opaque and cutout lilToon materials without stencil, depth, blend,
+    // Only opaque lilToon materials without stencil, depth, blend,
     // colour mask or ID mask tricks (in any pass, the outline's too) take part: their
     // order among renderers does not change what is drawn. Renderers merge
     // only with renderers below the same objects that toggles or expressions
@@ -156,15 +156,18 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        // Opaque or cutout lilToon whose draw order among renderers does not
+        // Opaque lilToon whose draw order among renderers does not
         // change the picture.
         internal static bool MergeableMaterial(Material material)
         {
             if (material == null || material.shader == null || !LilToon.LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)) return false;
             if (material.renderQueue > (int)RenderQueue.GeometryLast) return false;
             var name = material.shader.name;
-            if (new[] { "FakeShadow", "Fur", "Refraction", "Gem" }.Any(part => name.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0)) return false;
+            if (new[] { "FakeShadow", "Fur", "Refraction", "Gem", "Cutout" }.Any(part => name.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0)) return false;
             float Value(string property, float missing) => material.HasProperty(property) ? material.GetFloat(property) : missing;
+            // Opaque only: a cutout's edge writes an alpha between 0 and 1, and
+            // the frame's alpha then depends on which face draws first.
+            if (Value("_TransparentMode", 0f) != 0f) return false;
             // Every stencil state of every pass (the body's and the outline's,
             // pass, fail and depth fail): a test other than Always or an
             // operation other than Keep ties the picture to the draw order.

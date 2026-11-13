@@ -173,7 +173,10 @@ namespace VRVlog.LilToonExporter.Tests
             // A direction from the vertex colour is not normalised and can push further.
             var vertexDirection = Lil("Hidden/lilToonOutline", .01f);
             vertexDirection.SetFloat("_OutlineVertexR2Width", 2f);
-            var renderers = new[] { thin, wide, narrowedNear, vertexDirection }.Select((material, i) => (Renderer)Skin("Part" + i, Vector3.zero, Quaternion.identity, new[] { material }, false)).ToList();
+            // An outline that writes the stencil decides what draws after it, however thin.
+            var stencilWriter = Lil("Hidden/lilToonOutline", .01f);
+            stencilWriter.SetFloat("_OutlineStencilPass", 2f);
+            var renderers = new[] { thin, wide, narrowedNear, vertexDirection, stencilWriter }.Select((material, i) => (Renderer)Skin("Part" + i, Vector3.zero, Quaternion.identity, new[] { material }, false)).ToList();
             Assert.That(OutlineLightweight.Omitted(renderers, .5f), Is.EquivalentTo(new[] { thin, narrowedNear }));
             Assert.That(OutlineLightweight.Omitted(renderers, 0f), Is.Empty);
             // The same 0.4 mm drawn twice as large is 0.8 mm.
@@ -235,7 +238,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void StencilInAnyPassAndPositionEffectsKeepAMaterialOut()
         {
             Assert.That(MeshMergeLightweight.MergeableMaterial(Lil("Hidden/lilToonOutline")), Is.True);
-            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f), ("_OutlineZTest", 8f), ("_OutlineZWrite", 0f), ("_DistanceFadeMode", 1f), ("_BlendOp", 3f), ("_OutlineBlendOp", 3f), ("_ColorMask", 0f), ("_OutlineColorMask", 7f), ("_DstBlendAlpha", 0f), ("_OutlineBlendOpAlpha", 2f) })
+            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f), ("_OutlineZTest", 8f), ("_OutlineZWrite", 0f), ("_DistanceFadeMode", 1f), ("_BlendOp", 3f), ("_OutlineBlendOp", 3f), ("_ColorMask", 0f), ("_OutlineColorMask", 7f), ("_DstBlendAlpha", 0f), ("_OutlineBlendOpAlpha", 2f), ("_TransparentMode", 1f) })
             {
                 var material = Lil("Hidden/lilToonOutline");
                 Assert.That(material.HasProperty(property), Is.True, property);
