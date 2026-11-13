@@ -40,4 +40,4 @@ Avatar Optimizerは同じ名前のBlendShapeを、メッシュの統合で1つ�
 
 - EditMode: `AvatarAnimatorCaptureTests`・`AvatarAnimatorDataTests`・`UnusedMorphTargetsTests`・`ExportOptimizationBindingsTests`・`QuickTransferMatchesDefaultNormalTests`
 - 書き出しの回帰: 基準と比較ツールの`--allow-kept-morphs`で比べる。拡張が指すために残ったモーフターゲットを外して番号を戻し、それ以外が同じことを確かめる。メッシュのモーフターゲットが全部外れたときは、空になった`targets`・`weights`・`extras`も外す（書き出しは空のものを書かない）。残したモーフターゲットの分だけ頂点データを詰めて減った量が変わるので、その警告のMBの数値は比べない
-- 測った結果: 手元の検証用アバター92体（3体は変更の前後とも同じ理由で書き出せない）を比べて、92組とも一致した。71体で拡張がBlendShapeを書き、残したモーフターゲットは合わせて584個。拡張のJSONは中央値が約40KB、最大で約0.9MB
+- 測った結果: 手元の検証用アバター92体（3体は変更の前後とも同じ理由で書き出せない）を比べて、92組とも一致した。71体で拡張がBlendShapeを書き、拡張が指すために残したモーフターゲットは合わせて536個（1体で最大30個）。VRMの大きさは合計で約4%、1体あたりの中央値で約1%、最大で約22%増えた。拡張のJSONは中央値が約70KB、最大で約1.6MB
