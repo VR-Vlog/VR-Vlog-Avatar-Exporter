@@ -214,6 +214,11 @@ namespace VRVlog.LilToonExporter
                 modes[mode] = (modes.TryGetValue(mode, out var on) && on) || F.Bool(pass, "enabled");
             }
             foreach (var mode in modes) material.SetShaderPassEnabled(mode.Key, mode.Value);
+            // An outline pass written off whose LightMode stays on for the body
+            // still draws; a zero width draws nothing, as the app shows it.
+            if (material.HasProperty("_OutlineWidth") && F.List(spec, "passes").Select(F.Object).Any(pass =>
+                    F.Text(pass, "name").IndexOf("OUTLINE", StringComparison.OrdinalIgnoreCase) >= 0 && !F.Bool(pass, "enabled")))
+                material.SetFloat("_OutlineWidth", 0f);
             if (!VRVlog.LilToon.LilToon234Catalogue.Shaders[source].StartsWith("ltsmulti", StringComparison.Ordinal))
             {
                 var path = Path.GetFullPath(Path.Combine(Application.dataPath, "../ProjectSettings/lilToonSetting.json"));

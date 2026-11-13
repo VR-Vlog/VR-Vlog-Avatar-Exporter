@@ -186,6 +186,25 @@ namespace VRVlog.LilToonExporter.Tests
             return item;
         }
 
+        [Test]
+        public void StencilInAnyPassAndPositionEffectsKeepAMaterialOut()
+        {
+            Assert.That(MeshMergeLightweight.MergeableMaterial(Lil("Hidden/lilToonOutline")), Is.True);
+            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f) })
+            {
+                var material = Lil("Hidden/lilToonOutline");
+                Assert.That(material.HasProperty(property), Is.True, property);
+                material.SetFloat(property, value);
+                Assert.That(MeshMergeLightweight.MergeableMaterial(material), Is.False, property);
+            }
+            var dissolve = Lil("Hidden/lilToonOutline");
+            dissolve.SetVector("_DissolveParams", new Vector4(3f, 1f, .5f, .1f));
+            Assert.That(MeshMergeLightweight.MergeableMaterial(dissolve), Is.False, "position dissolve");
+            var audioLink = Lil("Hidden/lilToonOutline");
+            audioLink.SetFloat("_UseAudioLink", 1f);
+            Assert.That(MeshMergeLightweight.MergeableMaterial(audioLink), Is.False, "AudioLink");
+        }
+
         Material Lil(string shader, float outline = 0f)
         {
             var material = new Material(Shader.Find(shader)) { name = "Material" + cleanup.Count };

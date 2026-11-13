@@ -20,8 +20,10 @@ namespace VRVlog.LilToonExporter
     // BlendShapes, so no expression, blink or mouth shape points to it, and
     // ends disabled like an empty renderer (DisableEmptyMeshRenderers).
     // Only opaque and cutout lilToon materials without stencil, depth or ID
-    // mask tricks take part: their order among renderers does not change
-    // what is drawn. Renderers merge only with renderers below the same
+    // mask tricks (in any pass, the outline's too) and without effects read
+    // from the mesh's own coordinates take part: their order among renderers
+    // does not change what is drawn, and moving a donor's vertices into the
+    // host's mesh space does not move such an effect. Renderers merge only with renderers below the same
     // objects that toggles or expressions show and hide, so they still
     // appear and disappear together. A donor's mesh is moved into the host's mesh space
     // by the one rigid transform its shared bones agree on; a donor without
@@ -132,7 +134,23 @@ namespace VRVlog.LilToonExporter
             var name = material.shader.name;
             if (new[] { "FakeShadow", "Fur", "Refraction", "Gem" }.Any(part => name.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0)) return false;
             float Value(string property, float missing) => material.HasProperty(property) ? material.GetFloat(property) : missing;
-            if (Value("_StencilComp", 8f) != 8f || Value("_StencilPass", 0f) != 0f) return false;
+            // Every stencil state of every pass (the body's and the outline's,
+            // pass, fail and depth fail): a test other than Always or an
+            // operation other than Keep ties the picture to the draw order.
+            var shader = material.shader;
+            for (var i = 0; i < shader.GetPropertyCount(); i++)
+            {
+                var property = shader.GetPropertyName(i);
+                if (property.IndexOf("Stencil", StringComparison.Ordinal) < 0) continue;
+                if (property.EndsWith("Comp", StringComparison.Ordinal) && material.GetFloat(property) != 8f) return false;
+                if ((property.EndsWith("Pass", StringComparison.Ordinal) || property.EndsWith("Fail", StringComparison.Ordinal)) &&
+                    material.GetFloat(property) != 0f) return false;
+            }
+            // Effects computed from the mesh's own coordinates (a position
+            // dissolve, AudioLink by position) would move with a donor's
+            // vertices when they are carried into the host's mesh space.
+            if (material.HasProperty("_DissolveParams") && material.GetVector("_DissolveParams").x != 0f) return false;
+            if (Value("_UseAudioLink", 0f) != 0f) return false;
             if (Value("_ZWrite", 1f) != 1f || Value("_ZTest", 4f) != 4f) return false;
             if (Value("_SrcBlend", 1f) != 1f || Value("_DstBlend", 0f) != 0f) return false;
             if (Value("_IDMaskCompile", 0f) != 0f) return false;
