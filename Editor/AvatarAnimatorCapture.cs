@@ -244,15 +244,19 @@ namespace VRVlog.LilToonExporter
             var (renderer, shape) = morphs[i];
             var nodeIndex = renderer == null ? -1 : node(renderer.gameObject);
             if (nodeIndex < 0) return MissingMorph;
-            var morph = writeMorphs && renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(shape) : -1;
+            var morph = renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(shape) : -1;
             var found = morph < 0 || sources == null ? null : sources(renderer, shape);
             if (found == null || found.Count == 0 || found.Distinct().Count() > 1) return OmittedMorph;
             var source = found[0];
             // An additive layer adds the curve less its reference pose, which
             // the extension does not carry.
             if (additiveClips.Any(clip => clipMorphTracks[clip].Any(track => track.Morph == i))) return OmittedMorph;
-            // A shape no clip moves off its scene weight changes nothing.
-            if (clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)))) return RestingMorph;
+            // A shape no clip moves off its scene weight changes nothing, as
+            // long as the base geometry shows that weight too: one baked from
+            // a curve left out still needs the curves that bring it back.
+            if (source.Baked == source.Rest && clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)))) return RestingMorph;
+            // Past the size limit every other shape is counted.
+            if (!writeMorphs) return OmittedMorph;
             // A target that shows no change cannot carry the weight (B3).
             if (source.Baked == source.End) return OmittedMorph;
             var target = new AvatarAnimatorData.Target

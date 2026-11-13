@@ -352,6 +352,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(capture.Resolve(o => o == front ? 0 : -1).Targets.Any(t => t.Property == "morph"), Is.False, "No sources at all.");
         }
 
+        // A curve that holds the scene weight still moves the shape when the
+        // base geometry shows another weight (a curve baked in was left out):
+        // it is written, and the app puts the shape back with a weight of -0.3.
+        [Test]
+        public void ACurveAtTheSceneWeightIsWrittenWhenTheBaseShowsAnother()
+        {
+            using var avatar = new AnimatorAvatar();
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            foreach (var (baked, written) in new[] { (50d, true), (35d, false) })
+            {
+                var data = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) => renderer.gameObject == front && shape == "Hair detail"
+                    ? new[] { new AvatarAnimatorCapture.MorphSource(35, baked, 100) } : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+                var morph = data.Targets.SingleOrDefault(t => t.Property == "morph");
+                Assert.That(morph != null, Is.EqualTo(written), baked.ToString());
+                Assert.That(data.Omitted.Any(o => o.Kind == "blendShape"), Is.False, baked.ToString());
+                if (written) Assert.That((35 - morph.Baked) / (morph.End - morph.Baked), Is.EqualTo(-0.3).Within(1e-9));
+            }
+        }
+
         // Shapes that would take the extension past the limit are all
         // counted, and the extension is written with activeSelf alone.
         [Test]
