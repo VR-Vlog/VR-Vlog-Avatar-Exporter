@@ -19,16 +19,15 @@ namespace VRVlog.LilToonExporter
     // lacks follow as new submeshes. A donor is a renderer without
     // BlendShapes, so no expression, blink or mouth shape points to it, and
     // ends disabled like an empty renderer (DisableEmptyMeshRenderers).
-    // Only opaque and cutout lilToon materials without stencil, depth or ID
-    // mask tricks (in any pass, the outline's too) and without effects read
-    // from the mesh's own coordinates take part: their order among renderers
-    // does not change what is drawn, and moving a donor's vertices into the
-    // host's mesh space does not move such an effect. Renderers merge only with renderers below the same
-    // objects that toggles or expressions show and hide, so they still
-    // appear and disappear together. A donor's mesh is moved into the host's mesh space
-    // by the one rigid transform its shared bones agree on; a donor without
-    // one stays. Nothing changes when a step fails: every mesh is built
-    // before any renderer takes it.
+    // Only opaque and cutout lilToon materials without stencil, depth, blend
+    // or ID mask tricks (in any pass, the outline's too) take part: their
+    // order among renderers does not change what is drawn. Renderers merge
+    // only with renderers below the same objects that toggles or expressions
+    // show and hide, so they still appear and disappear together, and only
+    // when the donor's mesh space is the host's (its shared bones' bindposes
+    // agree), so what the shader reads from the object's coordinates stays.
+    // Nothing changes when a step fails: every mesh is built before any
+    // renderer takes it.
     internal static class MeshMergeLightweight
     {
         internal sealed class Result
@@ -186,9 +185,9 @@ namespace VRVlog.LilToonExporter
             }.Select(item => Convert.ToString(item, CultureInfo.InvariantCulture)));
         }
 
-        // The rigid transform from the donor's mesh space to the host's that
-        // every shared bone agrees on: host bindpose⁻¹ × donor bindpose.
-        // Identity when they share no bone; null when they disagree.
+        // Identity when the donor's mesh space is the host's, as every shared
+        // bone agrees (host bindpose⁻¹ × donor bindpose) or they share none;
+        // null otherwise.
         static Matrix4x4? ToHost(SkinnedMeshRenderer host, SkinnedMeshRenderer donor)
         {
             var hostBones = host.bones;
@@ -207,7 +206,11 @@ namespace VRVlog.LilToonExporter
                 else if (!Close(result.Value, candidate)) return null;
             }
             var toHost = result ?? Matrix4x4.identity;
-            return Rigid(toHost) ? toHost : (Matrix4x4?)null;
+            // Only the same mesh space: the shader reads the object's own
+            // coordinates and axes (position dissolves, the face shadow's
+            // directions, a local light direction, the distance to the origin),
+            // which a donor moved into another space would read differently.
+            return Close(toHost, Matrix4x4.identity) ? Matrix4x4.identity : (Matrix4x4?)null;
         }
 
         internal static bool Close(Matrix4x4 a, Matrix4x4 b)
@@ -215,13 +218,6 @@ namespace VRVlog.LilToonExporter
             for (var i = 0; i < 16; i++)
                 if (!(Mathf.Abs(a[i] - b[i]) <= 1e-4f)) return false;
             return true;
-        }
-
-        static bool Rigid(Matrix4x4 m)
-        {
-            for (var column = 0; column < 3; column++)
-                if (!(Mathf.Abs(((Vector3)m.GetColumn(column)).magnitude - 1f) <= 1e-3f)) return false;
-            return Mathf.Abs(m.m30) <= 1e-6f && Mathf.Abs(m.m31) <= 1e-6f && Mathf.Abs(m.m32) <= 1e-6f && Mathf.Abs(m.m33 - 1f) <= 1e-6f;
         }
 
         // Fills plan.Mesh, Bones, Materials and LocalBounds; false leaves

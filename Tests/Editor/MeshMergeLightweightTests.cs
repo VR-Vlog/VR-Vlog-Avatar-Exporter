@@ -40,8 +40,7 @@ namespace VRVlog.LilToonExporter.Tests
             var other = Lil("lilToon");
             var body = Skin("Body", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: true);
             body.SetBlendShapeWeight(0, 40f);
-            // Another mesh space: the donor's bindposes differ by a rigid move.
-            var cloth = Skin("Cloth", new Vector3(.2f, .1f, 0f), Quaternion.Euler(0f, 30f, 0f), new[] { shared, other }, blendShape: false);
+            var cloth = Skin("Cloth", Vector3.zero, Quaternion.identity, new[] { shared, other }, blendShape: false);
             var expected = World(body).Concat(World(cloth)).ToList();
             var owned = new List<Mesh>();
             var result = MeshMergeLightweight.Apply(root, owned, null);
@@ -67,7 +66,7 @@ namespace VRVlog.LilToonExporter.Tests
             var head = Child("Head", chest, new Vector3(0f, .2f, 0f));
             var body = Skin("Body", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: true);
             // Weighted to chest and head; head is not one of the body's bones.
-            var hat = Skin("Hat", new Vector3(0f, .1f, 0f), Quaternion.identity, new[] { shared }, blendShape: false, bones: new[] { chest, head, hips });
+            var hat = Skin("Hat", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false, bones: new[] { chest, head, hips });
             var expected = Triangles(body).Concat(Triangles(hat)).ToList();
             var owned = new List<Mesh>();
             Assert.That(MeshMergeLightweight.Apply(root, owned, null), Is.Not.Null);
@@ -93,11 +92,13 @@ namespace VRVlog.LilToonExporter.Tests
             var seeThrough = Skin("SeeThrough", Vector3.zero, Quaternion.identity, new[] { Lil("Hidden/lilToonTransparent") }, blendShape: false);
             var toggled = Skin("Toggled", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false);
             var shadowless = Skin("Shadowless", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false);
+            // Another mesh space: the shader would read a moved donor's object coordinates differently.
+            var moved = Skin("Moved", new Vector3(.2f, .1f, 0f), Quaternion.Euler(0f, 30f, 0f), new[] { shared }, blendShape: false);
             shadowless.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var owned = new List<Mesh>();
             Assert.That(MeshMergeLightweight.Apply(root, owned, new[] { toggled.transform }), Is.Null);
             Assert.That(owned, Is.Empty);
-            Assert.That(new[] { shaped, seeThrough, toggled, shadowless }.All(renderer => renderer.enabled), Is.True);
+            Assert.That(new[] { shaped, seeThrough, toggled, shadowless, moved }.All(renderer => renderer.enabled), Is.True);
         }
 
         [Test]

@@ -230,6 +230,9 @@ namespace VRVlog.LilToonExporter
                 material.SetFloat("_OutlineWidth", 0f);
                 if (material.HasProperty("_OutlineZTest")) material.SetFloat("_OutlineZTest", (float)CompareFunction.Never);
                 if (material.HasProperty("_OutlineZWrite")) material.SetFloat("_OutlineZWrite", 0f);
+                // A failed depth test still runs the stencil's ZFail: keep the stencil as it is.
+                foreach (var op in new[] { "_OutlineStencilPass", "_OutlineStencilFail", "_OutlineStencilZFail" })
+                    if (material.HasProperty(op)) material.SetFloat(op, (float)StencilOp.Keep);
             }
             if (!VRVlog.LilToon.LilToon234Catalogue.Shaders[source].StartsWith("ltsmulti", StringComparison.Ordinal))
             {
