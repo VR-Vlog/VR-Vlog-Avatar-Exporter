@@ -461,6 +461,39 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("morph target"));
         }
 
+        // A morph target on a node the file wrote without that mesh (a
+        // renderer that is off or empty) goes with its tracks, which are
+        // counted, before Strip would keep its shape.
+        [Test]
+        public void MorphTargetsTheFileHasNoMeshForAreLeftOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), null);
+            var json = GlbDocument.Read(exported).Json;
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            IReadOnlyList<AvatarAnimatorCapture.MorphSource> Sources(SkinnedMeshRenderer renderer, string shape) =>
+                new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
+            int Missing(AvatarAnimatorData d) => d.Omitted.Where(o => o.Kind == "missingNode").Sum(o => o.Count);
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+
+            var withMesh = Nodes(json).IndexOf("Front");
+            var data = capture.Resolve(o => o == front ? withMesh : -1, Sources);
+            var before = Missing(data);
+            capture.DropMorphsNotIn(exported);
+            Assert.That(data.Targets.Count(t => t.Property == "morph"), Is.EqualTo(1), "Front's mesh has the shape.");
+            Assert.That(Missing(data), Is.EqualTo(before));
+
+            var meshless = ((List<object>)json["nodes"]).FindIndex(node => !((Dictionary<string, object>)node).ContainsKey("mesh"));
+            data = capture.Resolve(o => o == front ? meshless : -1, Sources);
+            before = Missing(data);
+            capture.DropMorphsNotIn(exported);
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(capture.MorphBinds.Concat(capture.SoftMorphBinds), Is.Empty);
+            Assert.That(data.Clips.SelectMany(clip => clip.Tracks).All(track => track.Target < data.Targets.Count), Is.True);
+            Assert.That(Missing(data), Is.EqualTo(before + 1), "Hat on's one curve on the shape.");
+            Assert.That(AvatarAnimatorCapture.Inject(exported, data), Is.Not.Null);
+        }
+
         // BlendShape curves take the keys and tracks activeSelf leaves in
         // their clip, whatever order Unity lists the curves in.
         [Test]
@@ -824,22 +857,24 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Without shapes to keep, the extension only adds: without it, its
         // extensionsUsed entry and its required version, the file is the one
-        // written when the stage fails. The stage runs six times (activeSelf
+        // written when the stage fails. The stage runs seven times (activeSelf
         // and BlendShape snapshots, the shapes the FX moves, read, node
-        // mapping, injection); a failure in any of them is left out, in strict
-        // mode too.
+        // mapping, the morph targets the file has, injection); a failure in
+        // any of them is left out, in strict mode too.
         [TestCase(1, true)]
         [TestCase(2, true)]
         [TestCase(3, true)]
         [TestCase(4, true)]
         [TestCase(5, true)]
         [TestCase(6, true)]
+        [TestCase(7, true)]
         [TestCase(1, false)]
         [TestCase(2, false)]
         [TestCase(3, false)]
         [TestCase(4, false)]
         [TestCase(5, false)]
         [TestCase(6, false)]
+        [TestCase(7, false)]
         public void TheExtensionLeavesTheRestOfTheFileAsItIs(int failingCall, bool continueOnStageFailure)
         {
             using var avatar = new AnimatorAvatar();
@@ -847,7 +882,7 @@ namespace VRVlog.LilToonExporter.Tests
             var calls = 0;
             ExportTestHooks.FaultInjection = stage => { if (stage == ExportStage.AvatarAnimator) calls++; };
             var normal = avatar.Export(new List<string>(), null);
-            Assert.That(calls, Is.EqualTo(6), "Each of the six runs once.");
+            Assert.That(calls, Is.EqualTo(7), "Each of the seven runs once.");
 
             calls = 0;
             ExportTestHooks.FaultInjection = stage =>

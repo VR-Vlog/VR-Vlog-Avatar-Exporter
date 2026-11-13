@@ -191,7 +191,29 @@ namespace VRVlog.LilToonExporter
         internal void RenumberMorphs()
         {
             foreach (var (target, bind, _) in morphBinds) target.Morph = (int)Convert.ToInt64(bind["index"]);
-            var gone = new HashSet<AvatarAnimatorData.Target>(morphBinds.Where(bind => bind.Soft && bind.Target.Morph < 0).Select(bind => bind.Target));
+            RemoveMorphTargets(new HashSet<AvatarAnimatorData.Target>(morphBinds.Where(bind => bind.Soft && bind.Target.Morph < 0).Select(bind => bind.Target)), false);
+        }
+
+        // Leaves out the morph targets the file cannot carry: the node has no
+        // mesh, or its mesh has no such morph target, as when the exporter
+        // writes no geometry for a renderer that is off or empty. Their tracks
+        // are counted as missingNode. Run on the bytes before Strip.
+        internal void DropMorphsNotIn(byte[] bytes)
+        {
+            if (!morphBinds.Any()) return;
+            var document = GlbDocument.Read(bytes);
+            var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list : new List<object>();
+            var meshes = document.Json.TryGetValue("meshes", out var rawMeshes) && rawMeshes is List<object> meshList ? meshList : new List<object>();
+            RemoveMorphTargets(new HashSet<AvatarAnimatorData.Target>(morphBinds.Select(bind => bind.Target).Where(target => !Fits(target, nodes, meshes))), true);
+        }
+
+        static bool Fits(AvatarAnimatorData.Target target, List<object> nodes, List<object> meshes) =>
+            target.Node >= 0 && target.Node < nodes.Count && nodes[target.Node] is Dictionary<string, object> node &&
+            node.TryGetValue("mesh", out var rawMesh) && Convert.ToInt32(rawMesh) is var mesh && mesh >= 0 && mesh < meshes.Count &&
+            target.Morph >= 0 && target.Morph < MorphCount(meshes[mesh] as Dictionary<string, object>);
+
+        void RemoveMorphTargets(HashSet<AvatarAnimatorData.Target> gone, bool count)
+        {
             if (gone.Count == 0) return;
             morphBinds.RemoveAll(bind => gone.Contains(bind.Target));
             var map = new int[data.Targets.Count];
@@ -203,10 +225,21 @@ namespace VRVlog.LilToonExporter
             }
             data.Targets.Clear();
             data.Targets.AddRange(kept);
+            var removed = 0;
             foreach (var clip in data.Clips)
             {
-                clip.Tracks.RemoveAll(track => map[track.Target] < 0);
+                removed += clip.Tracks.RemoveAll(track => map[track.Target] < 0);
                 foreach (var track in clip.Tracks) track.Target = map[track.Target];
+            }
+            if (!count || removed == 0) return;
+            var missing = data.Omitted.FirstOrDefault(omission => omission.Kind == "missingNode");
+            if (missing != null) missing.Count += removed;
+            else
+            {
+                // Omitted stays in OmittedKinds order.
+                data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "missingNode", Count = removed });
+                var order = AvatarAnimatorData.OmittedKinds;
+                data.Omitted.Sort((a, b) => Array.IndexOf(order, a.Kind).CompareTo(Array.IndexOf(order, b.Kind)));
             }
         }
 
@@ -333,11 +366,8 @@ namespace VRVlog.LilToonExporter
             if (data.Targets.Any(target => target.Property != "parameter" && target.Node >= nodes.Count))
                 throw new InvalidOperationException("Avatar animator target node is out of range.");
             // A morph target names one of its node's mesh's targets.
-            foreach (var target in data.Targets.Where(target => target.Property == "morph"))
-                if (!(nodes[target.Node] is Dictionary<string, object> node && node.TryGetValue("mesh", out var rawMesh) &&
-                      Convert.ToInt32(rawMesh) is var mesh && mesh >= 0 && mesh < meshes.Count &&
-                      target.Morph < MorphCount(meshes[mesh] as Dictionary<string, object>)))
-                    throw new InvalidOperationException("Avatar animator morph target is out of range.");
+            if (data.Targets.Any(target => target.Property == "morph" && !Fits(target, nodes, meshes)))
+                throw new InvalidOperationException("Avatar animator morph target is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
         }

@@ -1061,6 +1061,10 @@ namespace VRVlog.LilToonExporter
                 // The shapes VRVLOG_avatar_animator moves are kept and its
                 // indices follow the renumbering; a file left as it was keeps them.
                 var unstripped = exported;
+                // A morph target on a node the file wrote no such mesh for (a
+                // renderer that is off or empty) is left out before Strip keeps it.
+                if (avatarAnimatorData != null)
+                    avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => { avatarAnimator.DropMorphsNotIn(exported); return avatarAnimatorData; }, () => null);
                 var animatorBinds = avatarAnimatorData != null ? avatarAnimator.MorphBinds : null;
                 var softBinds = avatarAnimatorData != null ? avatarAnimator.SoftMorphBinds : null;
                 var animatorIndices = animatorBinds?.Concat(softBinds).Select(bind => bind["index"]).ToList();
