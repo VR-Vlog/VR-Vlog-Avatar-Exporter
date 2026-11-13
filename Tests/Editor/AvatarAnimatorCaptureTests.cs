@@ -857,22 +857,24 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Without shapes to keep, the extension only adds: without it, its
         // extensionsUsed entry and its required version, the file is the one
-        // written when the stage fails. The stage runs six times (activeSelf
+        // written when the stage fails. The stage runs seven times (activeSelf
         // and BlendShape snapshots, the shapes the FX moves, read, node
-        // mapping, injection); a failure in any of them is left out, in strict
-        // mode too.
+        // mapping, the morph targets the file has, injection); a failure in
+        // any of them is left out, in strict mode too.
         [TestCase(1, true)]
         [TestCase(2, true)]
         [TestCase(3, true)]
         [TestCase(4, true)]
         [TestCase(5, true)]
         [TestCase(6, true)]
+        [TestCase(7, true)]
         [TestCase(1, false)]
         [TestCase(2, false)]
         [TestCase(3, false)]
         [TestCase(4, false)]
         [TestCase(5, false)]
         [TestCase(6, false)]
+        [TestCase(7, false)]
         public void TheExtensionLeavesTheRestOfTheFileAsItIs(int failingCall, bool continueOnStageFailure)
         {
             using var avatar = new AnimatorAvatar();
@@ -880,7 +882,7 @@ namespace VRVlog.LilToonExporter.Tests
             var calls = 0;
             ExportTestHooks.FaultInjection = stage => { if (stage == ExportStage.AvatarAnimator) calls++; };
             var normal = avatar.Export(new List<string>(), null);
-            Assert.That(calls, Is.EqualTo(6), "Each of the six runs once.");
+            Assert.That(calls, Is.EqualTo(7), "Each of the seven runs once.");
 
             calls = 0;
             ExportTestHooks.FaultInjection = stage =>
