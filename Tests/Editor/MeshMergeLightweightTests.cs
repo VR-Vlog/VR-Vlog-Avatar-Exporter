@@ -190,7 +190,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void StencilInAnyPassAndPositionEffectsKeepAMaterialOut()
         {
             Assert.That(MeshMergeLightweight.MergeableMaterial(Lil("Hidden/lilToonOutline")), Is.True);
-            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f), ("_OutlineZTest", 8f), ("_OutlineZWrite", 0f), ("_DistanceFadeMode", 1f) })
+            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f), ("_OutlineZTest", 8f), ("_OutlineZWrite", 0f), ("_DistanceFadeMode", 1f), ("_BlendOp", 3f), ("_OutlineBlendOp", 3f) })
             {
                 var material = Lil("Hidden/lilToonOutline");
                 Assert.That(material.HasProperty(property), Is.True, property);

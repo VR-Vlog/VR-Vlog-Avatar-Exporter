@@ -216,10 +216,16 @@ namespace VRVlog.LilToonExporter
             foreach (var mode in modes) material.SetShaderPassEnabled(mode.Key, mode.Value);
             // FORWARD_OUTLINE written off while FORWARD keeps ForwardBase on still
             // runs here. A depth test that never passes draws none of its
-            // pixels, as the app shows no outline. Only that pass:
-            // FORWARD_ADD_OUTLINE off alone keeps the outline.
-            if (material.HasProperty("_OutlineWidth") && F.List(spec, "passes").Select(F.Object).Any(pass =>
-                    string.Equals(F.Text(pass, "name"), "FORWARD_OUTLINE", StringComparison.OrdinalIgnoreCase) && !F.Bool(pass, "enabled")))
+            // pixels, as the app shows no outline. Only when every outline pass
+            // is off (what 細い輪郭線を省く writes): a material with ForwardBase
+            // off but its additive outline on keeps the width that pass shares.
+            // The additive outline pass tests depth on its own, so under extra
+            // lights the preview can still show an omitted outline's faces.
+            var passEnabled = F.List(spec, "passes").Select(F.Object)
+                .ToDictionary(pass => F.Text(pass, "name"), pass => F.Bool(pass, "enabled"), StringComparer.OrdinalIgnoreCase);
+            bool Pass(string name, bool missing) => passEnabled.TryGetValue(name, out var on) ? on : missing;
+            if (material.HasProperty("_OutlineWidth") && Pass("FORWARD", false) && passEnabled.ContainsKey("FORWARD_OUTLINE") &&
+                !Pass("FORWARD_OUTLINE", true) && !Pass("FORWARD_ADD_OUTLINE", false))
             {
                 material.SetFloat("_OutlineWidth", 0f);
                 if (material.HasProperty("_OutlineZTest")) material.SetFloat("_OutlineZTest", (float)CompareFunction.Never);

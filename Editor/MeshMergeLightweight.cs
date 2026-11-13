@@ -161,7 +161,7 @@ namespace VRVlog.LilToonExporter
                 // nearest face wins in any order.
                 var zTest = Value(pass + "ZTest", 4f);
                 if (Value(pass + "ZWrite", 1f) != 1f || (zTest != 2f && zTest != 4f)) return false;
-                if (Value(pass + "SrcBlend", 1f) != 1f || Value(pass + "DstBlend", 0f) != 0f) return false;
+                if (Value(pass + "SrcBlend", 1f) != 1f || Value(pass + "DstBlend", 0f) != 0f || Value(pass + "BlendOp", 0f) != 0f) return false;
             }
             // A fade by the distance to the object's origin: a donor would fade
             // with the host's origin.
