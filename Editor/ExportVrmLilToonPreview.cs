@@ -222,8 +222,10 @@ namespace VRVlog.LilToonExporter
             // additive outline on keeps the width that pass shares. The
             // additive outline pass tests depth on its own, so its colour mask
             // is closed too: under extra lights it writes nothing.
+            // A name written twice counts as on when any entry is on, as modes above.
             var passEnabled = F.List(spec, "passes").Select(F.Object)
-                .ToDictionary(pass => F.Text(pass, "name"), pass => F.Bool(pass, "enabled"), StringComparer.OrdinalIgnoreCase);
+                .GroupBy(pass => F.Text(pass, "name"), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Any(pass => F.Bool(pass, "enabled")), StringComparer.OrdinalIgnoreCase);
             bool Pass(string name, bool missing) => passEnabled.TryGetValue(name, out var on) ? on : missing;
             if (material.HasProperty("_OutlineWidth") && passEnabled.ContainsKey("FORWARD_OUTLINE") &&
                 !Pass("FORWARD_OUTLINE", true) && !Pass("FORWARD_ADD_OUTLINE", false))

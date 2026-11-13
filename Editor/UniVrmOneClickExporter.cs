@@ -790,7 +790,8 @@ namespace VRVlog.LilToonExporter
                 // texture is read, so every later step sees the merged copy.
                 MeshMergeLightweight.Result merged = null;
                 if (autoLightweight && lightweightExtras?.MergeMeshes == true)
-                    merged = MeshMergeLightweight.Apply(clone, temporaryMeshes, ShownAndHidden(objectToggles, (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).Concat(presetExpressions)));
+                    merged = MeshMergeLightweight.Apply(clone, temporaryMeshes, ShownAndHidden(objectToggles, (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).Concat(presetExpressions)),
+                        optimizerBindings?.MaterialEvidenceRenderers);
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation

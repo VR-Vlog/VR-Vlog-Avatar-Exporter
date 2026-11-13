@@ -60,6 +60,18 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ARendererALaterStepChecksBySlotStaysSeparate()
+        {
+            var shared = Lil("lilToon");
+            var body = Skin("Body", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: true);
+            var hat = Skin("Hat", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false);
+            var owned = new List<Mesh>();
+            Assert.That(MeshMergeLightweight.Apply(root, owned, null, new Renderer[] { hat }), Is.Null);
+            Assert.That(owned, Is.Empty);
+            Assert.That(body.enabled && hat.enabled, Is.True);
+        }
+
+        [Test]
         public void DonorBonesInAnotherOrderOrMissingFromTheHostKeepTheirTriangles()
         {
             var shared = Lil("lilToon");

@@ -506,6 +506,10 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
+        // The renderers VerifyMaterialEvidence checks by (renderer, slot).
+        internal IEnumerable<Renderer> MaterialEvidenceRenderers =>
+            materialEvidence.Select(evidence => evidence.Route.Renderer).Where(renderer => renderer != null);
+
         internal void VerifyMaterialEvidence()
         {
             RequireApplied();

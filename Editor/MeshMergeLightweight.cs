@@ -47,6 +47,8 @@ namespace VRVlog.LilToonExporter
             internal readonly List<(SkinnedMeshRenderer Renderer, Matrix4x4 ToHost)> Donors = new List<(SkinnedMeshRenderer, Matrix4x4)>();
             internal Mesh Mesh;
             internal Transform[] Bones;
+            // Donors Build turned away; they try the next host.
+            internal readonly List<SkinnedMeshRenderer> Rejected = new List<SkinnedMeshRenderer>();
             internal Material[] Materials;
             internal Bounds LocalBounds;
         }
@@ -54,10 +56,14 @@ namespace VRVlog.LilToonExporter
         const int UvChannels = 8;
 
         // Null when nothing was merged.
-        internal static Result Apply(GameObject clone, ICollection<Mesh> owned, IEnumerable<Transform> shownAndHidden)
+        // keepSeparate: renderers whose (renderer, slot) a later step checks,
+        // such as the material routes of tracking expressions.
+        internal static Result Apply(GameObject clone, ICollection<Mesh> owned, IEnumerable<Transform> shownAndHidden,
+            IEnumerable<Renderer> keepSeparate = null)
         {
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             var switched = new HashSet<Transform>((shownAndHidden ?? Enumerable.Empty<Transform>()).Where(item => item != null));
+            var kept = new HashSet<Renderer>((keepSeparate ?? Enumerable.Empty<Renderer>()).Where(renderer => renderer != null));
             // The switched objects above the renderer, itself included.
             string SwitchedAbove(Transform item)
             {
@@ -69,16 +75,16 @@ namespace VRVlog.LilToonExporter
                 }
                 return string.Join(",", ids.Select(id => id.ToString(CultureInfo.InvariantCulture)));
             }
-            // A material that writes the stencil in the same queue: merging
-            // changes which faces draw before it, and so what it writes.
-            var all = ExportRendererSelection.Enumerate(clone).ToList();
-            var stencilQueues = new HashSet<int>(all.SelectMany(renderer => renderer.sharedMaterials).Where(WritesStencil).Select(material => material.renderQueue));
-            var candidates = all.OfType<SkinnedMeshRenderer>().Where(Eligible)
-                .Where(renderer => !renderer.sharedMaterials.Any(material => stencilQueues.Contains(material.renderQueue))).ToList();
             var plans = new List<Plan>();
             Plan building = null;
             try
             {
+                // A material that writes the stencil in the same queue: merging
+                // changes which faces draw before it, and so what it writes.
+                var all = ExportRendererSelection.Enumerate(clone).ToList();
+                var stencilQueues = new HashSet<int>(all.SelectMany(renderer => renderer.sharedMaterials).Where(WritesStencil).Select(material => material.renderQueue));
+                var candidates = all.OfType<SkinnedMeshRenderer>().Where(renderer => !kept.Contains(renderer)).Where(Eligible)
+                    .Where(renderer => !renderer.sharedMaterials.Any(material => stencilQueues.Contains(material.renderQueue))).ToList();
                 foreach (var group in candidates.GroupBy(renderer => Key(renderer) + "|" + SwitchedAbove(renderer.transform)))
                 {
                     // Those that cannot join a host try the next host among themselves.
@@ -94,6 +100,7 @@ namespace VRVlog.LilToonExporter
                             else left.Add(member);
                         }
                         if (plan.Donors.Count > 0 && Build(plan)) plans.Add(plan);
+                        left.AddRange(plan.Rejected);
                         members = left;
                     }
                 }
@@ -259,10 +266,20 @@ namespace VRVlog.LilToonExporter
             return Close(toHost, Matrix4x4.identity) ? Matrix4x4.identity : (Matrix4x4?)null;
         }
 
+        // Relative to the size of the rotation and scale part, so a mesh
+        // authored in centimetres is held to the same share of error.
         internal static bool Close(Matrix4x4 a, Matrix4x4 b)
         {
-            for (var i = 0; i < 16; i++)
-                if (!(Mathf.Abs(a[i] - b[i]) <= 1e-4f)) return false;
+            var size = 0f;
+            for (var row = 0; row < 3; row++)
+                for (var column = 0; column < 3; column++)
+                    size = Mathf.Max(size, Mathf.Abs(a[row, column]), Mathf.Abs(b[row, column]));
+            for (var row = 0; row < 4; row++)
+                for (var column = 0; column < 4; column++)
+                {
+                    var tolerance = 1e-4f * (row < 3 && column < 3 ? size : 1f);
+                    if (!(Mathf.Abs(a[row, column] - b[row, column]) <= tolerance)) return false;
+                }
             return true;
         }
 
@@ -297,7 +314,7 @@ namespace VRVlog.LilToonExporter
                     map[j] = bones.Count + added.Count;
                     added.Add((donorBones[j], pose));
                 }
-                if (!fits) { plan.Donors.Remove(donor); continue; }
+                if (!fits) { plan.Donors.Remove(donor); plan.Rejected.Add(donor.Renderer); continue; }
                 foreach (var item in added)
                 {
                     boneIndex[item.Bone] = bones.Count;
