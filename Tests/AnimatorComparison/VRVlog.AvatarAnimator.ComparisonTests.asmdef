@@ -1,0 +1,16 @@
+{
+  "name": "VRVlog.AvatarAnimator.ComparisonTests",
+  "rootNamespace": "VRVlog.AvatarAnimator.Comparison",
+  "references": [
+    "VRVlog.AvatarFormats"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": []
+}
