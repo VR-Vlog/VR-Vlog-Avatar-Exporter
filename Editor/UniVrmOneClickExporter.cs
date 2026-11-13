@@ -224,17 +224,23 @@ namespace VRVlog.LilToonExporter
         // The shapes each output shape the FX moves was made from. An output
         // with a source the export did not read has none, so its curves are
         // left out rather than written against another shape's endpoints.
-        static Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> AnimatorMorphSources(
-            ExportOptimizationBindings bindings, IReadOnlyDictionary<(int Renderer, string Shape), float> rest,
-            IReadOnlyDictionary<(int Renderer, string Shape), (double Baked, double End)> ends)
+        // A shape whose name another mesh also has without the FX moving it
+        // there is unknown once it lands on another renderer: a merge may have
+        // put that mesh's shape into the same output, which the FX never moved.
+        internal static Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> AnimatorMorphSources(
+            IEnumerable<(int SourceRenderer, string SourceShape, SkinnedMeshRenderer Renderer, string Shape)> routes,
+            IReadOnlyDictionary<(int Renderer, string Shape), float> rest,
+            IReadOnlyDictionary<(int Renderer, string Shape), (double Baked, double End)> ends,
+            ICollection<(int Renderer, string Shape)> shared)
         {
-            if (bindings == null || rest == null || ends == null) return null;
+            if (routes == null || rest == null || ends == null) return null;
             var sources = new Dictionary<(SkinnedMeshRenderer, string), List<AvatarAnimatorCapture.MorphSource>>();
             var unknown = new HashSet<(SkinnedMeshRenderer, string)>();
-            foreach (var (sourceRenderer, sourceShape, renderer, shape) in bindings.AnimatorMorphs)
+            foreach (var (sourceRenderer, sourceShape, renderer, shape) in routes)
             {
                 var key = (renderer, shape);
-                if (!rest.TryGetValue((sourceRenderer, sourceShape), out var weight) || !ends.TryGetValue((sourceRenderer, sourceShape), out var end))
+                if (!rest.TryGetValue((sourceRenderer, sourceShape), out var weight) || !ends.TryGetValue((sourceRenderer, sourceShape), out var end) ||
+                    (shared != null && shared.Contains((sourceRenderer, sourceShape)) && renderer.GetInstanceID() != sourceRenderer))
                 {
                     unknown.Add(key);
                     continue;
@@ -244,6 +250,20 @@ namespace VRVlog.LilToonExporter
             }
             return (renderer, shape) => !unknown.Contains((renderer, shape)) && sources.TryGetValue((renderer, shape), out var list)
                 ? list : (IReadOnlyList<AvatarAnimatorCapture.MorphSource>)Array.Empty<AvatarAnimatorCapture.MorphSource>();
+        }
+
+        // The shapes the FX moves whose name another mesh under root also has
+        // where the FX does not move it.
+        internal static HashSet<(int Renderer, string Shape)> SharedAnimatorMorphs(GameObject root,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> driven)
+        {
+            var moved = new HashSet<(SkinnedMeshRenderer, string)>(driven);
+            var skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skin => skin.sharedMesh != null).ToArray();
+            var shared = new HashSet<(int, string)>();
+            foreach (var (renderer, shape) in moved)
+                if (skins.Any(other => other != renderer && other.sharedMesh.GetBlendShapeIndex(shape) >= 0 && !moved.Contains((other, shape))))
+                    shared.Add((renderer.GetInstanceID(), shape));
+            return shared;
         }
 
         static void RecordLostMorphs(NdmfExportPreparation transformed, List<PreparedExpressionBindings.LostAuthoredMorph> lost,
@@ -549,6 +569,7 @@ namespace VRVlog.LilToonExporter
             // and shows at 1 for each shape the FX moves.
             Dictionary<(int Renderer, string Shape), float> animatorMorphRest = null;
             Dictionary<(int Renderer, string Shape), (double Baked, double End)> animatorMorphEnds = null;
+            HashSet<(int Renderer, string Shape)> animatorMorphShared = null;
             AvatarAnimatorCapture avatarAnimator = null;
             VRVlog.AvatarAnimator.AvatarAnimatorData avatarAnimatorData = null;
             // Set once the build passes have changed the copy; see the catch below.
@@ -798,6 +819,7 @@ namespace VRVlog.LilToonExporter
                             if (state.OriginalMesh.GetBlendShapeFrameCount(index) > 1) continue;
                             animatorMorphEnds[(renderer.GetInstanceID(), shape)] = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
                         }
+                        animatorMorphShared = SharedAnimatorMorphs(clone, driven);
                         return driven;
                     }, () => null);
                     // Without the build passes AAO never runs, so its components
@@ -970,7 +992,7 @@ namespace VRVlog.LilToonExporter
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
-                            AnimatorMorphSources(optimizerBindings, animatorMorphRest, animatorMorphEnds)), () => null);
+                            AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared)), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);

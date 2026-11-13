@@ -282,6 +282,49 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Nodes(json)[data.Targets.Single(t => t.Property == "morph").Node], Is.EqualTo("Front"));
         }
 
+        // A merge may put a same-named shape the FX never moved into the output
+        // of one it moves, and one weight would move both. A shape another mesh
+        // also has is written only while it stays on its own renderer.
+        [Test]
+        public void AShapeAnotherMeshAlsoHasIsUnknownOnceMerged()
+        {
+            var root = new GameObject("Root");
+            try
+            {
+                SkinnedMeshRenderer Skin(string name, params string[] shapes)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform);
+                    var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }, triangles = new[] { 0, 1, 2 } };
+                    foreach (var shape in shapes) mesh.AddBlendShapeFrame(shape, 100, new[] { Vector3.up, Vector3.up, Vector3.up }, null, null);
+                    var skin = go.AddComponent<SkinnedMeshRenderer>();
+                    skin.sharedMesh = mesh;
+                    return skin;
+                }
+                var face = Skin("Face", "Slim", "Smile");
+                var body = Skin("Body", "Slim", "Smile");
+                var shared = UniVrmOneClickExporter.SharedAnimatorMorphs(root, new[] { (face, "Slim"), (face, "Smile"), (body, "Smile") });
+                Assert.That(shared, Is.EquivalentTo(new[] { (face.GetInstanceID(), "Slim") }));
+                var merged = Skin("Merged", "Slim", "Smile");
+
+                var rest = new Dictionary<(int, string), float> { [(face.GetInstanceID(), "Slim")] = 0, [(face.GetInstanceID(), "Smile")] = 0 };
+                var ends = new Dictionary<(int, string), (double, double)> { [(face.GetInstanceID(), "Slim")] = (0, 100), [(face.GetInstanceID(), "Smile")] = (0, 100) };
+                var stays = UniVrmOneClickExporter.AnimatorMorphSources(new[] { (face.GetInstanceID(), "Slim", face, "Slim") }, rest, ends, shared);
+                Assert.That(stays(face, "Slim").Single().End, Is.EqualTo(100));
+                var moved = UniVrmOneClickExporter.AnimatorMorphSources(new[]
+                {
+                    (face.GetInstanceID(), "Slim", merged, "Slim"), (face.GetInstanceID(), "Smile", merged, "Smile"),
+                }, rest, ends, shared);
+                Assert.That(moved(merged, "Slim"), Is.Empty);
+                Assert.That(moved(merged, "Smile").Single().End, Is.EqualTo(100));
+            }
+            finally
+            {
+                foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(skin.sharedMesh);
+                Object.DestroyImmediate(root);
+            }
+        }
+
         // A shape of several frames need not be linear, so no weight may put
         // its base back: a curve on one is counted as blendShape.
         [Test]

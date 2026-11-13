@@ -32,9 +32,9 @@
 
 FXがBlendShapeを動かすアバターでは、拡張に`morph`のターゲットとトラックが増え、`omitted`の`blendShape`が減る。拡張が指すBlendShapeはファイルに残るので、メッシュのモーフターゲット・`targetNames`・`weights`と、それより後ろの番号（表情の`morphTargetBinds`など）が変わる。FXの無いアバター、BlendShapeを動かさないFXのアバターの書き出しは変わらない。
 
-## 残る制限
+## 別のメッシュの同じ名前のBlendShape
 
-FXが動かすBlendShapeと、FXが動かさない別のメッシュの同じ名前のBlendShapeを、Avatar Optimizerが1つに統合したときは、FXが動かす側の`baked`と`end`だけで書く。統合された側の焼き込みの重みが違うと、その頂点はアプリで違う形になる。FXが動かさないBlendShapeの行き先まで追うと、書き出しの最適化の道筋が増えて書き出す中身が変わりうるので、この段では扱わない
+Avatar Optimizerは同じ名前のBlendShapeを、メッシュの統合で1つにまとめることがある。FXが動かさない別のメッシュの同じ名前のBlendShapeが混ざると、1つの重みでFXが動かしていない頂点まで動く。FXが動かさないBlendShapeの行き先まで追うと、書き出しの最適化の道筋が増えて書き出す中身が変わりうる。そこで、FXが動かさない同じ名前のBlendShapeを別のメッシュが持つときは、最適化のあとに別のレンダラーへ移ったものを`blendShape`に数えて書かない。統合されずに元のレンダラーに残ったものは書く
 
 ## 確かめ方
 
