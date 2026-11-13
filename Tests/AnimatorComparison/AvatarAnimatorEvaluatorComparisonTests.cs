@@ -58,7 +58,7 @@ namespace VRVlog.AvatarAnimator.Comparison
                     targets[t] = new GameObject(Path(t));
                     targets[t].transform.SetParent(root.transform, false);
                     if (c.ActiveTargets.Contains(t)) targets[t].SetActive(data.Targets[t].Rest != 0);
-                    else targets[t].transform.localPosition = new Vector3(data.Targets[t].Rest, 0, 0);
+                    else targets[t].transform.localPosition = new Vector3((float)data.Targets[t].Rest, 0, 0);
                 }
                 var animator = root.AddComponent<Animator>();
                 animator.runtimeAnimatorController = controller;
