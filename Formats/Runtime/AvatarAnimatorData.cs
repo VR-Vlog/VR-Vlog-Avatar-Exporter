@@ -46,7 +46,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "morph" };
+        public static readonly string[] Properties = { "active", "morph", "parameter" };
         // The order the omitted kinds are written in.
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
 
@@ -155,7 +155,7 @@ namespace VRVlog.AvatarAnimator
             public string Type;
             public int Parameter;
             public int? Source;
-            public bool ConvertRange;
+            public bool ConvertRange, PreventRepeats;
             public double Value, ValueMin, ValueMax, Chance, SourceMin, SourceMax, DestMin, DestMax;
         }
 
@@ -189,14 +189,17 @@ namespace VRVlog.AvatarAnimator
         public sealed class Track { public int Target; public readonly List<ExpressionAnimationData.Curve> Curves = new List<ExpressionAnimationData.Curve>(); }
 
         // Rest is the value before any layer runs: 0 or 1 for active, a Unity
-        // BlendShape weight for morph. A morph target is morph target Morph of
-        // the mesh on Node; Baked is the weight already in the base geometry
-        // and End the weight the glTF target reaches at 1, so a weight v shows
-        // the glTF weight (v - Baked) / (End - Baked).
+        // BlendShape weight for morph, the controller's default for parameter.
+        // A morph target is morph target Morph of the mesh on Node; Baked is
+        // the weight already in the base geometry and End the weight the glTF
+        // target reaches at 1, so a weight v shows the glTF weight
+        // (v - Baked) / (End - Baked). A parameter target is FX parameter
+        // Parameter, which belongs to no node (Node is -1).
         public sealed class Target
         {
             public int Node; public string Property = "active"; public double Rest;
             public int Morph; public double Baked, End;
+            public int Parameter;
         }
 
         public sealed class Omission { public string Kind; public int Count; }
@@ -230,9 +233,10 @@ namespace VRVlog.AvatarAnimator
             return result;
         }
 
-        static Dictionary<string, object> WriteTarget(Target t) => t.Property == "morph"
-            ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
-            : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = (long)t.Rest };
+        static Dictionary<string, object> WriteTarget(Target t) =>
+            t.Property == "morph" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
+            : t.Property == "parameter" ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
+            : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
         {
@@ -322,6 +326,7 @@ namespace VRVlog.AvatarAnimator
                         operation["convertRange"] = o.ConvertRange;
                         operation["sourceMin"] = o.SourceMin; operation["sourceMax"] = o.SourceMax;
                         operation["destMin"] = o.DestMin; operation["destMax"] = o.DestMax;
+                        operation["preventRepeats"] = o.PreventRepeats;
                         return (object)operation;
                     }).ToList();
                     break;
@@ -421,10 +426,10 @@ namespace VRVlog.AvatarAnimator
                 var controller = new Controller { Playable = Choice(c["playable"], "fx") };
                 var layers = Json.Arr(c["layers"], 0, 1024);
                 for (var index = 0; index < layers.Count; index++)
-                    controller.Layers.Add(ReadLayer(layers[index], index, layers.Count, parameterCount, motions.Count));
+                    controller.Layers.Add(ReadLayer(layers[index], index, layers.Count, data.Parameters, motions.Count));
                 // The source of a synced layer owns its machines: it is not synced itself.
                 foreach (var layer in controller.Layers)
-                    if (layer.SyncedLayer >= 0 && controller.Layers[layer.SyncedLayer].SyncedLayer >= 0) throw Json.Bad();
+                    if (layer.SyncedLayer >= 0 && (controller.Layers[layer.SyncedLayer].SyncedLayer >= 0 || !SyncedShape(layer, controller.Layers[layer.SyncedLayer]))) throw Json.Bad();
                 // A condition is of a mode Unity takes on its parameter's type,
                 // and a state option reads a float, Mirror a bool.
                 foreach (var layer in controller.Layers)
@@ -545,7 +550,7 @@ namespace VRVlog.AvatarAnimator
                 data.Clips.Add(clip);
             }
 
-            var nodes = new HashSet<(int, string, int)>();
+            var seenTargets = new HashSet<(int, string, int)>();
             foreach (var raw in targets)
             {
                 var t = Json.Obj(raw);
@@ -553,20 +558,40 @@ namespace VRVlog.AvatarAnimator
                 if (target.Property == "morph")
                 {
                     Json.Obj(t, "node", "property", "morph", "rest", "baked", "end");
+                    target.Node = Json.NonNegative(t["node"]);
                     target.Morph = Json.NonNegative(t["morph"]);
                     target.Rest = Json.Number(t["rest"]); target.Baked = Json.Number(t["baked"]); target.End = Json.Number(t["end"]);
                     // At End == Baked the glTF target cannot show any weight.
                     if (target.End == target.Baked) throw Json.Bad();
                 }
+                else if (target.Property == "parameter")
+                {
+                    Json.Obj(t, "property", "parameter", "rest");
+                    target.Node = -1;
+                    target.Parameter = Index(t["parameter"], parameterCount);
+                    target.Rest = Json.Number(t["rest"]);
+                    // Rest is a value the parameter's type can hold.
+                    var type = data.Parameters[target.Parameter].Type;
+                    if (type == "int" ? target.Rest != Math.Floor(target.Rest) || target.Rest < int.MinValue || target.Rest > int.MaxValue : type != "float" && target.Rest != 0 && target.Rest != 1) throw Json.Bad();
+                }
                 else
                 {
                     Json.Obj(t, "node", "property", "rest");
+                    target.Node = Json.NonNegative(t["node"]);
                     target.Rest = Json.Integer(t["rest"]);
                     if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
-                target.Node = Json.NonNegative(t["node"]);
-                if (!nodes.Add((target.Node, target.Property, target.Morph))) throw Json.Bad();
+                // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for parameter.
+                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : 0;
+                if (!seenTargets.Add((target.Node, target.Property, key))) throw Json.Bad();
                 data.Targets.Add(target);
+            }
+            // Unity animates a float parameter only; a curve on an int, bool or
+            // trigger holds it at its default, which a target without a track shows.
+            foreach (var track in data.Clips.SelectMany(c => c.Tracks))
+            {
+                var target = data.Targets[track.Target];
+                if (target.Property == "parameter" && data.Parameters[target.Parameter].Type != "float") throw Json.Bad();
             }
 
             var kind = -1;
@@ -582,8 +607,9 @@ namespace VRVlog.AvatarAnimator
             return data;
         }
 
-        static Layer ReadLayer(object raw, int layerIndex, int layerCount, int parameterCount, int motionCount)
+        static Layer ReadLayer(object raw, int layerIndex, int layerCount, List<Parameter> parameters, int motionCount)
         {
+            var parameterCount = parameters.Count;
             var l = Json.Obj(raw, "name", "weight", "blending", "syncedLayer", "syncedLayerAffectsTiming", "machines", "states");
             var layer = new Layer
             {
@@ -637,7 +663,7 @@ namespace VRVlog.AvatarAnimator
                 // Only a machine inside another is left through Exit, and
                 // Unity looks at Any State transitions on the root alone.
                 if ((index == 0 ? machine.ExitTransitions : machine.AnyStateTransitions).Count > 0) throw Json.Bad();
-                ReadBehaviours(m["behaviours"], machine.Behaviours, parameterCount);
+                ReadBehaviours(m["behaviours"], machine.Behaviours, parameters);
                 layer.Machines.Add(machine);
             }
             foreach (var rawState in states)
@@ -656,14 +682,15 @@ namespace VRVlog.AvatarAnimator
                 state.SpeedParameter = Optional("speedParameter"); state.CycleOffsetParameter = Optional("cycleOffsetParameter");
                 state.MirrorParameter = Optional("mirrorParameter"); state.TimeParameter = Optional("timeParameter");
                 ReadAll(s["transitions"], state.Transitions, true);
-                ReadBehaviours(s["behaviours"], state.Behaviours, parameterCount);
+                ReadBehaviours(s["behaviours"], state.Behaviours, parameters);
                 layer.States.Add(state);
             }
             return layer;
         }
 
-        static void ReadBehaviours(object raw, List<Behaviour> into, int parameterCount)
+        static void ReadBehaviours(object raw, List<Behaviour> into, List<Parameter> parameters)
         {
+            var parameterCount = parameters.Count;
             foreach (var rawBehaviour in Json.Arr(raw, 0, 1024))
             {
                 var b = Json.Obj(rawBehaviour);
@@ -680,16 +707,23 @@ namespace VRVlog.AvatarAnimator
                             // A copy has a source and nothing else has.
                             if (o.ContainsKey("source") != (o.ContainsKey("type") && o["type"] as string == "copy")) throw Json.Bad();
                             if (o.ContainsKey("source")) keys.Add("source");
+                            // Data written before Prevent Repeats was read has no
+                            // preventRepeats: the setting is off there.
+                            if (o.ContainsKey("preventRepeats")) keys.Add("preventRepeats");
                             Json.Obj(o, keys.ToArray());
-                            behaviour.Operations.Add(new Operation
+                            var operation = new Operation
                             {
                                 Type = Choice(o["type"], OperationTypes), Parameter = Index(o["parameter"], parameterCount),
                                 Source = o.ContainsKey("source") ? Index(o["source"], parameterCount) : (int?)null,
                                 Value = Json.Number(o["value"]), ValueMin = Json.Number(o["valueMin"]), ValueMax = Json.Number(o["valueMax"]),
                                 Chance = Json.Number(o["chance"]), ConvertRange = Flag(o["convertRange"]),
                                 SourceMin = Json.Number(o["sourceMin"]), SourceMax = Json.Number(o["sourceMax"]),
-                                DestMin = Json.Number(o["destMin"]), DestMax = Json.Number(o["destMax"])
-                            });
+                                DestMin = Json.Number(o["destMin"]), DestMax = Json.Number(o["destMax"]),
+                                PreventRepeats = o.ContainsKey("preventRepeats") && Flag(o["preventRepeats"])
+                            };
+                            // The SDK offers Prevent Repeats only on a random into an int.
+                            if (operation.PreventRepeats && (operation.Type != "random" || parameters[operation.Parameter].Type != "int")) throw Json.Bad();
+                            behaviour.Operations.Add(operation);
                         }
                         break;
                     case "trackingControl":
@@ -734,6 +768,15 @@ namespace VRVlog.AvatarAnimator
 
         // Names may be empty: Unity and the SDK allow it.
         static string Name(object value) => value is string s && s.Length <= 1024 ? s : throw Json.Bad();
+
+        // A synced layer copies its source's machines and states, index for index.
+        internal static bool SyncedShape(Layer layer, Layer source)
+        {
+            if (layer.States.Count != source.States.Count || layer.Machines.Count != source.Machines.Count) return false;
+            for (var i = 0; i < layer.States.Count; i++)
+                if (layer.States[i].Machine != source.States[i].Machine) return false;
+            return true;
+        }
 
         static bool Flag(object value) => value is bool b ? b : throw Json.Bad();
 

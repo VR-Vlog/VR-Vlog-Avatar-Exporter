@@ -495,6 +495,317 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count - after.Shape, Is.EqualTo(1));
         }
 
+        // Unity moves a float FX parameter by a curve on the avatar root and
+        // holds an int, bool or trigger at the controller's default. Each is a
+        // target with that default as its rest; only the float has a track.
+        [Test]
+        public void ACurveOnAFloatParameterIsWrittenWithTheControllersDefault()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Parameters");
+            foreach (var (name, value) in new[] { ("GestureLeft", 3f), ("Blend", .75f), ("Hat", 1f) })
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), name), AnimationCurve.Constant(0, 1f / 60, value));
+            avatar.Fx.AddLayer("Parameters");
+            avatar.Fx.layers.Last().stateMachine.AddState("Parameters").motion = clip;
+            // A default a float cannot hold is written as it is. Blend's
+            // differs from the one Expression Parameters declare (.5): Unity
+            // returns to the controller's.
+            var parameters = avatar.Fx.parameters;
+            parameters.Single(p => p.name == "GestureLeft").defaultInt = 16777217;
+            parameters.Single(p => p.name == "Blend").defaultFloat = .25f;
+            avatar.Fx.parameters = parameters;
+
+            var data = Captured(avatar);
+            var targets = data.Targets.Select(t => (t.Property, data.Parameters[t.Parameter].Name, t.Rest));
+            Assert.That(targets, Is.EqualTo(new[] { ("parameter", "Hat", 0d), ("parameter", "Blend", .25), ("parameter", "GestureLeft", 16777217d) }),
+                "In the order of the parameters, each at the controller's default.");
+            Assert.That(data.Parameters.Single(p => p.Name == "Blend").Default, Is.EqualTo(.5), "The parameter keeps the Expression Parameters default.");
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Parameters");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "Blend" }));
+            Assert.That(tracks.Single().Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter"), Is.Empty);
+        }
+
+        // An active track comes before the parameter tracks in a clip, and
+        // the node targets before the parameter targets.
+        [Test]
+        public void ParameterTracksAndTargetsFollowTheActiveOnes()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Both", ("Hat", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Both");
+            avatar.Fx.layers.Last().stateMachine.AddState("Both").motion = clip;
+
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var data = Read(json);
+            var nodes = Nodes(json);
+            string Name(AvatarAnimatorData.Target t) => t.Property == "active" ? nodes[t.Node] : data.Parameters[t.Parameter].Name;
+            // Hat on also moves a BlendShape, a node target too.
+            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "morph", "parameter", "parameter" }));
+            Assert.That(data.Targets.Skip(3).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Both");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => Name(data.Targets[t.Target])), Is.EqualTo(new[] { "Hat", "BlendX", "BlendY" }));
+        }
+
+        // A parameter a clip animates is held by Unity even when its curve is
+        // left out, when the clip is under a tree Unity cannot read, or when a
+        // direct child has no weight: it is a target in each case. A curve on
+        // a name the controller does not declare, or below the root, is not.
+        [Test]
+        public void AParameterAClipDrivesIsATargetEvenWhenItsCurveIsLeftOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var tooLong = avatar.Clip("Too long");
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 7200, 1));
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("", typeof(Animator), "Gone"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("Hat", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Too long");
+            fx.layers.Last().stateMachine.AddState("Too long").motion = tooLong;
+
+            // A 1D tree on an int, which Unity cannot read.
+            var unread = avatar.Clip("Unread");
+            AnimationUtility.SetEditorCurve(unread, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Unread");
+            fx.CreateBlendTreeInController("Unread", out var tree, fx.layers.Length - 1);
+            tree.blendType = BlendTreeType.Simple1D;
+            tree.blendParameter = "GestureLeft";
+            tree.AddChild(unread, 0);
+
+            // A direct child weighted by a name the controller does not declare.
+            var unweighted = avatar.Clip("Unweighted");
+            AnimationUtility.SetEditorCurve(unweighted, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Unweighted");
+            fx.CreateBlendTreeInController("Unweighted", out var direct, fx.layers.Length - 1);
+            direct.blendType = BlendTreeType.Direct;
+            direct.AddChild(unweighted);
+            var children = direct.children;
+            children[0].directBlendParameter = "Nobody";
+            direct.children = children;
+
+            var data = Captured(avatar);
+            Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "Blend", "BlendX", "BlendY" }));
+            Assert.That(data.Clips.SelectMany(c => c.Tracks), Is.Empty);
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1), "The float curve past an hour.");
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // On an Additive layer Unity adds a parameter curve's value less its
+        // value at the reference pose. A clip that names its own reference
+        // pose leaves its parameter curves out: the parameter is still a
+        // target and the clip's activeSelf curves are kept.
+        [Test]
+        public void AClipWithItsOwnReferencePoseLeavesItsParameterCurvesOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Referenced", ("Glasses", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Linear(0, 0, 1, 1));
+            AnimationUtility.SetAdditiveReferencePose(clip, clip, 1);
+            avatar.Fx.AddLayer("Referenced");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            avatar.Fx.layers = layers;
+            avatar.Fx.layers.Last().stateMachine.AddState("Referenced").motion = clip;
+
+            var data = CapturedWithNodes(avatar);
+            Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Referenced");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active" }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
+        // A clip holds at most 4096 tracks. With one left after its activeSelf
+        // curves, one parameter curve is written and the next left out, and
+        // the activeSelf curves are all kept.
+        [Test]
+        public void ParameterCurvesLeaveTheTrackRoomToActiveSelfCurves()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Full");
+            var bindings = new List<EditorCurveBinding>();
+            for (var i = 0; i < AvatarAnimatorData.MaximumTracksPerClip - 1; i++)
+            {
+                new GameObject("Part" + i).transform.SetParent(avatar.Source.transform, false);
+                bindings.Add(EditorCurveBinding.FloatCurve("Part" + i, typeof(GameObject), "m_IsActive"));
+            }
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"));
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"));
+            AnimationUtility.SetEditorCurves(clip, bindings.ToArray(), bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Full");
+            avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
+
+            var data = CapturedWithNodes(avatar);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 1));
+            Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }).Or.EqualTo(new[] { "BlendY" }));
+            Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
+        // The track room activeSelf leaves goes to parameter curves before
+        // BlendShape curves: with two tracks left, the parameter curve takes
+        // one and a shape the other, whatever order Unity lists the curves in.
+        [Test]
+        public void ShapeCurvesTakeWhatParameterCurvesLeaveOfTheClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Full");
+            var bindings = new List<EditorCurveBinding> { FrontDetail, BackDetail };
+            for (var i = 0; i < AvatarAnimatorData.MaximumTracksPerClip - 2; i++)
+            {
+                new GameObject("Part" + i).transform.SetParent(avatar.Source.transform, false);
+                bindings.Add(EditorCurveBinding.FloatCurve("Part" + i, typeof(GameObject), "m_IsActive"));
+            }
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"));
+            AnimationUtility.SetEditorCurves(clip, bindings.ToArray(), bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Full");
+            avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
+
+            var data = CapturedWithNodes(avatar, EveryShape);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 2));
+            Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "morph"), Is.EqualTo(1));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter"), Is.Empty);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1), "The shape past the room.");
+        }
+
+        // activeSelf, parameter and BlendShape curves of one clip go into the
+        // extension together and read back as written: node targets (active,
+        // then morph) before parameter targets, and the clip's tracks in that order.
+        [Test]
+        public void ActiveParameterAndShapeCurvesOfOneClipRoundTripThroughTheExtension()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Mixed");
+            AnimationUtility.SetEditorCurve(clip, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 60));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, .75f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Mixed");
+            avatar.Fx.layers.Last().stateMachine.AddState("Mixed").motion = clip;
+
+            var nodes = new Dictionary<GameObject, int>();
+            var written = AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, EveryShape);
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(written));
+            var data = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(data)), Is.EqualTo(text), "Writing what was read must give the same JSON.");
+
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Active, then morph, then parameter targets.");
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Mixed");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "morph", "parameter" }));
+            string Node(int index) => nodes.Single(pair => pair.Value == index).Key.name;
+            Assert.That(Node(data.Targets[tracks[0].Target].Node), Is.EqualTo("Hat"));
+            Assert.That(Node(data.Targets[tracks[1].Target].Node), Is.EqualTo("Front"));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 60d, 60d }));
+            Assert.That(data.Targets[tracks[2].Target].Node, Is.EqualTo(-1));
+            Assert.That(data.Parameters[data.Targets[tracks[2].Target].Parameter].Name, Is.EqualTo("Blend"));
+            Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
+        }
+
+        // Unity never reads the first key's in-tangent or the last key's
+        // out-tangent: a curve with not a number there is still written.
+        [Test]
+        public void AnUnreadTangentThatIsNotANumberKeepsTheCurve()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Proxy");
+            var curve = new AnimationCurve(new Keyframe(0, 0, float.NaN, 1), new Keyframe(1, 1, 1, float.NaN));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), curve);
+            avatar.Fx.AddLayer("Proxy");
+            avatar.Fx.layers.Last().stateMachine.AddState("Proxy").motion = clip;
+
+            var data = Captured(avatar);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Proxy");
+            var keys = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks.Single().Curves.Single().Keys;
+            Assert.That(keys.Select(k => (k.InTangent, k.OutTangent)), Is.EqualTo(new[] { ((double?)null, (double?)1), (1, null) }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(0));
+        }
+
+        // With an override controller Unity binds the replacement clip: only
+        // its curves drive parameters and are written.
+        [Test]
+        public void AnOverrideControllersClipDrivesItsParameters()
+        {
+            using var avatar = new AnimatorAvatar();
+            var original = avatar.Clip("Original");
+            AnimationUtility.SetEditorCurve(original, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            var replacement = avatar.Clip("Replacement");
+            AnimationUtility.SetEditorCurve(replacement, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            avatar.Fx.AddLayer("Swapped");
+            avatar.Fx.layers.Last().stateMachine.AddState("Swapped").motion = original;
+            var runtime = new AnimatorOverrideController(avatar.Fx);
+            try
+            {
+                runtime[original] = replacement;
+                VrcAvatar.SetFx(avatar.Source.GetComponent(VrcAvatar.DescriptorType), runtime);
+
+                var data = Captured(avatar);
+                Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendY" }));
+                var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Swapped");
+                var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+                Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendY" }));
+                Assert.That(tracks.Single().Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .25, .25 }));
+            }
+            finally { Object.DestroyImmediate(runtime); }
+        }
+
+        // Unity applies an Avatar Mask to Transform and muscle curves only,
+        // none of which are written: a layer's mask changes nothing.
+        [Test]
+        public void ALayersAvatarMaskChangesNothingWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Masked", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Masked");
+            avatar.Fx.layers.Last().stateMachine.AddState("Masked").motion = clip;
+            var before = JsonDom.Serialize(AvatarAnimatorData.Write(Captured(avatar)));
+
+            var mask = new AvatarMask { name = "Mask" };
+            try
+            {
+                mask.transformCount = 1;
+                mask.SetTransformPath(0, "Glasses");
+                mask.SetTransformActive(0, false);
+                for (var part = AvatarMaskBodyPart.Root; part < AvatarMaskBodyPart.LastBodyPart; part++) mask.SetHumanoidBodyPartActive(part, false);
+                var layers = avatar.Fx.layers;
+                foreach (var index in new[] { 0, layers.Length - 1 }) layers[index].avatarMask = mask;
+                avatar.Fx.layers = layers;
+                Assert.That(avatar.Fx.layers.Last().avatarMask, Is.SameAs(mask));
+                Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(Captured(avatar))), Is.EqualTo(before));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mask);
+            }
+        }
+
+        // The SDK offers Prevent Repeats (3.10.2 and later) only on a random
+        // into an int; elsewhere, and on an SDK without it, it is off.
+        [Test]
+        public void PreventRepeatsIsWrittenForARandomIntoAnIntOnly()
+        {
+            var on = new PreventingOperation { preventRepeats = true };
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(on, "random", "int"), Is.True);
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(new PreventingOperation(), "random", "int"), Is.False);
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(new OlderOperation(), "random", "int"), Is.False);
+            foreach (var (type, parameterType) in new[] { ("random", "bool"), ("random", "float"), ("set", "int"), ("add", "int"), ("copy", "int") })
+                Assert.That(AvatarAnimatorCapture.PreventRepeats(on, type, parameterType), Is.False, type + " into " + parameterType);
+        }
+
+        sealed class PreventingOperation { public bool preventRepeats; }
+        sealed class OlderOperation { public float chance; }
+
         [Test]
         public void AnAvatarWithoutADescriptorHasNoExtension()
         {
@@ -1050,14 +1361,29 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // What the stage reads from the avatar as it stands, through the
-        // format's own checks. No object has a node here, so no curve is kept.
+        // format's own checks. No object has a node here, so no activeSelf
+        // curve is kept; parameter curves are.
         static AvatarAnimatorData Captured(AnimatorAvatar avatar) =>
             AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null).Resolve(_ => -1)));
+
+        // Every object is a node, numbered in the order it is asked for, so
+        // activeSelf tracks are kept.
+        static AvatarAnimatorData CapturedWithNodes(AnimatorAvatar avatar, Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> sources = null)
+        {
+            var nodes = new Dictionary<GameObject, int>();
+            return AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, sources)));
+        }
+
+        // Every shape has one source that shows a change.
+        static IReadOnlyList<AvatarAnimatorCapture.MorphSource> EveryShape(SkinnedMeshRenderer renderer, string shape) =>
+            new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
 
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>
             AvatarAnimatorData.Read(((Dictionary<string, object>)json["extensions"])[AvatarAnimatorData.Extension]);
 
         static readonly EditorCurveBinding FrontDetail = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+        static readonly EditorCurveBinding BackDetail = EditorCurveBinding.FloatCurve("Back", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
 
         // The name of the mesh target a morph target names.
         static string TargetName(Dictionary<string, object> json, AvatarAnimatorData.Target target)
