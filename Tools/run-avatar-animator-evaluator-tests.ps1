@@ -11,4 +11,6 @@ Add-Type -Path @(
     (Join-Path $PSScriptRoot 'AvatarAnimatorEvaluatorTests.cs'))
 [AvatarAnimatorEvaluatorTests]::Run()
 $recordings = Join-Path $PSScriptRoot 'Fixtures/AvatarAnimator'
-if (Test-Path $recordings) { [AvatarAnimatorComparisonReplay]::Run($recordings) } else { [AvatarAnimatorComparisonReplay]::Smoke() }
+# The recordings are committed: a missing folder is a broken checkout, not a reason to check less.
+if (-not (Test-Path $recordings)) { throw "Missing $recordings" }
+[AvatarAnimatorComparisonReplay]::Run($recordings)

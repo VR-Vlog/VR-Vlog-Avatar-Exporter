@@ -72,6 +72,8 @@ namespace VRVlog.AvatarAnimator
                 {
                     if (layer.Blending != "override") { reason = "Additive layers are not supported."; return false; }
                     if (layer.SyncedLayer >= 0 && layer.SyncedLayerAffectsTiming) { reason = "Synced layers that affect timing are not supported."; return false; }
+                    if (layer.SyncedLayer >= 0 && (layer.SyncedLayer >= controller.Layers.Count || !AvatarAnimatorData.SyncedShape(layer, controller.Layers[layer.SyncedLayer])))
+                    { reason = "A synced layer does not match its source layer."; return false; }
                 }
             foreach (var motion in data.Motions)
                 if (motion.Type == "blendTree" && motion.BlendType != "1d" && motion.BlendType != "direct")
@@ -266,7 +268,8 @@ namespace VRVlog.AvatarAnimator
                 case BoolType:
                 case TriggerType: return value != 0 ? 1 : 0;
                 case IntType: return Math.Truncate(Math.Max(int.MinValue, Math.Min(int.MaxValue, value)));
-                default: return (float)value;
+                // A double beyond the float range would become Infinity and then NaN in the blends.
+                default: return (float)Math.Max(-float.MaxValue, Math.Min(float.MaxValue, value));
             }
         }
 

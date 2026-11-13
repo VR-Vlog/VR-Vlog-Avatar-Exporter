@@ -658,6 +658,17 @@ public static class AvatarAnimatorEvaluatorTests
         b.Data.Motions[tree].BlendType = "2dSimpleDirectional";
         b.Data.Motions[tree].Parameters.Add(blend);
         Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D trees");
+
+        var s = new Builder();
+        var sn = s.Target();
+        var sourceLayer = s.Layer("Source");
+        Builder.State(sourceLayer, "A", s.Clip(0, false, (sn, 1)));
+        Builder.State(sourceLayer, "B", s.Clip(0, false, (sn, 2)));
+        var copy = s.Layer("Synced");
+        copy.SyncedLayer = 0;
+        Builder.State(copy, "A", -1);
+        Check(!AvatarAnimatorEvaluator.Supports(s.Data, out _), "a synced layer with fewer states than its source");
+        Throws<NotSupportedException>(() => new AvatarAnimatorEvaluator(s.Data, () => 0), "is refused before it can index past its states");
     }
 
     static void Arguments()
@@ -672,6 +683,9 @@ public static class AvatarAnimatorEvaluatorTests
         Throws<ArgumentOutOfRangeException>(() => e.Advance(double.PositiveInfinity), "infinite time");
         e.Set(f, .1);
         Check(e.Get(f) == (double)(float).1, "a float parameter is single precision");
+        e.Set(f, 1e300);
+        Check(e.Get(f) == float.MaxValue, "a value beyond the float range stops at the largest float");
+        e.Set(f, .1);
         e.Set(i, -2.7);
         Check(e.Get(i) == -2, "an int parameter is truncated");
         e.Set(t, 5);

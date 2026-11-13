@@ -36,12 +36,4 @@ public static class AvatarAnimatorComparisonReplay
 
     static double[][] Rows(object value) =>
         ((List<object>)value).Select(row => ((List<object>)row).Select(Convert.ToDouble).ToArray()).ToArray();
-
-    // Every case plays without an error; used before the recordings exist.
-    public static void Smoke()
-    {
-        foreach (var c in AvatarAnimatorComparison.Cases())
-            foreach (var timing in AvatarAnimatorComparison.Timings)
-                AvatarAnimatorComparison.Play(c, timing, out _, out _);
-    }
 }
