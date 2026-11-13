@@ -214,17 +214,18 @@ namespace VRVlog.LilToonExporter
                 modes[mode] = (modes.TryGetValue(mode, out var on) && on) || F.Bool(pass, "enabled");
             }
             foreach (var mode in modes) material.SetShaderPassEnabled(mode.Key, mode.Value);
-            // FORWARD_OUTLINE written off while FORWARD keeps ForwardBase on still
-            // runs here. A depth test that never passes draws none of its
+            // An outline pass written off still runs here while another pass of
+            // its LightMode is on (FORWARD for ForwardBase, FORWARD_ADD for
+            // ForwardAdd). A depth test that never passes draws none of its
             // pixels, as the app shows no outline. Only when every outline pass
-            // is off (what 細い輪郭線を省く writes): a material with ForwardBase
-            // off but its additive outline on keeps the width that pass shares.
-            // The additive outline pass tests depth on its own, so its colour
-            // mask is closed too: under extra lights it writes nothing.
+            // is off (what 細い輪郭線を省く writes): a material with its
+            // additive outline on keeps the width that pass shares. The
+            // additive outline pass tests depth on its own, so its colour mask
+            // is closed too: under extra lights it writes nothing.
             var passEnabled = F.List(spec, "passes").Select(F.Object)
                 .ToDictionary(pass => F.Text(pass, "name"), pass => F.Bool(pass, "enabled"), StringComparer.OrdinalIgnoreCase);
             bool Pass(string name, bool missing) => passEnabled.TryGetValue(name, out var on) ? on : missing;
-            if (material.HasProperty("_OutlineWidth") && Pass("FORWARD", false) && passEnabled.ContainsKey("FORWARD_OUTLINE") &&
+            if (material.HasProperty("_OutlineWidth") && passEnabled.ContainsKey("FORWARD_OUTLINE") &&
                 !Pass("FORWARD_OUTLINE", true) && !Pass("FORWARD_ADD_OUTLINE", false))
             {
                 material.SetFloat("_OutlineWidth", 0f);
