@@ -22,7 +22,7 @@ PYTHON_CHECKS = (
 HOST_CHECKS = (
     "run-compatibility-tests.ps1", "run-behavior-tests.ps1",
     "run-pose-contract-tests.ps1", "run-bake-tests.ps1",
-    "run-ndmf-preparation-tests.ps1",
+    "run-ndmf-preparation-tests.ps1", "run-avatar-animator-evaluator-tests.ps1",
 )
 TRANSFER_MODES = ("Default", "EditorOnly", "DevelopmentOnly", "DevelopmentEditor")
 

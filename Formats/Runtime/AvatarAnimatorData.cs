@@ -419,7 +419,7 @@ namespace VRVlog.AvatarAnimator
                     controller.Layers.Add(ReadLayer(layers[index], index, layers.Count, data.Parameters, motions.Count));
                 // The source of a synced layer owns its machines: it is not synced itself.
                 foreach (var layer in controller.Layers)
-                    if (layer.SyncedLayer >= 0 && controller.Layers[layer.SyncedLayer].SyncedLayer >= 0) throw Json.Bad();
+                    if (layer.SyncedLayer >= 0 && (controller.Layers[layer.SyncedLayer].SyncedLayer >= 0 || !SyncedShape(layer, controller.Layers[layer.SyncedLayer]))) throw Json.Bad();
                 // A condition is of a mode Unity takes on its parameter's type,
                 // and a state option reads a float, Mirror a bool.
                 foreach (var layer in controller.Layers)
@@ -747,6 +747,15 @@ namespace VRVlog.AvatarAnimator
 
         // Names may be empty: Unity and the SDK allow it.
         static string Name(object value) => value is string s && s.Length <= 1024 ? s : throw Json.Bad();
+
+        // A synced layer copies its source's machines and states, index for index.
+        internal static bool SyncedShape(Layer layer, Layer source)
+        {
+            if (layer.States.Count != source.States.Count || layer.Machines.Count != source.Machines.Count) return false;
+            for (var i = 0; i < layer.States.Count; i++)
+                if (layer.States[i].Machine != source.States[i].Machine) return false;
+            return true;
+        }
 
         static bool Flag(object value) => value is bool b ? b : throw Json.Bad();
 
