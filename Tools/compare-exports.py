@@ -35,9 +35,13 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       was removed, accessors and bufferViews are compared by their content (their own fields and
       bytes) in place of their index, and the BIN chunk through them, and the MB in the warning
       about packed vertex data is not compared; the Console line about unused BlendShapes left
-      out is dropped from both sides when B's count is A's less the removed targets. Each row lists, as
-      information only, the removed morph targets and the morph targets and omitted blendShape
-      count of each side; the summary counts the pairs with morph targets.
+      out is dropped from both sides when B's count is A's less the removed targets. A target
+      that names a reverse morph target (__VRVlog_Reverse_..., added to take a base that holds a
+      shape at its end back to 0) is counted, and is a difference unless it goes from a nonzero
+      baked to an end of 0. Each row lists, as
+      information only, the removed morph targets (and how many name a reverse one) and the morph
+      targets and omitted blendShape count of each side; the summary counts the pairs with morph
+      targets and with reverse ones.
 
 Checked for each pair:
   1. success or failure, and the failure text
@@ -423,6 +427,30 @@ def remove_kept_morphs(json_a, json_b):
     return json_b, removed
 
 
+REVERSE_PREFIX = "__VRVlog_Reverse_"
+
+
+def reverse_targets(document):
+    """Return (count, issues) for the "morph" targets of VRVLOG_avatar_animator that name a
+    reverse morph target, which the export adds to take a base that holds a shape at its end back
+    to weight 0: such a target must go from a nonzero baked to an end of 0."""
+    nodes, meshes = _member(document, "nodes") or [], _member(document, "meshes") or []
+    count, issues = 0, []
+    for i, target in enumerate(_member(_member(_member(document, "extensions"), ANIMATOR), "targets") or []):
+        node, morph = _index(_member(target, "node")), _index(_member(target, "morph"))
+        if _member(target, "property") != "morph" or node is None or morph is None or node >= len(nodes):
+            continue
+        mesh = _index(_member(nodes[node], "mesh"))
+        names = _target_names(meshes[mesh]) if mesh is not None and mesh < len(meshes) else None
+        if not names or morph >= len(names) or not str(names[morph]).startswith(REVERSE_PREFIX):
+            continue
+        count += 1
+        if _member(target, "end") != 0 or _member(target, "baked") in (0, None):
+            issues.append("animator target %d names reverse morph target %s with baked %r and end %r" % (
+                i, names[morph], _member(target, "baked"), _member(target, "end")))
+    return count, issues
+
+
 def remove_morph_tracks(document):
     """Return (copy of document, morph target count, omitted blendShape count) without the "morph"
     targets of VRVLOG_avatar_animator, their tracks and the omitted "blendShape" entry; the other
@@ -641,12 +669,16 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
     file_a, json_a, bin_a = read_glb(va) if va is not None else (b"", {}, b"")
     file_b, json_b, bin_b = read_glb(vb) if vb is not None else (b"", {}, b"")
     removed_morphs, morphs_a, morphs_b, blend_a, blend_b = 0, 0, 0, 0, 0
+    reverse = 0
     if kept_morphs:
+        reverse, reverse_issues = reverse_targets(json_b)
+        issues += reverse_issues
         json_b, removed_morphs = remove_kept_morphs(json_a, json_b)
         json_a, morphs_a, blend_a = remove_morph_tracks(json_a)
         json_b, morphs_b, blend_b = remove_morph_tracks(json_b)
         if morphs_a or morphs_b or removed_morphs:
-            row["kept_morphs"] = {"removed": removed_morphs, "targets": [morphs_a, morphs_b], "blendShape": [blend_a, blend_b]}
+            row["kept_morphs"] = {"removed": removed_morphs, "targets": [morphs_a, morphs_b], "blendShape": [blend_a, blend_b],
+                                  "reverse": reverse}
         if removed_morphs:
             wa, wb = [_masked_size(w) for w in wa], [_masked_size(w) for w in wb]
             wa, wb = _without_unused_note(wa, wb, removed_morphs)
@@ -724,8 +756,8 @@ def print_rows(rows):
             print("     i added extension allowed: %s (%d bytes of JSON)" % (extension["name"], extension["bytes"]))
         if "kept_morphs" in row:
             kept = row["kept_morphs"]
-            print("     i morph targets: %d removed from B, %d vs %d in the extension, omitted blendShape %d vs %d" % (
-                kept["removed"], kept["targets"][0], kept["targets"][1], kept["blendShape"][0], kept["blendShape"][1]))
+            print("     i morph targets: %d removed from B (%d reverse), %d vs %d in the extension, omitted blendShape %d vs %d" % (
+                kept["removed"], kept.get("reverse", 0), kept["targets"][0], kept["targets"][1], kept["blendShape"][0], kept["blendShape"][1]))
 
 
 def main(argv=None):
@@ -798,6 +830,8 @@ def main(argv=None):
         if args.allow_kept_morphs:
             kept = sum(1 for row in rows if row.get("kept_morphs"))
             print("morph targets in the extension in %d of %d pairs" % (kept, len(rows)))
+            reverse = [row["kept_morphs"].get("reverse", 0) for row in rows if row.get("kept_morphs")]
+            print("reverse morph targets in %d of %d pairs (%d in all)" % (sum(1 for n in reverse if n), len(rows), sum(reverse)))
     return 0 if rows and not mismatched else 1
 
 

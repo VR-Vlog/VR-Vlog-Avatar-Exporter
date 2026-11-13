@@ -1027,10 +1027,10 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1)))
         code, row = self.compare_kept()
         self.assertEqual((0, []), (code, row['issues']))
-        self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [2, 1]}, row['kept_morphs'])
+        self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [2, 1], 'reverse': 0}, row['kept_morphs'])
         code, out, _ = run_main([self.a, self.b, '--allow-kept-morphs'])
         self.assertEqual(0, code, out)
-        self.assertIn('morph targets: 1 removed from B, 0 vs 1 in the extension, omitted blendShape 2 vs 1', out)
+        self.assertIn('morph targets: 1 removed from B (0 reverse), 0 vs 1 in the extension, omitted blendShape 2 vs 1', out)
         self.assertIn('morph targets in the extension in 1 of 1 pairs', out)
         code, out, _ = run_main([self.a, self.b])
         self.assertEqual(1, code, out)
@@ -1063,7 +1063,7 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.put(self.b, morph_glb(['Smile', 'Wink'], animator=animator([0], blend=1)))
         code, row = self.compare_kept()
         self.assertEqual((0, []), (code, row['issues']))
-        self.assertEqual({'removed': 0, 'targets': [0, 1], 'blendShape': [2, 1]}, row['kept_morphs'])
+        self.assertEqual({'removed': 0, 'targets': [0, 1], 'blendShape': [2, 1], 'reverse': 0}, row['kept_morphs'])
         self.put(self.b, morph_glb(['Smile', 'Wink'], animator=animator([0], blend=1), changed='Wink'))
         code, row = self.compare_kept()
         self.assertEqual(1, code)
@@ -1150,6 +1150,30 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertTrue(any('warnings differ' in issue for issue in row['issues']), row['issues'])
 
+    def reverse(self, baked, end):
+        # B keeps a reverse target for the extension, which names it going from baked to end.
+        ext = animator([0], blend=1)
+        ext['targets'][1].update(baked=baked, end=end)
+        self.put(self.b, morph_glb(['__VRVlog_Reverse_0a1b', 'Smile', 'Wink'], animator=ext))
+
+    def test_a_reverse_target_from_baked_to_zero_is_removed_and_counted(self):
+        self.base()
+        self.reverse(100, 0)
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        self.assertEqual((1, 1), (row['kept_morphs']['removed'], row['kept_morphs']['reverse']))
+        _, out, _ = run_main([self.a, self.b, '--allow-kept-morphs'])
+        self.assertIn('1 removed from B (1 reverse)', out)
+        self.assertIn('reverse morph targets in 1 of 1 pairs (1 in all)', out)
+
+    def test_a_reverse_target_that_does_not_end_at_zero_is_a_difference(self):
+        for baked, end in ((100, 50), (0, 0)):
+            self.base()
+            self.reverse(baked, end)
+            code, row = self.compare_kept()
+            self.assertEqual(1, code, (baked, end))
+            self.assertTrue(any('reverse morph target' in issue for issue in row['issues']), row['issues'])
+
     def test_the_extension_counts_are_taken_before_an_added_extension_is_removed(self):
         # A is from before the extension; B adds it and keeps one target for it.
         self.put(self.a, morph_glb(['Smile', 'Wink']))
@@ -1158,7 +1182,7 @@ class AllowKeptMorphsTests(unittest.TestCase):
                                  '--allow-added-extension', compare.ANIMATOR])
         row = json.loads(out)['rows'][0]
         self.assertEqual((0, []), (code, row['issues']))
-        self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [0, 1]}, row['kept_morphs'])
+        self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [0, 1], 'reverse': 0}, row['kept_morphs'])
 
     def test_runs_mode_rejects_the_option(self):
         self.base()
