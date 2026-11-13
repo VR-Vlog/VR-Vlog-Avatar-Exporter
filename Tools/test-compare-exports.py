@@ -1030,7 +1030,7 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [2, 1], 'reverse': 0}, row['kept_morphs'])
         code, out, _ = run_main([self.a, self.b, '--allow-kept-morphs'])
         self.assertEqual(0, code, out)
-        self.assertIn('morph targets: 1 removed from B (0 reverse), 0 vs 1 in the extension, omitted blendShape 2 vs 1', out)
+        self.assertIn('morph targets: 1 removed from B, 0 vs 1 in the extension (0 reverse), omitted blendShape 2 vs 1', out)
         self.assertIn('morph targets in the extension in 1 of 1 pairs', out)
         code, out, _ = run_main([self.a, self.b])
         self.assertEqual(1, code, out)
@@ -1163,7 +1163,7 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.assertEqual((0, []), (code, row['issues']))
         self.assertEqual((1, 1), (row['kept_morphs']['removed'], row['kept_morphs']['reverse']))
         _, out, _ = run_main([self.a, self.b, '--allow-kept-morphs'])
-        self.assertIn('1 removed from B (1 reverse)', out)
+        self.assertIn('1 removed from B, 0 vs 1 in the extension (1 reverse)', out)
         self.assertIn('reverse morph targets in 1 of 1 pairs (1 in all)', out)
 
     def test_a_reverse_target_that_does_not_end_at_zero_is_a_difference(self):

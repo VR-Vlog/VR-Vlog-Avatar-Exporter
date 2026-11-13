@@ -38,10 +38,9 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       out is dropped from both sides when B's count is A's less the removed targets. A target
       that names a reverse morph target (__VRVlog_Reverse_..., added to take a base that holds a
       shape at its end back to 0) is counted, and is a difference unless it goes from a nonzero
-      baked to an end of 0. Each row lists, as
-      information only, the removed morph targets (and how many name a reverse one) and the morph
-      targets and omitted blendShape count of each side; the summary counts the pairs with morph
-      targets and with reverse ones.
+      baked to an end of 0. Each row lists, as information only, the removed morph targets, the
+      morph targets (and how many of B's name a reverse one) and omitted blendShape count of each
+      side; the summary counts the pairs with morph targets and with reverse ones.
 
 Checked for each pair:
   1. success or failure, and the failure text
@@ -756,8 +755,8 @@ def print_rows(rows):
             print("     i added extension allowed: %s (%d bytes of JSON)" % (extension["name"], extension["bytes"]))
         if "kept_morphs" in row:
             kept = row["kept_morphs"]
-            print("     i morph targets: %d removed from B (%d reverse), %d vs %d in the extension, omitted blendShape %d vs %d" % (
-                kept["removed"], kept.get("reverse", 0), kept["targets"][0], kept["targets"][1], kept["blendShape"][0], kept["blendShape"][1]))
+            print("     i morph targets: %d removed from B, %d vs %d in the extension (%d reverse), omitted blendShape %d vs %d" % (
+                kept["removed"], kept["targets"][0], kept["targets"][1], kept.get("reverse", 0), kept["blendShape"][0], kept["blendShape"][1]))
 
 
 def main(argv=None):
