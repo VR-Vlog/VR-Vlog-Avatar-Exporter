@@ -337,6 +337,31 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
         }
 
+        // On an Additive layer Unity adds a parameter curve's value less its
+        // value at the reference pose. A clip that names its own reference
+        // pose leaves its parameter curves out: the parameter is still a
+        // target and the clip's activeSelf curves are kept.
+        [Test]
+        public void AClipWithItsOwnReferencePoseLeavesItsParameterCurvesOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Referenced", ("Glasses", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Linear(0, 0, 1, 1));
+            AnimationUtility.SetAdditiveReferencePose(clip, clip, 1);
+            avatar.Fx.AddLayer("Referenced");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            avatar.Fx.layers = layers;
+            avatar.Fx.layers.Last().stateMachine.AddState("Referenced").motion = clip;
+
+            var data = Captured(avatar);
+            Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Referenced");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active" }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
         // With an override controller Unity binds the replacement clip: only
         // its curves drive parameters and are written.
         [Test]

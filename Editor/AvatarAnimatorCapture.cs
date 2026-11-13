@@ -700,13 +700,18 @@ namespace VRVlog.LilToonExporter
                 if (converted == null) { Omit("other"); continue; }
                 tracks.Add((Target(target.gameObject), converted));
             }
+            // On an Additive layer Unity adds a parameter curve's value less its
+            // value at the reference pose, which is the clip's first frame unless
+            // the clip names another. Another reference pose is not written, so
+            // such a clip leaves its parameter curves out.
+            var ownReferencePose = AnimationUtility.GetAnimationClipSettings(clip).hasAdditiveReferencePose;
             foreach (var binding in bindings)
             {
                 var parameter = AnimatedParameter(binding);
                 // Unity moves a float parameter only; on an int, bool or
                 // trigger the curve holds the default, which its target shows.
                 if (parameter < 0 || data.Parameters[parameter].Type != "float") continue;
-                var animated = Curve(clip, binding, ref keys);
+                var animated = ownReferencePose ? null : Curve(clip, binding, ref keys);
                 if (animated == null) Omit("parameter");
                 else parameterTracks.Add((parameter, animated));
             }
