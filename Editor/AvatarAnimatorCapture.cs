@@ -727,12 +727,18 @@ namespace VRVlog.LilToonExporter
         // not a number or out of range): it is then left out alone, so the rest
         // of the avatar is still written. The keys are counted before the
         // curve is converted, which keeps every key: a curve too long is not
-        // converted.
+        // converted. Unity never reads the first key's in-tangent or the last
+        // key's out-tangent, which some tools leave as not a number: such a
+        // tangent is written as null, as an infinite one is.
         static ExpressionAnimationData.Curve Curve(AnimationClip clip, EditorCurveBinding binding, ref int keys)
         {
             var curve = AnimationUtility.GetEditorCurve(clip, binding);
             if (curve == null || curve.length == 0 || keys + curve.length > AvatarAnimatorData.MaximumKeysPerClip) return null;
             var converted = VrChatGestureExpressions.ConvertCurve(curve);
+            var first = converted.Keys[0];
+            var last = converted.Keys[converted.Keys.Count - 1];
+            if (first.InTangent is double inTangent && double.IsNaN(inTangent)) first.InTangent = null;
+            if (last.OutTangent is double outTangent && double.IsNaN(outTangent)) last.OutTangent = null;
             try { converted.Validate(); }
             catch (InvalidOperationException) { return null; }
             keys += converted.Keys.Count;

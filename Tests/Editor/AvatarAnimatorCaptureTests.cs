@@ -391,6 +391,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
         }
 
+        // Unity never reads the first key's in-tangent or the last key's
+        // out-tangent: a curve with not a number there is still written.
+        [Test]
+        public void AnUnreadTangentThatIsNotANumberKeepsTheCurve()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Proxy");
+            var curve = new AnimationCurve(new Keyframe(0, 0, float.NaN, 1), new Keyframe(1, 1, 1, float.NaN));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), curve);
+            avatar.Fx.AddLayer("Proxy");
+            avatar.Fx.layers.Last().stateMachine.AddState("Proxy").motion = clip;
+
+            var data = Captured(avatar);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Proxy");
+            var keys = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks.Single().Curves.Single().Keys;
+            Assert.That(keys.Select(k => (k.InTangent, k.OutTangent)), Is.EqualTo(new[] { ((double?)null, (double?)1), (1, null) }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(0));
+        }
+
         // With an override controller Unity binds the replacement clip: only
         // its curves drive parameters and are written.
         [Test]
