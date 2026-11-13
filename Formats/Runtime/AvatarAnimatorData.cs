@@ -46,7 +46,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "parameter" };
+        public static readonly string[] Properties = { "active", "morph", "parameter" };
         // The order the omitted kinds are written in.
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
 
@@ -188,10 +188,19 @@ namespace VRVlog.AvatarAnimator
 
         public sealed class Track { public int Target; public readonly List<ExpressionAnimationData.Curve> Curves = new List<ExpressionAnimationData.Curve>(); }
 
-        // Rest is the value before any layer runs: 0 or 1 for active, the
-        // controller's default for parameter. A parameter target is FX
-        // parameter Parameter, which belongs to no node (Node is -1).
-        public sealed class Target { public int Node; public string Property = "active"; public double Rest; public int Parameter; }
+        // Rest is the value before any layer runs: 0 or 1 for active, a Unity
+        // BlendShape weight for morph, the controller's default for parameter.
+        // A morph target is morph target Morph of the mesh on Node; Baked is
+        // the weight already in the base geometry and End the weight the glTF
+        // target reaches at 1, so a weight v shows the glTF weight
+        // (v - Baked) / (End - Baked). A parameter target is FX parameter
+        // Parameter, which belongs to no node (Node is -1).
+        public sealed class Target
+        {
+            public int Node; public string Property = "active"; public double Rest;
+            public int Morph; public double Baked, End;
+            public int Parameter;
+        }
 
         public sealed class Omission { public string Kind; public int Count; }
 
@@ -224,8 +233,9 @@ namespace VRVlog.AvatarAnimator
             return result;
         }
 
-        static Dictionary<string, object> WriteTarget(Target t) => t.Property == "parameter"
-            ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
+        static Dictionary<string, object> WriteTarget(Target t) =>
+            t.Property == "morph" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
+            : t.Property == "parameter" ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
@@ -545,7 +555,16 @@ namespace VRVlog.AvatarAnimator
             {
                 var t = Json.Obj(raw);
                 var target = new Target { Property = Choice(Get(t, "property"), Properties) };
-                if (target.Property == "parameter")
+                if (target.Property == "morph")
+                {
+                    Json.Obj(t, "node", "property", "morph", "rest", "baked", "end");
+                    target.Node = Json.NonNegative(t["node"]);
+                    target.Morph = Json.NonNegative(t["morph"]);
+                    target.Rest = Json.Number(t["rest"]); target.Baked = Json.Number(t["baked"]); target.End = Json.Number(t["end"]);
+                    // At End == Baked the glTF target cannot show any weight.
+                    if (target.End == target.Baked) throw Json.Bad();
+                }
+                else if (target.Property == "parameter")
                 {
                     Json.Obj(t, "property", "parameter", "rest");
                     target.Node = -1;
@@ -562,7 +581,9 @@ namespace VRVlog.AvatarAnimator
                     target.Rest = Json.Integer(t["rest"]);
                     if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
-                if (!seenTargets.Add((target.Node, target.Property, target.Parameter))) throw Json.Bad();
+                // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for parameter.
+                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : 0;
+                if (!seenTargets.Add((target.Node, target.Property, key))) throw Json.Bad();
                 data.Targets.Add(target);
             }
             // Unity animates a float parameter only; a curve on an int, bool or

@@ -18,6 +18,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void KeepsTargetsOfExpressionAnimations() => UnusedMorphTargetsFixture.KeepsTargetsOfExpressionAnimations(Check);
 
         [Test]
+        public void KeepsAndRenumbersTheBindsItIsGiven() => UnusedMorphTargetsFixture.KeepsAndRenumbersTheBindsItIsGiven(Check);
+
+        [Test]
         public void KeepsNamesTheAppDrives() => UnusedMorphTargetsFixture.KeepsNamesTheAppDrives(Check);
 
         [Test]

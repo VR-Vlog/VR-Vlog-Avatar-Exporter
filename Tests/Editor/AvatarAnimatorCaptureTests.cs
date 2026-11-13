@@ -225,8 +225,11 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(behaviours.Select(b => b.Operations.Single().Source), Is.EqualTo(new int?[] { null, null }));
         }
 
+        // Hat on moves Front's Hair detail to 80. The scene holds it at 35,
+        // which the export bakes into the base, and its one frame is at 100.
+        // The file keeps the target the extension names, though no face uses it.
         [Test]
-        public void BlendShapeAndMaterialCurvesAreCountedNotWritten()
+        public void BlendShapeCurvesAreWrittenAndMaterialCurvesCounted()
         {
             using var avatar = new AnimatorAvatar();
             var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
@@ -234,9 +237,262 @@ namespace VRVlog.LilToonExporter.Tests
             var nodes = Nodes(json);
 
             // "other" is the root's activeSelf curve, whose last key is past the hour the contract allows.
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("material", 1), ("other", 1) }));
+            Assert.That(data.Targets.Where(t => t.Property == "active").Select(t => nodes[t.Node]).OrderBy(name => name), Is.EqualTo(new[] { "Glasses", "Hat" }));
+            var morph = data.Targets.Single(t => t.Property == "morph");
+            Assert.That(nodes[morph.Node], Is.EqualTo("Front"));
+            Assert.That((morph.Rest, morph.Baked, morph.End), Is.EqualTo((35d, 35d, 100d)));
+            Assert.That(TargetName(json, morph), Is.EqualTo("Hair detail"));
+
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            var track = hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph));
+            Assert.That(track.Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 80d, 80d }));
+            Assert.That(data.Clips.Where(clip => clip != hatOn).SelectMany(clip => clip.Tracks).Any(t => t.Target == data.Targets.IndexOf(morph)), Is.False);
+        }
+
+        // Curves that only hold a shape at the weight the base shows change
+        // nothing by themselves: they go with the shape when nothing else keeps it.
+        [Test]
+        public void AShapeOnlyHeldAtItsSceneWeightGoesWithItsUnusedShape()
+        {
+            using var avatar = new AnimatorAvatar();
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var data = Read(json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False, "Holding the weight the base shows changes nothing.");
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            Assert.That(hatOn.Tracks.Select(t => data.Targets[t.Target].Property), Has.No.Member("morph"));
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }), "Nothing is lost, so nothing is counted.");
+            Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Hair detail"), Is.False, "Nothing else keeps the shape.");
+        }
+
+        // A curve on a shape the mesh lacks is a blendShape the file cannot
+        // carry; one on a path with no SkinnedMeshRenderer has no node.
+        [Test]
+        public void AShapeCurveWithoutItsShapeOrRendererIsCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.ClipNamed("Hat on");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Gone"), AnimationCurve.Constant(0, 1f / 60, 50));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Nowhere", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1f / 60, 50));
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var data = Read(json);
+
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1), ("missingNode", 1) }));
+            Assert.That(Nodes(json)[data.Targets.Single(t => t.Property == "morph").Node], Is.EqualTo("Front"));
+        }
+
+        // A merge may put a same-named shape the FX never moved into the output
+        // of one it moves, and one weight would move both. A shape another mesh
+        // also has is written only while it stays on its own renderer.
+        [Test]
+        public void AShapeAnotherMeshAlsoHasIsUnknownOnceMerged()
+        {
+            var root = new GameObject("Root");
+            try
+            {
+                SkinnedMeshRenderer Skin(string name, params string[] shapes)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform);
+                    var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }, triangles = new[] { 0, 1, 2 } };
+                    foreach (var shape in shapes) mesh.AddBlendShapeFrame(shape, 100, new[] { Vector3.up, Vector3.up, Vector3.up }, null, null);
+                    var skin = go.AddComponent<SkinnedMeshRenderer>();
+                    skin.sharedMesh = mesh;
+                    return skin;
+                }
+                var face = Skin("Face", "Slim", "Smile");
+                var body = Skin("Body", "Slim", "Smile");
+                var shared = UniVrmOneClickExporter.SharedAnimatorMorphs(root, new[] { (face, "Slim"), (face, "Smile"), (body, "Smile") });
+                Assert.That(shared, Is.EquivalentTo(new[] { (face.GetInstanceID(), "Slim") }));
+                var merged = Skin("Merged", "Slim", "Smile");
+
+                var rest = new Dictionary<(int, string), float> { [(face.GetInstanceID(), "Slim")] = 0, [(face.GetInstanceID(), "Smile")] = 0 };
+                var ends = new Dictionary<(int, string), (double, double)> { [(face.GetInstanceID(), "Slim")] = (0, 100), [(face.GetInstanceID(), "Smile")] = (0, 100) };
+                var stays = UniVrmOneClickExporter.AnimatorMorphSources(new[] { (face.GetInstanceID(), "Slim", face, "Slim") }, rest, ends, shared);
+                Assert.That(stays(face, "Slim").Single().End, Is.EqualTo(100));
+                var moved = UniVrmOneClickExporter.AnimatorMorphSources(new[]
+                {
+                    (face.GetInstanceID(), "Slim", merged, "Slim"), (face.GetInstanceID(), "Smile", merged, "Smile"),
+                }, rest, ends, shared);
+                Assert.That(moved(merged, "Slim"), Is.Empty);
+                Assert.That(moved(merged, "Smile").Single().End, Is.EqualTo(100));
+            }
+            finally
+            {
+                foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(skin.sharedMesh);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        // A shape of several frames need not be linear, so no weight may put
+        // its base back: a curve on one is counted as blendShape.
+        [Test]
+        public void AShapeOfSeveralFramesIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var mesh = avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(r => r.name == "Front").sharedMesh;
+            var deltas = new Vector3[mesh.vertexCount];
+            deltas[0] = Vector3.right;
+            mesh.AddBlendShapeFrame("Frames", 50, deltas, null, null);
+            deltas[0] = Vector3.right + Vector3.up;
+            mesh.AddBlendShapeFrame("Frames", 100, deltas, null, null);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, null);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frames"),
+                AnimationCurve.Constant(0, 1f / 60, 80));
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
             Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
-            Assert.That(data.Targets.Select(t => nodes[t.Node]).OrderBy(name => name), Is.EqualTo(new[] { "Glasses", "Hat" }));
-            Assert.That(data.Targets.All(t => t.Property == "active"), Is.True);
+        }
+
+        // An additive layer adds a shape's curve less its reference pose,
+        // which the extension does not carry: a shape that a clip of such a
+        // layer moves is counted as blendShape, though an override layer plays
+        // the same clip.
+        [Test]
+        public void AShapeAnAdditiveLayerMovesIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Fx.AddLayer("Added");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState("On").motion = avatar.ClipNamed("Hat on");
+            avatar.Fx.layers = layers;
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+
+            Assert.That(data.Controllers.Single().Layers.Last().Blending, Is.EqualTo("additive"));
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
+        }
+
+        // The base geometry takes the other Lip Sync shapes and the default
+        // mouth off a Lip Sync shape too, which baked and end cannot carry:
+        // a curve on one is counted as blendShape.
+        [Test]
+        public void ALipSyncShapeIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var descriptor = avatar.Source.GetComponent(VrcAvatar.DescriptorType);
+            var type = descriptor.GetType();
+            var lipSync = type.GetField("lipSync");
+            lipSync.SetValue(descriptor, Enum.Parse(lipSync.FieldType, "VisemeBlendShape"));
+            type.GetField("VisemeSkinnedMesh").SetValue(descriptor, avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(r => r.name == "Front"));
+            var visemes = new string[15];
+            visemes[10] = "Hair detail";
+            type.GetField("VisemeBlendShapes").SetValue(descriptor, visemes);
+            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
+        }
+
+        // What the export made of the shape decides whether it is written.
+        // Sources that agree are one; none, a disagreement or a target that
+        // shows no change (baked equals end) count as blendShape.
+        [Test]
+        public void AShapeIsWrittenOnlyFromSourcesThatAgreeAndShowAChange()
+        {
+            using var avatar = new AnimatorAvatar();
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            AvatarAnimatorCapture.MorphSource Source(double baked) => new AvatarAnimatorCapture.MorphSource(35, baked, 100);
+            foreach (var (sources, written) in new[]
+            {
+                (new[] { Source(35) }, true),
+                (new[] { Source(35), Source(35) }, true),
+                (new AvatarAnimatorCapture.MorphSource[0], false),
+                (new[] { Source(35), Source(0) }, false),
+                (new[] { Source(100) }, false),
+            })
+            {
+                var data = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) =>
+                    renderer.gameObject == front && shape == "Hair detail" ? sources : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+                var label = string.Join(",", sources.Select(s => s.Baked));
+                var morph = data.Targets.SingleOrDefault(t => t.Property == "morph");
+                Assert.That(morph != null, Is.EqualTo(written), label);
+                Assert.That(data.Omitted.Any(o => o.Kind == "blendShape"), Is.EqualTo(!written), label);
+                Assert.That(capture.MorphBinds.Count, Is.EqualTo(written ? 1 : 0), label);
+                if (written) Assert.That((morph.Node, morph.Morph, morph.Rest, morph.Baked, morph.End), Is.EqualTo((0, 0, 35d, 35d, 100d)));
+            }
+            Assert.That(capture.Resolve(o => o == front ? 0 : -1).Targets.Any(t => t.Property == "morph"), Is.False, "No sources at all.");
+        }
+
+        // Shapes that would take the extension past the limit are all
+        // counted, and the extension is written with activeSelf alone.
+        [Test]
+        public void ShapesOverTheSizeLimitAreCountedAndTheRestWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            int Node(GameObject o) => o == front ? 0 : -1;
+            IReadOnlyList<AvatarAnimatorCapture.MorphSource> Sources(SkinnedMeshRenderer renderer, string shape) =>
+                new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
+            int Size(AvatarAnimatorData data) => System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+            var without = Size(capture.Resolve(Node));
+            Assert.That(Size(capture.Resolve(Node, Sources)), Is.GreaterThan(without));
+
+            AvatarAnimatorCapture.MaximumBytes = without;
+            var data = capture.Resolve(Node, Sources);
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1));
+            Assert.That(capture.MorphBinds, Is.Empty);
+            Assert.That(Size(data), Is.EqualTo(without));
+        }
+
+        // A morph target must name one of its node's mesh's targets.
+        [Test]
+        public void InjectRejectsAMorphTargetItsNodeDoesNotHave()
+        {
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), null);
+            var json = GlbDocument.Read(exported).Json;
+            var nodes = (List<object>)json["nodes"];
+            Assert.That(AvatarAnimatorCapture.Inject(exported, Read(json)), Is.Not.Null);
+
+            var data = Read(json);
+            data.Targets.Single(t => t.Property == "morph").Morph = 1000;
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("morph target"));
+            data = Read(json);
+            data.Targets.Single(t => t.Property == "morph").Node = nodes.FindIndex(node => !((Dictionary<string, object>)node).ContainsKey("mesh"));
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("morph target"));
+        }
+
+        // BlendShape curves take the keys and tracks activeSelf leaves in
+        // their clip, whatever order Unity lists the curves in.
+        [Test]
+        public void ShapeCurvesTakeWhatActiveSelfLeavesOfTheClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            (int Shape, int Kept) Counts()
+            {
+                var data = Captured(avatar);
+                int Count(string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
+                return (Count("blendShape"), Count("missingNode"));
+            }
+            var before = Counts();
+            var clip = avatar.Clip("Long");
+            AnimationUtility.SetEditorCurve(clip, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 50));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"),
+                new AnimationCurve(Enumerable.Range(0, AvatarAnimatorData.MaximumKeysPerClip - 1).Select(index => new Keyframe(index / 60f, index % 2)).ToArray()));
+            avatar.Fx.AddLayer("Long");
+            avatar.Fx.layers.Last().stateMachine.AddState("Long").motion = clip;
+            var after = Counts();
+            // No object has a node here: the activeSelf curve kept is counted as missingNode.
+            Assert.That((after.Shape - before.Shape, after.Kept - before.Kept), Is.EqualTo((1, 1)));
+
+            // One track over the clip's limit.
+            var wide = avatar.Clip("Wide");
+            var bindings = Enumerable.Range(0, AvatarAnimatorData.MaximumTracksPerClip + 1)
+                .Select(index => EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Shape " + index)).ToArray();
+            AnimationUtility.SetEditorCurves(wide, bindings, bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Wide");
+            avatar.Fx.layers.Last().stateMachine.AddState("Wide").motion = wide;
+            var data = Captured(avatar);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count - after.Shape, Is.EqualTo(1));
         }
 
         // Unity moves a float FX parameter by a curve on the avatar root and
@@ -287,8 +543,9 @@ namespace VRVlog.LilToonExporter.Tests
             var data = Read(json);
             var nodes = Nodes(json);
             string Name(AvatarAnimatorData.Target t) => t.Property == "active" ? nodes[t.Node] : data.Parameters[t.Parameter].Name;
-            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "parameter", "parameter" }));
-            Assert.That(data.Targets.Skip(2).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            // Hat on also moves a BlendShape, a node target too.
+            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "morph", "parameter", "parameter" }));
+            Assert.That(data.Targets.Skip(3).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
             var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Both");
             var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
             Assert.That(tracks.Select(t => Name(data.Targets[t.Target])), Is.EqualTo(new[] { "Hat", "BlendX", "BlendY" }));
@@ -389,6 +646,70 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }).Or.EqualTo(new[] { "BlendY" }));
             Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
             Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
+        // The track room activeSelf leaves goes to parameter curves before
+        // BlendShape curves: with two tracks left, the parameter curve takes
+        // one and a shape the other, whatever order Unity lists the curves in.
+        [Test]
+        public void ShapeCurvesTakeWhatParameterCurvesLeaveOfTheClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Full");
+            var bindings = new List<EditorCurveBinding> { FrontDetail, BackDetail };
+            for (var i = 0; i < AvatarAnimatorData.MaximumTracksPerClip - 2; i++)
+            {
+                new GameObject("Part" + i).transform.SetParent(avatar.Source.transform, false);
+                bindings.Add(EditorCurveBinding.FloatCurve("Part" + i, typeof(GameObject), "m_IsActive"));
+            }
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"));
+            AnimationUtility.SetEditorCurves(clip, bindings.ToArray(), bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Full");
+            avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
+
+            var data = CapturedWithNodes(avatar, EveryShape);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 2));
+            Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "morph"), Is.EqualTo(1));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter"), Is.Empty);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1), "The shape past the room.");
+        }
+
+        // activeSelf, parameter and BlendShape curves of one clip go into the
+        // extension together and read back as written: node targets (active,
+        // then morph) before parameter targets, and the clip's tracks in that order.
+        [Test]
+        public void ActiveParameterAndShapeCurvesOfOneClipRoundTripThroughTheExtension()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Mixed");
+            AnimationUtility.SetEditorCurve(clip, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 60));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, .75f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Mixed");
+            avatar.Fx.layers.Last().stateMachine.AddState("Mixed").motion = clip;
+
+            var nodes = new Dictionary<GameObject, int>();
+            var written = AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, EveryShape);
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(written));
+            var data = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(data)), Is.EqualTo(text), "Writing what was read must give the same JSON.");
+
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Active, then morph, then parameter targets.");
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Mixed");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "morph", "parameter" }));
+            string Node(int index) => nodes.Single(pair => pair.Value == index).Key.name;
+            Assert.That(Node(data.Targets[tracks[0].Target].Node), Is.EqualTo("Hat"));
+            Assert.That(Node(data.Targets[tracks[1].Target].Node), Is.EqualTo("Front"));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 60d, 60d }));
+            Assert.That(data.Targets[tracks[2].Target].Node, Is.EqualTo(-1));
+            Assert.That(data.Parameters[data.Targets[tracks[2].Target].Parameter].Name, Is.EqualTo("Blend"));
+            Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
         }
 
         // Unity never reads the first key's in-tangent or the last key's
@@ -501,25 +822,32 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
-        // The extension only adds: without it, its extensionsUsed entry and its
-        // required version, the file is the one written when the stage fails.
-        // The stage runs four times (snapshot, read, node mapping, injection);
-        // a failure in any of them is left out, in strict mode too.
+        // Without shapes to keep, the extension only adds: without it, its
+        // extensionsUsed entry and its required version, the file is the one
+        // written when the stage fails. The stage runs six times (activeSelf
+        // and BlendShape snapshots, the shapes the FX moves, read, node
+        // mapping, injection); a failure in any of them is left out, in strict
+        // mode too.
         [TestCase(1, true)]
         [TestCase(2, true)]
         [TestCase(3, true)]
         [TestCase(4, true)]
+        [TestCase(5, true)]
+        [TestCase(6, true)]
         [TestCase(1, false)]
         [TestCase(2, false)]
         [TestCase(3, false)]
         [TestCase(4, false)]
+        [TestCase(5, false)]
+        [TestCase(6, false)]
         public void TheExtensionLeavesTheRestOfTheFileAsItIs(int failingCall, bool continueOnStageFailure)
         {
             using var avatar = new AnimatorAvatar();
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, null);
             var calls = 0;
             ExportTestHooks.FaultInjection = stage => { if (stage == ExportStage.AvatarAnimator) calls++; };
             var normal = avatar.Export(new List<string>(), null);
-            Assert.That(calls, Is.EqualTo(4), "Snapshot, Capture, Resolve and Inject each run once.");
+            Assert.That(calls, Is.EqualTo(6), "Each of the six runs once.");
 
             calls = 0;
             ExportTestHooks.FaultInjection = stage =>
@@ -1040,15 +1368,30 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Every object is a node, numbered in the order it is asked for, so
         // activeSelf tracks are kept.
-        static AvatarAnimatorData CapturedWithNodes(AnimatorAvatar avatar)
+        static AvatarAnimatorData CapturedWithNodes(AnimatorAvatar avatar, Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> sources = null)
         {
             var nodes = new Dictionary<GameObject, int>();
             return AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
-                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count)));
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, sources)));
         }
+
+        // Every shape has one source that shows a change.
+        static IReadOnlyList<AvatarAnimatorCapture.MorphSource> EveryShape(SkinnedMeshRenderer renderer, string shape) =>
+            new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
 
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>
             AvatarAnimatorData.Read(((Dictionary<string, object>)json["extensions"])[AvatarAnimatorData.Extension]);
+
+        static readonly EditorCurveBinding FrontDetail = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+        static readonly EditorCurveBinding BackDetail = EditorCurveBinding.FloatCurve("Back", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+
+        // The name of the mesh target a morph target names.
+        static string TargetName(Dictionary<string, object> json, AvatarAnimatorData.Target target)
+        {
+            var node = (Dictionary<string, object>)((List<object>)json["nodes"])[target.Node];
+            var mesh = (Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])];
+            return (string)((List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"])[target.Morph];
+        }
 
         static List<string> Nodes(Dictionary<string, object> json) =>
             ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().Select(node => node.TryGetValue("name", out var name) ? (string)name : null).ToList();
@@ -1275,8 +1618,14 @@ namespace VRVlog.LilToonExporter.Tests
                         AnimationCurve.Constant(0, 1f / 60, active ? 1 : 0));
                 owned.Add(clip);
                 AssetDatabase.CreateAsset(clip, directory + "/Clip" + serial++ + ".anim");
+                clips[name] = clip;
                 return clip;
             }
+
+            // CreateAsset renames a clip after its file, so clips are found by the name they were made with.
+            readonly Dictionary<string, AnimationClip> clips = new Dictionary<string, AnimationClip>();
+
+            internal AnimationClip ClipNamed(string name) => clips[name];
 
             void Layers(Component descriptor, string fieldName, string[] types)
             {

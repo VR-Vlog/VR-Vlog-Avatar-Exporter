@@ -221,6 +221,51 @@ namespace VRVlog.LilToonExporter
 
         // Authored VRM clips and generated shapes that the build passes moved
         // or removed (lenient exports only).
+        // The shapes each output shape the FX moves was made from. An output
+        // with a source the export did not read has none, so its curves are
+        // left out rather than written against another shape's endpoints.
+        // A shape whose name another mesh also has without the FX moving it
+        // there is unknown once it lands on another renderer: a merge may have
+        // put that mesh's shape into the same output, which the FX never moved.
+        internal static Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> AnimatorMorphSources(
+            IEnumerable<(int SourceRenderer, string SourceShape, SkinnedMeshRenderer Renderer, string Shape)> routes,
+            IReadOnlyDictionary<(int Renderer, string Shape), float> rest,
+            IReadOnlyDictionary<(int Renderer, string Shape), (double Baked, double End)> ends,
+            ICollection<(int Renderer, string Shape)> shared)
+        {
+            if (routes == null || rest == null || ends == null) return null;
+            var sources = new Dictionary<(SkinnedMeshRenderer, string), List<AvatarAnimatorCapture.MorphSource>>();
+            var unknown = new HashSet<(SkinnedMeshRenderer, string)>();
+            foreach (var (sourceRenderer, sourceShape, renderer, shape) in routes)
+            {
+                var key = (renderer, shape);
+                if (!rest.TryGetValue((sourceRenderer, sourceShape), out var weight) || !ends.TryGetValue((sourceRenderer, sourceShape), out var end) ||
+                    (shared != null && shared.Contains((sourceRenderer, sourceShape)) && renderer.GetInstanceID() != sourceRenderer))
+                {
+                    unknown.Add(key);
+                    continue;
+                }
+                if (!sources.TryGetValue(key, out var list)) sources[key] = list = new List<AvatarAnimatorCapture.MorphSource>();
+                list.Add(new AvatarAnimatorCapture.MorphSource(weight, end.Baked, end.End));
+            }
+            return (renderer, shape) => !unknown.Contains((renderer, shape)) && sources.TryGetValue((renderer, shape), out var list)
+                ? list : (IReadOnlyList<AvatarAnimatorCapture.MorphSource>)Array.Empty<AvatarAnimatorCapture.MorphSource>();
+        }
+
+        // The shapes the FX moves whose name another mesh under root also has
+        // where the FX does not move it.
+        internal static HashSet<(int Renderer, string Shape)> SharedAnimatorMorphs(GameObject root,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> driven)
+        {
+            var moved = new HashSet<(SkinnedMeshRenderer, string)>(driven);
+            var skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skin => skin.sharedMesh != null).ToArray();
+            var shared = new HashSet<(int, string)>();
+            foreach (var (renderer, shape) in moved)
+                if (skins.Any(other => other != renderer && other.sharedMesh.GetBlendShapeIndex(shape) >= 0 && !moved.Contains((other, shape))))
+                    shared.Add((renderer.GetInstanceID(), shape));
+            return shared;
+        }
+
         static void RecordLostMorphs(NdmfExportPreparation transformed, List<PreparedExpressionBindings.LostAuthoredMorph> lost,
             ICollection<string> warnings, ExportRecoveryReport report)
         {
@@ -520,6 +565,11 @@ namespace VRVlog.LilToonExporter
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
             Dictionary<GameObject, bool> animatorRest = null;
+            // BlendShape weights in the scene, and the weights the export bakes
+            // and shows at 1 for each shape the FX moves.
+            Dictionary<(int Renderer, string Shape), float> animatorMorphRest = null;
+            Dictionary<(int Renderer, string Shape), (double Baked, double End)> animatorMorphEnds = null;
+            HashSet<(int Renderer, string Shape)> animatorMorphShared = null;
             AvatarAnimatorCapture avatarAnimator = null;
             VRVlog.AvatarAnimator.AvatarAnimatorData avatarAnimatorData = null;
             // Set once the build passes have changed the copy; see the catch below.
@@ -581,6 +631,7 @@ namespace VRVlog.LilToonExporter
                 {
                     // activeSelf before the steps below change it; only read.
                     animatorRest = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Snapshot(clone), () => null);
+                    animatorMorphRest = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.MorphSnapshot(clone), () => null);
                     // A lenient export keeps the build passes: lost shapes are
                     // followed by name, and only what cannot be found is left out.
                     var lenient = guard.ContinueOnFailure;
@@ -746,6 +797,31 @@ namespace VRVlog.LilToonExporter
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? guard.Watch(ExportStage.TrackingOutput, () => new UnifiedExpressionPreparation(clone,
                         suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission)) : null;
+                    // The shapes the FX moves, with what Rebase made of each, so
+                    // the optimizer keeps a route to where each one ends up.
+                    var animatorMorphs = animatorMorphRest == null ? null : guard.Optional(ExportStage.AvatarAnimator, () =>
+                    {
+                        animatorMorphEnds = new Dictionary<(int, string), (double, double)>();
+                        var driven = new List<(SkinnedMeshRenderer Renderer, string Shape)>();
+                        foreach (var (renderer, shape) in AvatarAnimatorCapture.DrivenMorphs(clone))
+                        {
+                            var state = neutral.Get(renderer);
+                            var index = state?.OriginalMesh == null ? -1 : state.OriginalMesh.GetBlendShapeIndex(shape);
+                            if (index < 0 || index >= state.Weights.Length) continue;
+                            driven.Add((renderer, shape));
+                            // Rebase takes the other lip sync shapes and the default mouth off an
+                            // exclusive shape too, which (v - baked) / (end - baked) cannot show.
+                            // It keeps its route without endpoints, so the shape and any output
+                            // merged from it are counted as blendShape.
+                            if (AvatarBaseShape.ExclusiveShapes(renderer, state.OriginalMesh, visemes?.Renderer, visemes?.Exclusive).Contains(index)) continue;
+                            // A shape of several frames need not be linear, and then no
+                            // weight puts its base back: it is counted the same way.
+                            if (state.OriginalMesh.GetBlendShapeFrameCount(index) > 1) continue;
+                            animatorMorphEnds[(renderer.GetInstanceID(), shape)] = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
+                        }
+                        animatorMorphShared = SharedAnimatorMorphs(clone, driven);
+                        return driven;
+                    }, () => null);
                     // Without the build passes AAO never runs, so its components
                     // on the copy promise no mapping.
                     optimizerBindings = guard.Watch(ExportStage.OptimizerEvidence, () => ExportOptimizationBindings.Capture(clone,
@@ -753,7 +829,7 @@ namespace VRVlog.LilToonExporter
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
-                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
+                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes, animatorMorphs: animatorMorphs));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
                     stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing), tolerateFailedPasses: guard.ContinueOnFailure)));
                 if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
@@ -915,7 +991,8 @@ namespace VRVlog.LilToonExporter
                         // extension they would show, so a failure writes the file
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
-                        if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode), () => null);
+                        if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
+                            AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared)), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
@@ -981,13 +1058,19 @@ namespace VRVlog.LilToonExporter
                 }, () => exported);
                 // After every expression is bound: BlendShapes that nothing
                 // binds and the app does not drive by name are left out.
+                // The shapes VRVLOG_avatar_animator moves are kept and its
+                // indices follow the renumbering; a file left as it was keeps them.
+                var unstripped = exported;
+                var animatorBinds = avatarAnimatorData != null ? avatarAnimator.MorphBinds : null;
+                var softBinds = avatarAnimatorData != null ? avatarAnimator.SoftMorphBinds : null;
+                var animatorIndices = animatorBinds?.Concat(softBinds).Select(bind => bind["index"]).ToList();
                 exported = guard.Run(ExportStage.UnusedMorphs, () =>
                 {
                     // Normal output, not a fallback: the Console only, no
                     // warning and no result line.
                     var skipped = new List<string>();
                     var removed = new List<string>();
-                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed);
+                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed, animatorBinds, softBinds);
                     foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
                     // The first 20 names only: a real avatar leaves out hundreds.
                     if (removed.Count > 0)
@@ -995,6 +1078,15 @@ namespace VRVlog.LilToonExporter
                                   (removed.Count > 20 ? $" … (+{removed.Count - 20} more)" : ""));
                     return stripped;
                 }, () => exported);
+                if (animatorBinds != null)
+                {
+                    if (ReferenceEquals(exported, unstripped))
+                    {
+                        var all = animatorBinds.Concat(softBinds).ToList();
+                        for (var i = 0; i < all.Count; i++) all[i]["index"] = animatorIndices[i];
+                    }
+                    avatarAnimator.RenumberMorphs();
+                }
                 var marked = false;
                 if (fullSnapshot != null)
                 {

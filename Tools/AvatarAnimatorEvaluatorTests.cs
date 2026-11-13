@@ -133,6 +133,7 @@ public static class AvatarAnimatorEvaluatorTests
         LayerControl();
         BlendTrees();
         ValuesPassUnclamped();
+        Morphs();
         SyncedLayers();
         Interruption();
         StateOptions();
@@ -542,6 +543,33 @@ public static class AvatarAnimatorEvaluatorTests
         Near(e.Values[node], 65, "the blend between them is not clamped");
         e.Advance(1);
         Near(e.Values[node], 150, "a value over 100 passes");
+    }
+
+    // A morph target plays as an active one does: its value is the Unity
+    // weight, blended by layer weight and Write Defaults over its Rest.
+    static void Morphs()
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = 0, Property = "morph", Morph = 2, Rest = 30, Baked = 30, End = 100 });
+        var morph = b.Data.Targets.Count - 1;
+        var layer = b.Layer("Base");
+        var idle = Builder.State(layer, "Idle", -1);
+        layer.States[idle].WriteDefaults = true;
+        var on = Builder.State(layer, "On", b.Clip(0, false, (morph, 80)));
+        layer.States[idle].Transitions.Add(To(on, duration: 1).When(go, "if"));
+        var top = b.Layer("Top", weight: .5);
+        Builder.State(top, "Hold", b.Clip(0, false, (morph, 0)));
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "morph targets are supported");
+        var e = b.Build();
+        e.Advance(Frame);
+        Near(e.Values[morph], 30 * .5, "a layer at weight .5 blends the weight over the rest");
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(.5);
+        Near(e.Values[morph], (30 + (80 - 30) * .5) * .5, "a transition blends the weight from the rest");
+        e.Advance(1);
+        Near(e.Values[morph], 80 * .5, "and reaches the clip's weight");
     }
 
     static void SyncedLayers()

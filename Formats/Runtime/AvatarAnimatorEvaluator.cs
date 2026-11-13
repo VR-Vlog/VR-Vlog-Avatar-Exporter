@@ -10,7 +10,8 @@ namespace VRVlog.AvatarAnimator
     // One instance per loaded avatar. The host sets parameters (Set), calls
     // Advance once per frame and writes Values to the targets. Values holds
     // every target's value after the last Advance: a target no layer wrote
-    // keeps its previous value, starting from its Rest.
+    // keeps its previous value, starting from its Rest. For a morph target
+    // that is the Unity BlendShape weight, not the glTF weight.
     //
     // The marks name rules the README explains ("Avatar animator evaluator").
     // M1-M7 are measured: Tests/AnimatorComparison records Unity's Animator
@@ -69,9 +70,11 @@ namespace VRVlog.AvatarAnimator
                     return false;
                 }
             // Unity owns a parameter a clip animates: drivers and the host do
-            // not change it and a transition waits for the curve's value.
+            // not change it and a transition waits for the curve's value. A
+            // morph target blends as an active one does: its value is the Unity
+            // weight, which the host maps to the glTF weight with Baked and End.
             foreach (var target in data.Targets)
-                if (target.Property != "active") { reason = "Parameters that a clip animates are not supported."; return false; }
+                if (target.Property == "parameter") { reason = "Parameters that a clip animates are not supported."; return false; }
             // How VRChat picks again when a random would repeat is not measured.
             bool PreventsRepeats(List<AvatarAnimatorData.Behaviour> behaviours)
             {
