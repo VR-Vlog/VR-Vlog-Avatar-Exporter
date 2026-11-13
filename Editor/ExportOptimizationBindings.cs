@@ -54,6 +54,9 @@ namespace VRVlog.LilToonExporter
         // not fail the export.
         readonly HashSet<OptimizationMorphRoute> appNamed = new HashSet<OptimizationMorphRoute>();
         readonly HashSet<OptimizationMorphRoute> optional = new HashSet<OptimizationMorphRoute>();
+        // Shapes the FX moves, written to VRVLOG_avatar_animator. Losing one
+        // only leaves its curves out of that extension.
+        readonly List<OptimizationMorphRoute> animator = new List<OptimizationMorphRoute>();
         readonly List<Object> owned = new List<Object>();
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
         readonly bool supportsUnified;
@@ -63,12 +66,14 @@ namespace VRVlog.LilToonExporter
         internal static ExportOptimizationBindings Capture(GameObject clone, VrmTrackingProfile trackingProfile = null,
             UnifiedExpressionPreparation preparation = null, object objectRegistry = null, NeutralShapeSnapshot neutral = null,
             bool preservePreparedNeutral = false, IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs = null,
-            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null, bool optimizes = true)
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null, bool optimizes = true,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> animatorMorphs = null)
         {
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             ExportRendererSelection.RequireActiveRoot(clone);
             if (EditorUtility.IsPersistent(clone)) throw new ArgumentException("An independent export copy is required.", nameof(clone));
-            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs, keptMorphs, optimizes);
+            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs, keptMorphs, optimizes,
+                animatorMorphs);
         }
 
         // optimizes is false when the build passes are skipped: AAO components
@@ -76,7 +81,8 @@ namespace VRVlog.LilToonExporter
         ExportOptimizationBindings(GameObject clone, VrmTrackingProfile trackingProfile, UnifiedExpressionPreparation preparation,
             object objectRegistry, NeutralShapeSnapshot neutral, bool preservePreparedNeutral,
             IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs,
-            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs, bool optimizes)
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs, bool optimizes,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> animatorMorphs)
         {
             avatar = clone;
             this.objectRegistry = objectRegistry;
@@ -143,6 +149,17 @@ namespace VRVlog.LilToonExporter
                             if (!declared) { route.NoOp = false; optional.Add(route); }
                             appNamed.Add(route);
                         }
+                // The FX's own shapes keep a route too, so their output mesh and
+                // name are known after a merge. Their endpoint is not required:
+                // the extension only moves what the FX moves.
+                if (animatorMorphs != null)
+                    foreach (var (skin, shape) in animatorMorphs)
+                    {
+                        var declared = morphs.ContainsKey((skin.GetInstanceID(), shape));
+                        var route = AddMorph(skin, shape, requireUsableEndpoint: false);
+                        if (!declared) { route.NoOp = false; optional.Add(route); }
+                        if (!animator.Contains(route)) animator.Add(route);
+                    }
                 marker.Morphs = morphs.Values.ToArray();
                 marker.Materials = materials.Values.ToArray();
                 if (neutral != null) ProtectRebasedNeutral(neutral, preservePreparedNeutral);
@@ -486,6 +503,14 @@ namespace VRVlog.LilToonExporter
             if (additional != null) foreach (var entry in additional) settings.Expression.AddClip(entry.Preset, entry.Clip);
             instance.Vrm = settings;
         }
+
+        // Where each shape the FX moves ended up: its source renderer's
+        // instance ID and shape, and the output renderer and shape. A shape
+        // the optimizer removed is left out.
+        internal IEnumerable<(int SourceRenderer, string SourceShape, SkinnedMeshRenderer Renderer, string Shape)> AnimatorMorphs =>
+            animator.Where(route => !route.Removed && route.Renderer != null && route.Renderer.sharedMesh != null &&
+                                    route.Renderer.sharedMesh.GetBlendShapeIndex(route.Shape) >= 0)
+                .Select(route => (route.SourceRendererId, route.SourceShape, route.Renderer, route.Shape));
 
         internal (SkinnedMeshRenderer Renderer, string Shape) MapMorph(SkinnedMeshRenderer renderer, string shape)
         {

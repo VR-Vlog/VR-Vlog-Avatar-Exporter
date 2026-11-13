@@ -950,5 +950,193 @@ class AllowAddedExtensionTests(unittest.TestCase):
         self.assertEqual([ADDED], [item['name'] for item in removed])
 
 
+
+def morph_glb(names, kept=(), animator=None, faces=('Smile',), changed=None):
+    """A one-mesh VRM with a vec3 POSITION and one POSITION morph target per name, each its own
+    accessor and bufferView in names order. faces are expressions bound to those names; changed
+    gives other bytes to the target of that name. Returns (document, binary)."""
+    binary, accessors, views = b'', [], []
+
+    def add(values):
+        nonlocal binary
+        views.append({'buffer': 0, 'byteOffset': len(binary), 'byteLength': 12})
+        accessors.append({'bufferView': len(views) - 1, 'componentType': 5126, 'count': 1, 'type': 'VEC3'})
+        binary += struct.pack('<3f', *values)
+        return len(accessors) - 1
+
+    position = add((0, 0, 0))
+    targets = [{'POSITION': add((ord(name[0]), 2 if name == changed else 0, len(name)))} for name in names]
+    doc = document()
+    doc['buffers'] = [{'byteLength': len(binary)}]
+    doc['accessors'], doc['bufferViews'] = accessors, views
+    doc['meshes'] = [{'name': 'Face', 'weights': [0.0] * len(names), 'extras': {'targetNames': list(names)},
+                      'primitives': [{'attributes': {'POSITION': position}, 'targets': targets,
+                                      'extras': {'targetNames': list(names)}}]}]
+    doc['extensions']['VRMC_vrm']['expressions'] = {'preset': {}, 'custom': {
+        face: {'morphTargetBinds': [{'node': 0, 'index': names.index(face), 'weight': 1.0}], 'isBinary': False}
+        for face in faces}}
+    if animator is not None:
+        doc['extensions'][compare.ANIMATOR] = animator
+    return doc, binary
+
+
+def animator(morphs=(), value=1.0, blend=2):
+    """VRVLOG_avatar_animator with one active target and track, then a morph target and track for
+    each morph index on node 0, and the omitted blendShape count."""
+    targets = [{'node': 0, 'property': 'active', 'rest': True}]
+    tracks = [{'target': 0, 'curves': [{'keys': [{'time': 0, 'value': value}]}]}]
+    for morph in morphs:
+        targets.append({'node': 0, 'property': 'morph', 'morph': morph, 'rest': 0, 'baked': 0, 'end': 100})
+        tracks.append({'target': len(targets) - 1, 'curves': [{'keys': [{'time': 0, 'value': 80}]}]})
+    omitted = [{'kind': 'blendShape', 'count': blend}] if blend else []
+    return {'schemaVersion': 1, 'targets': targets, 'clips': [{'name': 'On', 'tracks': tracks}],
+            'omitted': omitted + [{'kind': 'material', 'count': 1}]}
+
+
+class AllowKeptMorphsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.a, self.b = self.root / 'a', self.root / 'b'
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def put(self, directory, doc_and_binary, stem='A001_1'):
+        doc, binary = doc_and_binary
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / (stem + '.json')).write_text(json.dumps(result(stem.split('_')[0], 1)), encoding='utf-8')
+        (directory / (stem + '.vrm')).write_bytes(pack_glb(doc, binary))
+
+    def warn(self, directory, *warnings, stem='A001_1'):
+        """Write the result of stem again with these warnings."""
+        doc = dict(result(stem.split('_')[0], 1), warnings=list(warnings))
+        (directory / (stem + '.json')).write_text(json.dumps(doc), encoding='utf-8')
+
+    def compare_kept(self, *extra):
+        code, out, _ = run_main([self.a, self.b, '--allow-kept-morphs', '--json'] + list(extra))
+        return code, json.loads(out)['rows'][0]
+
+    def base(self):
+        # A: the export before, which left out "Kept" and counted its curve.
+        self.put(self.a, morph_glb(['Smile', 'Wink'], animator=animator()))
+
+    def test_a_target_kept_for_the_extension_is_removed_and_the_rest_matches(self):
+        self.base()
+        # B keeps "Kept" in front of the others, so every bind, accessor and bufferView after it moves.
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1)))
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [2, 1]}, row['kept_morphs'])
+        code, out, _ = run_main([self.a, self.b, '--allow-kept-morphs'])
+        self.assertEqual(0, code, out)
+        self.assertIn('morph targets: 1 removed from B, 0 vs 1 in the extension, omitted blendShape 2 vs 1', out)
+        self.assertIn('morph targets in the extension in 1 of 1 pairs', out)
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(1, code, out)
+
+    def test_other_bytes_of_a_target_that_stays_are_a_difference(self):
+        self.base()
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1), changed='Wink'))
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(any('normalized JSON chunk differs' in issue for issue in row['issues']), row['issues'])
+
+    def test_a_changed_active_track_is_a_difference(self):
+        self.base()
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], value=0.0, blend=1)))
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(any('VRVLOG_avatar_animator' in issue for issue in row['issues']), row['issues'])
+
+    def test_a_bind_to_another_target_is_a_difference(self):
+        self.base()
+        # The face binds "Wink" in B: after the removal it still points at a different name than in A.
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1), faces=('Wink',)))
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(row['issues'])
+
+    def test_a_target_that_a_has_is_not_removed_and_the_bin_is_compared_as_it_is(self):
+        self.base()
+        # The extension names "Smile", which a face already kept: nothing to remove.
+        self.put(self.b, morph_glb(['Smile', 'Wink'], animator=animator([0], blend=1)))
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        self.assertEqual({'removed': 0, 'targets': [0, 1], 'blendShape': [2, 1]}, row['kept_morphs'])
+        self.put(self.b, morph_glb(['Smile', 'Wink'], animator=animator([0], blend=1), changed='Wink'))
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(any('BIN chunk differs' in issue for issue in row['issues']), row['issues'])
+
+    def test_a_pair_without_morph_targets_is_compared_as_before(self):
+        self.base()
+        self.put(self.b, morph_glb(['Smile', 'Wink'], animator=animator()))
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        self.assertNotIn('kept_morphs', row)
+
+    def test_the_removal_leaves_a_unchanged_and_renumbers_b(self):
+        doc_a, _ = morph_glb(['Smile', 'Wink'])
+        doc_b, _ = morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0]))
+        before = copy.deepcopy(doc_a)
+        stripped, removed = compare.remove_kept_morphs(doc_a, doc_b)
+        self.assertEqual((before, 1), (doc_a, removed))
+        mesh = stripped['meshes'][0]
+        self.assertEqual(['Smile', 'Wink'], mesh['extras']['targetNames'])
+        self.assertEqual(['Smile', 'Wink'], mesh['primitives'][0]['extras']['targetNames'])
+        self.assertEqual(2, len(mesh['primitives'][0]['targets']))
+        self.assertEqual([0.0, 0.0], mesh['weights'])
+        self.assertEqual(0, stripped['extensions']['VRMC_vrm']['expressions']['custom']['Smile']['morphTargetBinds'][0]['index'])
+        self.assertEqual(3, len(doc_b['meshes'][0]['extras']['targetNames']), 'B itself is not changed')
+
+    def test_a_mesh_whose_targets_are_all_removed_has_no_empty_lists(self):
+        # A kept no target of this mesh, so it wrote no targets, weights or extras at all.
+        doc, binary = morph_glb([], faces=())
+        self.put(self.a, (doc, binary))
+        doc, binary = morph_glb(['Kept'], animator=animator([0], blend=1), faces=())
+        self.put(self.b, (doc, binary))
+        mesh = doc['meshes'][0]
+        stripped, removed = compare.remove_kept_morphs(morph_glb([], faces=())[0], doc)
+        body = stripped['meshes'][0]
+        self.assertEqual(1, removed)
+        self.assertNotIn('weights', body)
+        self.assertNotIn('extras', body)
+        self.assertNotIn('targets', body['primitives'][0])
+        self.assertNotIn('extras', body['primitives'][0])
+        self.assertEqual(['Kept'], mesh['extras']['targetNames'], 'B itself is not changed')
+
+    def test_the_mb_of_the_vertex_note_is_not_compared_when_a_target_was_removed(self):
+        note = 'メッシュの頂点データを詰めてVRMを%sMB小さくしました'
+        self.base()
+        self.warn(self.a, note % '2.8')
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1)))
+        self.warn(self.b, note % '2.9')
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        # Without a removed target the number is compared as before.
+        self.put(self.b, morph_glb(['Smile', 'Wink'], animator=animator()))
+        self.warn(self.b, note % '2.9')
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(any('warnings differ' in issue for issue in row['issues']), row['issues'])
+
+    def test_the_extension_counts_are_taken_before_an_added_extension_is_removed(self):
+        # A is from before the extension; B adds it and keeps one target for it.
+        self.put(self.a, morph_glb(['Smile', 'Wink']))
+        self.put(self.b, morph_glb(['Kept', 'Smile', 'Wink'], animator=animator([0], blend=1)))
+        code, out, _ = run_main([self.a, self.b, '--allow-kept-morphs', '--json',
+                                 '--allow-added-extension', compare.ANIMATOR])
+        row = json.loads(out)['rows'][0]
+        self.assertEqual((0, []), (code, row['issues']))
+        self.assertEqual({'removed': 1, 'targets': [0, 1], 'blendShape': [0, 1]}, row['kept_morphs'])
+
+    def test_runs_mode_rejects_the_option(self):
+        self.base()
+        code, out, err = run_main(['--runs', self.a, '1', '2', '--allow-kept-morphs'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('--allow-kept-morphs', err)
+
+
 if __name__ == '__main__':
     unittest.main()

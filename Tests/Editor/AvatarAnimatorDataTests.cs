@@ -399,5 +399,65 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => ((List<object>)At(json, "clips", 0, "tracks", 0, "curves", 0)["keys"]).Add(new List<object> { 0.0, 0.0, null, null, 1d / 3, 1d / 3 }));
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(Sample())));
         }
+
+        // A morph target names a mesh target of its node and the three
+        // weights that turn the FX's weight into the target's.
+        static AvatarAnimatorData WithMorph()
+        {
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "morph", Morph = 2, Rest = 35, Baked = 35, End = 100 });
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 80, InTangent = 0, OutTangent = 0 });
+            var track = new AvatarAnimatorData.Track { Target = 1 };
+            track.Curves.Add(curve);
+            data.Clips[0].Tracks.Add(track);
+            return data;
+        }
+
+        static void RejectsMorph(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithMorph());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void AMorphTargetRoundTrips()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithMorph()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            var morph = read.Targets[1];
+            Assert.That((morph.Node, morph.Property, morph.Morph, morph.Rest, morph.Baked, morph.End), Is.EqualTo((3, "morph", 2, 35d, 35d, 100d)));
+            var json = Json(WithMorph());
+            Assert.That(At(json, "targets", 1).Keys.OrderBy(key => key, StringComparer.Ordinal),
+                Is.EqualTo(new[] { "baked", "end", "morph", "node", "property", "rest" }));
+            Assert.That(At(json, "targets", 0).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "node", "property", "rest" }),
+                "An activeSelf target keeps its keys.");
+            // Rest, baked and end are Unity weights; a target may sit past its last frame.
+            var wide = WithMorph();
+            (wide.Targets[1].Rest, wide.Targets[1].Baked, wide.Targets[1].End) = (-50, 100, 0);
+            Assert.That(AvatarAnimatorData.Read(Json(wide)).Targets[1].End, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ReadRejectsABrokenMorphTarget()
+        {
+            // A target that shows no change cannot carry a weight.
+            RejectsMorph(json => At(json, "targets", 1)["end"] = 35L);
+            // One target per node and mesh target.
+            RejectsMorph(json => ((List<object>)json["targets"]).Add(At(json, "targets", 1)));
+            RejectsMorph(json => At(json, "targets", 1)["morph"] = -1L);
+            RejectsMorph(json => At(json, "targets", 1)["morph"] = 1.5);
+            RejectsMorph(json => At(json, "targets", 1).Remove("baked"));
+            RejectsMorph(json => At(json, "targets", 1)["extra"] = 1L);
+            RejectsMorph(json => At(json, "targets", 0)["morph"] = 0L);
+            RejectsMorph(json => At(json, "targets", 1)["rest"] = "35");
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithMorph())));
+            // The same mesh target on another node, and the node's activeSelf, are their own targets.
+            var data = WithMorph();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "morph", Morph = 2, Rest = 0, Baked = 0, End = 100 });
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
+        }
     }
 }

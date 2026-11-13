@@ -36,6 +36,14 @@ namespace VRVlog.LilToonExporter
         readonly List<(GameObject Object, int Default)> targets = new List<(GameObject, int)>();
         readonly Dictionary<GameObject, int> targetIndex = new Dictionary<GameObject, int>();
         readonly List<List<(int Target, ExpressionAnimationData.Curve Curve)>> clipTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // BlendShape curves stay a renderer and a shape name until the output
+        // mesh is known; their tracks follow each clip's activeSelf tracks.
+        readonly List<(SkinnedMeshRenderer Renderer, string Shape)> morphs = new List<(SkinnedMeshRenderer, string)>();
+        readonly Dictionary<(SkinnedMeshRenderer, string), int> morphIndex = new Dictionary<(SkinnedMeshRenderer, string), int>();
+        readonly List<List<(int Morph, ExpressionAnimationData.Curve Curve)>> clipMorphTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // The morph targets the last Resolve wrote, each with the
+        // {node, index} that UnusedMorphTargets keeps and renumbers.
+        readonly List<(AvatarAnimatorData.Target Target, Dictionary<string, object> Bind)> morphBinds = new List<(AvatarAnimatorData.Target, Dictionary<string, object>)>();
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
 
         readonly GameObject root;
@@ -69,20 +77,73 @@ namespace VRVlog.LilToonExporter
         internal static Dictionary<GameObject, bool> Snapshot(GameObject clone) =>
             clone.GetComponentsInChildren<Transform>(true).ToDictionary(t => t.gameObject, t => t.gameObject.activeSelf);
 
+        // BlendShape weights of every renderer of the copy at the same point,
+        // by renderer instance ID and shape name; a repeated name takes the
+        // first shape, as Unity's own lookup does.
+        internal static Dictionary<(int Renderer, string Shape), float> MorphSnapshot(GameObject clone)
+        {
+            var weights = new Dictionary<(int, string), float>();
+            foreach (var renderer in clone.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null) continue;
+                for (var index = 0; index < mesh.blendShapeCount; index++)
+                {
+                    var key = (renderer.GetInstanceID(), mesh.GetBlendShapeName(index));
+                    if (!weights.ContainsKey(key)) weights[key] = renderer.GetBlendShapeWeight(index);
+                }
+            }
+            return weights;
+        }
+
+        // The shapes the FX moves on renderers of the copy, ordered by path
+        // and name. Read before optimizing, so the optimizer keeps a route
+        // to where each one ends up.
+        internal static List<(SkinnedMeshRenderer Renderer, string Shape)> DrivenMorphs(GameObject clone)
+        {
+            var fx = Fx(VrChatExpressionMenu.Descriptor(clone));
+            var found = new SortedSet<(string Path, string Shape)>(Comparer<(string, string)>.Create((a, b) =>
+            {
+                var path = string.CompareOrdinal(a.Item1, b.Item1);
+                return path != 0 ? path : string.CompareOrdinal(a.Item2, b.Item2);
+            }));
+            if (fx == null) return new List<(SkinnedMeshRenderer, string)>();
+            foreach (var clip in fx.animationClips.Where(clip => clip != null).Distinct())
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    if (typeof(SkinnedMeshRenderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith(ShapePrefix, StringComparison.Ordinal))
+                        found.Add((binding.path, binding.propertyName.Substring(ShapePrefix.Length)));
+            var result = new List<(SkinnedMeshRenderer, string)>();
+            foreach (var (path, shape) in found)
+            {
+                var target = path.Length == 0 ? clone.transform : clone.transform.Find(path);
+                var renderer = target == null ? null : target.GetComponent<SkinnedMeshRenderer>();
+                if (renderer != null && renderer.sharedMesh != null && renderer.sharedMesh.GetBlendShapeIndex(shape) >= 0) result.Add((renderer, shape));
+            }
+            return result;
+        }
+
+        const string ShapePrefix = "blendShape.";
+
+        // The same FX layer VrChatExpressionMenu.Read takes.
+        static RuntimeAnimatorController Fx(object descriptor)
+        {
+            RuntimeAnimatorController fx = null;
+            if (descriptor != null && Member(descriptor, "customizeAnimationLayers") is bool custom && custom)
+                foreach (var layer in Items(Member(descriptor, "baseAnimationLayers")))
+                {
+                    if (Member(layer, "isDefault") is bool isDefault && isDefault) continue;
+                    if (Member(layer, "type")?.ToString() == "FX") fx = Member(layer, "animatorController") as RuntimeAnimatorController;
+                }
+            return fx;
+        }
+
         // Null without a VRChat avatar descriptor or a custom FX controller:
         // the file is then written without the extension.
         internal static AvatarAnimatorCapture Capture(GameObject clone, IReadOnlyDictionary<GameObject, bool> rest)
         {
             var descriptor = VrChatExpressionMenu.Descriptor(clone);
             if (descriptor == null) return null;
-            RuntimeAnimatorController fx = null;
-            // The same FX layer VrChatExpressionMenu.Read takes.
-            if (Member(descriptor, "customizeAnimationLayers") is bool custom && custom)
-                foreach (var layer in Items(Member(descriptor, "baseAnimationLayers")))
-                {
-                    if (Member(layer, "isDefault") is bool isDefault && isDefault) continue;
-                    if (Member(layer, "type")?.ToString() == "FX") fx = Member(layer, "animatorController") as RuntimeAnimatorController;
-                }
+            var fx = Fx(descriptor);
             if (fx == null) return null;
             var controller = ExpressionDependencies.Controller(fx);
             var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), ExpressionDependencies.Overrides(fx));
@@ -94,11 +155,46 @@ namespace VRVlog.LilToonExporter
             return capture;
         }
 
+        // A shape as the export bakes it: the weight in the scene, the weight
+        // the base geometry holds and the weight the target shows at 1.
+        internal readonly struct MorphSource : IEquatable<MorphSource>
+        {
+            internal readonly double Rest, Baked, End;
+            internal MorphSource(double rest, double baked, double end) { Rest = rest; Baked = baked; End = end; }
+            public bool Equals(MorphSource other) => Rest == other.Rest && Baked == other.Baked && End == other.End;
+            public override bool Equals(object obj) => obj is MorphSource other && Equals(other);
+            public override int GetHashCode() => (Rest, Baked, End).GetHashCode();
+        }
+
+        // The {node, index} of each morph target written, for
+        // UnusedMorphTargets.Strip to keep and renumber.
+        internal IReadOnlyList<Dictionary<string, object>> MorphBinds => morphBinds.Select(bind => bind.Bind).ToList();
+
+        // Takes the indices Strip gave the binds back into the targets.
+        internal void RenumberMorphs()
+        {
+            foreach (var (target, bind) in morphBinds) target.Morph = (int)Convert.ToInt64(bind["index"]);
+        }
+
         // The data with glTF node indices. A target the file has no node for
         // is left out with its curves, which are counted as missingNode.
-        internal AvatarAnimatorData Resolve(Func<GameObject, int> node)
+        // sources gives the shapes an output shape was made from; without one,
+        // or when they disagree, its curves are counted as blendShape. When the
+        // shapes would take the extension past MaximumBytes, all of them are.
+        internal AvatarAnimatorData Resolve(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources = null)
+        {
+            Build(node, sources, true);
+            if (morphBinds.Count > 0 && Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes)
+                Build(node, sources, false);
+            return data;
+        }
+
+        const int MissingMorph = -1, OmittedMorph = -2, RestingMorph = -3;
+
+        void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, bool writeMorphs)
         {
             data.Targets.Clear();
+            morphBinds.Clear();
             var map = new int[targets.Count];
             for (var i = 0; i < targets.Count; i++)
             {
@@ -106,7 +202,10 @@ namespace VRVlog.LilToonExporter
                 map[i] = index < 0 ? -1 : data.Targets.Count;
                 if (index >= 0) data.Targets.Add(new AvatarAnimatorData.Target { Node = index, Property = "active", Rest = targets[i].Default });
             }
+            var morphMap = new int[morphs.Count];
+            for (var i = 0; i < morphs.Count; i++) morphMap[i] = MorphTarget(i, node, sources, writeMorphs);
             var missing = 0;
+            var lost = 0;
             for (var i = 0; i < data.Clips.Count; i++)
             {
                 data.Clips[i].Tracks.Clear();
@@ -117,15 +216,50 @@ namespace VRVlog.LilToonExporter
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
+                foreach (var (morph, curve) in clipMorphTracks[i])
+                {
+                    var target = morphMap[morph];
+                    if (target == MissingMorph) { missing++; continue; }
+                    if (target == OmittedMorph) { lost++; continue; }
+                    if (target == RestingMorph) continue;
+                    var track = new AvatarAnimatorData.Track { Target = target };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
             }
             data.Omitted.Clear();
             foreach (var kind in AvatarAnimatorData.OmittedKinds)
             {
-                var count = (omitted.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0);
+                var count = (omitted.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0);
                 if (count > 0) data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = count });
             }
-            return data;
         }
+
+        // The target index of a moved shape, or why its tracks are not written.
+        int MorphTarget(int i, Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, bool writeMorphs)
+        {
+            var (renderer, shape) = morphs[i];
+            var nodeIndex = renderer == null ? -1 : node(renderer.gameObject);
+            if (nodeIndex < 0) return MissingMorph;
+            var morph = writeMorphs && renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(shape) : -1;
+            var found = morph < 0 || sources == null ? null : sources(renderer, shape);
+            if (found == null || found.Count == 0 || found.Distinct().Count() > 1) return OmittedMorph;
+            var source = found[0];
+            // A shape no clip moves off its scene weight changes nothing.
+            if (clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)))) return RestingMorph;
+            // A target that shows no change cannot carry the weight (B3).
+            if (source.Baked == source.End) return OmittedMorph;
+            var target = new AvatarAnimatorData.Target
+            {
+                Node = nodeIndex, Property = "morph", Morph = morph, Rest = source.Rest, Baked = source.Baked, End = source.End,
+            };
+            morphBinds.Add((target, new Dictionary<string, object> { ["node"] = (long)nodeIndex, ["index"] = (long)morph }));
+            data.Targets.Add(target);
+            return data.Targets.Count - 1;
+        }
+
+        static bool Holds(ExpressionAnimationData.Curve curve, double value) =>
+            curve.Keys.All(key => key.Value == value && (key.InTangent ?? 0) == 0 && (key.OutTangent ?? 0) == 0);
 
         // An extension over MaximumBytes is an error: the caller leaves the
         // stage out and lists it with this reason.
@@ -136,12 +270,26 @@ namespace VRVlog.LilToonExporter
             if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > MaximumBytes)
                 throw new InvalidOperationException(TooLarge);
             var document = GlbDocument.Read(bytes);
-            var nodeCount = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> nodes ? nodes.Count : 0;
-            if (data.Targets.Any(target => target.Node >= nodeCount))
+            var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list : new List<object>();
+            var meshes = document.Json.TryGetValue("meshes", out var rawMeshes) && rawMeshes is List<object> meshList ? meshList : new List<object>();
+            if (data.Targets.Any(target => target.Node >= nodes.Count))
                 throw new InvalidOperationException("Avatar animator target node is out of range.");
+            // A morph target names one of its node's mesh's targets.
+            foreach (var target in data.Targets.Where(target => target.Property == "morph"))
+                if (!(nodes[target.Node] is Dictionary<string, object> node && node.TryGetValue("mesh", out var rawMesh) &&
+                      Convert.ToInt32(rawMesh) is var mesh && mesh >= 0 && mesh < meshes.Count &&
+                      target.Morph < MorphCount(meshes[mesh] as Dictionary<string, object>)))
+                    throw new InvalidOperationException("Avatar animator morph target is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
         }
+
+        // The targets of a mesh's first primitive; glTF requires every
+        // primitive to have the same count.
+        static int MorphCount(Dictionary<string, object> mesh) =>
+            mesh != null && mesh.TryGetValue("primitives", out var raw) && raw is List<object> primitives && primitives.Count > 0 &&
+            primitives[0] is Dictionary<string, object> primitive && primitive.TryGetValue("targets", out var rawTargets) && rawTargets is List<object> targets
+                ? targets.Count : 0;
 
         // Expression Parameters first, then the FX parameters they do not name.
         // A name in both takes the FX type; the first of a repeated name counts.
@@ -612,24 +760,49 @@ namespace VRVlog.LilToonExporter
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
             data.Clips.Add(new AvatarAnimatorData.Clip { Name = clip.name ?? "", Duration = clip.length, Loop = settings.loopTime, CycleOffset = settings.cycleOffset });
             clipTracks.Add(tracks);
+            var morphTracks = new List<(int, ExpressionAnimationData.Curve)>();
+            clipMorphTracks.Add(morphTracks);
             var keys = 0;
-            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            var shapes = new List<EditorCurveBinding>();
+            // A curve the contract does not take (more keys or tracks than the
+            // clip has room left for, a key past an hour, a value that is not
+            // a number) is left out alone, so the rest of the avatar is still
+            // written. The keys are counted before the curve is converted,
+            // which keeps every key: a curve too long is not converted.
+            ExpressionAnimationData.Curve Take(EditorCurveBinding binding)
             {
-                if (!(binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive")) { Omit(Kind(binding)); continue; }
-                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
-                if (target == null) { Omit("missingNode"); continue; }
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                // A curve the contract does not take (more keys than the clip
-                // has room left for, a key past an hour, a value that is not a
-                // number) is left out alone, so the rest of the avatar is still
-                // written. The keys are counted before the curve is converted,
-                // which keeps every key: a curve too long is not converted.
-                if (curve == null || curve.length == 0 || keys + curve.length > AvatarAnimatorData.MaximumKeysPerClip) { Omit("other"); continue; }
+                if (curve == null || curve.length == 0 || keys + curve.length > AvatarAnimatorData.MaximumKeysPerClip ||
+                    tracks.Count + morphTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip) return null;
                 var converted = VrChatGestureExpressions.ConvertCurve(curve);
                 try { converted.Validate(); }
-                catch (InvalidOperationException) { Omit("other"); continue; }
+                catch (InvalidOperationException) { return null; }
                 keys += converted.Keys.Count;
+                return converted;
+            }
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (!(binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive"))
+                {
+                    // BlendShape curves take what activeSelf leaves of the budget.
+                    if (Kind(binding) == "blendShape") shapes.Add(binding);
+                    else Omit(Kind(binding));
+                    continue;
+                }
+                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                if (target == null) { Omit("missingNode"); continue; }
+                var converted = Take(binding);
+                if (converted == null) { Omit("other"); continue; }
                 tracks.Add((Target(target.gameObject), converted));
+            }
+            foreach (var binding in shapes)
+            {
+                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                var renderer = target == null ? null : target.GetComponent<SkinnedMeshRenderer>();
+                if (renderer == null) { Omit("missingNode"); continue; }
+                var converted = Take(binding);
+                if (converted == null) { Omit("blendShape"); continue; }
+                morphTracks.Add((Morph(renderer, binding.propertyName.Substring(ShapePrefix.Length)), converted));
             }
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 Omit(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith("m_Materials", StringComparison.Ordinal) ? "material" : "other");
@@ -642,6 +815,14 @@ namespace VRVlog.LilToonExporter
             targetIndex[gameObject] = targets.Count;
             targets.Add((gameObject, (rest.TryGetValue(gameObject, out var active) ? active : gameObject.activeSelf) ? 1 : 0));
             return targets.Count - 1;
+        }
+
+        int Morph(SkinnedMeshRenderer renderer, string shape)
+        {
+            if (morphIndex.TryGetValue((renderer, shape), out var index)) return index;
+            morphIndex[(renderer, shape)] = morphs.Count;
+            morphs.Add((renderer, shape));
+            return morphs.Count - 1;
         }
 
         // An Animator curve on the avatar root drives a parameter when the FX

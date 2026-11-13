@@ -86,8 +86,10 @@ namespace VRVlog.LilToonExporter
         // Returns the input array itself when nothing is removed. warnings
         // receives why the file was kept unchanged; removed receives
         // "mesh/shape" (or the shape alone for an unnamed mesh) for each
-        // target left out.
-        internal static byte[] Strip(byte[] bytes, ICollection<string> warnings, ICollection<string> removed = null)
+        // target left out. extraBinds are {node, index} binds outside the
+        // file, kept and renumbered in place like the file's own.
+        internal static byte[] Strip(byte[] bytes, ICollection<string> warnings, ICollection<string> removed = null,
+            IEnumerable<Dictionary<string, object>> extraBinds = null)
         {
             if (!Enabled || bytes == null) return bytes;
             var glb = GlbDocument.Read(bytes);
@@ -152,6 +154,7 @@ namespace VRVlog.LilToonExporter
                     if (point.Target != null) animationNames.Add(point.Target);
                 CollectBinds(rawAnimations, binds);
             }
+            if (extraBinds != null) binds.AddRange(extraBinds);
             foreach (var bind in binds)
             {
                 var mesh = bind.TryGetValue("node", out var rawNode) && Index(rawNode) is int n && n < nodes.Count ? MeshOf(nodes[n] as Dictionary<string, object>, meshes.Count) : -1;

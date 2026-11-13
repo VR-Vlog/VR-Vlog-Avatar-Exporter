@@ -1,0 +1,39 @@
+# FXの動きの拡張に、FXが動かすBlendShapeの重みを書く
+
+- 日付: 2026-11-13
+- 対象: `Editor/AvatarAnimatorCapture.cs`、`Editor/UniVrmOneClickExporter.cs`、`Editor/ExportOptimizationBindings.cs`、`Editor/AvatarBaseShape.cs`、`Editor/UnusedMorphTargets.cs`、`Formats/Runtime/AvatarAnimatorData.cs`、`Schema/VRVLOG_avatar_animator.1.schema.json`、`Formats/README.md`
+
+## 背景
+
+`VRVLOG_avatar_animator`のクリップは`activeSelf`の曲線だけを書き、BlendShapeの曲線は`omitted`の`blendShape`に数えていた。表情ボードに入らない顔の切り替えや、衣装の体型合わせのようにFXがBlendShapeを動かすアバターは、アプリでその動きを再現できなかった。
+
+書き出しはBlendShapeをそのまま写さない。表情ボードの既定の顔（FXの既定値）を土台のメッシュに焼き込み、残った分を差分にして（Rebase）、Avatar Optimizerが統合・削除し、どこからも使われないBlendShapeは最後に消す。FXの曲線はUnityの重み（0〜100）なので、アプリがglTFの重みに直すには、焼き込みと差分の取り方が分からないといけない。
+
+## 決定
+
+- ターゲットに`property`が`morph`の形を足す。`node`はメッシュを持つノード、`morph`はそのメッシュのモーフターゲットの番号（`morphTargetBinds`と同じ数え方）。`rest`・`baked`・`end`の3つの重みを持つ
+- アプリは、レイヤーを混ぜた後のUnityの重み`v`を`(v − baked) / (end − baked)`でglTFの重みにする。0〜1に丸めない。`baked`は土台に焼き込んだ重み（焼き込めずにそのまま写したときは0）、`end`は差分が1で表す重み（最後のフレームの重み）。複数フレームのBlendShapeは直線として扱う
+- `rest`は、どのレイヤーも書かないときの重みで、シーンに置いたときの値（ビルドの後、書き出しが重みを変える前）にする。`activeSelf`の`rest`と同じ考え方
+- 書くのは、どれかのクリップが`rest`から動かすBlendShapeだけにする。全部のキーが`rest`と同じ（接線も0）なら何も変えないので、書かずに数えもしない
+- 次のものは書かずに`blendShape`に数える。リップシンクのBlendShape（土台を作るときに、ほかのリップシンクのBlendShapeと既定の口の形も差し引くので、式1つでは重みを出せない）、BlendShapeが出力に無い、書き出しが読んだ元が無い、統合で元が複数になり値が食い違う、`baked`と`end`が同じ（差分が何も表さない）、クリップのキーやトラックの上限を超える。ファイルに無いメッシュの曲線は`missingNode`に数える。上限は、1つのクリップでキーが16384個（`activeSelf`を先に取り、残りをBlendShapeに使う）、トラックが4096本
+- BlendShapeを足すと拡張が4MBを超えるときは、BlendShapeを全部`blendShape`に数えて、`activeSelf`だけで書く
+- Avatar Optimizerの統合の後でも出力のメッシュと名前が分かるように、FXが動かすBlendShapeにも表情と同じ道筋を用意する。ただし使える端点は求めず、無くしても書き出しは止めない（その曲線を書かないだけ）
+- 使われないBlendShapeを消すとき、拡張が指すモーフターゲットは残し、番号を振り直した後の値を拡張に書く
+- VRMの表情と同じモーフターゲットを動かすときにどちらを優先するかは、読む側（アプリ）が決める
+
+## 理由
+
+- `baked`と`end`を拡張に書けば、アプリはメッシュを作り直さずに式1つで重みを出せる。焼き込みの仕組みをアプリが知らなくてよい
+- `rest`をシーンの値にするのは、VRChatでFXが何も書かないときに見える重みがそれだから
+- FXの既定値（ステートが書く値）は曲線の側にあるので、`rest`と別に持たなくてよい
+- 値の分からない曲線を推測で書くと、アプリで見た目が崩れる。数えておけば、どれだけ再現できていないかが分かる
+
+## 変わるもの
+
+FXがBlendShapeを動かすアバターでは、拡張に`morph`のターゲットとトラックが増え、`omitted`の`blendShape`が減る。拡張が指すBlendShapeはファイルに残るので、メッシュのモーフターゲット・`targetNames`・`weights`と、それより後ろの番号（表情の`morphTargetBinds`など）が変わる。FXの無いアバター、BlendShapeを動かさないFXのアバターの書き出しは変わらない。
+
+## 確かめ方
+
+- EditMode: `AvatarAnimatorCaptureTests`・`AvatarAnimatorDataTests`・`UnusedMorphTargetsTests`・`ExportOptimizationBindingsTests`・`QuickTransferMatchesDefaultNormalTests`
+- 書き出しの回帰: 基準と比較ツールの`--allow-kept-morphs`で比べる。拡張が指すために残ったモーフターゲットを外して番号を戻し、それ以外が同じことを確かめる。メッシュのモーフターゲットが全部外れたときは、空になった`targets`・`weights`・`extras`も外す（書き出しは空のものを書かない）。残したモーフターゲットの分だけ頂点データを詰めて減った量が変わるので、その警告のMBの数値は比べない
+- 測った結果: 手元の検証用アバター92体（3体は変更の前後とも同じ理由で書き出せない）を比べて、92組とも一致した。71体で拡張がBlendShapeを書き、残したモーフターゲットは合わせて584個。拡張のJSONは中央値が約40KB、最大で約0.9MB

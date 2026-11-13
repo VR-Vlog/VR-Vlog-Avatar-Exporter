@@ -24,6 +24,19 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       expressions and the BIN chunk are never relaxed. Each row lists the removed names with
       the length of their JSON as information only, and the summary counts the pairs where an
       extension was removed.
+  --allow-kept-morphs (with two directories only)
+      For a change that makes VRVLOG_avatar_animator write the BlendShapes that the FX moves, which
+      keeps their morph targets in the file. A morph target that a "morph" target of B's extension
+      names, on a mesh whose A does not have a target of that name, is removed from B (primitive
+      targets, targetNames, mesh and node weights; a list or extras left empty is removed, as the
+      exporter writes none) and the expression binds after it are numbered again. Then, on both
+      sides, the extension's "morph" targets, their tracks and the omitted
+      "blendShape" entry are removed and the other tracks are numbered again. When a morph target
+      was removed, accessors and bufferViews are compared by their content (their own fields and
+      bytes) in place of their index, and the BIN chunk through them, and the MB in the warning
+      about packed vertex data is not compared. Each row lists, as
+      information only, the removed morph targets and the morph targets and omitted blendShape
+      count of each side; the summary counts the pairs with morph targets.
 
 Checked for each pair:
   1. success or failure, and the failure text
@@ -298,6 +311,223 @@ def remove_added_extensions(json_a, json_b, names):
     return json_b, removed
 
 
+ANIMATOR = "VRVLOG_avatar_animator"
+
+
+def _member(container, key):
+    return container.get(key) if isinstance(container, dict) else None
+
+
+def _index(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _target_names(mesh):
+    names = _member(_member(mesh, "extras"), "targetNames")
+    if names is None:
+        primitives = _member(mesh, "primitives") or []
+        names = _member(_member(primitives[0] if primitives else None, "extras"), "targetNames")
+    return names if isinstance(names, list) else None
+
+
+def _filtered(values, keep):
+    return [value for i, value in enumerate(values) if i >= len(keep) or keep[i]]
+
+
+def _binds(document):
+    """Every {node, index} morph bind: VRM expressions and the expression animations."""
+    binds = []
+    expressions = _member(_member(_member(document, "extensions"), "VRMC_vrm"), "expressions") or {}
+    for group in ("preset", "custom"):
+        for expression in (_member(expressions, group) or {}).values():
+            binds += [b for b in (_member(expression, "morphTargetBinds") or []) if isinstance(b, dict)]
+
+    def collect(value):
+        if isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            if "node" in value and "index" in value:
+                binds.append(value)
+            for item in value.values():
+                collect(item)
+    collect(_member(_member(document, "extensions"), "VRVLOG_expression_animations"))
+    return binds
+
+
+def _filter_key(owner, key, keep):
+    """Filter owner[key] by keep; a list left empty is removed, as the exporter writes none."""
+    if isinstance(_member(owner, key), list):
+        owner[key] = _filtered(owner[key], keep)
+        if not owner[key]:
+            del owner[key]
+
+
+def _filter_names(owner, keep):
+    """Filter owner.extras.targetNames by keep; targetNames and then extras left empty are removed."""
+    extras = _member(owner, "extras")
+    if isinstance(extras, dict):
+        _filter_key(extras, "targetNames", keep)
+        if not extras:
+            del owner["extras"]
+
+
+def remove_kept_morphs(json_a, json_b):
+    """Return (copy of json_b, number of morph targets removed). A morph target is removed from B
+    when a "morph" target of B's VRVLOG_avatar_animator names it and the same mesh of A has no
+    target of its name: the export kept it only for the extension. Binds after it are numbered
+    again; a bind to a removed target is left as it is, to show as a difference."""
+    json_b = copy.deepcopy(json_b)
+    nodes = _member(json_b, "nodes") or []
+    meshes_a, meshes_b = _member(json_a, "meshes") or [], _member(json_b, "meshes") or []
+    named = {}
+    for target in _member(_member(_member(json_b, "extensions"), ANIMATOR), "targets") or []:
+        node, morph = _index(_member(target, "node")), _index(_member(target, "morph"))
+        if _member(target, "property") != "morph" or node is None or morph is None or node >= len(nodes):
+            continue
+        mesh = _index(_member(nodes[node], "mesh"))
+        if mesh is not None and mesh < len(meshes_b):
+            named.setdefault(mesh, set()).add(morph)
+    maps, removed = {}, 0
+    for mesh, morphs in sorted(named.items()):
+        names_b = _target_names(meshes_b[mesh])
+        names_a = _target_names(meshes_a[mesh]) if mesh < len(meshes_a) else None
+        if names_b is None:
+            continue
+        gone = {i for i in morphs if i < len(names_b) and names_b[i] not in (names_a or [])}
+        if not gone:
+            continue
+        keep = [i not in gone for i in range(len(names_b))]
+        number, mapping = 0, []
+        for kept in keep:
+            mapping.append(number if kept else None)
+            number += kept
+        maps[mesh] = mapping
+        removed += len(gone)
+        body = meshes_b[mesh]
+        for primitive in _member(body, "primitives") or []:
+            _filter_key(primitive, "targets", keep)
+            _filter_names(primitive, keep)
+        _filter_key(body, "weights", keep)
+        _filter_names(body, keep)
+        for node in nodes:
+            if _index(_member(node, "mesh")) == mesh:
+                _filter_key(node, "weights", keep)
+    for bind in _binds(json_b):
+        node, index = _index(bind.get("node")), _index(bind.get("index"))
+        mesh = _index(_member(nodes[node], "mesh")) if node is not None and node < len(nodes) else None
+        mapping = maps.get(mesh)
+        if mapping is not None and index is not None and index < len(mapping) and mapping[index] is not None:
+            bind["index"] = mapping[index]
+    return json_b, removed
+
+
+def remove_morph_tracks(document):
+    """Return (copy of document, morph target count, omitted blendShape count) without the "morph"
+    targets of VRVLOG_avatar_animator, their tracks and the omitted "blendShape" entry; the other
+    tracks point at the targets numbered again."""
+    document = copy.deepcopy(document)
+    extension = _member(_member(document, "extensions"), ANIMATOR)
+    targets = _member(extension, "targets")
+    if not isinstance(targets, list):
+        return document, 0, 0
+    mapping, number = [], 0
+    for target in targets:
+        morph = _member(target, "property") == "morph"
+        mapping.append(None if morph else number)
+        number += not morph
+    extension["targets"] = [t for t, m in zip(targets, mapping) if m is not None]
+    for clip in _member(extension, "clips") or []:
+        tracks = _member(clip, "tracks")
+        if not isinstance(tracks, list):
+            continue
+        kept = []
+        for track in tracks:
+            target = _index(_member(track, "target"))
+            if target is not None and target < len(mapping):
+                if mapping[target] is None:
+                    continue
+                track["target"] = mapping[target]
+            kept.append(track)
+        clip["tracks"] = kept
+    omitted = _member(extension, "omitted")
+    blend = 0
+    if isinstance(omitted, list):
+        blend = sum(_member(o, "count") or 0 for o in omitted if _member(o, "kind") == "blendShape")
+        extension["omitted"] = [o for o in omitted if _member(o, "kind") != "blendShape"]
+    return document, len(targets) - number, blend
+
+
+def content_addressed(document, binary):
+    """Return a copy of document where every accessor and bufferView reference is the hash of what
+    it points at (its own fields and bytes), without the accessors, bufferViews and buffers lists."""
+    document = copy.deepcopy(document)
+    view_keys = []
+    for view in _member(document, "bufferViews") or []:
+        data = b""
+        if isinstance(view, dict) and view.get("buffer", 0) == 0:
+            start = view.get("byteOffset", 0)
+            data = binary[start:start + view.get("byteLength", 0)]
+        fields = {k: v for k, v in view.items() if k not in ("byteOffset", "buffer")} if isinstance(view, dict) else view
+        view_keys.append("view:" + sha256(json.dumps(fields, sort_keys=True).encode("utf-8") + b"\0" + data)[:16])
+
+    def view_key(owner):
+        index = _index(owner.get("bufferView"))
+        if index is not None and index < len(view_keys):
+            owner["bufferView"] = view_keys[index]
+
+    accessor_keys = []
+    for accessor in _member(document, "accessors") or []:
+        fields = copy.deepcopy(accessor)
+        if isinstance(fields, dict):
+            view_key(fields)
+            sparse = _member(fields, "sparse")
+            for part in (_member(sparse, "indices"), _member(sparse, "values")):
+                if isinstance(part, dict):
+                    view_key(part)
+        accessor_keys.append("accessor:" + sha256(json.dumps(fields, sort_keys=True).encode("utf-8"))[:16])
+    for key in ("accessors", "bufferViews", "buffers"):
+        document.pop(key, None)
+
+    def accessor_key(owner, key):
+        index = _index(owner.get(key))
+        if index is not None and index < len(accessor_keys):
+            owner[key] = accessor_keys[index]
+
+    for mesh in _member(document, "meshes") or []:
+        for primitive in _member(mesh, "primitives") or []:
+            attributes = _member(primitive, "attributes")
+            if isinstance(attributes, dict):
+                for key in list(attributes):
+                    accessor_key(attributes, key)
+            if isinstance(primitive, dict) and "indices" in primitive:
+                accessor_key(primitive, "indices")
+            for target in _member(primitive, "targets") or []:
+                if isinstance(target, dict):
+                    for key in list(target):
+                        accessor_key(target, key)
+    for skin in _member(document, "skins") or []:
+        if isinstance(skin, dict) and "inverseBindMatrices" in skin:
+            accessor_key(skin, "inverseBindMatrices")
+    for animation in _member(document, "animations") or []:
+        for sampler in _member(animation, "samplers") or []:
+            for key in ("input", "output"):
+                if isinstance(sampler, dict) and key in sampler:
+                    accessor_key(sampler, key)
+
+    def views_in(value):
+        if isinstance(value, list):
+            for item in value:
+                views_in(item)
+        elif isinstance(value, dict):
+            if "bufferView" in value:
+                view_key(value)
+            for item in value.values():
+                views_in(item)
+    views_in(document)
+    return document
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -363,7 +593,15 @@ def load_result(directory, stem):
     return result, (vrm if vrm.exists() else None)
 
 
-def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed_extensions=()):
+# ExportNoteText.VertexDataLightened: the MB it saves changes with the morph targets B keeps.
+VERTEX_NOTE = re.compile(r"^(メッシュの頂点データを詰めてVRMを)[0-9.]+(MB小さくしました)$")
+
+
+def _masked_size(warning):
+    return VERTEX_NOTE.sub(r"\1#\2", warning) if isinstance(warning, str) else warning
+
+
+def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed_extensions=(), kept_morphs=False):
     if patterns is None:
         patterns = volatile_patterns()
     if subs is None:
@@ -384,6 +622,15 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
     row["warnings"] = len(wa)
     file_a, json_a, bin_a = read_glb(va) if va is not None else (b"", {}, b"")
     file_b, json_b, bin_b = read_glb(vb) if vb is not None else (b"", {}, b"")
+    removed_morphs, morphs_a, morphs_b, blend_a, blend_b = 0, 0, 0, 0, 0
+    if kept_morphs:
+        json_b, removed_morphs = remove_kept_morphs(json_a, json_b)
+        json_a, morphs_a, blend_a = remove_morph_tracks(json_a)
+        json_b, morphs_b, blend_b = remove_morph_tracks(json_b)
+        if morphs_a or morphs_b or removed_morphs:
+            row["kept_morphs"] = {"removed": removed_morphs, "targets": [morphs_a, morphs_b], "blendShape": [blend_a, blend_b]}
+        if removed_morphs:
+            wa, wb = [_masked_size(w) for w in wa], [_masked_size(w) for w in wb]
     issues += warning_issues(wa, wb, json_a, json_b)
     if (va is None) != (vb is None):
         issues.append("vrm missing in " + ("A" if va is None else "B"))
@@ -397,6 +644,8 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         json_b, removed = remove_added_extensions(json_a, json_b, allowed_extensions)
         if removed:
             row["allowed_extensions"] = removed
+    if removed_morphs:
+        json_a, json_b = content_addressed(json_a, bin_a), content_addressed(json_b, bin_b)
     pa, pb = [], []
     sa = strip_volatile(json_a, patterns, subs=subs, masked=pa)
     sb = strip_volatile(json_b, patterns, subs=subs, masked=pb)
@@ -412,7 +661,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
         paths = sorted(set(pa) ^ set(pb))
         issues.append("VOLATILE_SUB masked a value in only one of the two at %d paths: %s" % (
             len(paths), ", ".join(paths[:MAX_PATHS])))
-    if sha256(bin_a) != sha256(bin_b):
+    if not removed_morphs and sha256(bin_a) != sha256(bin_b):
         issues.append("BIN chunk differs (%d vs %d bytes)" % (len(bin_a), len(bin_b)))
     row["file_equal"] = file_a == file_b
     row["bytes"] = len(file_a)
@@ -454,6 +703,10 @@ def print_rows(rows):
             print("     - " + issue)
         for extension in row.get("allowed_extensions", []):
             print("     i added extension allowed: %s (%d bytes of JSON)" % (extension["name"], extension["bytes"]))
+        if "kept_morphs" in row:
+            kept = row["kept_morphs"]
+            print("     i morph targets: %d removed from B, %d vs %d in the extension, omitted blendShape %d vs %d" % (
+                kept["removed"], kept["targets"][0], kept["targets"][1], kept["blendShape"][0], kept["blendShape"][1]))
 
 
 def main(argv=None):
@@ -469,6 +722,9 @@ def main(argv=None):
     parser.add_argument("--allow-added-extension", action="append", default=[], metavar="NAME",
                         help="remove the root extension NAME from B before hashing when A does not have it"
                              " (repeatable; not used by --diff-paths)")
+    parser.add_argument("--allow-kept-morphs", action="store_true",
+                        help="remove from B the morph targets kept only for VRVLOG_avatar_animator, and the"
+                             " extension's morph targets and tracks from both, before comparing")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exit_:
@@ -477,6 +733,9 @@ def main(argv=None):
     if modes != 1 or (args.dirs and len(args.dirs) != 2):
         parser.print_usage(sys.stderr)
         print("ERROR pass two result directories, --runs or --diff-paths", file=sys.stderr)
+        return 2
+    if args.runs and args.allow_kept_morphs:
+        print("ERROR --allow-kept-morphs cannot be used with --runs", file=sys.stderr)
         return 2
     if args.runs and args.allow_added_extension:
         print("ERROR --allow-added-extension cannot be used with --runs", file=sys.stderr)
@@ -495,7 +754,8 @@ def main(argv=None):
             return 1 if paths else 0
         patterns = volatile_patterns()
         subs = volatile_subs(VOLATILE_SUB if args.runs else VOLATILE_SUB + VOLATILE_SUB_BETWEEN_LAUNCHES)
-        rows = [compare_pair(*pair, patterns=patterns, subs=subs, allowed_extensions=args.allow_added_extension)
+        rows = [compare_pair(*pair, patterns=patterns, subs=subs, allowed_extensions=args.allow_added_extension,
+                             kept_morphs=args.allow_kept_morphs)
                 for pair in plan_pairs(args)]
     except (OSError, ValueError) as error:
         print("ERROR " + str(error), file=sys.stderr)
@@ -516,6 +776,9 @@ def main(argv=None):
         if args.allow_added_extension:
             allowed = sum(1 for row in rows if row.get("allowed_extensions"))
             print("allowed extension removed in %d of %d pairs" % (allowed, len(rows)))
+        if args.allow_kept_morphs:
+            kept = sum(1 for row in rows if row.get("kept_morphs"))
+            print("morph targets in the extension in %d of %d pairs" % (kept, len(rows)))
     return 0 if rows and not mismatched else 1
 
 

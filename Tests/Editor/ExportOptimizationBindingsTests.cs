@@ -139,6 +139,36 @@ namespace VRVlog.LilToonExporter.Tests
             AssertBind(binds.Single(bind => Convert.ToInt32(bind["index"]) == 2), 2, .5f);
         }
 
+        // The shapes the FX moves keep a route without being required: after a
+        // merge each maps to its output renderer and shape, and one the
+        // optimizer removed is left out instead of stopping the export.
+        [Test]
+        public void AnimatorMorphsFollowTheMergeAndLeaveOutWhatWasRemoved()
+        {
+            Skin(source, "face", "Smile"); Skin(source, "body", "Smile"); Skin(source, "hat", "Gone");
+            clone = Object.Instantiate(source);
+            var originals = clone.GetComponentsInChildren<SkinnedMeshRenderer>();
+            var ids = originals.Select(skin => skin.GetInstanceID()).ToArray();
+            using var bindings = ExportOptimizationBindings.Capture(clone,
+                animatorMorphs: new[] { (originals[0], "Smile"), (originals[1], "Smile"), (originals[2], "Gone"), (originals[0], "Smile") });
+            var marker = clone.GetComponent<ExportOptimizationMarker>();
+            var target = Skin(clone, "merged", "Smile (face)");
+            target.sharedMesh.AddBlendShapeFrame("Smile (body)", 100, Enumerable.Repeat(Vector3.right * .2f, 3).ToArray(), null, null);
+            foreach (var route in marker.Morphs)
+            {
+                if (route.SourceRendererId == ids[2]) { route.Removed = true; route.Renderer = null; continue; }
+                route.Shape = route.SourceRendererId == ids[0] ? "Smile (face)" : "Smile (body)";
+                route.Renderer = target;
+            }
+            foreach (var original in originals) Object.DestroyImmediate(original.gameObject);
+            bindings.ValidateAndApply();
+            Assert.That(bindings.AnimatorMorphs.Select(m => (m.SourceShape, m.Renderer, m.Shape)), Is.EqualTo(new[]
+            {
+                ("Smile", target, "Smile (face)"), ("Smile", target, "Smile (body)"),
+            }));
+            Assert.That(bindings.AnimatorMorphs.Select(m => m.SourceRenderer), Is.EqualTo(new[] { ids[0], ids[1] }));
+        }
+
         // When the merge coalesces both sources into one output shape, the
         // expression keeps the first reference instead of applying it twice.
         [Test]

@@ -19,6 +19,8 @@ namespace VRVlog.AvatarAnimator
         public const int SchemaVersion = 1;
         // The keys of all the curves of one clip, the limit the shared key reader counts to.
         public const int MaximumKeysPerClip = 16384;
+        // The tracks of one clip.
+        public const int MaximumTracksPerClip = 4096;
         // A blend tree of clips is 1 deep; each tree inside a tree adds 1.
         public const int MaximumBlendTreeDepth = 32;
         // The motions under one motion, itself included, counting a tree
@@ -44,7 +46,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active" };
+        public static readonly string[] Properties = { "active", "morph" };
         // The order the omitted kinds are written in.
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
 
@@ -186,8 +188,16 @@ namespace VRVlog.AvatarAnimator
 
         public sealed class Track { public int Target; public readonly List<ExpressionAnimationData.Curve> Curves = new List<ExpressionAnimationData.Curve>(); }
 
-        // Rest is the node's value before any layer runs (0 or 1 for active).
-        public sealed class Target { public int Node; public string Property = "active"; public int Rest; }
+        // Rest is the value before any layer runs: 0 or 1 for active, a Unity
+        // BlendShape weight for morph. A morph target is morph target Morph of
+        // the mesh on Node; Baked is the weight already in the base geometry
+        // and End the weight the glTF target reaches at 1, so a weight v shows
+        // the glTF weight (v - Baked) / (End - Baked).
+        public sealed class Target
+        {
+            public int Node; public string Property = "active"; public double Rest;
+            public int Morph; public double Baked, End;
+        }
 
         public sealed class Omission { public string Kind; public int Count; }
 
@@ -213,15 +223,16 @@ namespace VRVlog.AvatarAnimator
                         ["target"] = (long)t.Target, ["curves"] = t.Curves.Select(curve => (object)ExpressionAnimationData.WriteCurve(curve)).ToList()
                     }).ToList()
                 }).ToList(),
-                ["targets"] = data.Targets.Select(t => (object)new Dictionary<string, object>
-                {
-                    ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = (long)t.Rest
-                }).ToList(),
+                ["targets"] = data.Targets.Select(t => (object)WriteTarget(t)).ToList(),
                 ["omitted"] = data.Omitted.Select(o => (object)new Dictionary<string, object> { ["kind"] = o.Kind, ["count"] = (long)o.Count }).ToList()
             };
             Read(result); // The exporter and runtime enforce the same contract.
             return result;
         }
+
+        static Dictionary<string, object> WriteTarget(Target t) => t.Property == "morph"
+            ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
+            : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = (long)t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
         {
@@ -521,7 +532,7 @@ namespace VRVlog.AvatarAnimator
                 if (clip.Duration < 0) throw Json.Bad();
                 var keyCount = 0;
                 var seen = new HashSet<int>();
-                foreach (var rawTrack in Json.Arr(c["tracks"], 0, 4096))
+                foreach (var rawTrack in Json.Arr(c["tracks"], 0, MaximumTracksPerClip))
                 {
                     var t = Json.Obj(rawTrack, "target", "curves");
                     var track = new Track { Target = Index(t["target"], targets.Count) };
@@ -534,12 +545,27 @@ namespace VRVlog.AvatarAnimator
                 data.Clips.Add(clip);
             }
 
-            var nodes = new HashSet<(int, string)>();
+            var nodes = new HashSet<(int, string, int)>();
             foreach (var raw in targets)
             {
-                var t = Json.Obj(raw, "node", "property", "rest");
-                var target = new Target { Node = Json.NonNegative(t["node"]), Property = Choice(t["property"], Properties), Rest = Json.Integer(t["rest"]) };
-                if (target.Rest != 0 && target.Rest != 1 || !nodes.Add((target.Node, target.Property))) throw Json.Bad();
+                var t = Json.Obj(raw);
+                var target = new Target { Property = Choice(Get(t, "property"), Properties) };
+                if (target.Property == "morph")
+                {
+                    Json.Obj(t, "node", "property", "morph", "rest", "baked", "end");
+                    target.Morph = Json.NonNegative(t["morph"]);
+                    target.Rest = Json.Number(t["rest"]); target.Baked = Json.Number(t["baked"]); target.End = Json.Number(t["end"]);
+                    // At End == Baked the glTF target cannot show any weight.
+                    if (target.End == target.Baked) throw Json.Bad();
+                }
+                else
+                {
+                    Json.Obj(t, "node", "property", "rest");
+                    target.Rest = Json.Integer(t["rest"]);
+                    if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
+                }
+                target.Node = Json.NonNegative(t["node"]);
+                if (!nodes.Add((target.Node, target.Property, target.Morph))) throw Json.Bad();
                 data.Targets.Add(target);
             }
 
