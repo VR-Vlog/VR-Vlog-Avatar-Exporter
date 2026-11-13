@@ -19,13 +19,15 @@ namespace VRVlog.LilToonExporter
     // lacks follow as new submeshes. A donor is a renderer without
     // BlendShapes, so no expression, blink or mouth shape points to it, and
     // ends disabled like an empty renderer (DisableEmptyMeshRenderers).
-    // Only opaque and cutout lilToon materials without stencil, depth, blend
-    // or ID mask tricks (in any pass, the outline's too) take part: their
+    // Only opaque and cutout lilToon materials without stencil, depth, blend,
+    // colour mask or ID mask tricks (in any pass, the outline's too) take part: their
     // order among renderers does not change what is drawn. Renderers merge
     // only with renderers below the same objects that toggles or expressions
     // show and hide, so they still appear and disappear together, and only
-    // when the donor's mesh space is the host's (its shared bones' bindposes
-    // agree), so what the shader reads from the object's coordinates stays.
+    // when the donor's mesh space is the host's (they share a bone, the shared
+    // bones' bindposes agree and both draw from the same root bone), so what
+    // the shader reads from the object's coordinates stays. Renderers that
+    // cannot join the first host of a group try the next host among themselves.
     // Nothing changes when a step fails: every mesh is built before any
     // renderer takes it.
     internal static class MeshMergeLightweight
@@ -73,13 +75,21 @@ namespace VRVlog.LilToonExporter
             {
                 foreach (var group in candidates.GroupBy(renderer => Key(renderer) + "|" + SwitchedAbove(renderer.transform)))
                 {
+                    // Those that cannot join a host try the next host among themselves.
                     var members = group.ToList();
-                    if (members.Count < 2) continue;
-                    var host = members.FirstOrDefault(renderer => renderer.sharedMesh.blendShapeCount > 0) ?? members[0];
-                    var plan = building = new Plan { Host = host };
-                    foreach (var donor in members.Where(renderer => renderer != host && renderer.sharedMesh.blendShapeCount == 0))
-                        if (ToHost(host, donor) is Matrix4x4 toHost) plan.Donors.Add((donor, toHost));
-                    if (plan.Donors.Count > 0 && Build(plan)) plans.Add(plan);
+                    while (members.Count >= 2)
+                    {
+                        var host = members.FirstOrDefault(renderer => renderer.sharedMesh.blendShapeCount > 0) ?? members[0];
+                        var plan = building = new Plan { Host = host };
+                        var left = new List<SkinnedMeshRenderer>();
+                        foreach (var member in members.Where(renderer => renderer != host))
+                        {
+                            if (member.sharedMesh.blendShapeCount == 0 && ToHost(host, member) is Matrix4x4 toHost) plan.Donors.Add((member, toHost));
+                            else left.Add(member);
+                        }
+                        if (plan.Donors.Count > 0 && Build(plan)) plans.Add(plan);
+                        members = left;
+                    }
                 }
             }
             catch (Exception error) when (!(error is OperationCanceledException))
@@ -161,6 +171,9 @@ namespace VRVlog.LilToonExporter
                 var zTest = Value(pass + "ZTest", 4f);
                 if (Value(pass + "ZWrite", 1f) != 1f || (zTest != 2f && zTest != 4f)) return false;
                 if (Value(pass + "SrcBlend", 1f) != 1f || Value(pass + "DstBlend", 0f) != 0f || Value(pass + "BlendOp", 0f) != 0f) return false;
+                // All of RGBA: a pass that writes depth but not colour hides
+                // what draws after it, and merging changes what that is.
+                if (Value(pass + "ColorMask", 15f) != 15f) return false;
             }
             // A fade by the distance to the object's origin: a donor would fade
             // with the host's origin.
