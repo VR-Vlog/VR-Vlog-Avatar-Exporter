@@ -336,7 +336,19 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = .5);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayerAffectsTiming"] = 1L);
             // A synced layer holds a copy of its source's machines and states.
-            Rejects(json => ((List<object>)At(json, "controllers", 0, "layers", 1)["states"]).RemoveAt(2));
+            // The machine that held the removed state points at none, so only
+            // the shape rejects it.
+            Rejects(json =>
+            {
+                At(json, "controllers", 0, "layers", 1, "machines", 1)["defaultState"] = -1L;
+                ((List<object>)At(json, "controllers", 0, "layers", 1)["states"]).RemoveAt(2);
+            });
+            Rejects(json =>
+            {
+                var machines = (List<object>)At(json, "controllers", 0, "layers", 1)["machines"];
+                var extra = new Dictionary<string, object>(At(json, "controllers", 0, "layers", 1, "machines", 1)) { ["defaultState"] = -1L };
+                machines.Add(extra);
+            });
             Rejects(json => At(json, "controllers", 0, "layers", 1, "states", 2)["machine"] = 0L);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.NaN);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.PositiveInfinity);
