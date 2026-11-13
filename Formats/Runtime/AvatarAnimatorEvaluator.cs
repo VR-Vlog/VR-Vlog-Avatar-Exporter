@@ -57,7 +57,8 @@ namespace VRVlog.AvatarAnimator
         // Whether this evaluator plays the controller as Unity would. False
         // when the exporter left out something that drives transitions, or the
         // controller uses what is not implemented yet (additive layers, synced
-        // layers that affect timing, 2D blend trees). reason is null when true.
+        // layers that affect timing, 2D blend trees, parameters a clip
+        // animates, a random that prevents repeats). reason is null when true.
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -66,6 +67,26 @@ namespace VRVlog.AvatarAnimator
                 {
                     reason = "The export left out " + omission.Count + " " + omission.Kind + " entries that drive transitions.";
                     return false;
+                }
+            // Unity owns a parameter a clip animates: drivers and the host do
+            // not change it and a transition waits for the curve's value.
+            foreach (var target in data.Targets)
+                if (target.Property != "active") { reason = "Parameters that a clip animates are not supported."; return false; }
+            // How VRChat picks again when a random would repeat is not measured.
+            bool PreventsRepeats(List<AvatarAnimatorData.Behaviour> behaviours)
+            {
+                foreach (var behaviour in behaviours)
+                    foreach (var operation in behaviour.Operations)
+                        if (operation.PreventRepeats) return true;
+                return false;
+            }
+            foreach (var controller in data.Controllers)
+                foreach (var layer in controller.Layers)
+                {
+                    var prevents = false;
+                    foreach (var machine in layer.Machines) prevents |= PreventsRepeats(machine.Behaviours);
+                    foreach (var state in layer.States) prevents |= PreventsRepeats(state.Behaviours);
+                    if (prevents) { reason = "A random that prevents repeats is not supported."; return false; }
                 }
             foreach (var controller in data.Controllers)
                 foreach (var layer in controller.Layers)

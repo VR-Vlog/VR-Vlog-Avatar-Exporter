@@ -653,6 +653,17 @@ public static class AvatarAnimatorEvaluatorTests
         b.Data.Omitted.Clear();
         b.Data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 3 });
         Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "omitted curves do not");
+        var animated = b.Parameter("Animated", "float");
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = animated });
+        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "parameters a clip animates");
+        b.Data.Targets.RemoveAt(b.Data.Targets.Count - 1);
+        var count = b.Parameter("Count", "int");
+        var driver = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        driver.Operations.Add(new AvatarAnimatorData.Operation { Type = "random", Parameter = count, ValueMin = 0, ValueMax = 3, PreventRepeats = true });
+        b.Data.Controllers[0].Layers[0].States[0].Behaviours.Add(driver);
+        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "a random that prevents repeats");
+        driver.Operations[0].PreventRepeats = false;
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "a random that may repeat");
         var blend = b.Parameter("X", "float");
         var tree = b.Tree("1d", blend, (0, 0));
         b.Data.Motions[tree].BlendType = "2dSimpleDirectional";
