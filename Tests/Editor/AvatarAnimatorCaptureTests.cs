@@ -251,11 +251,19 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), name), AnimationCurve.Constant(0, 1f / 60, value));
             avatar.Fx.AddLayer("Parameters");
             avatar.Fx.layers.Last().stateMachine.AddState("Parameters").motion = clip;
+            // A default a float cannot hold is written as it is. Blend's
+            // differs from the one Expression Parameters declare (.5): Unity
+            // returns to the controller's.
+            var parameters = avatar.Fx.parameters;
+            parameters.Single(p => p.name == "GestureLeft").defaultInt = 16777217;
+            parameters.Single(p => p.name == "Blend").defaultFloat = .25f;
+            avatar.Fx.parameters = parameters;
 
             var data = Captured(avatar);
             var targets = data.Targets.Select(t => (t.Property, data.Parameters[t.Parameter].Name, t.Rest));
-            Assert.That(targets, Is.EqualTo(new[] { ("parameter", "Hat", 0d), ("parameter", "Blend", .5), ("parameter", "GestureLeft", 0d) }),
+            Assert.That(targets, Is.EqualTo(new[] { ("parameter", "Hat", 0d), ("parameter", "Blend", .25), ("parameter", "GestureLeft", 16777217d) }),
                 "In the order of the parameters, each at the controller's default.");
+            Assert.That(data.Parameters.Single(p => p.Name == "Blend").Default, Is.EqualTo(.5), "The parameter keeps the Expression Parameters default.");
             var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Parameters");
             var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
             Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "Blend" }));
@@ -311,11 +319,50 @@ namespace VRVlog.LilToonExporter.Tests
             tree.blendParameter = "GestureLeft";
             tree.AddChild(unread, 0);
 
+            // A direct child weighted by a name the controller does not declare.
+            var unweighted = avatar.Clip("Unweighted");
+            AnimationUtility.SetEditorCurve(unweighted, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Unweighted");
+            fx.CreateBlendTreeInController("Unweighted", out var direct, fx.layers.Length - 1);
+            direct.blendType = BlendTreeType.Direct;
+            direct.AddChild(unweighted);
+            var children = direct.children;
+            children[0].directBlendParameter = "Nobody";
+            direct.children = children;
+
             var data = Captured(avatar);
-            Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "Blend", "BlendX", "BlendY" }));
             Assert.That(data.Clips.SelectMany(c => c.Tracks), Is.Empty);
             Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1), "The float curve past an hour.");
             Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // With an override controller Unity binds the replacement clip: only
+        // its curves drive parameters and are written.
+        [Test]
+        public void AnOverrideControllersClipDrivesItsParameters()
+        {
+            using var avatar = new AnimatorAvatar();
+            var original = avatar.Clip("Original");
+            AnimationUtility.SetEditorCurve(original, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            var replacement = avatar.Clip("Replacement");
+            AnimationUtility.SetEditorCurve(replacement, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            avatar.Fx.AddLayer("Swapped");
+            avatar.Fx.layers.Last().stateMachine.AddState("Swapped").motion = original;
+            var runtime = new AnimatorOverrideController(avatar.Fx);
+            try
+            {
+                runtime[original] = replacement;
+                VrcAvatar.SetFx(avatar.Source.GetComponent(VrcAvatar.DescriptorType), runtime);
+
+                var data = Captured(avatar);
+                Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendY" }));
+                var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Swapped");
+                var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+                Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendY" }));
+                Assert.That(tracks.Single().Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .25, .25 }));
+            }
+            finally { Object.DestroyImmediate(runtime); }
         }
 
         // Unity applies an Avatar Mask to Transform and muscle curves only,

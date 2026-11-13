@@ -185,6 +185,11 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "targets", 1)["parameter"] = 4L);
             Rejects(json => At(json, "targets", 1)["parameter"] = -1L);
             Rejects(json => At(json, "targets", 1)["parameter"] = 2L);
+            Rejects(json =>
+            {
+                At(json, "targets", 2)["parameter"] = 1L;
+                At(json, "targets", 2)["rest"] = 2L;
+            });
             Rejects(json => At(json, "clips", 0, "tracks", 1)["target"] = 2L);
             Rejects(json => At(json, "targets", 2)["rest"] = .5);
             Rejects(json => At(json, "targets", 2)["parameter"] = 0L);
@@ -194,6 +199,8 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "targets", 0)["rest"] = .5);
             Rejects(json => At(json, "targets", 1)["rest"] = "0.25");
             Rejects(json => At(json, "targets", 1)["rest"] = double.NaN);
+            Rejects(json => At(json, "targets", 2)["rest"] = 2147483648L);
+            Rejects(json => At(json, "targets", 2)["rest"] = -2147483649L);
 
             // Bool and int parameters may be targets at a value of their type.
             var targets = Json(Sample());
@@ -203,6 +210,20 @@ namespace VRVlog.LilToonExporter.Tests
             targets = Json(Sample());
             At(targets, "targets", 2)["rest"] = -3L;
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(targets));
+            foreach (var rest in new[] { 2147483647L, -2147483648L })
+            {
+                targets = Json(Sample());
+                At(targets, "targets", 2)["rest"] = rest;
+                Assert.That(AvatarAnimatorData.Read(targets).Targets[2].Rest, Is.EqualTo((double)rest));
+            }
+
+            // Write checks the same contract, without rounding an active rest first.
+            foreach (var rest in new[] { .9, 1.9, -.5 })
+            {
+                var data = Sample();
+                data.Targets[0].Rest = rest;
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(data)).Message, Is.EqualTo(Invalid));
+            }
         }
 
         [Test]

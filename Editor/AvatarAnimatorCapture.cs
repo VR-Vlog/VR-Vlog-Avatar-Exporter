@@ -193,7 +193,8 @@ namespace VRVlog.LilToonExporter
                 declared.Add(parameter.name);
                 var type = parameter.type == AnimatorControllerParameterType.Bool ? "bool" : parameter.type == AnimatorControllerParameterType.Int ? "int"
                     : parameter.type == AnimatorControllerParameterType.Trigger ? "trigger" : "float";
-                var value = type == "float" ? parameter.defaultFloat : type == "int" ? parameter.defaultInt : parameter.defaultBool ? 1 : 0;
+                // A double, so an int default is not rounded through a float.
+                var value = type == "float" ? (double)parameter.defaultFloat : type == "int" ? parameter.defaultInt : parameter.defaultBool ? 1 : 0;
                 if (parameterIndex.TryGetValue(parameter.name, out var index))
                 {
                     data.Parameters[index].Type = type;
@@ -686,19 +687,12 @@ namespace VRVlog.LilToonExporter
             var parameterTracks = new List<(int, ExpressionAnimationData.Curve)>();
             clipParameterTracks.Add(parameterTracks);
             var keys = 0;
-            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            // activeSelf curves take the clip's key room first, so a parameter
+            // curve never leaves out one that was written before.
+            foreach (var binding in bindings)
             {
-                var parameter = AnimatedParameter(binding);
-                if (parameter >= 0)
-                {
-                    // Unity moves a float parameter only; on an int, bool or
-                    // trigger the curve holds the default, which its target shows.
-                    if (data.Parameters[parameter].Type != "float") continue;
-                    var animated = Curve(clip, binding, ref keys);
-                    if (animated == null) Omit("parameter");
-                    else parameterTracks.Add((parameter, animated));
-                    continue;
-                }
+                if (AnimatedParameter(binding) >= 0) continue;
                 if (!(binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive")) { Omit(Kind(binding)); continue; }
                 var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
                 if (target == null) { Omit("missingNode"); continue; }
@@ -706,14 +700,25 @@ namespace VRVlog.LilToonExporter
                 if (converted == null) { Omit("other"); continue; }
                 tracks.Add((Target(target.gameObject), converted));
             }
+            foreach (var binding in bindings)
+            {
+                var parameter = AnimatedParameter(binding);
+                // Unity moves a float parameter only; on an int, bool or
+                // trigger the curve holds the default, which its target shows.
+                if (parameter < 0 || data.Parameters[parameter].Type != "float") continue;
+                var animated = Curve(clip, binding, ref keys);
+                if (animated == null) Omit("parameter");
+                else parameterTracks.Add((parameter, animated));
+            }
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 Omit(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith("m_Materials", StringComparison.Ordinal) ? "material" : "other");
             return index;
         }
 
         // The curve as written, or null when the contract does not take it
-        // (more keys than the clip has room left for, a key past an hour, a
-        // value that is not a number): it is then left out alone, so the rest
+        // (more keys than the clip has room left for, or a curve the shared
+        // curve contract rejects, such as a key past an hour, a value that is
+        // not a number or out of range): it is then left out alone, so the rest
         // of the avatar is still written. The keys are counted before the
         // curve is converted, which keeps every key: a curve too long is not
         // converted.

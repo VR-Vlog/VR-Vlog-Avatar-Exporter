@@ -802,25 +802,45 @@
           "minimum": 0
         }
       },
-      "if": {
-        "properties": {
-          "type": {
-            "const": "copy"
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "copy"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "source"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "random"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "preventRepeats": {
+                "const": false
+              }
+            }
           }
         }
-      },
-      "then": {
-        "required": [
-          "source"
-        ]
-      },
-      "else": {
-        "not": {
-          "required": [
-            "source"
-          ]
-        }
-      }
+      ]
     },
     "motion": {
       "oneOf": [

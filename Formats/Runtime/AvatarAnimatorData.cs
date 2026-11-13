@@ -224,7 +224,7 @@ namespace VRVlog.AvatarAnimator
 
         static Dictionary<string, object> WriteTarget(Target t) => t.Property == "parameter"
             ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
-            : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = (long)t.Rest };
+            : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
         {
@@ -551,7 +551,7 @@ namespace VRVlog.AvatarAnimator
                     target.Rest = Json.Number(t["rest"]);
                     // Rest is a value the parameter's type can hold.
                     var type = data.Parameters[target.Parameter].Type;
-                    if (type == "int" ? target.Rest != Math.Floor(target.Rest) : type != "float" && target.Rest != 0 && target.Rest != 1) throw Json.Bad();
+                    if (type == "int" ? target.Rest != Math.Floor(target.Rest) || target.Rest < int.MinValue || target.Rest > int.MaxValue : type != "float" && target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
                 else
                 {
