@@ -749,8 +749,7 @@
         "sourceMin",
         "sourceMax",
         "destMin",
-        "destMax",
-        "preventRepeats"
+        "destMax"
       ],
       "properties": {
         "type": {
@@ -793,8 +792,9 @@
           "type": "number"
         },
         "preventRepeats": {
-          "description": "Prevent Repeats (VRChat SDK 3.10.2 and later): a random never sets the value it set last. True only on a random into an int, the one place the SDK offers it; false everywhere else and for an SDK without the setting.",
-          "type": "boolean"
+          "description": "Prevent Repeats (VRChat SDK 3.10.2 and later): a random never sets the value it set last. True only on a random into an int, the one place the SDK offers it; false everywhere else and for an SDK without the setting. Data written before the setting was read has none, which is read as false.",
+          "type": "boolean",
+          "default": false
         },
         "source": {
           "description": "The parameter a copy reads. A copy has one and no other type has.",

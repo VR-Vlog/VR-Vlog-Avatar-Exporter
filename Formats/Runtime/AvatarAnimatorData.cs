@@ -680,10 +680,13 @@ namespace VRVlog.AvatarAnimator
                         foreach (var rawOperation in Json.Arr(b["operations"], 0, 1024))
                         {
                             var o = Json.Obj(rawOperation);
-                            var keys = new List<string> { "type", "parameter", "value", "valueMin", "valueMax", "chance", "convertRange", "sourceMin", "sourceMax", "destMin", "destMax", "preventRepeats" };
+                            var keys = new List<string> { "type", "parameter", "value", "valueMin", "valueMax", "chance", "convertRange", "sourceMin", "sourceMax", "destMin", "destMax" };
                             // A copy has a source and nothing else has.
                             if (o.ContainsKey("source") != (o.ContainsKey("type") && o["type"] as string == "copy")) throw Json.Bad();
                             if (o.ContainsKey("source")) keys.Add("source");
+                            // Data written before Prevent Repeats was read has no
+                            // preventRepeats: the setting is off there.
+                            if (o.ContainsKey("preventRepeats")) keys.Add("preventRepeats");
                             Json.Obj(o, keys.ToArray());
                             var operation = new Operation
                             {
@@ -693,7 +696,7 @@ namespace VRVlog.AvatarAnimator
                                 Chance = Json.Number(o["chance"]), ConvertRange = Flag(o["convertRange"]),
                                 SourceMin = Json.Number(o["sourceMin"]), SourceMax = Json.Number(o["sourceMax"]),
                                 DestMin = Json.Number(o["destMin"]), DestMax = Json.Number(o["destMax"]),
-                                PreventRepeats = Flag(o["preventRepeats"])
+                                PreventRepeats = o.ContainsKey("preventRepeats") && Flag(o["preventRepeats"])
                             };
                             // The SDK offers Prevent Repeats only on a random into an int.
                             if (operation.PreventRepeats && (operation.Type != "random" || parameters[operation.Parameter].Type != "int")) throw Json.Bad();

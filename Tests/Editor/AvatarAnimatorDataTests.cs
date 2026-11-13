@@ -235,8 +235,19 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => Op(json, 0)["preventRepeats"] = true);
             Rejects(json => Op(json, 1)["preventRepeats"] = true);
             Rejects(json => { Op(json, 2)["type"] = "set"; });
-            Rejects(json => Op(json, 2).Remove("preventRepeats"));
             Rejects(json => Op(json, 2)["preventRepeats"] = 1L);
+        }
+
+        // Data written before Prevent Repeats was read has no preventRepeats.
+        [Test]
+        public void ReadTakesAMissingPreventRepeatsAsOff()
+        {
+            var json = Json(Sample());
+            foreach (var index in new[] { 0, 1, 2 })
+                At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", index).Remove("preventRepeats");
+            var data = AvatarAnimatorData.Read(json);
+            Assert.That(data.Controllers[0].Layers[0].Machines[0].Behaviours[0].Operations.Select(o => o.PreventRepeats), Is.EqualTo(new[] { false, false, false }));
+            Assert.That(At(Json(data), "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 0)["preventRepeats"], Is.EqualTo(false), "Written again, it is there.");
         }
 
         [Test]
