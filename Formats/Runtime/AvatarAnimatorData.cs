@@ -19,6 +19,8 @@ namespace VRVlog.AvatarAnimator
         public const int SchemaVersion = 1;
         // The keys of all the curves of one clip, the limit the shared key reader counts to.
         public const int MaximumKeysPerClip = 16384;
+        // The tracks of one clip.
+        public const int MaximumTracksPerClip = 4096;
         // A blend tree of clips is 1 deep; each tree inside a tree adds 1.
         public const int MaximumBlendTreeDepth = 32;
         // The motions under one motion, itself included, counting a tree
@@ -525,7 +527,7 @@ namespace VRVlog.AvatarAnimator
                 if (clip.Duration < 0) throw Json.Bad();
                 var keyCount = 0;
                 var seen = new HashSet<int>();
-                foreach (var rawTrack in Json.Arr(c["tracks"], 0, 4096))
+                foreach (var rawTrack in Json.Arr(c["tracks"], 0, MaximumTracksPerClip))
                 {
                     var t = Json.Obj(rawTrack, "target", "curves");
                     var track = new Track { Target = Index(t["target"], targets.Count) };

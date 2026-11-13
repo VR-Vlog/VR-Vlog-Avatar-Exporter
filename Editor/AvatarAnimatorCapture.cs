@@ -688,8 +688,8 @@ namespace VRVlog.LilToonExporter
             clipParameterTracks.Add(parameterTracks);
             var keys = 0;
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            // activeSelf curves take the clip's key room first, so a parameter
-            // curve never leaves out one that was written before.
+            // activeSelf curves take the clip's key and track room first, so a
+            // parameter curve never leaves out one that was written before.
             foreach (var binding in bindings)
             {
                 if (AnimatedParameter(binding) >= 0) continue;
@@ -711,7 +711,8 @@ namespace VRVlog.LilToonExporter
                 // Unity moves a float parameter only; on an int, bool or
                 // trigger the curve holds the default, which its target shows.
                 if (parameter < 0 || data.Parameters[parameter].Type != "float") continue;
-                var animated = ownReferencePose ? null : Curve(clip, binding, ref keys);
+                var full = tracks.Count + parameterTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip;
+                var animated = ownReferencePose || full ? null : Curve(clip, binding, ref keys);
                 if (animated == null) Omit("parameter");
                 else parameterTracks.Add((parameter, animated));
             }

@@ -362,6 +362,37 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
         }
 
+        // A clip holds at most 4096 tracks. With one left after its activeSelf
+        // curves, one parameter curve is written and the next left out, and
+        // the activeSelf curves are all kept.
+        [Test]
+        public void ParameterCurvesLeaveTheTrackRoomToActiveSelfCurves()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Full");
+            var bindings = new List<EditorCurveBinding>();
+            for (var i = 0; i < AvatarAnimatorData.MaximumTracksPerClip - 1; i++)
+            {
+                new GameObject("Part" + i).transform.SetParent(avatar.Source.transform, false);
+                bindings.Add(EditorCurveBinding.FloatCurve("Part" + i, typeof(GameObject), "m_IsActive"));
+            }
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"));
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"));
+            AnimationUtility.SetEditorCurves(clip, bindings.ToArray(), bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Full");
+            avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count)));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 1));
+            Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }).Or.EqualTo(new[] { "BlendY" }));
+            Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
         // With an override controller Unity binds the replacement clip: only
         // its curves drive parameters and are written.
         [Test]
