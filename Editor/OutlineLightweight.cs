@@ -16,7 +16,8 @@ namespace VRVlog.LilToonExporter
     // the renderers that use the material. That is the widest the line
     // gets: the width mask, vertex color width and _OutlineFixWidth (which
     // narrows the line closer than 1 m) only scale it down. A material
-    // with an outline vector map keeps its outline. Expressions that
+    // with an outline vector map, or that takes the outline's direction from
+    // the vertex colour (RGBA, not normalised), keeps its outline. Expressions that
     // animate the width are not read.
     internal static class OutlineLightweight
     {
@@ -53,6 +54,8 @@ namespace VRVlog.LilToonExporter
         {
             // An outline vector map bends and can lengthen the push; treated as wide.
             if (material.HasProperty("_OutlineVectorTex") && material.GetTexture("_OutlineVectorTex") != null) return float.PositiveInfinity;
+            // So does a direction from the vertex colour: lilToon does not normalise it.
+            if (material.HasProperty("_OutlineVertexR2Width") && material.GetFloat("_OutlineVertexR2Width") >= 2f) return float.PositiveInfinity;
             var width = material.GetFloat("_OutlineWidth") * 10f * (float.IsNaN(scale) || scale <= 0f ? 1f : scale);
             return float.IsNaN(width) || float.IsInfinity(width) ? float.PositiveInfinity : Mathf.Max(0f, width);
         }

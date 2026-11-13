@@ -151,7 +151,10 @@ namespace VRVlog.LilToonExporter.Tests
             // _OutlineFixWidth only narrows the line near the camera.
             var narrowedNear = Lil("Hidden/lilToonOutline", .01f);
             narrowedNear.SetFloat("_OutlineFixWidth", 1f);
-            var renderers = new[] { thin, wide, narrowedNear }.Select((material, i) => (Renderer)Skin("Part" + i, Vector3.zero, Quaternion.identity, new[] { material }, false)).ToList();
+            // A direction from the vertex colour is not normalised and can push further.
+            var vertexDirection = Lil("Hidden/lilToonOutline", .01f);
+            vertexDirection.SetFloat("_OutlineVertexR2Width", 2f);
+            var renderers = new[] { thin, wide, narrowedNear, vertexDirection }.Select((material, i) => (Renderer)Skin("Part" + i, Vector3.zero, Quaternion.identity, new[] { material }, false)).ToList();
             Assert.That(OutlineLightweight.Omitted(renderers, .5f), Is.EquivalentTo(new[] { thin, narrowedNear }));
             Assert.That(OutlineLightweight.Omitted(renderers, 0f), Is.Empty);
             // The same 0.4 mm drawn twice as large is 0.8 mm.
