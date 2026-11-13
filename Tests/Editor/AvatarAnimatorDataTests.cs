@@ -88,7 +88,9 @@ namespace VRVlog.LilToonExporter.Tests
             controller.Layers.Add(layer);
             // A synced layer holds a copy of its source's machines.
             var synced = new AvatarAnimatorData.Layer { Name = "Hat synced", Weight = .5, SyncedLayer = 0, SyncedLayerAffectsTiming = true };
-            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Hat" });
+            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Hat", DefaultState = 0 });
+            synced.Machines.Add(new AvatarAnimatorData.Machine { Name = "Nested", Parent = 0, DefaultState = 2 });
+            foreach (var state in layer.States) synced.States.Add(new AvatarAnimatorData.State { Name = state.Name, Machine = state.Machine, Motion = -1 });
             controller.Layers.Add(synced);
             data.Controllers.Add(controller);
 
@@ -333,6 +335,9 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "controllers", 0, "layers", 0)["syncedLayer"] = -2L);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayer"] = .5);
             Rejects(json => At(json, "controllers", 0, "layers", 1)["syncedLayerAffectsTiming"] = 1L);
+            // A synced layer holds a copy of its source's machines and states.
+            Rejects(json => ((List<object>)At(json, "controllers", 0, "layers", 1)["states"]).RemoveAt(2));
+            Rejects(json => At(json, "controllers", 0, "layers", 1, "states", 2)["machine"] = 0L);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.NaN);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.PositiveInfinity);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = "0.25");
