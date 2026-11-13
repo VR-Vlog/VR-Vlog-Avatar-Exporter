@@ -28,6 +28,7 @@ namespace VRVlog.LilToonExporter
     // bones' bindposes agree and both draw from the same root bone), so what
     // the shader reads from the object's coordinates stays. Renderers that
     // cannot join the first host of a group try the next host among themselves.
+    // A render queue in which any material writes the stencil is left alone.
     // Nothing changes when a step fails: every mesh is built before any
     // renderer takes it.
     internal static class MeshMergeLightweight
@@ -68,7 +69,12 @@ namespace VRVlog.LilToonExporter
                 }
                 return string.Join(",", ids.Select(id => id.ToString(CultureInfo.InvariantCulture)));
             }
-            var candidates = ExportRendererSelection.Enumerate(clone).OfType<SkinnedMeshRenderer>().Where(Eligible).ToList();
+            // A material that writes the stencil in the same queue: merging
+            // changes which faces draw before it, and so what it writes.
+            var all = ExportRendererSelection.Enumerate(clone).ToList();
+            var stencilQueues = new HashSet<int>(all.SelectMany(renderer => renderer.sharedMaterials).Where(WritesStencil).Select(material => material.renderQueue));
+            var candidates = all.OfType<SkinnedMeshRenderer>().Where(Eligible)
+                .Where(renderer => !renderer.sharedMaterials.Any(material => stencilQueues.Contains(material.renderQueue))).ToList();
             var plans = new List<Plan>();
             Plan building = null;
             try
@@ -134,6 +140,22 @@ namespace VRVlog.LilToonExporter
             return mesh.GetBonesPerVertex().Length == mesh.vertexCount;
         }
 
+        static bool WritesStencil(Material material)
+        {
+            if (material == null || material.shader == null) return false;
+            var shader = material.shader;
+            for (var i = 0; i < shader.GetPropertyCount(); i++)
+            {
+                var property = shader.GetPropertyName(i);
+                if (shader.GetPropertyType(i) != ShaderPropertyType.Float && shader.GetPropertyType(i) != ShaderPropertyType.Range &&
+                    shader.GetPropertyType(i) != ShaderPropertyType.Int) continue;
+                if (property.IndexOf("Stencil", StringComparison.Ordinal) < 0) continue;
+                if ((property.EndsWith("Pass", StringComparison.Ordinal) || property.EndsWith("Fail", StringComparison.Ordinal)) &&
+                    material.GetFloat(property) != 0f) return true;
+            }
+            return false;
+        }
+
         // Opaque or cutout lilToon whose draw order among renderers does not
         // change the picture.
         internal static bool MergeableMaterial(Material material)
@@ -171,6 +193,8 @@ namespace VRVlog.LilToonExporter
                 var zTest = Value(pass + "ZTest", 4f);
                 if (Value(pass + "ZWrite", 1f) != 1f || (zTest != 2f && zTest != 4f)) return false;
                 if (Value(pass + "SrcBlend", 1f) != 1f || Value(pass + "DstBlend", 0f) != 0f || Value(pass + "BlendOp", 0f) != 0f) return false;
+                // The alpha too: only lilToon's default (One, OneMinusSrcAlpha, Add).
+                if (Value(pass + "SrcBlendAlpha", 1f) != 1f || Value(pass + "DstBlendAlpha", 10f) != 10f || Value(pass + "BlendOpAlpha", 0f) != 0f) return false;
                 // All of RGBA: a pass that writes depth but not colour hides
                 // what draws after it, and merging changes what that is.
                 if (Value(pass + "ColorMask", 15f) != 15f) return false;

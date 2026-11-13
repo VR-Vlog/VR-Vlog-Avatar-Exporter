@@ -107,6 +107,25 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AStencilWriterInTheSameQueueKeepsTheQueueOut()
+        {
+            var shared = Lil("lilToon");
+            var body = Skin("Body", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: true);
+            var cloth = Skin("Cloth", Vector3.zero, Quaternion.identity, new[] { shared }, blendShape: false);
+            var writer = Lil("lilToon");
+            writer.SetFloat("_StencilPass", 2f);
+            Skin("Writer", Vector3.zero, Quaternion.identity, new[] { writer }, blendShape: false);
+            var owned = new List<Mesh>();
+            Assert.That(MeshMergeLightweight.Apply(root, owned, null), Is.Null, "Merging would change which faces draw before the writer.");
+            Assert.That(cloth.enabled, Is.True);
+            writer.renderQueue = shared.renderQueue + 1;
+            var result = MeshMergeLightweight.Apply(root, owned, null);
+            cleanup.AddRange(owned);
+            Assert.That(result, Is.Not.Null, "A writer in a later queue draws after both either way.");
+            Assert.That(body.sharedMesh, Is.SameAs(owned.Single()));
+        }
+
+        [Test]
         public void PartsThatCannotJoinTheFirstHostMergeWithEachOther()
         {
             var shared = Lil("lilToon");
@@ -216,7 +235,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void StencilInAnyPassAndPositionEffectsKeepAMaterialOut()
         {
             Assert.That(MeshMergeLightweight.MergeableMaterial(Lil("Hidden/lilToonOutline")), Is.True);
-            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f), ("_OutlineZTest", 8f), ("_OutlineZWrite", 0f), ("_DistanceFadeMode", 1f), ("_BlendOp", 3f), ("_OutlineBlendOp", 3f), ("_ColorMask", 0f), ("_OutlineColorMask", 7f) })
+            foreach (var (property, value) in new[] { ("_StencilZFail", 2f), ("_StencilFail", 2f), ("_OutlineStencilPass", 2f), ("_OutlineStencilComp", 3f), ("_OutlineZTest", 8f), ("_OutlineZWrite", 0f), ("_DistanceFadeMode", 1f), ("_BlendOp", 3f), ("_OutlineBlendOp", 3f), ("_ColorMask", 0f), ("_OutlineColorMask", 7f), ("_DstBlendAlpha", 0f), ("_OutlineBlendOpAlpha", 2f) })
             {
                 var material = Lil("Hidden/lilToonOutline");
                 Assert.That(material.HasProperty(property), Is.True, property);
