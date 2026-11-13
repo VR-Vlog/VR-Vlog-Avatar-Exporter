@@ -36,6 +36,14 @@ namespace VRVlog.LilToonExporter
         readonly List<(GameObject Object, int Default)> targets = new List<(GameObject, int)>();
         readonly Dictionary<GameObject, int> targetIndex = new Dictionary<GameObject, int>();
         readonly List<List<(int Target, ExpressionAnimationData.Curve Curve)>> clipTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // The float parameter curves of each clip, by parameter index.
+        readonly List<List<(int Parameter, ExpressionAnimationData.Curve Curve)>> clipParameterTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // The FX parameters a clip of the controller animates. Unity holds each
+        // of them: SetFloat and the like no longer change it (see Driven).
+        readonly SortedSet<int> driven = new SortedSet<int>();
+        readonly HashSet<Motion> drivenWalked = new HashSet<Motion>();
+        // The value the FX controller gives each parameter it declares.
+        readonly Dictionary<int, double> controllerDefaults = new Dictionary<int, double>();
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
 
         readonly GameObject root;
@@ -106,6 +114,15 @@ namespace VRVlog.LilToonExporter
                 map[i] = index < 0 ? -1 : data.Targets.Count;
                 if (index >= 0) data.Targets.Add(new AvatarAnimatorData.Target { Node = index, Property = "active", Rest = targets[i].Default });
             }
+            // Every parameter a clip animates is a target, with or without a
+            // track: Unity holds it at the controller's default when no layer
+            // writes it, and holds an int, bool or trigger there always.
+            var parameterTarget = new Dictionary<int, int>();
+            foreach (var parameter in driven)
+            {
+                parameterTarget[parameter] = data.Targets.Count;
+                data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = parameter, Rest = controllerDefaults[parameter] });
+            }
             var missing = 0;
             for (var i = 0; i < data.Clips.Count; i++)
             {
@@ -114,6 +131,12 @@ namespace VRVlog.LilToonExporter
                 {
                     if (map[target] < 0) { missing++; continue; }
                     var track = new AvatarAnimatorData.Track { Target = map[target] };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
+                foreach (var (parameter, curve) in clipParameterTracks[i].OrderBy(t => t.Parameter))
+                {
+                    var track = new AvatarAnimatorData.Track { Target = parameterTarget[parameter] };
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
@@ -137,7 +160,7 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(TooLarge);
             var document = GlbDocument.Read(bytes);
             var nodeCount = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> nodes ? nodes.Count : 0;
-            if (data.Targets.Any(target => target.Node >= nodeCount))
+            if (data.Targets.Any(target => target.Property != "parameter" && target.Node >= nodeCount))
                 throw new InvalidOperationException("Avatar animator target node is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
@@ -170,12 +193,19 @@ namespace VRVlog.LilToonExporter
                 declared.Add(parameter.name);
                 var type = parameter.type == AnimatorControllerParameterType.Bool ? "bool" : parameter.type == AnimatorControllerParameterType.Int ? "int"
                     : parameter.type == AnimatorControllerParameterType.Trigger ? "trigger" : "float";
-                if (parameterIndex.TryGetValue(parameter.name, out var index)) { data.Parameters[index].Type = type; continue; }
+                var value = type == "float" ? parameter.defaultFloat : type == "int" ? parameter.defaultInt : parameter.defaultBool ? 1 : 0;
+                if (parameterIndex.TryGetValue(parameter.name, out var index))
+                {
+                    data.Parameters[index].Type = type;
+                    controllerDefaults[index] = value;
+                    continue;
+                }
                 parameterIndex[parameter.name] = data.Parameters.Count;
+                controllerDefaults[data.Parameters.Count] = value;
                 data.Parameters.Add(new AvatarAnimatorData.Parameter
                 {
                     Name = parameter.name, Type = type, Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.name) ? "builtin" : "animator",
-                    Default = type == "float" ? parameter.defaultFloat : type == "int" ? parameter.defaultInt : parameter.defaultBool ? 1 : 0
+                    Default = value
                 });
             }
         }
@@ -423,7 +453,8 @@ namespace VRVlog.LilToonExporter
                         ValueMax = Number(Member(operation, "valueMax")), Chance = Number(Member(operation, "chance")),
                         ConvertRange = Member(operation, "convertRange") is bool convert && convert,
                         SourceMin = Number(Member(operation, "sourceMin")), SourceMax = Number(Member(operation, "sourceMax")),
-                        DestMin = Number(Member(operation, "destMin")), DestMax = Number(Member(operation, "destMax"))
+                        DestMin = Number(Member(operation, "destMin")), DestMax = Number(Member(operation, "destMax")),
+                        PreventRepeats = PreventRepeats(operation, type, data.Parameters[parameterIndex[name]].Type)
                     });
                 }
                 return result;
@@ -466,6 +497,12 @@ namespace VRVlog.LilToonExporter
             }
             return null;
         }
+
+        // Prevent Repeats (VRChat SDK 3.10.2 and later; an SDK without the
+        // field never prevents) is offered only on a random into an int; set
+        // anywhere else it is not shown and is read as off.
+        internal static bool PreventRepeats(object operation, string type, string parameterType) =>
+            type == "random" && parameterType == "int" && Member(operation, "preventRepeats") is bool prevent && prevent;
 
         static string OperationType(object operation)
         {
@@ -571,6 +608,7 @@ namespace VRVlog.LilToonExporter
         // The motion a state plays, counting what it leaves out at this use.
         int StateMotion(Motion motion)
         {
+            Driven(motion);
             var index = MotionIndex(motion);
             Omit("unreadParameter", Unread(motion, index, false));
             return index;
@@ -601,6 +639,39 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // Unity binds the curves of every clip a state holds, under any blend
+        // tree, whether or not the tree can be read or a direct child has a
+        // weight: each FX parameter such a curve names is then held by the
+        // animator. The walk keeps its own stack and visits each motion once.
+        void Driven(Motion motion)
+        {
+            var pending = new Stack<Motion>();
+            pending.Push(motion);
+            while (pending.Count > 0)
+            {
+                var next = pending.Pop();
+                if (next is AnimationClip original && overrides.TryGetValue(original, out var replaced)) next = replaced;
+                if (next == null || !drivenWalked.Add(next)) continue;
+                if (next is BlendTree tree)
+                {
+                    foreach (var child in tree.children) pending.Push(child.motion);
+                    continue;
+                }
+                if (!(next is AnimationClip clip)) continue;
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    var parameter = AnimatedParameter(binding);
+                    if (parameter >= 0) driven.Add(parameter);
+                }
+            }
+        }
+
+        // The FX parameter an Animator curve on the avatar root animates, or
+        // -1. Unity takes such a curve only on a name the controller declares.
+        int AnimatedParameter(EditorCurveBinding binding) =>
+            binding.type == typeof(Animator) && binding.path.Length == 0 && binding.propertyName != null && controllerParameters.Contains(binding.propertyName)
+                ? parameterIndex[binding.propertyName] : -1;
+
         // A clip is written even without a curve the app plays: its length
         // still times the transitions out of its state.
         int ClipIndex(AnimationClip clip)
@@ -612,28 +683,49 @@ namespace VRVlog.LilToonExporter
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
             data.Clips.Add(new AvatarAnimatorData.Clip { Name = clip.name ?? "", Duration = clip.length, Loop = settings.loopTime, CycleOffset = settings.cycleOffset });
             clipTracks.Add(tracks);
+            var parameterTracks = new List<(int, ExpressionAnimationData.Curve)>();
+            clipParameterTracks.Add(parameterTracks);
             var keys = 0;
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
+                var parameter = AnimatedParameter(binding);
+                if (parameter >= 0)
+                {
+                    // Unity moves a float parameter only; on an int, bool or
+                    // trigger the curve holds the default, which its target shows.
+                    if (data.Parameters[parameter].Type != "float") continue;
+                    var animated = Curve(clip, binding, ref keys);
+                    if (animated == null) Omit("parameter");
+                    else parameterTracks.Add((parameter, animated));
+                    continue;
+                }
                 if (!(binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive")) { Omit(Kind(binding)); continue; }
                 var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
                 if (target == null) { Omit("missingNode"); continue; }
-                var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                // A curve the contract does not take (more keys than the clip
-                // has room left for, a key past an hour, a value that is not a
-                // number) is left out alone, so the rest of the avatar is still
-                // written. The keys are counted before the curve is converted,
-                // which keeps every key: a curve too long is not converted.
-                if (curve == null || curve.length == 0 || keys + curve.length > AvatarAnimatorData.MaximumKeysPerClip) { Omit("other"); continue; }
-                var converted = VrChatGestureExpressions.ConvertCurve(curve);
-                try { converted.Validate(); }
-                catch (InvalidOperationException) { Omit("other"); continue; }
-                keys += converted.Keys.Count;
+                var converted = Curve(clip, binding, ref keys);
+                if (converted == null) { Omit("other"); continue; }
                 tracks.Add((Target(target.gameObject), converted));
             }
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 Omit(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith("m_Materials", StringComparison.Ordinal) ? "material" : "other");
             return index;
+        }
+
+        // The curve as written, or null when the contract does not take it
+        // (more keys than the clip has room left for, a key past an hour, a
+        // value that is not a number): it is then left out alone, so the rest
+        // of the avatar is still written. The keys are counted before the
+        // curve is converted, which keeps every key: a curve too long is not
+        // converted.
+        static ExpressionAnimationData.Curve Curve(AnimationClip clip, EditorCurveBinding binding, ref int keys)
+        {
+            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+            if (curve == null || curve.length == 0 || keys + curve.length > AvatarAnimatorData.MaximumKeysPerClip) return null;
+            var converted = VrChatGestureExpressions.ConvertCurve(curve);
+            try { converted.Validate(); }
+            catch (InvalidOperationException) { return null; }
+            keys += converted.Keys.Count;
+            return converted;
         }
 
         int Target(GameObject gameObject)
@@ -644,12 +736,13 @@ namespace VRVlog.LilToonExporter
             return targets.Count - 1;
         }
 
-        // An Animator curve on the avatar root drives a parameter when the FX
-        // declares the name; otherwise it is a Humanoid muscle or root motion.
+        // An Animator curve on the avatar root on a name the FX does not declare
+        // (those it declares are parameters, taken before) is a Humanoid muscle
+        // or root motion.
         string Kind(EditorCurveBinding binding)
         {
             var property = binding.propertyName ?? "";
-            if (binding.type == typeof(Animator) && binding.path.Length == 0) return controllerParameters.Contains(property) ? "parameter" : "muscle";
+            if (binding.type == typeof(Animator) && binding.path.Length == 0) return "muscle";
             if (typeof(SkinnedMeshRenderer).IsAssignableFrom(binding.type) && property.StartsWith("blendShape.", StringComparison.Ordinal)) return "blendShape";
             if (typeof(Renderer).IsAssignableFrom(binding.type) && property.StartsWith("material.", StringComparison.Ordinal)) return "material";
             if (typeof(Transform).IsAssignableFrom(binding.type)) return "transform";

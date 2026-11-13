@@ -239,6 +239,132 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Targets.All(t => t.Property == "active"), Is.True);
         }
 
+        // Unity moves a float FX parameter by a curve on the avatar root and
+        // holds an int, bool or trigger at the controller's default. Each is a
+        // target with that default as its rest; only the float has a track.
+        [Test]
+        public void ACurveOnAFloatParameterIsWrittenWithTheControllersDefault()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Parameters");
+            foreach (var (name, value) in new[] { ("GestureLeft", 3f), ("Blend", .75f), ("Hat", 1f) })
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), name), AnimationCurve.Constant(0, 1f / 60, value));
+            avatar.Fx.AddLayer("Parameters");
+            avatar.Fx.layers.Last().stateMachine.AddState("Parameters").motion = clip;
+
+            var data = Captured(avatar);
+            var targets = data.Targets.Select(t => (t.Property, data.Parameters[t.Parameter].Name, t.Rest));
+            Assert.That(targets, Is.EqualTo(new[] { ("parameter", "Hat", 0d), ("parameter", "Blend", .5), ("parameter", "GestureLeft", 0d) }),
+                "In the order of the parameters, each at the controller's default.");
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Parameters");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "Blend" }));
+            Assert.That(tracks.Single().Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter"), Is.Empty);
+        }
+
+        // An active track comes before the parameter tracks in a clip, and
+        // the node targets before the parameter targets.
+        [Test]
+        public void ParameterTracksAndTargetsFollowTheActiveOnes()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Both", ("Hat", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Both");
+            avatar.Fx.layers.Last().stateMachine.AddState("Both").motion = clip;
+
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var data = Read(json);
+            var nodes = Nodes(json);
+            string Name(AvatarAnimatorData.Target t) => t.Property == "active" ? nodes[t.Node] : data.Parameters[t.Parameter].Name;
+            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "parameter", "parameter" }));
+            Assert.That(data.Targets.Skip(2).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Both");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => Name(data.Targets[t.Target])), Is.EqualTo(new[] { "Hat", "BlendX", "BlendY" }));
+        }
+
+        // A parameter a clip animates is held by Unity even when its curve is
+        // left out, when the clip is under a tree Unity cannot read, or when a
+        // direct child has no weight: it is a target in each case. A curve on
+        // a name the controller does not declare, or below the root, is not.
+        [Test]
+        public void AParameterAClipDrivesIsATargetEvenWhenItsCurveIsLeftOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var tooLong = avatar.Clip("Too long");
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 7200, 1));
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("", typeof(Animator), "Gone"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("Hat", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Too long");
+            fx.layers.Last().stateMachine.AddState("Too long").motion = tooLong;
+
+            // A 1D tree on an int, which Unity cannot read.
+            var unread = avatar.Clip("Unread");
+            AnimationUtility.SetEditorCurve(unread, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Unread");
+            fx.CreateBlendTreeInController("Unread", out var tree, fx.layers.Length - 1);
+            tree.blendType = BlendTreeType.Simple1D;
+            tree.blendParameter = "GestureLeft";
+            tree.AddChild(unread, 0);
+
+            var data = Captured(avatar);
+            Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            Assert.That(data.Clips.SelectMany(c => c.Tracks), Is.Empty);
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1), "The float curve past an hour.");
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // Unity applies an Avatar Mask to Transform and muscle curves only,
+        // none of which are written: a layer's mask changes nothing.
+        [Test]
+        public void ALayersAvatarMaskChangesNothingWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Masked", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Masked");
+            avatar.Fx.layers.Last().stateMachine.AddState("Masked").motion = clip;
+            var before = JsonDom.Serialize(AvatarAnimatorData.Write(Captured(avatar)));
+
+            var mask = new AvatarMask { name = "Mask" };
+            try
+            {
+                mask.transformCount = 1;
+                mask.SetTransformPath(0, "Glasses");
+                mask.SetTransformActive(0, false);
+                for (var part = AvatarMaskBodyPart.Root; part < AvatarMaskBodyPart.LastBodyPart; part++) mask.SetHumanoidBodyPartActive(part, false);
+                var layers = avatar.Fx.layers;
+                foreach (var index in new[] { 0, layers.Length - 1 }) layers[index].avatarMask = mask;
+                avatar.Fx.layers = layers;
+                Assert.That(avatar.Fx.layers.Last().avatarMask, Is.SameAs(mask));
+                Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(Captured(avatar))), Is.EqualTo(before));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mask);
+            }
+        }
+
+        // The SDK offers Prevent Repeats (3.10.2 and later) only on a random
+        // into an int; elsewhere, and on an SDK without it, it is off.
+        [Test]
+        public void PreventRepeatsIsWrittenForARandomIntoAnIntOnly()
+        {
+            var on = new PreventingOperation { preventRepeats = true };
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(on, "random", "int"), Is.True);
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(new PreventingOperation(), "random", "int"), Is.False);
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(new OlderOperation(), "random", "int"), Is.False);
+            foreach (var (type, parameterType) in new[] { ("random", "bool"), ("random", "float"), ("set", "int"), ("add", "int"), ("copy", "int") })
+                Assert.That(AvatarAnimatorCapture.PreventRepeats(on, type, parameterType), Is.False, type + " into " + parameterType);
+        }
+
+        sealed class PreventingOperation { public bool preventRepeats; }
+        sealed class OlderOperation { public float chance; }
+
         [Test]
         public void AnAvatarWithoutADescriptorHasNoExtension()
         {
@@ -787,7 +913,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // What the stage reads from the avatar as it stands, through the
-        // format's own checks. No object has a node here, so no curve is kept.
+        // format's own checks. No object has a node here, so no activeSelf
+        // curve is kept; parameter curves are.
         static AvatarAnimatorData Captured(AnimatorAvatar avatar) =>
             AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null).Resolve(_ => -1)));
 

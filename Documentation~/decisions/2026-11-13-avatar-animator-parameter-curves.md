@@ -1,0 +1,57 @@
+# FXのパラメーターを動かす曲線と、Prevent Repeatsを拡張に書く
+
+- 日付: 2026-11-13
+- 対象: `Editor/AvatarAnimatorCapture.cs`、`Formats/Runtime/AvatarAnimatorData.cs`、`Schema/VRVLOG_avatar_animator.1.schema.json`、`Formats/README.md`
+
+## 背景
+
+2026-11-12の決定記録で、`VRVLOG_avatar_animator`に書かずに残した物が3つあった。
+
+- FXのパラメーターを動かす曲線（アバターのルートのAnimatorに付く曲線）。`omitted`の`parameter`に件数だけを書いていた。92体で合わせて193本
+- レイヤーのAvatar Mask
+- Parameter DriverのRandomで同じ値を続けて選ばない設定（Prevent Repeats。VRChat SDK 3.10.2で足された）
+
+曲線の書き方は、Unityがこの曲線をどう扱うかで決まる。推測で決めず、Unity 2022.3.22f1の使い捨てのプロジェクトで、EditModeから`Animator.Update`を回して測った。Prevent Repeatsは、SDK 3.10.1・3.10.2・3.10.6の`VRCAvatarParameterDriver`とそのエディターのソースを読んで確かめた。
+
+## 測って分かったこと
+
+| 番号 | 測ったこと | 結果 |
+|---|---|---|
+| T1 | float・int・bool・triggerのパラメーターに曲線（値3.4・0.6）を付けて再生する | 値が動くのはfloatだけ。ほかの型は曲線の値にならない |
+| T1d | int・bool・triggerを既定値（3・true）にして、曲線の有る・無いクリップで`SetInteger`・`SetBool`・`ResetTrigger`を呼ぶ | 曲線があると、そのステートに居ても居なくても既定値のまま変わらない。曲線が無ければ変わる |
+| T2・T10 | 曲線のあるfloatに、曲線の無いステートに居る間に`SetFloat`する | Write Defaultsのオン・オフに関係なく、`SetFloat`は残らない。どのレイヤーも書いていない間はコントローラーの既定値になる |
+| T3・T3b | 曲線が値を書いている間に`SetFloat`する。曲線の値を条件にした遷移を待つ | `SetFloat`は効かない。遷移は1回遅れて起きる（前の評価の値を見る） |
+| T4 | 2つのレイヤーが同じfloatを書く | Overrideは重みで混ぜる。Additiveで値が一定のクリップは何も足さない |
+| T5〜T8 | レイヤーにAvatar Maskを付ける（Transformのパス・Humanoidの部位のオン・オフ、最初のレイヤーにも） | マスクが変えるのはTransform（とHumanoidの筋肉）の曲線だけ。activeSelf・BlendShape・マテリアル・パラメーターの曲線は変わらない |
+| T9・T9b | 宣言の無い名前・ルート以外のパスにパラメーターの曲線を付ける | 何も起きない |
+| T11・T12 | 宣言の無いパラメーターを使う1Dツリーや、重みの無いDirectの子の下に曲線のあるクリップを置く | 曲線の値は出ないが、パラメーターは既定値に固定され、`SetFloat`は効かない |
+
+結果のログは手元の計測フォルダ（`result2.txt`・`result4.txt`・`result5.txt`）に残した。Prevent Repeatsは、3.10.2から`VRCAvatarParameterDriver.Parameter`に`preventRepeats`（bool）があり、エディターは行き先がintのRandomのときだけこの項目を出す。3.10.1には無い。
+
+## 決定
+
+- FXのパラメーターを、ノードを持たない新しい種類のターゲット`{"property":"parameter","parameter":N,"rest":X}`で表す。`rest`はFXのコントローラーでの既定値で、型に合う値（intは整数、boolとtriggerは0か1）にする。Expression Parametersが同じ名前を別の既定値で宣言していても、Unityが戻すのはコントローラーの値なので、こちらを書く
+- コントローラーのどれかのクリップが曲線を付けるパラメーターは、すべてターゲットにする。曲線を書けたかどうか、そのクリップが読めないツリーの下にあるか、Directの重みがあるかに関係なく、Unityはそのパラメーターを持ち続ける（T2・T11・T12）。メニュー・Parameter Driver・アプリはその値を変えられず、どのレイヤーも書いていない間は`rest`になる
+- 曲線のトラックを持てるのはfloatのターゲットだけにする。int・bool・triggerの曲線は値を動かさず`rest`に固定する（T1・T1d）ので、トラックの無いターゲットで表す。読む側は、floatでないパラメーターのターゲットにトラックがあるデータを拒む
+- 並びは決まった順にする。ターゲットはノードのターゲットのあとにパラメーターのターゲットをパラメーターの番号順に、クリップのトラックはactiveのトラックのあとにパラメーターのトラックを番号順に置く。同じ体からは同じJSONになる
+- `omitted`の`parameter`の意味を「書けなかったfloatのパラメーターの曲線（キーが多すぎる・1時間を超える・数でない）」に変える。以前は宣言のある名前の曲線をすべて数えていた。宣言の無い名前のルートのAnimatorの曲線は、以前と同じく`muscle`に数える
+- Avatar Maskは書かない。Unityはマスクを書いた物（activeSelfとパラメーターの曲線）に当てない（T5〜T8）ので、書いても再生は変わらない
+- Parameter Driverの操作に`preventRepeats`（bool、必須）を足す。SDKが出す場所と同じく、行き先がintのRandomでだけtrueにし、ほかの操作と3.10.1以前のSDKではfalseにする。読む側は、Random以外やint以外の行き先でtrueのデータを拒む
+- 形式は`schemaVersion` 1のまま、ターゲットの種類と操作の項目を足す。この拡張を読むアプリはまだ出ていない
+
+## 検討した代替案と不採用理由
+
+- パラメーターのターゲットにも`node`を持たせる（ルートのノードを指す）: パラメーターはノードの値ではない。ルートのノードの番号に意味を持たせると、ルートが最適化で変わったときに壊れる
+- 曲線を書けたパラメーターだけをターゲットにする: 書けなかった曲線や読めないツリーの下の曲線でも、Unityはパラメーターを既定値に固定する（T11・T12）。ターゲットが無いと、アプリがメニューやParameter Driverでその値を変えてしまう
+- int・bool・triggerの曲線もトラックとして書き、読む側で無視する: Unityはその値を使わない。使わない値を形式に入れると、読む側がUnityと違う再生をする余地が残る
+- Avatar Maskをノードのパスの一覧として書く: 書いた物にマスクは効かない。今の形式に足しても読む側にすることが無い
+
+## 今回は変えないもの
+
+- Additiveのレイヤーの基準の姿勢（参照ポーズ）は書かない。T4で、値が一定のクリップは何も足さないことだけを確かめた。曲線の値が変わるクリップをAdditiveのレイヤーに置いたときの足し方は測っていない
+- BlendShapeとマテリアルの曲線は、この変更とは別に書く（PR-B2）
+
+## 確かめ方
+
+- `AvatarAnimatorDataTests`で、パラメーターのターゲット（floatでトラックあり、intでトラックなし）と`preventRepeats`がtrueの操作を含むデータが、書いて読んで同じJSONに戻ることを確かめる。範囲外の番号、重複、型に合わない`rest`、`node`のあるパラメーターのターゲット、floatでないターゲットのトラック、Random以外・int以外の行き先の`preventRepeats`、`preventRepeats`の欠けを拒むことを確かめる
+- `AvatarAnimatorCaptureTests`で、実物のSDKを入れたプロジェクトから、floatだけがトラックを持ち各ターゲットがコントローラーの既定値を持つこと、並びの順、書けない曲線や読めないツリーの下の曲線でもターゲットになること、宣言の無い名前・ルート以外のパスの曲線はターゲットにならないこと、レイヤーのマスクで書き出しが変わらないこと、Prevent Repeatsの読み方を確かめる

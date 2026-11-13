@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vrvlog.app/schema/VRVLOG_avatar_animator/1/schema.json",
   "title": "VRVLOG_avatar_animator 1",
-  "description": "The avatar's VRChat FX controller, Expression Menu and Expression Parameters as written in the avatar, read by the exporter from the prepared copy. Every index points into a table of this extension: parameters, menus, the layer's machines and states, motions, clips and targets; -1 means none where allowed. Machines of a layer are flattened in preorder: machine 0 is the layer's root with parent -1 and no exit transitions, every other machine follows its parent. Entry and exit transitions carry no timing; state and Any State transitions do. Every transition has exactly one of toState, toMachine and exit. Only transitions Unity can take are written, in Unity's order: Mute and Solo are already applied, and a transition without a destination or with a condition Unity cannot read is left out. A condition's mode fits its parameter's type: if on a bool or trigger, ifNot on a bool, greater and less on a float or int, equals and notEqual on an int. A state's speed, cycle offset and time parameters are floats and its mirror parameter is a bool. The parameter table holds the Expression Parameters and the FX controller's parameters only; a blend tree, direct weight or state option on a name the FX controller does not declare is written as Unity plays it (a blend tree with no motion, a direct child left out, a state option left unset), except that Unity plays such a tree held by another tree by what the other children leave. That case, and a parameter of another type, where Unity reads an unrelated float, are written the same way and counted as unreadParameter. A Parameter Driver operation on an undeclared name, or a copy without a source, is counted as operation. Clips keep curves for GameObject activeSelf only, one curve per track and target, with at most 16384 keys per clip; other curves and unsupported behaviours are counted in omitted by kind, in the order of the enumeration, and leave out kinds with no entries. A target's rest is activeSelf before the exporter changed the avatar. expressions is reserved and empty in schema 1. Rules that span entries are validated by the shared reader (AvatarAnimatorData.Read): index ranges, blend trees without cycles and nested at most 32 deep (a tree of clips is 1 deep), unique targets per clip and unique (node, property) over targets, and a layer's syncedLayer naming another layer of the same controller that is not synced itself, a motion that expands to at most 4096 motions when its blend trees are expanded per parent, and the parameter types above. Node indices must be less than the glTF node count.",
+  "description": "The avatar's VRChat FX controller, Expression Menu and Expression Parameters as written in the avatar, read by the exporter from the prepared copy. Every index points into a table of this extension: parameters, menus, the layer's machines and states, motions, clips and targets; -1 means none where allowed. Machines of a layer are flattened in preorder: machine 0 is the layer's root with parent -1 and no exit transitions, every other machine follows its parent. Entry and exit transitions carry no timing; state and Any State transitions do. Every transition has exactly one of toState, toMachine and exit. Only transitions Unity can take are written, in Unity's order: Mute and Solo are already applied, and a transition without a destination or with a condition Unity cannot read is left out. A condition's mode fits its parameter's type: if on a bool or trigger, ifNot on a bool, greater and less on a float or int, equals and notEqual on an int. A state's speed, cycle offset and time parameters are floats and its mirror parameter is a bool. The parameter table holds the Expression Parameters and the FX controller's parameters only; a blend tree, direct weight or state option on a name the FX controller does not declare is written as Unity plays it (a blend tree with no motion, a direct child left out, a state option left unset), except that Unity plays such a tree held by another tree by what the other children leave. That case, and a parameter of another type, where Unity reads an unrelated float, are written the same way and counted as unreadParameter. A Parameter Driver operation on an undeclared name, or a copy without a source, is counted as operation. Clips keep curves for GameObject activeSelf and for float FX parameters only, one curve per track and target, with at most 16384 keys per clip; a curve that does not fit is counted (parameter for a float parameter); other curves and unsupported behaviours are counted in omitted by kind, in the order of the enumeration, and leave out kinds with no entries. An active target's rest is activeSelf before the exporter changed the avatar. Every FX parameter that a clip of the controller animates is a parameter target, with or without tracks; an Avatar Mask is not written, as Unity applies it to none of these targets. expressions is reserved and empty in schema 1. Rules that span entries are validated by the shared reader (AvatarAnimatorData.Read): index ranges, blend trees without cycles and nested at most 32 deep (a tree of clips is 1 deep), unique targets per clip and unique targets (node and property, or parameter), a parameter target's rest and tracks fitting its type, Prevent Repeats only on a random into an int, and a layer's syncedLayer naming another layer of the same controller that is not synced itself, a motion that expands to at most 4096 motions when its blend trees are expanded per parent, and the parameter types above. Node indices of active targets must be less than the glTF node count.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -749,7 +749,8 @@
         "sourceMin",
         "sourceMax",
         "destMin",
-        "destMax"
+        "destMax",
+        "preventRepeats"
       ],
       "properties": {
         "type": {
@@ -790,6 +791,10 @@
         },
         "destMax": {
           "type": "number"
+        },
+        "preventRepeats": {
+          "description": "Prevent Repeats (VRChat SDK 3.10.2 and later): a random never sets the value it set last. True only on a random into an int, the one place the SDK offers it; false everywhere else and for an SDK without the setting.",
+          "type": "boolean"
         },
         "source": {
           "description": "The parameter a copy reads. A copy has one and no other type has.",
@@ -1135,28 +1140,54 @@
       "items": false
     },
     "target": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "node",
-        "property",
-        "rest"
-      ],
-      "properties": {
-        "node": {
-          "type": "integer",
-          "minimum": 0
+      "description": "active: the node's activeSelf, rest 0 or 1. parameter: FX parameter `parameter`, which a clip of the controller animates; it has no node. rest is the controller's default for it, a value of its type (0 or 1 for a bool or trigger), and may differ from the parameter's default when Expression Parameters also declare it. Unity moves only a float parameter by a curve, so only a float target has tracks; a curve on an int, bool or trigger holds it at rest. While any clip animates a parameter, the animator owns it: menus, Parameter Drivers and the app do not change it, and it is rest whenever no layer writes it.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "property",
+            "rest"
+          ],
+          "properties": {
+            "node": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "property": {
+              "const": "active"
+            },
+            "rest": {
+              "enum": [
+                0,
+                1
+              ]
+            }
+          }
         },
-        "property": {
-          "const": "active"
-        },
-        "rest": {
-          "enum": [
-            0,
-            1
-          ]
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "property",
+            "parameter",
+            "rest"
+          ],
+          "properties": {
+            "property": {
+              "const": "parameter"
+            },
+            "parameter": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rest": {
+              "type": "number"
+            }
+          }
         }
-      }
+      ]
     },
     "omission": {
       "type": "object",
