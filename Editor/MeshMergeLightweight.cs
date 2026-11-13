@@ -152,8 +152,20 @@ namespace VRVlog.LilToonExporter
             foreach (var dissolve in new[] { "_DissolveParams", "_Main2ndDissolveParams", "_Main3rdDissolveParams" })
                 if (material.HasProperty(dissolve) && material.GetVector(dissolve).x != 0f) return false;
             if (Value("_UseAudioLink", 0f) != 0f) return false;
-            if (Value("_ZWrite", 1f) != 1f || Value("_ZTest", 4f) != 4f) return false;
-            if (Value("_SrcBlend", 1f) != 1f || Value("_DstBlend", 0f) != 0f) return false;
+            // The body's and the outline's depth and blending: the outline of
+            // one renderer drawn after the body of another must not show
+            // through it, as it would once the outlines draw after both bodies.
+            foreach (var pass in new[] { "_", "_Outline" })
+            {
+                // Less (lilToon's outline default) or LessEqual (the body's): the
+                // nearest face wins in any order.
+                var zTest = Value(pass + "ZTest", 4f);
+                if (Value(pass + "ZWrite", 1f) != 1f || (zTest != 2f && zTest != 4f)) return false;
+                if (Value(pass + "SrcBlend", 1f) != 1f || Value(pass + "DstBlend", 0f) != 0f) return false;
+            }
+            // A fade by the distance to the object's origin: a donor would fade
+            // with the host's origin.
+            if (Value("_DistanceFadeMode", 0f) != 0f) return false;
             if (Value("_IDMaskCompile", 0f) != 0f) return false;
             for (var i = 1; i <= 8; i++)
                 if (Value("_IDMask" + i, 0f) != 0f) return false;
