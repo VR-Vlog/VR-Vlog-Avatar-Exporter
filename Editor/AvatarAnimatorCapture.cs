@@ -27,6 +27,16 @@ namespace VRVlog.LilToonExporter
         internal const int MaximumMegabytes = 4;
         internal static int MaximumBytes = MaximumMegabytes * 1024 * 1024;
 
+        // The result line of the curves left out, {0} the kinds with their counts.
+        internal const string OmittedCurvesNote = "アプリに渡すFXの動きに入れなかったアニメーションの曲線: {0}";
+        // {0} the kind, {1} the number of curves.
+        internal const string OmittedCurveCount = "{0} {1}本";
+        // The kinds of omitted that count curves, in OmittedKinds order, with their labels.
+        internal static readonly (string Kind, string Label)[] CurveKinds =
+        {
+            ("blendShape", "BlendShape"), ("material", "マテリアル"), ("transform", "Transform"), ("enabled", "コンポーネントのオン・オフ"),
+            ("parameter", "パラメーター"), ("muscle", "Humanoidのマッスル"), ("other", "その他"), ("missingNode", "VRMに無いオブジェクト"),
+        };
         internal static string TooLarge => ExporterLocalization.Format(TooLargeReason, MaximumMegabytes);
         internal static string TooDeep => ExporterLocalization.Format(TooDeepReason, AvatarAnimatorData.MaximumBlendTreeDepth);
         internal static string TooManyMotions => ExporterLocalization.Format(TooManyMotionsReason, AvatarAnimatorData.MaximumExpandedMotions);
@@ -76,6 +86,8 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<AnimationClip, int> clipIndex = new Dictionary<AnimationClip, int>();
         // Clips an additive layer plays, and whether the layer read now is one.
         readonly HashSet<int> additiveClips = new HashSet<int>();
+        // The faces ReadFaces matched, each with the clips it was read from.
+        readonly List<(VrmMenuExpressions.Expression Face, SortedSet<int> Clips)> faces = new List<(VrmMenuExpressions.Expression, SortedSet<int>)>();
         bool readingAdditive;
 
         AvatarAnimatorCapture(GameObject root, IReadOnlyDictionary<GameObject, bool> rest, Dictionary<AnimationClip, AnimationClip> overrides)
@@ -187,6 +199,106 @@ namespace VRVlog.LilToonExporter
             // Menus name only parameters that Expression Parameters declare.
             if (expressions) capture.ReadMenus(Member(descriptor, "expressionsMenu"));
             return capture;
+        }
+
+        // Matches the faces to the clips read above. The faces were read from
+        // the build's copy before the optimizer, which may replace a clip
+        // again: a face matches a clip that is its clip, the clip it was copied
+        // from (sourceOf), the build's copy of either (isolatedCopyOf), the clip
+        // an override controller replaces, or a clip the build records as made
+        // from any of these (registeredOriginal). Returns this capture.
+        internal AvatarAnimatorCapture ReadFaces(IEnumerable<VrmMenuExpressions.Expression> expressions,
+            Func<UnityEngine.Object, UnityEngine.Object> sourceOf = null, Func<UnityEngine.Object, UnityEngine.Object> isolatedCopyOf = null,
+            Func<UnityEngine.Object, UnityEngine.Object> registeredOriginal = null)
+        {
+            faces.Clear();
+            var clipsOf = new Dictionary<UnityEngine.Object, HashSet<int>>();
+            void Add(UnityEngine.Object value, int index)
+            {
+                // A chain of copies, each recorded as made from the one before.
+                for (var step = 0; value != null && step < 8; step++)
+                {
+                    if (!clipsOf.TryGetValue(value, out var set)) clipsOf[value] = set = new HashSet<int>();
+                    if (!set.Add(index)) return;
+                    value = registeredOriginal?.Invoke(value);
+                }
+            }
+            foreach (var pair in clipIndex) Add(pair.Key, pair.Value);
+            foreach (var pair in overrides)
+                if (pair.Value != null && clipIndex.TryGetValue(pair.Value, out var replaced)) Add(pair.Key, replaced);
+            foreach (var face in expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>())
+            {
+                if (face?.Clip == null) continue;
+                var found = new SortedSet<int>();
+                var source = sourceOf?.Invoke(face.Clip);
+                foreach (var value in new[] { face.Clip, source, isolatedCopyOf?.Invoke(face.Clip), source == null ? null : isolatedCopyOf?.Invoke(source) })
+                    if (value != null && clipsOf.TryGetValue(value, out var set)) found.UnionWith(set);
+                if (found.Count > 0) faces.Add((face, found));
+            }
+            return this;
+        }
+
+        // The faces of the file's custom expressions, by registered name, with
+        // the clips each was read from. A face written as an identical face's
+        // name adds its clips to that name. Read when the file is written, after
+        // the names are registered.
+        internal IReadOnlyList<(string Name, IReadOnlyCollection<int> Clips)> FaceClips
+        {
+            get
+            {
+                var result = new List<(string Name, IReadOnlyCollection<int> Clips)>();
+                var byName = new Dictionary<string, SortedSet<int>>(StringComparer.Ordinal);
+                foreach (var (face, clips) in faces)
+                {
+                    var name = face.RegisteredName ?? face.MergedInto;
+                    if (string.IsNullOrEmpty(name)) continue;
+                    if (!byName.TryGetValue(name, out var set)) { byName[name] = set = new SortedSet<int>(); result.Add((name, set)); }
+                    set.UnionWith(clips);
+                }
+                return result;
+            }
+        }
+
+        // The ways into the states that play one of the clips: the layer's
+        // first state, and the entry, Any State and state transitions that go
+        // straight to such a state. A transition to a machine is not followed.
+        // The same way with the same conditions is listed once.
+        internal static List<AvatarAnimatorData.Entrance> Entrances(AvatarAnimatorData data, ICollection<int> clips)
+        {
+            var result = new List<AvatarAnimatorData.Entrance>();
+            if (data.Controllers.Count == 0) return result;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var layers = data.Controllers[0].Layers;
+            for (var l = 0; l < layers.Count; l++)
+            {
+                var layer = layers[l];
+                var playing = new HashSet<int>();
+                for (var s = 0; s < layer.States.Count; s++)
+                    if (AvatarAnimatorData.Plays(data, layer.States[s].Motion, clips)) playing.Add(s);
+                if (playing.Count == 0) continue;
+                void Add(int state, string from, int machine, int fromState, IEnumerable<AvatarAnimatorData.Condition> conditions)
+                {
+                    var entrance = new AvatarAnimatorData.Entrance { Layer = l, State = state, From = from, Machine = machine, FromState = fromState };
+                    entrance.Conditions.AddRange(conditions);
+                    var key = string.Join("|", new[] { l, state, machine, fromState }.Select(value => value.ToString(System.Globalization.CultureInfo.InvariantCulture))) + "|" + from + "|"
+                        + string.Join(";", entrance.Conditions.Select(c => c.Parameter.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + c.Mode + ","
+                            + c.Threshold.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+                    if (seen.Add(key)) result.Add(entrance);
+                }
+                var start = layer.Machines[0].DefaultState;
+                if (playing.Contains(start)) Add(start, "default", -1, -1, Enumerable.Empty<AvatarAnimatorData.Condition>());
+                for (var m = 0; m < layer.Machines.Count; m++)
+                {
+                    foreach (var transition in layer.Machines[m].EntryTransitions)
+                        if (transition.ToState is int to && playing.Contains(to)) Add(to, "entry", m, -1, transition.Conditions);
+                    foreach (var transition in layer.Machines[m].AnyStateTransitions)
+                        if (transition.ToState is int to && playing.Contains(to)) Add(to, "any", -1, -1, transition.Conditions);
+                }
+                for (var s = 0; s < layer.States.Count; s++)
+                    foreach (var transition in layer.States[s].Transitions)
+                        if (transition.ToState is int to && playing.Contains(to)) Add(to, "state", -1, s, transition.Conditions);
+            }
+            return result;
         }
 
         // A shape as the export bakes it: the weight in the scene, the weight
@@ -393,13 +505,28 @@ namespace VRVlog.LilToonExporter
 
         // An extension over MaximumBytes is an error: the caller leaves the
         // stage out and lists it with this reason.
-        internal static byte[] Inject(byte[] bytes, AvatarAnimatorData data)
+        // faces (FaceClips) lists the faces by name; those of the file's
+        // custom expressions are written in the file's order, each with the
+        // ways into the states that play its clips.
+        internal static byte[] Inject(byte[] bytes, AvatarAnimatorData data, IReadOnlyList<(string Name, IReadOnlyCollection<int> Clips)> faces = null)
         {
             if (data == null) return bytes;
+            var document = GlbDocument.Read(bytes);
+            data.Expressions.Clear();
+            var custom = document.Find("extensions", "VRMC_vrm", "expressions", "custom");
+            if (custom != null && faces != null)
+                foreach (var name in custom.Keys)
+                {
+                    var clips = faces.FirstOrDefault(face => face.Name == name).Clips;
+                    if (clips == null || clips.Count == 0) continue;
+                    var expression = new AvatarAnimatorData.Expression { Name = name };
+                    expression.Clips.AddRange(clips.OrderBy(clip => clip));
+                    expression.When.AddRange(Entrances(data, new HashSet<int>(clips)));
+                    data.Expressions.Add(expression);
+                }
             var extension = AvatarAnimatorData.Write(data);
             if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > MaximumBytes)
                 throw new InvalidOperationException(TooLarge);
-            var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list : new List<object>();
             var meshes = document.Json.TryGetValue("meshes", out var rawMeshes) && rawMeshes is List<object> meshList ? meshList : new List<object>();
             if (data.Targets.Any(target => target.Property != "parameter" && target.Node >= nodes.Count))
@@ -409,6 +536,17 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("Avatar animator morph target is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
+        }
+
+        // The curves the written extension left out, by kind, for the result;
+        // null when it left none out. The other kinds stay in omitted only.
+        internal static string OmittedCurvesLine(AvatarAnimatorData data)
+        {
+            if (data == null) return null;
+            var parts = CurveKinds.Select(kind => (kind.Label, Count: data.Omitted.FirstOrDefault(omission => omission.Kind == kind.Kind)?.Count ?? 0))
+                .Where(part => part.Count > 0)
+                .Select(part => ExporterLocalization.Format(OmittedCurveCount, ExporterLocalization.T(part.Label), part.Count)).ToList();
+            return parts.Count == 0 ? null : ExporterLocalization.Format(OmittedCurvesNote, string.Join(ExporterLocalization.T("、"), parts));
         }
 
         // The targets of a mesh's first primitive; glTF requires every
