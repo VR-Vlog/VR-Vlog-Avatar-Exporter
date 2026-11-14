@@ -267,6 +267,52 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Hair detail"), Is.False, "Nothing else keeps the shape.");
         }
 
+        // The scene holds Front's Hair detail at 100, its one frame, so the base
+        // shows it whole and its target shows nothing. Hat on takes it to 80:
+        // the export adds a shape that takes the base back to 0, and the
+        // extension names that one, from baked 100 to end 0.
+        [Test]
+        public void AShapeTheBaseHoldsAtItsEndIsWrittenThroughAReverseTarget()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 100);
+            var glb = GlbDocument.Read(avatar.Export(new List<string>(), null));
+            var json = glb.Json;
+            var data = Read(json);
+
+            var morph = data.Targets.Single(t => t.Property == "morph");
+            Assert.That(Nodes(json)[morph.Node], Is.EqualTo("Front"));
+            Assert.That((morph.Rest, morph.Baked, morph.End), Is.EqualTo((100d, 100d, 0d)));
+            Assert.That(TargetName(json, morph), Does.StartWith("__VRVlog_Reverse_"));
+            // Hair detail moves every vertex by (.02, .01, 0); the reverse target
+            // takes that off again (one horizontal axis is mirrored into glTF).
+            foreach (var delta in TargetPositions(glb, morph))
+            {
+                Assert.That(delta.y, Is.EqualTo(-.01f).Within(1e-4f));
+                Assert.That(Mathf.Abs(delta.x) + Mathf.Abs(delta.z), Is.EqualTo(.02f).Within(1e-4f));
+            }
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }), "Nothing is lost, so nothing is counted.");
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            var track = hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph));
+            Assert.That(track.Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 80d, 80d }));
+        }
+
+        // Curves that keep the shape where the base holds it at its end change
+        // nothing, so no reverse shape is added and the shape is counted as before.
+        [Test]
+        public void AShapeOnlyHeldAtItsEndGetsNoReverseTarget()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 100);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var data = Read(json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1));
+            Assert.That(JsonDom.Serialize(json["meshes"]).Contains("__VRVlog_Reverse_"), Is.False);
+        }
+
         // A curve on a shape the mesh lacks is a blendShape the file cannot
         // carry; one on a path with no SkinnedMeshRenderer has no node.
         [Test]
@@ -418,6 +464,18 @@ namespace VRVlog.LilToonExporter.Tests
                 if (written) Assert.That((morph.Node, morph.Morph, morph.Rest, morph.Baked, morph.End), Is.EqualTo((0, 0, 35d, 35d, 100d)));
             }
             Assert.That(capture.Resolve(o => o == front ? 0 : -1).Targets.Any(t => t.Property == "morph"), Is.False, "No sources at all.");
+            // With a reverse shape, a source that shows no change is written
+            // through it: the reverse shape's node and index, from baked to 0.
+            var skin = front.GetComponent<SkinnedMeshRenderer>();
+            var reversed = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) => renderer == skin && shape == "Hair detail"
+                ? new[] { new AvatarAnimatorCapture.MorphSource(100, 100, 100, skin, "Hair detail") } : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+            var target = reversed.Targets.Single(t => t.Property == "morph");
+            Assert.That((target.Node, target.Morph, target.Rest, target.Baked, target.End), Is.EqualTo((0, 0, 100d, 100d, 0d)));
+            Assert.That(reversed.Omitted.Any(o => o.Kind == "blendShape"), Is.False);
+            var lost = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) => renderer == skin && shape == "Hair detail"
+                ? new[] { new AvatarAnimatorCapture.MorphSource(100, 100, 100, skin, "No such shape") } : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+            Assert.That(lost.Targets.Any(t => t.Property == "morph"), Is.False, "A reverse shape that is gone carries nothing.");
+            Assert.That(lost.Omitted.Single(o => o.Kind == "blendShape").Count, Is.GreaterThan(0));
         }
 
         // Shapes that would take the extension past the limit are all
@@ -1426,6 +1484,39 @@ namespace VRVlog.LilToonExporter.Tests
             var node = (Dictionary<string, object>)((List<object>)json["nodes"])[target.Node];
             var mesh = (Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])];
             return (string)((List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"])[target.Morph];
+        }
+
+        // The POSITION deltas of the morph target a morph target names, dense or sparse.
+        static Vector3[] TargetPositions(GlbDocument glb, AvatarAnimatorData.Target target)
+        {
+            var json = glb.Json;
+            var node = (Dictionary<string, object>)((List<object>)json["nodes"])[target.Node];
+            var mesh = (Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])];
+            var primitive = (Dictionary<string, object>)((List<object>)mesh["primitives"])[0];
+            var morph = (Dictionary<string, object>)((List<object>)primitive["targets"])[target.Morph];
+            var accessor = (Dictionary<string, object>)((List<object>)json["accessors"])[Convert.ToInt32(morph["POSITION"])];
+            var views = (List<object>)json["bufferViews"];
+            int Start(object view, Dictionary<string, object> part) =>
+                (((Dictionary<string, object>)views[Convert.ToInt32(view)]).TryGetValue("byteOffset", out var offset) ? Convert.ToInt32(offset) : 0) +
+                (part.TryGetValue("byteOffset", out var own) ? Convert.ToInt32(own) : 0);
+            Vector3 Vec(int at) => new Vector3(BitConverter.ToSingle(glb.Binary, at), BitConverter.ToSingle(glb.Binary, at + 4), BitConverter.ToSingle(glb.Binary, at + 8));
+            var result = new Vector3[Convert.ToInt32(accessor["count"])];
+            if (accessor.TryGetValue("bufferView", out var dense))
+                for (var i = 0; i < result.Length; i++) result[i] = Vec(Start(dense, accessor) + 12 * i);
+            if (accessor.TryGetValue("sparse", out var raw))
+            {
+                var sparse = (Dictionary<string, object>)raw;
+                var indices = (Dictionary<string, object>)sparse["indices"];
+                var values = (Dictionary<string, object>)sparse["values"];
+                var size = Convert.ToInt32(indices["componentType"]) switch { 5121 => 1, 5123 => 2, _ => 4 };
+                for (var k = 0; k < Convert.ToInt32(sparse["count"]); k++)
+                {
+                    var at = Start(indices["bufferView"], indices) + size * k;
+                    var index = size == 1 ? glb.Binary[at] : size == 2 ? BitConverter.ToUInt16(glb.Binary, at) : (int)BitConverter.ToUInt32(glb.Binary, at);
+                    result[index] = Vec(Start(values["bufferView"], values) + 12 * k);
+                }
+            }
+            return result;
         }
 
         static List<string> Nodes(Dictionary<string, object> json) =>

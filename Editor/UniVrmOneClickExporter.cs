@@ -231,13 +231,20 @@ namespace VRVlog.LilToonExporter
             IEnumerable<(int SourceRenderer, string SourceShape, SkinnedMeshRenderer Renderer, string Shape)> routes,
             IReadOnlyDictionary<(int Renderer, string Shape), float> rest,
             IReadOnlyDictionary<(int Renderer, string Shape), (double Baked, double End)> ends,
-            ICollection<(int Renderer, string Shape)> shared)
+            ICollection<(int Renderer, string Shape)> shared,
+            IReadOnlyDictionary<(int Renderer, string Shape), string> reverses = null)
         {
             if (routes == null || rest == null || ends == null) return null;
             var sources = new Dictionary<(SkinnedMeshRenderer, string), List<AvatarAnimatorCapture.MorphSource>>();
             var unknown = new HashSet<(SkinnedMeshRenderer, string)>();
-            foreach (var (sourceRenderer, sourceShape, renderer, shape) in routes)
+            // Where each reverse shape ended up, found by the shape it reverses.
+            var all = routes.ToList();
+            var reverseNames = new HashSet<(int, string)>((reverses ?? new Dictionary<(int, string), string>()).Select(pair => (pair.Key.Renderer, pair.Value)));
+            var reversed = all.Where(route => reverseNames.Contains((route.SourceRenderer, route.SourceShape)))
+                .ToDictionary(route => (route.SourceRenderer, route.SourceShape), route => (route.Renderer, route.Shape));
+            foreach (var (sourceRenderer, sourceShape, renderer, shape) in all)
             {
+                if (reverseNames.Contains((sourceRenderer, sourceShape))) continue;
                 var key = (renderer, shape);
                 if (!rest.TryGetValue((sourceRenderer, sourceShape), out var weight) || !ends.TryGetValue((sourceRenderer, sourceShape), out var end) ||
                     (shared != null && shared.Contains((sourceRenderer, sourceShape)) && renderer.GetInstanceID() != sourceRenderer))
@@ -246,7 +253,9 @@ namespace VRVlog.LilToonExporter
                     continue;
                 }
                 if (!sources.TryGetValue(key, out var list)) sources[key] = list = new List<AvatarAnimatorCapture.MorphSource>();
-                list.Add(new AvatarAnimatorCapture.MorphSource(weight, end.Baked, end.End));
+                var reverse = reverses != null && reverses.TryGetValue((sourceRenderer, sourceShape), out var name) &&
+                              reversed.TryGetValue((sourceRenderer, name), out var found) ? found : (null, null);
+                list.Add(new AvatarAnimatorCapture.MorphSource(weight, end.Baked, end.End, reverse.Item1, reverse.Item2));
             }
             return (renderer, shape) => !unknown.Contains((renderer, shape)) && sources.TryGetValue((renderer, shape), out var list)
                 ? list : (IReadOnlyList<AvatarAnimatorCapture.MorphSource>)Array.Empty<AvatarAnimatorCapture.MorphSource>();
@@ -570,6 +579,8 @@ namespace VRVlog.LilToonExporter
             Dictionary<(int Renderer, string Shape), float> animatorMorphRest = null;
             Dictionary<(int Renderer, string Shape), (double Baked, double End)> animatorMorphEnds = null;
             HashSet<(int Renderer, string Shape)> animatorMorphShared = null;
+            // The reverse shape added for each shape whose base holds its end.
+            Dictionary<(int Renderer, string Shape), string> animatorMorphReverses = null;
             AvatarAnimatorCapture avatarAnimator = null;
             VRVlog.AvatarAnimator.AvatarAnimatorData avatarAnimatorData = null;
             // Set once the build passes have changed the copy; see the catch below.
@@ -802,8 +813,11 @@ namespace VRVlog.LilToonExporter
                     var animatorMorphs = animatorMorphRest == null ? null : guard.Optional(ExportStage.AvatarAnimator, () =>
                     {
                         animatorMorphEnds = new Dictionary<(int, string), (double, double)>();
+                        animatorMorphReverses = new Dictionary<(int, string), string>();
                         var driven = new List<(SkinnedMeshRenderer Renderer, string Shape)>();
-                        foreach (var (renderer, shape) in AvatarAnimatorCapture.DrivenMorphs(clone))
+                        var held = new Dictionary<(SkinnedMeshRenderer, string), double?>();
+                        var reverse = new List<(SkinnedMeshRenderer Renderer, string Shape, int Index, Mesh Original, double Baked)>();
+                        foreach (var (renderer, shape) in AvatarAnimatorCapture.DrivenMorphs(clone, held))
                         {
                             var state = neutral.Get(renderer);
                             var index = state?.OriginalMesh == null ? -1 : state.OriginalMesh.GetBlendShapeIndex(shape);
@@ -817,9 +831,25 @@ namespace VRVlog.LilToonExporter
                             // A shape of several frames need not be linear, and then no
                             // weight puts its base back: it is counted the same way.
                             if (state.OriginalMesh.GetBlendShapeFrameCount(index) > 1) continue;
-                            animatorMorphEnds[(renderer.GetInstanceID(), shape)] = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
+                            var ends = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
+                            animatorMorphEnds[(renderer.GetInstanceID(), shape)] = ends;
+                            // The base holds the shape at its end, so its target shows
+                            // nothing: unless every curve keeps it there, add a shape that
+                            // takes the base back to 0. The base is the copy Rebase made.
+                            if (ends.Baked != 0 && ends.Baked == ends.End && held[(renderer, shape)] != ends.Baked &&
+                                renderer.sharedMesh != state.OriginalMesh)
+                                reverse.Add((renderer, shape, index, state.OriginalMesh, ends.Baked));
                         }
                         animatorMorphShared = SharedAnimatorMorphs(clone, driven);
+                        var used = reverse.Count == 0 ? null : DeterministicNames.BlendShapeNames(clone);
+                        foreach (var (renderer, shape, index, original, baked) in reverse)
+                        {
+                            var path = renderer.transform == clone.transform ? "" : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
+                            var name = DeterministicNames.Unique("__VRVlog_Reverse_" + DeterministicNames.Hash("Reverse", path, shape), used);
+                            AvatarBaseShape.AppendAnimatedShape(original, renderer.sharedMesh, name, index, baked, 0);
+                            animatorMorphReverses[(renderer.GetInstanceID(), shape)] = name;
+                            driven.Add((renderer, name));
+                        }
                         return driven;
                     }, () => null);
                     // Without the build passes AAO never runs, so its components
@@ -992,7 +1022,8 @@ namespace VRVlog.LilToonExporter
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
-                            AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared)), () => null);
+                            AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
+                                animatorMorphReverses)), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);

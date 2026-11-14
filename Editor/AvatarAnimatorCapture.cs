@@ -109,8 +109,10 @@ namespace VRVlog.LilToonExporter
 
         // The shapes the FX moves on renderers of the copy, ordered by path
         // and name. Read before optimizing, so the optimizer keeps a route
-        // to where each one ends up.
-        internal static List<(SkinnedMeshRenderer Renderer, string Shape)> DrivenMorphs(GameObject clone)
+        // to where each one ends up. held gets, for each, the weight every
+        // curve holds, or null when a curve moves it.
+        internal static List<(SkinnedMeshRenderer Renderer, string Shape)> DrivenMorphs(GameObject clone,
+            IDictionary<(SkinnedMeshRenderer Renderer, string Shape), double?> held = null)
         {
             var fx = Fx(VrChatExpressionMenu.Descriptor(clone));
             var found = new SortedSet<(string Path, string Shape)>(Comparer<(string, string)>.Create((a, b) =>
@@ -118,20 +120,41 @@ namespace VRVlog.LilToonExporter
                 var path = string.CompareOrdinal(a.Item1, b.Item1);
                 return path != 0 ? path : string.CompareOrdinal(a.Item2, b.Item2);
             }));
+            var values = new Dictionary<(string, string), double?>();
             if (fx == null) return new List<(SkinnedMeshRenderer, string)>();
             foreach (var clip in fx.animationClips.Where(clip => clip != null).Distinct())
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     if (typeof(SkinnedMeshRenderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith(ShapePrefix, StringComparison.Ordinal))
-                        found.Add((binding.path, binding.propertyName.Substring(ShapePrefix.Length)));
+                    {
+                        var key = (binding.path, binding.propertyName.Substring(ShapePrefix.Length));
+                        found.Add(key);
+                        if (held == null) continue;
+                        var value = HeldValue(AnimationUtility.GetEditorCurve(clip, binding));
+                        values[key] = values.TryGetValue(key, out var before) && before != value ? null : value;
+                    }
             var result = new List<(SkinnedMeshRenderer, string)>();
             foreach (var (path, shape) in found)
             {
                 var target = path.Length == 0 ? clone.transform : clone.transform.Find(path);
                 var renderer = target == null ? null : target.GetComponent<SkinnedMeshRenderer>();
-                if (renderer != null && renderer.sharedMesh != null && renderer.sharedMesh.GetBlendShapeIndex(shape) >= 0) result.Add((renderer, shape));
+                if (renderer == null || renderer.sharedMesh == null || renderer.sharedMesh.GetBlendShapeIndex(shape) < 0) continue;
+                result.Add((renderer, shape));
+                if (held != null) held[(renderer, shape)] = values[(path, shape)];
             }
             return result;
         }
+
+        // The value a curve stays at, or null when it moves.
+        static double? HeldValue(AnimationCurve curve)
+        {
+            if (curve == null || curve.length == 0) return null;
+            var keys = curve.keys;
+            foreach (var key in keys)
+                if (key.value != keys[0].value || !Flat(key.inTangent) || !Flat(key.outTangent)) return null;
+            return keys[0].value;
+        }
+
+        static bool Flat(float tangent) => tangent == 0f || float.IsInfinity(tangent);
 
         const string ShapePrefix = "blendShape.";
 
@@ -167,14 +190,21 @@ namespace VRVlog.LilToonExporter
         }
 
         // A shape as the export bakes it: the weight in the scene, the weight
-        // the base geometry holds and the weight the target shows at 1.
+        // the base geometry holds and the weight the target shows at 1. When
+        // the base holds the shape at its end, the target shows nothing, and
+        // the export adds a reverse shape that takes the base back to 0: its
+        // output renderer and name.
         internal readonly struct MorphSource : IEquatable<MorphSource>
         {
             internal readonly double Rest, Baked, End;
-            internal MorphSource(double rest, double baked, double end) { Rest = rest; Baked = baked; End = end; }
-            public bool Equals(MorphSource other) => Rest == other.Rest && Baked == other.Baked && End == other.End;
+            internal readonly SkinnedMeshRenderer ReverseRenderer;
+            internal readonly string ReverseShape;
+            internal MorphSource(double rest, double baked, double end, SkinnedMeshRenderer reverseRenderer = null, string reverseShape = null)
+            { Rest = rest; Baked = baked; End = end; ReverseRenderer = reverseRenderer; ReverseShape = reverseShape; }
+            public bool Equals(MorphSource other) => Rest == other.Rest && Baked == other.Baked && End == other.End &&
+                ReverseRenderer == other.ReverseRenderer && ReverseShape == other.ReverseShape;
             public override bool Equals(object obj) => obj is MorphSource other && Equals(other);
-            public override int GetHashCode() => (Rest, Baked, End).GetHashCode();
+            public override int GetHashCode() => (Rest, Baked, End, ReverseShape).GetHashCode();
         }
 
         // The {node, index} of each morph target written, for
@@ -334,11 +364,20 @@ namespace VRVlog.LilToonExporter
             // writes the shape is what the reader weighs against the faces.
             // Past the size limit every shape is counted.
             if (!writeMorphs) return OmittedMorph;
-            // A target that shows no change cannot carry the weight (B3).
-            if (source.Baked == source.End) return OmittedMorph;
+            // A target that shows no change cannot carry the weight: the
+            // reverse shape does, from the base (baked) to 0 (end).
+            var end = source.End;
+            if (source.Baked == source.End)
+            {
+                var reverse = source.ReverseRenderer;
+                nodeIndex = reverse == null || reverse.sharedMesh == null ? -1 : node(reverse.gameObject);
+                morph = nodeIndex < 0 ? -1 : reverse.sharedMesh.GetBlendShapeIndex(source.ReverseShape);
+                if (morph < 0) return OmittedMorph;
+                end = 0;
+            }
             var target = new AvatarAnimatorData.Target
             {
-                Node = nodeIndex, Property = "morph", Morph = morph, Rest = source.Rest, Baked = source.Baked, End = source.End,
+                Node = nodeIndex, Property = "morph", Morph = morph, Rest = source.Rest, Baked = source.Baked, End = end,
             };
             // Curves that only hold rest on a base that already shows it change
             // nothing by themselves: the target stays only if its shape does.
