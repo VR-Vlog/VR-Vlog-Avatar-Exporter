@@ -54,6 +54,13 @@ namespace VRVlog.LilToonExporter
         // The morph targets the last Resolve wrote, each with the
         // {node, index} that UnusedMorphTargets keeps and renumbers.
         readonly List<(AvatarAnimatorData.Target Target, Dictionary<string, object> Bind, bool Soft)> morphBinds = new List<(AvatarAnimatorData.Target, Dictionary<string, object>, bool)>();
+        // What shows each target the last Resolve wrote in the copy, for
+        // AvatarAnimatorCrossCheck: the object of an active target, the
+        // renderer and shape a morph target was read from (not its reverse).
+        readonly Dictionary<AvatarAnimatorData.Target, AvatarAnimatorCrossCheck.Binding> shownBy = new Dictionary<AvatarAnimatorData.Target, AvatarAnimatorCrossCheck.Binding>();
+        // The path under the root each curve's object had when the clips were
+        // read; the export may rename or move it before the cross-check.
+        readonly Dictionary<GameObject, string> pathAtRead = new Dictionary<GameObject, string>();
         // The float parameter curves of each clip, by parameter index.
         readonly List<List<(int Parameter, ExpressionAnimationData.Curve Curve)>> clipParameterTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
         // The FX parameters a clip of the controller animates. Unity holds each
@@ -185,6 +192,26 @@ namespace VRVlog.LilToonExporter
 
         // Null without a VRChat avatar descriptor or a custom FX controller:
         // the file is then written without the extension.
+        // The FX controller read, as the descriptor names it (an override controller stays one).
+        internal RuntimeAnimatorController Controller { get; private set; }
+
+        // What shows each of data.Targets in the copy; null for a parameter target.
+        internal IReadOnlyList<AvatarAnimatorCrossCheck.Binding> Bindings(AvatarAnimatorData written) =>
+            written.Targets.Select(target => shownBy.TryGetValue(target, out var binding) ? binding : null).ToList();
+
+        // A behaviour the Animator runs, read as the extension writes it, or
+        // null when the extension leaves it out. Counts nothing.
+        internal AvatarAnimatorData.Behaviour ReadRunningBehaviour(StateMachineBehaviour behaviour)
+        {
+            var counts = new Dictionary<string, int>(omitted, StringComparer.Ordinal);
+            try { return ReadBehaviour(behaviour); }
+            finally
+            {
+                omitted.Clear();
+                foreach (var pair in counts) omitted.Add(pair.Key, pair.Value);
+            }
+        }
+
         internal static AvatarAnimatorCapture Capture(GameObject clone, IReadOnlyDictionary<GameObject, bool> rest)
         {
             var descriptor = VrChatExpressionMenu.Descriptor(clone);
@@ -192,7 +219,7 @@ namespace VRVlog.LilToonExporter
             var fx = Fx(descriptor);
             if (fx == null) return null;
             var controller = ExpressionDependencies.Controller(fx);
-            var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), ExpressionDependencies.Overrides(fx));
+            var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), ExpressionDependencies.Overrides(fx)) { Controller = fx };
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller));
@@ -404,12 +431,16 @@ namespace VRVlog.LilToonExporter
         {
             data.Targets.Clear();
             morphBinds.Clear();
+            shownBy.Clear();
             var map = new int[targets.Count];
             for (var i = 0; i < targets.Count; i++)
             {
                 var index = targets[i].Object == null ? -1 : node(targets[i].Object);
                 map[i] = index < 0 ? -1 : data.Targets.Count;
-                if (index >= 0) data.Targets.Add(new AvatarAnimatorData.Target { Node = index, Property = "active", Rest = targets[i].Default });
+                if (index < 0) continue;
+                var target = new AvatarAnimatorData.Target { Node = index, Property = "active", Rest = targets[i].Default };
+                data.Targets.Add(target);
+                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Object = targets[i].Object, Path = PathAtRead(targets[i].Object) };
             }
             var morphMap = new int[morphs.Count];
             for (var i = 0; i < morphs.Count; i++) morphMap[i] = MorphTarget(i, node, sources, writeMorphs);
@@ -496,6 +527,7 @@ namespace VRVlog.LilToonExporter
             var soft = source.Baked == source.Rest &&
                        clipMorphTracks.All(tracks => tracks.All(track => track.Morph != i || Holds(track.Curve, source.Rest)));
             morphBinds.Add((target, new Dictionary<string, object> { ["node"] = (long)nodeIndex, ["index"] = (long)morph }, soft));
+            shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Renderer = renderer, Shape = shape, Path = PathAtRead(renderer.gameObject) };
             data.Targets.Add(target);
             return data.Targets.Count - 1;
         }
@@ -1179,14 +1211,18 @@ namespace VRVlog.LilToonExporter
         {
             if (targetIndex.TryGetValue(gameObject, out var index)) return index;
             targetIndex[gameObject] = targets.Count;
+            pathAtRead[gameObject] = AnimationUtility.CalculateTransformPath(gameObject.transform, root.transform);
             targets.Add((gameObject, (rest.TryGetValue(gameObject, out var active) ? active : gameObject.activeSelf) ? 1 : 0));
             return targets.Count - 1;
         }
+
+        string PathAtRead(GameObject gameObject) => gameObject != null && pathAtRead.TryGetValue(gameObject, out var path) ? path : null;
 
         int Morph(SkinnedMeshRenderer renderer, string shape)
         {
             if (morphIndex.TryGetValue((renderer, shape), out var index)) return index;
             morphIndex[(renderer, shape)] = morphs.Count;
+            pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
             morphs.Add((renderer, shape));
             return morphs.Count - 1;
         }

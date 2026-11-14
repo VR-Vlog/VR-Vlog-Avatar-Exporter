@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -22,6 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             ExportTestHooks.FaultInjection = null;
             AvatarAnimatorCapture.MaximumBytes = AvatarAnimatorCapture.MaximumMegabytes * 1024 * 1024;
+            AvatarAnimatorCrossCheck.HookBehaviours = true;
         }
 
         [Test]
@@ -71,6 +73,100 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(radial.SubParameters.Select(index => data.Parameters[index].Name), Is.EqualTo(new[] { "Blend" }));
 
             Assert.That(avatar.Source.transform.Find("Hat").gameObject.activeSelf, Is.False, "The source is left as it was.");
+        }
+
+        // AvatarAnimatorCrossCheck after the export: Unity's Animator on the
+        // copy and the app's player on the written extension show the same for
+        // every input. Driven: at the start a Parameter Driver sets Shown, which
+        // plays a clip that moves Hair detail while an Animator Layer Control
+        // blends the layer to half; plain Unity runs neither without the SDK's hooks.
+        [Test]
+        public void TheAppPlayerShowsWhatUnityShowsForEveryInput()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            // The app's player plays no 2D tree.
+            var blend = fx.layers.Single(l => l.name == "Blend").stateMachine;
+            blend.RemoveState(blend.states.Single(s => s.state.motion is BlendTree tree && tree.blendType != BlendTreeType.Simple1D).state);
+            fx.AddParameter("Shown", AnimatorControllerParameterType.Bool);
+            fx.AddLayer("Driven");
+            var layers = fx.layers;
+            var driven = layers.Length - 1;
+            layers[driven].defaultWeight = 1;
+            fx.layers = layers;
+            var machine = layers[driven].stateMachine;
+            var drive = machine.AddState("Drive");
+            machine.defaultState = drive;
+            ParameterDriverExpressionTests.Driver(drive, ParameterDriverExpressionTests.Op("Set", "Shown", 1));
+            var shown = machine.AddState("Shown");
+            var clip = new AnimationClip { name = "Shown" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1f / 60, 60));
+            AssetDatabase.AddObjectToAsset(clip, fx);
+            shown.motion = clip;
+            var go = drive.AddTransition(shown);
+            // Unity's transitions see a driver's change from the next frame, the
+            // app's player in the same frame (M8): the exit time keeps the
+            // transition after both have the value.
+            go.hasExitTime = true;
+            go.exitTime = .26f;
+            go.duration = 0;
+            go.AddCondition(AnimatorConditionMode.If, 0, "Shown");
+            var control = shown.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl"));
+            using (var serialized = new SerializedObject(control))
+            {
+                var playable = serialized.FindProperty("playable");
+                playable.enumValueIndex = Array.IndexOf(playable.enumNames, "FX");
+                serialized.FindProperty("layer").intValue = driven;
+                serialized.FindProperty("goalWeight").floatValue = .5f;
+                serialized.FindProperty("blendDuration").floatValue = .5f;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            AssetDatabase.SaveAssets();
+            // The fixture plays the FX in every playable layer; the driver would
+            // then change Shown from outside the FX, which the export refuses.
+            var descriptor = avatar.Source.GetComponent(VrcAvatar.DescriptorType);
+            VrcAvatar.SetFx(descriptor, fx);
+            using (var serialized = new SerializedObject(descriptor))
+            {
+                var special = serialized.FindProperty("specialAnimationLayers");
+                for (var i = 0; i < special.arraySize; i++)
+                {
+                    special.GetArrayElementAtIndex(i).FindPropertyRelative("isDefault").boolValue = true;
+                    special.GetArrayElementAtIndex(i).FindPropertyRelative("animatorController").objectReferenceValue = null;
+                }
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            List<string> Check(out List<string> warnings, out AvatarAnimatorData data)
+            {
+                var lines = new List<string>();
+                void Listen(string message, string stack, LogType type)
+                {
+                    if (message.StartsWith(AvatarAnimatorCrossCheck.LogPrefix, StringComparison.Ordinal)) lines.Add(message);
+                }
+                warnings = new List<string>();
+                Application.logMessageReceived += Listen;
+                try { data = Read(GlbDocument.Read(avatar.Export(warnings, null)).Json); }
+                finally { Application.logMessageReceived -= Listen; }
+                return lines;
+            }
+
+            var matched = Check(out var shownWarnings, out var written);
+            Assert.That(written.Targets.Count(t => t.Property == "morph"), Is.EqualTo(1));
+            Assert.That(written.Controllers.Single().Layers[driven].States.Single(s => s.Name == "Shown").Behaviours.Single().Type, Is.EqualTo("layerControl"));
+            // The start, Hat, the radial in the submenu and the seven gestures of the left hand.
+            Assert.That(matched.FirstOrDefault(), Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix +
+                "inputs 10 compared 10 mismatched 0 skipped 0 outOfTime 0 targets 3 unbound 0 "), string.Join("\n", matched));
+            var note = ExporterLocalization.T(AvatarAnimatorCrossCheck.MismatchNote);
+            Assert.That(shownWarnings.Where(w => w.StartsWith(note.Substring(0, note.IndexOf('{')), StringComparison.Ordinal)), Is.Empty);
+
+            // Without the hooks Unity never sets Shown, and every input differs from the start.
+            AvatarAnimatorCrossCheck.HookBehaviours = false;
+            var unhooked = Check(out var unhookedWarnings, out _);
+            Assert.That(unhooked.FirstOrDefault(), Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix + "inputs 10 compared 10 mismatched 10 "), string.Join("\n", unhooked));
+            var start = ExporterLocalization.T(AvatarAnimatorCrossCheck.StartInput);
+            Assert.That(unhooked[1], Does.Match("^" + Regex.Escape(AvatarAnimatorCrossCheck.LogPrefix + $"mismatch \"{start}\" frame ") + @"\d+ Front:Hair detail unity 35 evaluator 60"), string.Join("\n", unhooked));
+            Assert.That(unhookedWarnings.Count(w => w.StartsWith(note.Substring(0, note.IndexOf('{')), StringComparison.Ordinal)), Is.EqualTo(1));
         }
 
         [Test]

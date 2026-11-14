@@ -1207,6 +1207,10 @@ namespace VRVlog.LilToonExporter
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);
+                // The app's player against Unity's Animator on the copy, which
+                // nothing reads after this; the file is already made.
+                if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator))
+                    AvatarAnimatorCrossCheck.Check(clone, avatarAnimator, avatarAnimatorData, warnings);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
