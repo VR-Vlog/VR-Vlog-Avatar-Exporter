@@ -50,6 +50,8 @@ namespace UnityEngine
         public readonly List<Component> components = new List<Component>();
         public readonly Transform transform;
         public bool activeSelf = true;
+        public string tag = "Untagged";
+        public bool CompareTag(string value) => tag == value;
         public bool activeInHierarchy => activeSelf && (transform.parent == null || transform.parent.gameObject.activeInHierarchy);
         public void SetActive(bool value) { activeSelf = value; }
         public GameObject(string name) { this.name = name; transform = new Transform { gameObject = this }; components.Add(transform); }
