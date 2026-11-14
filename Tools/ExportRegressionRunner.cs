@@ -31,7 +31,8 @@
 // Output in <dir>, one set per job:
 //   <ID>_open.json        board opening: seconds, error, scene statistics
 //   <ID>_<run>.json       ok, failure, warnings (export details entries), console
-//                         warnings and errors, export_seconds, bytes
+//                         warnings and errors, animator_check (the lines of the
+//                         check of the app's FX player against Unity), export_seconds, bytes
 //   <ID>_<run>.vrm        the exported file
 //   <ID>_<run>_shots.json screenshot list: bounds, head, expression names
 //   <ID>_<run>_body_zpos.png / _body_zneg.png  whole model seen from +Z (front) and -Z (back)
@@ -74,6 +75,9 @@ namespace VRVlog.LilToonExporter.ExportRegression
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
         static readonly List<string> detailLogs = new List<string>();
         static readonly List<string> consoleLogs = new List<string>();
+        // AvatarAnimatorCrossCheck's Console lines (Unity against the app's player), without the prefix.
+        const string AnimatorCheckPrefix = "VR Vlog animator check: ";
+        static readonly List<string> animatorCheckLogs = new List<string>();
         static readonly Vector3 StageOffset = new Vector3(0f, 1000f, 0f);
         static string outDir, label, detailHeader, shotsMode;
         static IEnumerator routine;
@@ -139,6 +143,11 @@ namespace VRVlog.LilToonExporter.ExportRegression
             if (type == LogType.Log && detailHeader != null && message.StartsWith(detailHeader, StringComparison.Ordinal))
             {
                 detailLogs.Add(message.Substring(detailHeader.Length));
+                return;
+            }
+            if (message.StartsWith(AnimatorCheckPrefix, StringComparison.Ordinal))
+            {
+                if (animatorCheckLogs.Count < 400) animatorCheckLogs.Add(message.Substring(AnimatorCheckPrefix.Length));
                 return;
             }
             if (type == LogType.Log) return;
@@ -573,6 +582,7 @@ namespace VRVlog.LilToonExporter.ExportRegression
                     Progress($"START {id} {run}");
                     detailLogs.Clear();
                     consoleLogs.Clear();
+                    animatorCheckLogs.Clear();
                     var saved = false;
                     var processFirstRun = false;
                     var failure = openError;
@@ -601,7 +611,7 @@ namespace VRVlog.LilToonExporter.ExportRegression
                     var bytes = File.Exists(dest) ? new FileInfo(dest).Length : -1;
                     var warnings = detailLogs.SelectMany(d => d.Split(new[] { DetailSeparator }, StringSplitOptions.None)).Select(Q);
                     WriteJson($"{id}_{run}.json", head + $",\"run\":{run},\"process_first\":{B(processFirstRun)},\"ok\":{B(failure == null)},\"failure\":{Q(failure)}," +
-                              $"\"detail_logs\":{detailLogs.Count},\"warnings\":{Arr(warnings)},\"console\":{Arr(consoleLogs.Select(Q))}," +
+                              $"\"detail_logs\":{detailLogs.Count},\"warnings\":{Arr(warnings)},\"console\":{Arr(consoleLogs.Select(Q))},\"animator_check\":{Arr(animatorCheckLogs.Select(Q))}," +
                               $"\"export_seconds\":{N(exportSeconds)},\"bytes\":{bytes},\"stats\":{stats},\"recommendations\":{recommendations?.Count ?? -1}");
                     Progress($"END {id} {run} {exportSeconds:F1}s {(failure == null ? "ok" : "ERR " + failure.Replace("\n", " "))}");
                     if (failure == null && (shotsMode == "all" || (shotsMode == "first" && run == 1)))
