@@ -1166,6 +1166,20 @@ class AllowKeptMorphsTests(unittest.TestCase):
         self.assertIn('1 removed from B, 0 vs 1 in the extension (1 reverse)', out)
         self.assertIn('reverse morph targets in 1 of 1 pairs (1 in all)', out)
 
+    def test_the_unused_shape_line_is_dropped_when_b_kept_a_reverse_target_a_never_had(self):
+        line = 'VR Vlog: left %d unused BlendShapes out of the VRM: %s'
+        self.base()
+        self.warn(self.a, line % (2, 'Body/A, Body/B'))
+        self.reverse(100, 0)
+        self.warn(self.b, line % (2, 'Body/A, Body/B'))
+        code, row = self.compare_kept()
+        self.assertEqual((0, []), (code, row['issues']))
+        # The reverse target does not explain a shape A left out and B kept.
+        self.warn(self.b, line % (1, 'Body/A'))
+        code, row = self.compare_kept()
+        self.assertEqual(1, code)
+        self.assertTrue(any('warnings differ' in issue for issue in row['issues']), row['issues'])
+
     def test_a_reverse_target_that_does_not_end_at_zero_is_a_difference(self):
         for baked, end in ((100, 50), (0, 0)):
             self.base()

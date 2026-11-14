@@ -35,7 +35,8 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       was removed, accessors and bufferViews are compared by their content (their own fields and
       bytes) in place of their index, and the BIN chunk through them, and the MB in the warning
       about packed vertex data is not compared; the Console line about unused BlendShapes left
-      out is dropped from both sides when B's count is A's less the removed targets. A target
+      out is dropped from both sides when B's count is A's less the removed targets (less the
+      reverse morph targets among them, which A never had). A target
       that names a reverse morph target (__VRVlog_Reverse_..., added to take a base that holds a
       shape at its end back to 0) is counted, and is a difference unless it goes from a nonzero
       baked to an end of 0. Each row lists, as information only, the removed morph targets, the
@@ -433,8 +434,19 @@ def reverse_targets(document):
     """Return (count, issues) for the "morph" targets of VRVLOG_avatar_animator that name a
     reverse morph target, which the export adds to take a base that holds a shape at its end back
     to weight 0: such a target must go from a nonzero baked to an end of 0."""
+    count, issues, _ = _reverse_targets(document)
+    return count, issues
+
+
+def reverse_shapes(document):
+    """Return the number of reverse morph targets (per mesh) the extension's "morph" targets name.
+    They are new shapes, so A's Console line about unused BlendShapes never counts them."""
+    return len(_reverse_targets(document)[2])
+
+
+def _reverse_targets(document):
     nodes, meshes = _member(document, "nodes") or [], _member(document, "meshes") or []
-    count, issues = 0, []
+    count, issues, shapes = 0, [], set()
     for i, target in enumerate(_member(_member(_member(document, "extensions"), ANIMATOR), "targets") or []):
         node, morph = _index(_member(target, "node")), _index(_member(target, "morph"))
         if _member(target, "property") != "morph" or node is None or morph is None or node >= len(nodes):
@@ -444,10 +456,11 @@ def reverse_targets(document):
         if not names or morph >= len(names) or not str(names[morph]).startswith(REVERSE_PREFIX):
             continue
         count += 1
+        shapes.add((mesh, morph))
         if _member(target, "end") != 0 or _member(target, "baked") in (0, None):
             issues.append("animator target %d names reverse morph target %s with baked %r and end %r" % (
                 i, names[morph], _member(target, "baked"), _member(target, "end")))
-    return count, issues
+    return count, issues, shapes
 
 
 def remove_morph_tracks(document):
@@ -633,14 +646,15 @@ def _masked_size(warning):
 UNUSED_NOTE = re.compile(r"^VR Vlog: left (\d+) unused BlendShapes out of the VRM: ", re.S)
 
 
-def _without_unused_note(wa, wb, removed):
-    """Drops the line from both sides when B's count is A's less the removed targets."""
+def _without_unused_note(wa, wb, removed, added=0):
+    """Drops the line from both sides when B's count is A's less the removed targets, of which
+    `added` (reverse morph targets) were never in A's line."""
     def notes(warnings):
         return [(i, int(m.group(1))) for i, w in enumerate(warnings) if isinstance(w, str) for m in [UNUSED_NOTE.match(w)] if m]
     na, nb = notes(wa), notes(wb)
     if len(na) > 1 or len(nb) > 1 or not na:
         return wa, wb
-    if na[0][1] - (nb[0][1] if nb else 0) != removed:
+    if na[0][1] - (nb[0][1] if nb else 0) != removed - added:
         return wa, wb
     drop = lambda warnings, found: [w for i, w in enumerate(warnings) if not found or i != found[0][0]]
     return drop(wa, na), drop(wb, nb)
@@ -670,6 +684,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
     removed_morphs, morphs_a, morphs_b, blend_a, blend_b = 0, 0, 0, 0, 0
     reverse = 0
     if kept_morphs:
+        json_b_full = json_b
         reverse, reverse_issues = reverse_targets(json_b)
         issues += reverse_issues
         json_b, removed_morphs = remove_kept_morphs(json_a, json_b)
@@ -680,7 +695,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
                                   "reverse": reverse}
         if removed_morphs:
             wa, wb = [_masked_size(w) for w in wa], [_masked_size(w) for w in wb]
-            wa, wb = _without_unused_note(wa, wb, removed_morphs)
+            wa, wb = _without_unused_note(wa, wb, removed_morphs, reverse_shapes(json_b_full))
     issues += warning_issues(wa, wb, json_a, json_b)
     if (va is None) != (vb is None):
         issues.append("vrm missing in " + ("A" if va is None else "B"))
