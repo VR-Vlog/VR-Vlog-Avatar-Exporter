@@ -804,6 +804,15 @@ public static class AvatarAnimatorEvaluatorTests
         e = s.Build();
         e.Advance(Frame);
         Near(e.Values[sn], 3, "Freeform Cartesian: two children at one position");
+
+        // A position past the range of a Unity float would overflow the weights into NaN.
+        s.Data.Motions[same].Children[2].X = 1e39;
+        Throws<InvalidOperationException>(() => s.Build(), "a child position outside the float range is not read");
+        s.Data.Motions[same].Children[2].X = float.MaxValue;
+        e = s.Build();
+        e.Set(sx, .5);
+        e.Advance(Frame);
+        Check(!double.IsNaN(e.Values[sn]), "Freeform Cartesian: the farthest position a float holds gives a number");
     }
 
     static void Arguments()

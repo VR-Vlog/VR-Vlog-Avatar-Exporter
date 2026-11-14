@@ -73,8 +73,8 @@ namespace VRVlog.AvatarAnimator
         // Whether this evaluator plays the controller as Unity would. False
         // when the exporter left out something that drives transitions, or the
         // controller uses what is not implemented yet (additive layers, synced
-        // layers that affect timing, 2D blend trees, a random that prevents
-        // repeats). reason is null when true.
+        // layers that affect timing, 2D blend trees other than Freeform
+        // Cartesian, a random that prevents repeats). reason is null when true.
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
