@@ -49,6 +49,7 @@ namespace VRVlog.LilToonExporter
                 runtime = overrides.runtimeAnimatorController;
             }
             if (!(runtime is AnimatorController controller)) return;
+            AnimatorNesting.Check(controller);
             var layers = controller.layers;
             IEnumerable<AnimatorState> States(AnimatorStateMachine machine) => machine == null ? Enumerable.Empty<AnimatorState>() :
                 machine.states.Select(child => child.state).Concat(machine.stateMachines.SelectMany(child => States(child.stateMachine)));

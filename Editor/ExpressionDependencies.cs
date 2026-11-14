@@ -115,7 +115,7 @@ namespace VRVlog.LilToonExporter
         internal static AnimatorController Controller(RuntimeAnimatorController runtime)
         {
             if (runtime is AnimatorOverrideController overrides) runtime = overrides.runtimeAnimatorController;
-            return runtime as AnimatorController ?? throw new InvalidOperationException("FX Animator Controllerを取得できません。");
+            return AnimatorNesting.Check(runtime as AnimatorController ?? throw new InvalidOperationException("FX Animator Controllerを取得できません。"));
         }
 
         // Unity resolves a repeated parameter name to one parameter. Collapse repeats only when every

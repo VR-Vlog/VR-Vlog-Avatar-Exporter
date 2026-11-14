@@ -263,6 +263,7 @@ namespace VRVlog.LilToonExporter
             var clips = new Dictionary<AnimationClip, (bool SetsActive, bool DrivesParameters)>();
             if (!(runtime is AnimatorController controller) || controller.layers.Any(layer => layer.syncedLayerIndex >= 0))
                 return runtime.animationClips.Any(clip => clip != null && AnimationUtility.GetCurveBindings(clip).Any(IsActiveBinding)) ? null : new HashSet<string>(StringComparer.Ordinal);
+            AnimatorNesting.Check(controller);
             var parameterNames = new HashSet<string>(controller.parameters.Select(parameter => parameter.name), StringComparer.Ordinal);
             (bool SetsActive, bool DrivesParameters) Read(AnimationClip clip)
             {
