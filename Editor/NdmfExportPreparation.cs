@@ -587,6 +587,18 @@ namespace VRVlog.LilToonExporter
             ValidateSource(clone, excluded, deferUnresolvedTargets: true);
         }
 
+        // An upload removes EditorOnly objects in NDMF's Resolving, or, when
+        // NDMF is not installed, in the VRChat SDK's callback at -1024. The
+        // export reads the copy before -1024, so a VRChat avatar that needs no
+        // NDMF build has them removed here, where NDMF removes them: the export
+        // never reads a renderer the upload does not have.
+        internal static void RemoveEditorOnlyObjects(GameObject clone)
+        {
+            foreach (var transform in clone.GetComponentsInChildren<Transform>(true))
+                if (transform != null && transform != clone.transform && transform.gameObject.CompareTag("EditorOnly"))
+                    Object.DestroyImmediate(transform.gameObject);
+        }
+
         private static void EnsureCopyAvatarRoot(GameObject clone)
         {
             // BuildContext adds this marker too, but MA's getters need the
@@ -628,6 +640,8 @@ namespace VRVlog.LilToonExporter
                 var callbacks = AvatarBuildCallbacks.For(clone);
                 try
                 {
+                    lease.RunCallbacks(callbacks, AvatarBuildCallbacks.NdmfTransformingOrder, clone, warnings, tolerateFailedPasses);
+                    if (AvatarBuildCallbacks.IsVrcAvatar(clone)) RemoveEditorOnlyObjects(clone);
                     lease.RunCallbacks(callbacks, AvatarBuildCallbacks.VrcFuryOrder, clone, warnings, tolerateFailedPasses);
                     lease.ApplyVrcFury(clone, warnings);
                     lease.RunCallbacks(callbacks, AvatarBuildCallbacks.NdmfOptimizingOrder, clone, warnings, tolerateFailedPasses);
