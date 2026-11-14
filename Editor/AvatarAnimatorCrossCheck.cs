@@ -60,6 +60,10 @@ namespace VRVlog.LilToonExporter
             internal GameObject Object;
             internal SkinnedMeshRenderer Renderer;
             internal string Shape;
+            // The object's path under the root when the clips were read (null
+            // when unknown). Unity binds curves by path, so an object the
+            // export renamed or moved no longer moves with the controller.
+            internal string Path;
         }
 
         // Values by parameter index, set after SettleFrames.
@@ -74,13 +78,17 @@ namespace VRVlog.LilToonExporter
             internal string Input;
             internal int Frame, Target;
             internal double Unity, Evaluator;
+            // The layers whose state or weight differs at that frame, for the log.
+            internal string Layers;
         }
 
         internal sealed class Result
         {
             // Why the evaluator cannot play the data; nothing is compared then.
             internal string Unsupported;
-            internal int Inputs, Compared, Targets, Unbound;
+            internal int Inputs, Compared, Targets, Unbound, Moved;
+            // Animators under the root besides the one that plays, for the log.
+            internal int OtherAnimators;
             // Inputs left out for a Playable Layer Control, and for time.
             internal readonly List<string> Skipped = new List<string>();
             internal int OutOfTime;
@@ -169,18 +177,29 @@ namespace VRVlog.LilToonExporter
                 if (target.Property == "active" && binding?.Object != null) shown.Add(t);
                 else if (target.Property == "morph" && binding?.Renderer != null && binding.Renderer.sharedMesh != null &&
                          (shapes[t] = binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape)) >= 0) shown.Add(t);
-                else result.Unbound++;
+                else { result.Unbound++; continue; }
+                if (binding.Path != null && Find(root, binding.Path) != (binding.Object != null ? binding.Object : binding.Renderer.gameObject))
+                {
+                    shown.RemoveAt(shown.Count - 1);
+                    result.Moved++;
+                }
             }
             var inputs = Inputs(data);
             result.Inputs = inputs.Count;
 
             if (!root.TryGetComponent<Animator>(out var animator)) animator = root.AddComponent<Animator>();
+            result.OtherAnimators = root.GetComponentsInChildren<Animator>(true).Count(other => other != animator);
             animator.enabled = true;
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             var player = new UnityPlayer(animator, data, readBehaviour);
             using (HookBehaviours ? new Hooks(player) : null)
             {
+                // Unity takes the values Write Defaults brings back when the
+                // controller binds, and Rebind restores those: the rest goes in
+                // first, as the export may have left the copy elsewhere.
+                animator.runtimeAnimatorController = null;
+                ToRest(data, bindings, shown, shapes);
                 animator.runtimeAnimatorController = controller;
                 player.Read();
                 foreach (var input in inputs)
@@ -197,6 +216,23 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
+        // The object Unity's Animator binds a curve path to, as the capture read it.
+        static GameObject Find(GameObject root, string path)
+        {
+            var found = path.Length == 0 ? root.transform : root.transform.Find(path);
+            return found == null ? null : found.gameObject;
+        }
+
+        static void ToRest(AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes)
+        {
+            foreach (var t in shown)
+            {
+                var rest = data.Targets[t].Rest;
+                if (data.Targets[t].Property == "active") bindings[t].Object.SetActive(AvatarAnimatorEvaluator.Active(rest));
+                else bindings[t].Renderer.SetBlendShapeWeight(shapes[t], (float)rest);
+            }
+        }
+
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes,
             Animator animator, UnityPlayer player, out bool skipped)
         {
@@ -204,12 +240,7 @@ namespace VRVlog.LilToonExporter
             var seed = input.Name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c));
             var evaluatorRandom = new System.Random(seed);
             var evaluator = new AvatarAnimatorEvaluator(data, () => evaluatorRandom.NextDouble());
-            foreach (var t in shown)
-            {
-                var rest = data.Targets[t].Rest;
-                if (data.Targets[t].Property == "active") bindings[t].Object.SetActive(AvatarAnimatorEvaluator.Active(rest));
-                else bindings[t].Renderer.SetBlendShapeWeight(shapes[t], (float)rest);
-            }
+            ToRest(data, bindings, shown, shapes);
             player.Start(new System.Random(seed));
             Mismatch first = null;
             for (var frame = 0; frame < SettleFrames + InputFrames; frame++)
@@ -231,12 +262,37 @@ namespace VRVlog.LilToonExporter
                     var value = evaluator.Values[t];
                     var differs = active ? AvatarAnimatorEvaluator.Active(value) != (unity != 0) : !(Math.Abs(value - unity) <= WeightTolerance);
                     if (!differs) continue;
-                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value };
+                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value, Layers = Layers(data, animator, evaluator) };
                     break;
                 }
             }
             skipped = false;
             return first;
+        }
+
+        // Each layer where Unity and the evaluator are in a different state or
+        // at a different weight: "index name: unity state weight / evaluator
+        // state weight". A state in a transition reads "from>to".
+        static string Layers(AvatarAnimatorData data, Animator animator, AvatarAnimatorEvaluator evaluator)
+        {
+            if (data.Controllers.Count == 0) return "";
+            var layers = data.Controllers[0].Layers;
+            var parts = new List<string>();
+            for (var l = 0; l < layers.Count && l < animator.layerCount && l < evaluator.LayerCount; l++)
+            {
+                var states = layers[l].States;
+                if (states.Count == 0) continue;
+                string Named(int hash) => states.FirstOrDefault(s => Animator.StringToHash(s.Name) == hash)?.Name ?? "?";
+                string At(int index) => index >= 0 && index < states.Count ? states[index].Name : "-";
+                var unity = Named(animator.GetCurrentAnimatorStateInfo(l).shortNameHash);
+                if (animator.IsInTransition(l)) unity += ">" + Named(animator.GetNextAnimatorStateInfo(l).shortNameHash);
+                var app = At(evaluator.State(l));
+                if (evaluator.NextState(l) >= 0) app += ">" + At(evaluator.NextState(l));
+                var unityWeight = l == 0 ? 1 : animator.GetLayerWeight(l);
+                if (unity == app && Math.Abs(unityWeight - evaluator.LayerWeight(l)) < 0.001) continue;
+                parts.Add($"{l} {layers[l].Name}: unity {unity} {unityWeight:0.###} / evaluator {app} {evaluator.LayerWeight(l):0.###}");
+            }
+            return string.Join("; ", parts);
         }
 
         // The result line, or null when every input compared matches.
@@ -258,11 +314,13 @@ namespace VRVlog.LilToonExporter
                 yield break;
             }
             yield return LogPrefix + $"inputs {result.Inputs} compared {result.Compared} mismatched {result.Mismatches.Count} " +
-                         $"skipped {result.Skipped.Count} outOfTime {result.OutOfTime} targets {result.Targets} unbound {result.Unbound} " +
+                         $"skipped {result.Skipped.Count} outOfTime {result.OutOfTime} targets {result.Targets} unbound {result.Unbound} moved {result.Moved} " +
+                         $"otherAnimators {result.OtherAnimators} " +
                          $"seconds {result.Seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}";
             foreach (var m in result.Mismatches)
                 yield return LogPrefix + $"mismatch \"{m.Input}\" frame {m.Frame} {describe(m.Target)} unity {m.Unity.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} " +
-                             $"evaluator {m.Evaluator.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}";
+                             $"evaluator {m.Evaluator.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}" +
+                             (string.IsNullOrEmpty(m.Layers) ? "" : " layers " + m.Layers);
             foreach (var name in result.Skipped) yield return LogPrefix + $"skipped \"{name}\" (Playable Layer Control on the FX)";
         }
 
@@ -316,6 +374,7 @@ namespace VRVlog.LilToonExporter
             readonly List<(int Layer, double From, double Goal, double Duration, double Elapsed)> blends = new List<(int, double, double, double, double)>();
             System.Random random;
             internal bool PlayableLayerControlled;
+            internal Action<Animator> Rebound;
 
             internal UnityPlayer(Animator animator, AvatarAnimatorData data, Func<StateMachineBehaviour, AvatarAnimatorData.Behaviour> readBehaviour)
             {
@@ -340,6 +399,7 @@ namespace VRVlog.LilToonExporter
                 blends.Clear();
                 PlayableLayerControlled = false;
                 animator.Rebind();
+                Rebound?.Invoke(animator);
                 var layers = data.Controllers.Count > 0 ? data.Controllers[0].Layers : new List<AvatarAnimatorData.Layer>();
                 for (var l = 1; l < layers.Count && l < animator.layerCount; l++) animator.SetLayerWeight(l, (float)layers[l].Weight);
                 for (var p = 0; p < data.Parameters.Count; p++) Set(p, data.Parameters[p].Default);
@@ -452,22 +512,27 @@ namespace VRVlog.LilToonExporter
             static UnityPlayer current;
             readonly List<Action> undo = new List<Action>();
             readonly HashSet<object> subscribed = new HashSet<object>();
+            readonly List<Type> controls = new List<Type>();
 
             internal Hooks(UnityPlayer player)
             {
                 current = player;
+                player.Rebound = Adopt;
                 var driver = Find("VRC.SDKBase.VRC_AvatarParameterDriver");
                 if (driver != null) Attach(driver, null, "OnApplySettings", Delegate(driver, "OnApplySettings", null, nameof(Applied)));
                 foreach (var name in new[] { "VRC.SDKBase.VRC_AnimatorLayerControl", "VRC.SDKBase.VRC_PlayableLayerControl" })
                 {
                     var type = Find(name);
-                    if (type != null) Attach(type, null, "Initialize", Delegate(type, "Initialize", null, nameof(Initialized)));
+                    if (type == null) continue;
+                    controls.Add(type);
+                    Attach(type, null, "Initialize", Delegate(type, "Initialize", null, nameof(Initialized)));
                 }
             }
 
             public void Dispose()
             {
                 foreach (var action in undo) action();
+                if (current != null) current.Rebound = null;
                 current = null;
             }
 
@@ -514,6 +579,15 @@ namespace VRVlog.LilToonExporter
             void Applied(object behaviour, object animator)
             {
                 if (current != null && animator is Animator owner && current.Owns(owner)) current.Behaviour(behaviour as StateMachineBehaviour);
+            }
+
+            // The Layer Controls hand over their hook from Awake, which never
+            // reached these hooks from the Animator's copies of the behaviours in
+            // the editor: the copies are taken from the Animator after each rebind.
+            void Adopt(Animator animator)
+            {
+                foreach (var behaviour in animator.GetBehaviours<StateMachineBehaviour>())
+                    if (controls.Any(type => type.IsInstanceOfType(behaviour))) Initialized(behaviour);
             }
 
             void Initialized(object control)

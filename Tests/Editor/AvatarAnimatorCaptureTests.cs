@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -103,7 +104,11 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, fx);
             shown.motion = clip;
             var go = drive.AddTransition(shown);
-            go.hasExitTime = false;
+            // Unity's transitions see a driver's change from the next frame, the
+            // app's player in the same frame (M8): the exit time keeps the
+            // transition after both have the value.
+            go.hasExitTime = true;
+            go.exitTime = .26f;
             go.duration = 0;
             go.AddCondition(AnimatorConditionMode.If, 0, "Shown");
             var control = shown.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl"));
@@ -117,6 +122,20 @@ namespace VRVlog.LilToonExporter.Tests
                 serialized.ApplyModifiedPropertiesWithoutUndo();
             }
             AssetDatabase.SaveAssets();
+            // The fixture plays the FX in every playable layer; the driver would
+            // then change Shown from outside the FX, which the export refuses.
+            var descriptor = avatar.Source.GetComponent(VrcAvatar.DescriptorType);
+            VrcAvatar.SetFx(descriptor, fx);
+            using (var serialized = new SerializedObject(descriptor))
+            {
+                var special = serialized.FindProperty("specialAnimationLayers");
+                for (var i = 0; i < special.arraySize; i++)
+                {
+                    special.GetArrayElementAtIndex(i).FindPropertyRelative("isDefault").boolValue = true;
+                    special.GetArrayElementAtIndex(i).FindPropertyRelative("animatorController").objectReferenceValue = null;
+                }
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             List<string> Check(out List<string> warnings, out AvatarAnimatorData data)
             {
@@ -146,7 +165,7 @@ namespace VRVlog.LilToonExporter.Tests
             var unhooked = Check(out var unhookedWarnings, out _);
             Assert.That(unhooked.FirstOrDefault(), Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix + "inputs 10 compared 10 mismatched 10 "), string.Join("\n", unhooked));
             var start = ExporterLocalization.T(AvatarAnimatorCrossCheck.StartInput);
-            Assert.That(unhooked[1], Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix + $"mismatch \"{start}\" frame 1 Front:Hair detail unity 35 "), string.Join("\n", unhooked));
+            Assert.That(unhooked[1], Does.Match("^" + Regex.Escape(AvatarAnimatorCrossCheck.LogPrefix + $"mismatch \"{start}\" frame ") + @"\d+ Front:Hair detail unity 35 evaluator 60"), string.Join("\n", unhooked));
             Assert.That(unhookedWarnings.Count(w => w.StartsWith(note.Substring(0, note.IndexOf('{')), StringComparison.Ordinal)), Is.EqualTo(1));
         }
 

@@ -93,6 +93,38 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ATargetTheExportRenamedIsCountedAndNotCompared()
+        {
+            // Unity binds the Hat curve by path: renamed, the hat no longer
+            // moves in Unity while the evaluator still shows it.
+            var (root, controller, data, bindings) = Build();
+            bindings[0].Object.name = "Hat (renamed)";
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
+
+            Assert.That((result.Targets, result.Unbound, result.Moved), Is.EqualTo((2, 0, 1)));
+            Assert.That(result.Mismatches, Is.Empty, "The hat is not compared.");
+        }
+
+        [Test]
+        public void UnityWritesTheRestWhereAStateDoesNotAnimate()
+        {
+            // Smile's Off state leaves Smile to Write Defaults, which brings back
+            // the rest. The export left the copy's weight elsewhere (it bakes
+            // the scene weight); Unity takes its defaults when the controller
+            // binds, so the check must put the rest in before that.
+            var (root, controller, data, bindings) = Build();
+            var off = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(controller)).OfType<AnimationClip>().Single(clip => clip.name == "Clip2");
+            AnimationUtility.SetEditorCurve(off, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Smile"), null);
+            data.Clips[2].Tracks.Clear();
+            data.Targets[1].Rest = data.Targets[1].Baked = 40;
+            bindings[1].Renderer.SetBlendShapeWeight(0, 0);
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
+
+            Assert.That(result.Compared, Is.EqualTo(9));
+            Assert.That(result.Mismatches.Select(m => $"{m.Input} {m.Frame} {m.Unity} {m.Evaluator}"), Is.Empty);
+        }
+
+        [Test]
         public void DataTheEvaluatorCannotPlayIsNotCompared()
         {
             var (root, controller, data, bindings) = Build();
@@ -251,8 +283,8 @@ namespace VRVlog.LilToonExporter.Tests
 
             var bindings = new[]
             {
-                new AvatarAnimatorCrossCheck.Binding { Object = hat },
-                new AvatarAnimatorCrossCheck.Binding { Renderer = renderer, Shape = "Smile" },
+                new AvatarAnimatorCrossCheck.Binding { Object = hat, Path = "Hat" },
+                new AvatarAnimatorCrossCheck.Binding { Renderer = renderer, Shape = "Smile", Path = "Body" },
             };
             return (root, controller, data, bindings);
         }
