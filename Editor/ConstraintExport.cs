@@ -205,7 +205,7 @@ namespace VRVlog.LilToonExporter
             // local rotation, and an aim the source's world position and the
             // parent's world pose; any of them may lead back inside the target.
             var aims = plan.Kind != Kind.Rotation;
-            if (Reaches(edges, source, target) || DependsOnInside(edges, source, aims ? Reading.Position : Reading.Rotation, target, false)
+            if (Reaches(edges, relays, source, target) || DependsOnInside(edges, source, aims ? Reading.Position : Reading.Rotation, target, false)
                 || aims && DependsOnInside(edges, target.parent, Reading.Pose, target, false))
                 return (ExportOutcome.Omitted, OmittedCycle);
             var weight = Mathf.Clamp01(plan.Weight * Mathf.Min(1, sources[0].Weight));
@@ -228,7 +228,7 @@ namespace VRVlog.LilToonExporter
                     if (moving == root || moving == target || !driven.Contains(moving)
                         || Frame(moving, root, turning) != Frame(target, root, turning))
                         return (ExportOutcome.Omitted, OmittedParent);
-                    if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
+                    if (Reaches(edges, relays, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
                     source = moving;
                 }
                 if (axes == 1)
@@ -623,8 +623,11 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        // VRM forbids constraints that read each other in a loop.
-        static bool Reaches(Dictionary<Transform, List<Transform>> edges, Transform from, Transform to)
+        // VRM forbids constraints that read each other in a loop. A target's aim
+        // sits on the relay node above it, so the walk takes the node's edges
+        // too; otherwise two aims at each other would both be written when the
+        // one with the node came first, and only one in the other order.
+        static bool Reaches(Dictionary<Transform, List<Transform>> edges, Relays relays, Transform from, Transform to)
         {
             var visited = new HashSet<Transform>();
             var pending = new Stack<Transform>();
@@ -633,8 +636,11 @@ namespace VRVlog.LilToonExporter
             {
                 var current = pending.Pop();
                 if (current == to) return true;
-                if (!visited.Add(current) || !edges.TryGetValue(current, out var next)) continue;
-                foreach (var value in next) pending.Push(value);
+                if (!visited.Add(current)) continue;
+                if (edges.TryGetValue(current, out var next))
+                    foreach (var value in next) pending.Push(value);
+                var node = relays.Above(current);
+                if (node != current) pending.Push(node);
             }
             return false;
         }
