@@ -162,9 +162,9 @@ namespace VRVlog.LilToonExporter.Tests
             }, stopBeforeOptimizing: preview))
             {
                 Assert.That(read, Is.False, "The export reads the copy without its EditorOnly objects.");
-                Assert.That(fixture.Copy.transform.Find("Hidden"), Is.Null);
-                Assert.That(lease.Completed, Is.EqualTo(!preview), string.Join("
-", warnings));
+                Assert.That(fixture.Copy.transform.Find("Hidden"), Is.Not.Null, "An untagged parent stays.");
+                Assert.That(fixture.Copy.transform.Find("Hidden/Nested"), Is.Null);
+                Assert.That(lease.Completed, Is.EqualTo(!preview), string.Join(System.Environment.NewLine, warnings));
                 Assert.That(warnings.Where(warning => warning.Contains("VRChat SDK")), Is.Empty);
                 if (!preview) Assert.That(lease.Playables(), Is.Not.Null, "The copy needs no NDMF build and still gives its playables.");
             }
