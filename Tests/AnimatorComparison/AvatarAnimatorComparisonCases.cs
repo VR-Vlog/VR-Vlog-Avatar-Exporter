@@ -209,6 +209,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return ToggleOverRamp();
             yield return LayersBack();
             yield return MixedWriteDefaults();
+            yield return ParameterCurves();
+            yield return ParameterHold();
+            yield return ParameterPass();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -627,6 +630,73 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
+        // Parameters a clip animates (M11), every state with Write Defaults:
+        // Drive follows a ramp and is read by transitions, Count has a curve
+        // and so stays at its default. The inputs try to change both while a
+        // curve writes them and while none does.
+        static Case ParameterCurves()
+        {
+            var c = new Builder("parameterCurves", 3);
+            var go = c.Parameter("Go", "bool");
+            var drive = c.Parameter("Drive", "float", .25);
+            var count = c.Parameter("Count", "int", 3);
+            var node = c.Target(0);
+            var reader = c.Target(0);
+            var driven = c.ParameterTarget(drive);
+            c.ParameterTarget(count);
+            var curve = c.Layer("Curve");
+            var rest = c.State(curve, "Rest", c.Constant(1, true, (node, 2)));
+            var ramp = c.State(curve, "Ramp", c.Ramp(1, true, driven, 0, 1));
+            curve.States[rest].Transitions.Add(To(ramp, duration: .3).When(go, "if"));
+            curve.States[ramp].Transitions.Add(To(rest).When(go, "ifNot"));
+            var read = c.Layer("Reader");
+            var below = c.State(read, "Below", c.Constant(1, true, (reader, 0)));
+            var above = c.State(read, "Above", c.Constant(1, true, (reader, 1)));
+            read.States[below].Transitions.Add(To(above).When(drive, "greater", .5));
+            read.States[below].Transitions.Add(To(above).When(count, "notEqual", 3));
+            read.States[above].Transitions.Add(To(below).When(drive, "less", .5));
+            c.Input(.2, drive, .9).Input(.5, go, 1).Input(1.2, count, 5).Input(1.6, drive, .1).Input(2.2, go, 0).Input(2.5, drive, .9);
+            return c.Case;
+        }
+
+        // M11 with M6: a layer without Write Defaults keeps a parameter a clip
+        // animates in an empty state, and the host cannot change it there.
+        static Case ParameterHold()
+        {
+            var c = new Builder("parameterHold", 2);
+            var go = c.Parameter("Go", "bool");
+            var held = c.Parameter("Held", "float", .1);
+            var kept = c.ParameterTarget(held);
+            var hold = c.Layer("Hold");
+            var holding = c.State(hold, "Holding", c.Ramp(1, true, kept, .2, .8), writeDefaults: false);
+            var empty = c.State(hold, "Empty", -1, writeDefaults: false);
+            hold.States[holding].Transitions.Add(To(empty, duration: .2).When(go, "if"));
+            hold.States[empty].Transitions.Add(To(holding, duration: .2).When(go, "ifNot"));
+            c.Input(.5, go, 1).Input(.9, held, .3).Input(1.3, go, 0).Input(1.6, held, .9);
+            return c.Case;
+        }
+
+        // M11 with M6: a state without Write Defaults whose motion does not
+        // write a parameter the layer animates, over a layer that does not
+        // write it either, and a tree that writes it with part of its weight.
+        static Case ParameterPass()
+        {
+            var c = new Builder("parameterPass", 2.5);
+            var go = c.Parameter("Go", "bool");
+            var mix = c.Parameter("Mix", "float", .5);
+            var held = c.Parameter("Held", "float", .1);
+            var node = c.Target(0);
+            var kept = c.ParameterTarget(held);
+            var layer = c.Layer("Pass");
+            var writing = c.State(layer, "Writing", c.Ramp(1, true, kept, .2, .8), writeDefaults: false);
+            var other = c.State(layer, "Other", c.Constant(1, true, (node, 3)), writeDefaults: false);
+            var part = c.State(layer, "Part", c.Tree("1d", mix, (c.Constant(1, true, (kept, .9)), 0, 1), (c.Constant(1, true, (node, 1)), 1, 1)), writeDefaults: false);
+            layer.States[writing].Transitions.Add(To(other, duration: .2).When(go, "if"));
+            layer.States[other].Transitions.Add(To(part, duration: .2).When(go, "ifNot"));
+            c.Input(.5, go, 1).Input(1.2, go, 0);
+            return c.Case;
+        }
+
         static AvatarAnimatorData.Transition To(int state, double duration = 0, bool exitTime = false, double at = 0, bool fixedDuration = true) =>
             new AvatarAnimatorData.Transition { ToState = state, Timed = true, Duration = duration, HasFixedDuration = fixedDuration, HasExitTime = exitTime, ExitTime = at };
 
@@ -656,6 +726,13 @@ namespace VRVlog.AvatarAnimator.Comparison
             {
                 Data.Targets.Add(new AvatarAnimatorData.Target { Node = Data.Targets.Count, Rest = rest });
                 if (active) Case.ActiveTargets.Add(Data.Targets.Count - 1);
+                return Data.Targets.Count - 1;
+            }
+
+            // A parameter a clip animates, at the controller's default.
+            internal int ParameterTarget(int parameter)
+            {
+                Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = parameter, Rest = Data.Parameters[parameter].Default });
                 return Data.Targets.Count - 1;
             }
 
