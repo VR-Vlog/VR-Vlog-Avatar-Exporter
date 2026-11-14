@@ -201,6 +201,7 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return WriteDefaultsOff();
             yield return Layers();
             yield return Trees();
+            yield return FreeformCartesian();
             yield return Machines();
             yield return StateOptions();
             yield return Chain();
@@ -436,6 +437,48 @@ namespace VRVlog.AvatarAnimator.Comparison
             c.State(third, "Tree", n);
             for (var i = 0; i <= 12; i++) c.Input(i * .2, blend, -1.5 + i * .25);
             c.Input(0, w0, .5).Input(0, w1, 1).Input(.8, w0, 2).Input(1.6, w0, 0).Input(1.6, w1, 0).Input(2.2, w1, -.5);
+            return c.Case;
+        }
+
+        // 2D Freeform Cartesian trees. Each child writes 1 to its own target
+        // and 0 to the others, so a target holds its child's weight.
+        static Case FreeformCartesian()
+        {
+            var c = new Builder("freeformCartesian", 4);
+            var x = c.Parameter("X", "float");
+            var y = c.Parameter("Y", "float");
+            var w = c.Parameter("W", "float", 1);
+            // Three children on one line and one off it.
+            c.State(c.Layer("Line"), "Tree", c.Weights(x, y, (0, 0), (.8, 0), (1, 0), (0, 1)));
+            // A child inside the others.
+            c.State(c.Layer("Centre"), "Tree", c.Weights(x, y, (-1, -1), (1, -1), (-1, 1), (1, 1), (0, 0)));
+            // Uneven distances, and a child far from the rest.
+            c.State(c.Layer("Uneven"), "Tree", c.Weights(x, y, (0, 0), (.3, .1), (1, .2), (.4, .9), (-.6, .5), (3, 3)));
+            c.State(c.Layer("One"), "Tree", c.Weights(x, y, (.5, .5)));
+            // Two children at one position.
+            c.State(c.Layer("Same"), "Tree", c.Weights(x, y, (0, 0), (0, 0), (1, 0), (0, 1)));
+            // Children of other lengths and time scales, a 1D tree as a child,
+            // a child without a motion, and the tree inside a direct tree.
+            for (var kind = 0; kind < 5; kind++)
+            {
+                var length = c.Target(0);
+                var a = c.Ramp(1, true, length, 0, 1);
+                var b = c.Ramp(2, true, length, 10, 12);
+                var d = c.Ramp(.5, true, length, 20, 21);
+                int tree;
+                if (kind == 1) tree = c.Tree2D("2dFreeformCartesian", x, y, (a, 0, 0, 1), (b, 1, 0, 2), (d, 0, 1, .5));
+                else if (kind == 2) tree = c.Tree2D("2dFreeformCartesian", x, y, (a, 0, 0, 1), (b, 1, 0, 1), (c.Tree("1d", x, (a, 0, 1), (d, 1, 1)), 0, 1, 1));
+                else if (kind == 3) tree = c.Tree2D("2dFreeformCartesian", x, y, (a, 0, 0, 1), (b, 1, 0, 1), (-1, 0, 1, 1));
+                else tree = c.Tree2D("2dFreeformCartesian", x, y, (a, 0, 0, 1), (b, 1, 0, 1), (d, 0, 1, 1));
+                c.State(c.Layer(new[] { "Lengths", "Scales", "Inner", "Missing", "Direct" }[kind]), "Tree", kind == 4 ? c.Tree("direct", -1, (tree, w, 1)) : tree);
+            }
+            // Inside and outside the children's positions.
+            for (var i = 0; i <= 80; i++)
+            {
+                double u = i * .137, v = i * .291;
+                c.Input(i * .05, x, -1.5 + 4 * (u - Math.Floor(u))).Input(i * .05, y, -1.5 + 4 * (v - Math.Floor(v)));
+            }
+            c.Input(1.2, w, .5).Input(2.2, w, 0).Input(2.6, w, 1);
             return c.Case;
         }
 
@@ -795,6 +838,26 @@ namespace VRVlog.AvatarAnimator.Comparison
                 }
                 Data.Motions.Add(tree);
                 return Data.Motions.Count - 1;
+            }
+
+            // Children are (motion, x, y, time scale).
+            internal int Tree2D(string blendType, int x, int y, params (int Motion, double X, double Y, double TimeScale)[] children)
+            {
+                var tree = new AvatarAnimatorData.Motion { Type = "blendTree", BlendType = blendType };
+                tree.Parameters.Add(x);
+                tree.Parameters.Add(y);
+                foreach (var child in children)
+                    tree.Children.Add(new AvatarAnimatorData.Child { Motion = child.Motion, X = child.X, Y = child.Y, TimeScale = child.TimeScale });
+                Data.Motions.Add(tree);
+                return Data.Motions.Count - 1;
+            }
+
+            // A Freeform Cartesian tree with a child at each position, and a target for each child's weight.
+            internal int Weights(int x, int y, params (double X, double Y)[] positions)
+            {
+                var targets = positions.Select(_ => Target(0)).ToArray();
+                return Tree2D("2dFreeformCartesian", x, y, positions.Select((position, i) =>
+                    (Constant(1, true, targets.Select((target, t) => (target, t == i ? 1.0 : 0.0)).ToArray()), position.X, position.Y, 1.0)).ToArray());
             }
 
             internal AvatarAnimatorData.Layer Layer(string name, double weight = 1)
