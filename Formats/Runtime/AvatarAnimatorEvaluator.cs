@@ -539,9 +539,9 @@ namespace VRVlog.AvatarAnimator
             layer.Active = null;
         }
 
-        // A synced layer moves with its source; its own states' behaviours run
-        // when the source enters them. A source later in the list is a frame
-        // ahead of it.
+        // A synced layer moves with its source; the behaviours of its copied
+        // machines and of its own states run when the source enters them. A
+        // source later in the list is a frame ahead of it.
         void Sync(LayerRun layer)
         {
             var source = layers[layer.Source];
