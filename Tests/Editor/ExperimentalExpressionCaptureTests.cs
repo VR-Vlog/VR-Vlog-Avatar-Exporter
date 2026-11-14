@@ -1214,7 +1214,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var field = descriptor.GetType().GetField(key); var layers = (Array)field.GetValue(descriptor);
                 for (var i = 0; i < layers.Length; i++)
                 {
-                    var layer = layers.GetValue(i); var empty = new AnimatorController(); assets.Add(empty);
+                    var layer = layers.GetValue(i); var empty = VrcAvatar.EmptyController(); assets.Add(empty);
                     SetPoseMember(layer, "isDefault", false); SetPoseMember(layer, "animatorController", VrChatExpressionMenu.Member(layer, "type").ToString() == "Gesture" ? controller : empty); layers.SetValue(layer, i);
                 }
                 field.SetValue(descriptor, layers);

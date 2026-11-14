@@ -342,7 +342,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var row = Activator.CreateInstance(rowType); VrcAvatar.Set(row, "type", types[i]); VrcAvatar.Set(row, "isDefault", false);
                     if (types[i] == "FX") VrcAvatar.Set(row, "animatorController", fx);
-                    else { var empty = new AnimatorController(); owned.Add(empty); VrcAvatar.Set(row, "animatorController", empty); }
+                    else { var empty = VrcAvatar.EmptyController(); owned.Add(empty); VrcAvatar.Set(row, "animatorController", empty); }
                     rows.SetValue(row, i);
                 }
                 field.SetValue(descriptor, rows);
