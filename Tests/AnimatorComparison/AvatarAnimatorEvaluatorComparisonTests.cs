@@ -83,15 +83,10 @@ namespace VRVlog.AvatarAnimator.Comparison
                     animator.Update((float)steps[i]);
                     values[i] = new double[targets.Length];
                     for (var t = 0; t < targets.Length; t++)
-                        values[i][t] = c.ActiveTargets.Contains(t) ? (targets[t].activeSelf ? 1 : 0) : targets[t].transform.localPosition.x;
+                        values[i][t] = data.Targets[t].Property == "parameter" ? Get(animator, data.Parameters[data.Targets[t].Parameter])
+                            : c.ActiveTargets.Contains(t) ? (targets[t].activeSelf ? 1 : 0) : targets[t].transform.localPosition.x;
                     parameters[i] = new double[data.Parameters.Count];
-                    for (var p = 0; p < parameters[i].Length; p++)
-                    {
-                        var parameter = data.Parameters[p];
-                        parameters[i][p] = parameter.Type == "int" ? animator.GetInteger(parameter.Name)
-                            : parameter.Type == "float" ? animator.GetFloat(parameter.Name)
-                            : animator.GetBool(parameter.Name) ? 1 : 0;
-                    }
+                    for (var p = 0; p < parameters[i].Length; p++) parameters[i][p] = Get(animator, data.Parameters[p]);
                 }
             }
             finally
@@ -99,6 +94,11 @@ namespace VRVlog.AvatarAnimator.Comparison
                 Object.DestroyImmediate(root);
             }
         }
+
+        static double Get(Animator animator, AvatarAnimatorData.Parameter parameter) =>
+            parameter.Type == "int" ? animator.GetInteger(parameter.Name)
+            : parameter.Type == "float" ? animator.GetFloat(parameter.Name)
+            : animator.GetBool(parameter.Name) ? 1 : 0;
 
         static string Path(int target) => "T" + target;
 
@@ -124,11 +124,22 @@ namespace VRVlog.AvatarAnimator.Comparison
                 var unity = new AnimationClip { name = clip.Name };
                 foreach (var track in clip.Tracks)
                 {
-                    var binding = c.ActiveTargets.Contains(track.Target)
+                    var target = data.Targets[track.Target];
+                    var binding = target.Property == "parameter"
+                        ? EditorCurveBinding.FloatCurve("", typeof(Animator), data.Parameters[target.Parameter].Name)
+                        : c.ActiveTargets.Contains(track.Target)
                         ? EditorCurveBinding.FloatCurve(Path(track.Target), typeof(GameObject), "m_IsActive")
                         : EditorCurveBinding.FloatCurve(Path(track.Target), typeof(Transform), "m_LocalPosition.x");
                     AnimationUtility.SetEditorCurve(unity, binding, Curve(track.Curves[0]));
                 }
+                // The data has no track for a curve on an int, bool or trigger
+                // (Unity holds it at its default), so the first clip gets one
+                // that would move it.
+                if (clips.Count == 0)
+                    foreach (var target in data.Targets)
+                        if (target.Property == "parameter" && data.Parameters[target.Parameter].Type != "float")
+                            AnimationUtility.SetEditorCurve(unity, EditorCurveBinding.FloatCurve("", typeof(Animator), data.Parameters[target.Parameter].Name),
+                                AnimationCurve.Constant(0, 1, 1 - (float)target.Rest));
                 var settings = AnimationUtility.GetAnimationClipSettings(unity);
                 settings.loopTime = clip.Loop;
                 settings.cycleOffset = (float)clip.CycleOffset;

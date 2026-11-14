@@ -130,6 +130,7 @@ public static class AvatarAnimatorEvaluatorTests
         WriteDefaults();
         LayerWeights();
         ParameterDrivers();
+        ParameterCurves();
         LayerControl();
         BlendTrees();
         ValuesPassUnclamped();
@@ -454,6 +455,48 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e.State(1) == reacted, "M8: a later layer sees the driver's change in the same frame");
     }
 
+    // M11: Unity owns a parameter a clip animates.
+    static void ParameterCurves()
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        var amount = b.Parameter("Amount", "float", .5);
+        var count = b.Parameter("Count", "int", 2);
+        var node = b.Target();
+        var animated = b.Data.Targets.Count;
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = amount, Rest = .25 });
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = count, Rest = 3 });
+        var layer = b.Layer("Curve");
+        var idle = Builder.State(layer, "Idle", b.Clip(1, true, (node, 1)));
+        var moving = Builder.State(layer, "Moving", b.Clip(1, true, (animated, .75)));
+        layer.States[idle].Transitions.Add(To(moving).When(go, "if"));
+        var driver = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        driver.Operations.Add(new AvatarAnimatorData.Operation { Type = "set", Parameter = amount, Value = .9 });
+        driver.Operations.Add(new AvatarAnimatorData.Operation { Type = "add", Parameter = count, Value = 1 });
+        layer.States[moving].Behaviours.Add(driver);
+        var reader = b.Layer("Reader");
+        var low = Builder.State(reader, "Low", b.Clip(0, false, (node, 0)));
+        var high = Builder.State(reader, "High", b.Clip(0, false, (node, 0)));
+        reader.States[low].Transitions.Add(To(high).When(amount, "greater", .5));
+        var e = b.Build();
+        Near(e.Get(amount), .25, "the controller's default, not the parameter's");
+        Check(e.Get(count) == 3, "an int with a curve starts at the controller's default");
+        e.Set(amount, .9);
+        e.Set(count, 7);
+        Near(e.Get(amount), .25, "the host does not change a parameter a clip animates");
+        Check(e.Get(count) == 3, "nor an int with a curve");
+        e.Advance(Frame);
+        Near(e.Values[animated], .25, "no layer wrote it: the default");
+        e.Set(go, 1);
+        e.Advance(Frame);
+        Near(e.Get(amount), .75, "the layers' value after the frame");
+        Near(e.Values[animated], .75, "the target shows the same value");
+        Check(e.Get(count) == 3, "a driver does not change an int with a curve");
+        Check(e.State(1) == low, "transitions see the value of the frame before");
+        e.Advance(Frame);
+        Check(e.State(1) == high, "and the new value a frame later");
+    }
+
     static void LayerControl()
     {
         var b = new Builder();
@@ -683,7 +726,7 @@ public static class AvatarAnimatorEvaluatorTests
         Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "omitted curves do not");
         var animated = b.Parameter("Animated", "float");
         b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = animated });
-        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "parameters a clip animates");
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "M11: parameters a clip animates");
         b.Data.Targets.RemoveAt(b.Data.Targets.Count - 1);
         var count = b.Parameter("Count", "int");
         var driver = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };

@@ -10,11 +10,12 @@ namespace VRVlog.AvatarAnimator
     // One instance per loaded avatar. The host sets parameters (Set), calls
     // Advance once per frame and writes Values to the targets. Values holds
     // every target's value after the last Advance: a target no layer wrote
-    // keeps its previous value, starting from its Rest. For a morph target
+    // keeps its previous value, starting from its Rest, except that a
+    // parameter target goes back to its Rest (M11). For a morph target
     // that is the Unity BlendShape weight, not the glTF weight.
     //
     // The marks name rules the README explains ("Avatar animator evaluator").
-    // M1-M7 are measured: Tests/AnimatorComparison records Unity's Animator
+    // M1-M7 and M11 are measured: Tests/AnimatorComparison records Unity's Animator
     // and Tools/Fixtures/AvatarAnimator replays the recordings here.
     // M1 an animated activeSelf is on at any value other than 0; M2 an exit
     // time e is crossed when the state's normalized time passes e (e >= 1
@@ -26,16 +27,25 @@ namespace VRVlog.AvatarAnimator
     // transitioning, and an interrupted transition blends from a still copy;
     // M6 for a target a state's motion does not write: mid-transition, when
     // the other side's motion writes it, a Write Defaults side gives the
-    // rest; otherwise a Write Defaults state leaves it to the layers below,
-    // and a state without Write Defaults gives what the layers below leave
-    // (the last frame's value when none wrote it) and applies it with the
-    // layer's weight. A state without a motion gives, with Write Defaults,
+    // rest; otherwise a Write Defaults state leaves it to the layers below
+    // (the rest when none wrote it), and a state without Write Defaults
+    // gives what the layers below leave (the last frame's value when none
+    // wrote it) and applies it with the layer's weight. A state without a motion gives, with Write Defaults,
     // the layers below (the rest when none wrote it); without, the layer's
     // own last value, held from the start of a transition out of it and
     // approached frame by frame in a transition into it. A layer with a
     // state without Write Defaults keeps a value of every target the
     // controller animates; M7 a layer under weight 1 blends over the
     // layers below it, or over the rest when none wrote the target.
+    // M11 a float parameter a clip animates is a target that M6 and M7
+    // blend as a node, with one difference: in a transition into a state
+    // without a motion or Write Defaults, the layer's own value of it starts
+    // from the layer's last value and takes the rest where the source side
+    // had it, instead of the last frame's value. After each frame the
+    // parameter is what the layers wrote, or the controller's default when
+    // none did; an int, bool or trigger with a curve stays at that default;
+    // neither the host nor a Parameter Driver changes such a parameter, and
+    // transitions and trees see the value of the frame before.
     // M8-M10 stay assumptions: M8 and M10 are VRChat behaviours that plain
     // Unity cannot record, and no recording covers M9. M8 the behaviours of a state run when the transition into
     // it starts, the machines' (outer first) before the state's, and their
@@ -58,8 +68,8 @@ namespace VRVlog.AvatarAnimator
         // Whether this evaluator plays the controller as Unity would. False
         // when the exporter left out something that drives transitions, or the
         // controller uses what is not implemented yet (additive layers, synced
-        // layers that affect timing, 2D blend trees, parameters a clip
-        // animates, a random that prevents repeats). reason is null when true.
+        // layers that affect timing, 2D blend trees, a random that prevents
+        // repeats). reason is null when true.
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -69,12 +79,9 @@ namespace VRVlog.AvatarAnimator
                     reason = "The export left out " + omission.Count + " " + omission.Kind + " entries that drive transitions.";
                     return false;
                 }
-            // Unity owns a parameter a clip animates: drivers and the host do
-            // not change it and a transition waits for the curve's value. A
-            // morph target blends as an active one does: its value is the Unity
-            // weight, which the host maps to the glTF weight with Baked and End.
-            foreach (var target in data.Targets)
-                if (target.Property == "parameter") { reason = "Parameters that a clip animates are not supported."; return false; }
+            // A morph target blends as an active one does: its value is the
+            // Unity weight, which the host maps to the glTF weight with Baked
+            // and End. A parameter target is M11.
             // How VRChat picks again when a random would repeat is not measured.
             bool PreventsRepeats(List<AvatarAnimatorData.Behaviour> behaviours)
             {
@@ -126,6 +133,9 @@ namespace VRVlog.AvatarAnimator
             internal int[] Animated;
             // Out holds this layer's value of Animated[k] after the last Advance.
             internal double[] Out, Snapshot, Held;
+            // M11: a parameter's value of its own in an empty state without
+            // Write Defaults, which a node takes from Out.
+            internal double[] Own;
             internal bool[] OutWritten, SnapshotWritten;
             internal bool Started, Transitioning, Frozen, ActiveFromAny;
             internal int State = -1, Next = -1;
@@ -142,6 +152,10 @@ namespace VRVlog.AvatarAnimator
         readonly double[] parameters;
         readonly double[] rest, values, previous;
         readonly bool[] written;
+        // M11: per parameter, the target of a clip's curves on it, or -1.
+        readonly int[] parameterTargets;
+        // M11: per target, whether it is a parameter.
+        readonly bool[] isParameter;
         // M4: triggers a transition used, reset once every layer has stepped.
         readonly bool[] spent;
         readonly LayerRun[] layers;
@@ -175,7 +189,19 @@ namespace VRVlog.AvatarAnimator
 
             var targetCount = data.Targets.Count;
             rest = new double[targetCount];
-            for (var i = 0; i < targetCount; i++) rest[i] = data.Targets[i].Rest;
+            parameterTargets = new int[data.Parameters.Count];
+            isParameter = new bool[targetCount];
+            for (var i = 0; i < parameterTargets.Length; i++) parameterTargets[i] = -1;
+            for (var i = 0; i < targetCount; i++)
+            {
+                rest[i] = data.Targets[i].Rest;
+                if (data.Targets[i].Property != "parameter") continue;
+                // M11: the controller's default, also when Expression Parameters declares another.
+                var parameter = data.Targets[i].Parameter;
+                parameterTargets[parameter] = i;
+                isParameter[i] = true;
+                parameters[parameter] = Convert(types[parameter], rest[i]);
+            }
             values = (double[])rest.Clone();
             previous = (double[])rest.Clone();
             written = new bool[targetCount];
@@ -231,7 +257,7 @@ namespace VRVlog.AvatarAnimator
                 layers[l] = new LayerRun
                 {
                     Layer = layer, Index = l, Source = layer.SyncedLayer, Animated = list.ToArray(),
-                    Out = new double[list.Count], Snapshot = new double[list.Count], Held = new double[list.Count],
+                    Out = new double[list.Count], Snapshot = new double[list.Count], Held = new double[list.Count], Own = new double[list.Count],
                     OutWritten = new bool[list.Count], SnapshotWritten = new bool[list.Count],
                     Weight = l == 0 ? 1 : layer.Weight
                 };
@@ -278,10 +304,11 @@ namespace VRVlog.AvatarAnimator
 
         // As Unity stores it: a bool or trigger is 0 or 1, an int is truncated
         // and a float is single precision. A trigger set to 1 stays set until a
-        // transition uses it.
+        // transition uses it. M11: a parameter a clip animates does not change.
         public void Set(int parameter, double value)
         {
             if (double.IsNaN(value) || double.IsInfinity(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            if (parameterTargets[parameter] >= 0) return;
             parameters[parameter] = Convert(types[parameter], value);
         }
 
@@ -339,6 +366,14 @@ namespace VRVlog.AvatarAnimator
                     spent[p] = false;
                     parameters[p] = 0;
                 }
+            // M11: the next frame's transitions and trees read what the layers wrote.
+            for (var p = 0; p < parameterTargets.Length; p++)
+            {
+                var t = parameterTargets[p];
+                if (t < 0) continue;
+                values[t] = types[p] == FloatType && written[t] ? Convert(FloatType, values[t]) : rest[t];
+                parameters[p] = values[t];
+            }
         }
 
         void Step(LayerRun layer, double dt)
@@ -661,7 +696,8 @@ namespace VRVlog.AvatarAnimator
                     }
                     break;
             }
-            if (!double.IsNaN(value) && !double.IsInfinity(value)) parameters[parameter] = Convert(type, value);
+            // M11: a parameter a clip animates does not change.
+            if (!double.IsNaN(value) && !double.IsInfinity(value) && parameterTargets[parameter] < 0) parameters[parameter] = Convert(type, value);
         }
 
         void BlendWeight(LayerRun layer, double dt)
@@ -856,7 +892,7 @@ namespace VRVlog.AvatarAnimator
                 // Mid-transition the layer holds a target either side's motion writes.
                 var bound = layer.Transitioning && layer.Progress > 0 && (sideB.Stamp[t] == sideB.Current
                     || (layer.Frozen ? layer.SnapshotWritten[k] : sideA.Stamp[t] == sideA.Current));
-                double value;
+                double value, b = 0;
                 bool has;
                 if (layer.Frozen)
                 {
@@ -867,7 +903,7 @@ namespace VRVlog.AvatarAnimator
                 else has = SideValue(sideA, layer, layer.State, t, k, through, bound, out value);
                 if (layer.Transitioning)
                 {
-                    var hasB = SideValue(sideB, layer, layer.Next, t, k, through, bound, out var b);
+                    var hasB = SideValue(sideB, layer, layer.Next, t, k, through, bound, out b);
                     // M6: an empty source without Write Defaults holds the layer's
                     // values from when the transition started.
                     if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
@@ -879,6 +915,12 @@ namespace VRVlog.AvatarAnimator
                     layer.Out[k] = value;
                     layer.OutWritten[k] = has;
                 }
+                // M11: moving into an empty state without Write Defaults, a
+                // parameter's own value takes the rest where the source had it:
+                // it starts from the layer's last value and nears the rest.
+                if (isParameter[t])
+                    layer.Own[k] = layer.Transitioning && layer.Progress > 0 && states[layer.Next].Motion < 0 && !states[layer.Next].WriteDefaults
+                        ? rest[t] + (b - rest[t]) * Math.Min(1, layer.Progress) : layer.Out[k];
                 if (!has || weight <= 0) continue;
                 // M7: over the layers below, or over the rest when none of them wrote it.
                 var below = written[t] ? values[t] : rest[t];
@@ -905,19 +947,20 @@ namespace VRVlog.AvatarAnimator
             {
                 // A Write Defaults motion with no weight at all, or one side of a
                 // transition whose other side writes the target, gives the rest;
-                // otherwise the layers below keep the target.
+                // otherwise the layers below keep the target, and with Write
+                // Defaults it is the rest when none of them wrote it.
                 if (s.WriteDefaults && (side.Total <= 0 || bound))
                 {
                     value = rest[t];
                     return true;
                 }
-                value = through;
+                value = s.WriteDefaults && !written[t] ? rest[t] : through;
                 return true;
             }
             if (!s.WriteDefaults)
             {
                 // A layer that never wrote the target has no value of its own.
-                value = layer.OutWritten[k] ? layer.Out[k] : through;
+                value = layer.OutWritten[k] ? (isParameter[t] ? layer.Own[k] : layer.Out[k]) : through;
                 return layer.OutWritten[k];
             }
             // Write Defaults: the layers below, or the rest when none wrote it.
