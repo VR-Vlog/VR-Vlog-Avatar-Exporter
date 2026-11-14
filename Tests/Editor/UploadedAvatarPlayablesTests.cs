@@ -140,33 +140,68 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(front.sharedMesh, Is.SameAs(fixture.Mesh), "The source avatar is not edited.");
         }
 
-        // The SDK removes EditorOnly objects at -1024, after NDMF's Optimizing
-        // hook: an export removes them from its copy after reading it, as an
-        // upload does, and a preview, which stops at the read, keeps them.
+        // An upload removes EditorOnly objects before the export's read: in
+        // NDMF's Resolving, or at -1024 in the VRChat SDK when NDMF is not
+        // installed. A VRChat avatar that needs no NDMF build has them removed
+        // where NDMF removes them, in an export and in a preview alike, so the
+        // export never reads a renderer the upload does not have.
         [TestCase(false)]
         [TestCase(true)]
-        public void RegisteredEditorOnlyRemovalRunsAfterTheExportReadsTheCopy(bool preview)
+        public void EditorOnlyObjectsAreRemovedBeforeTheExportReadsTheCopy(bool preview)
         {
             if (VrcAvatar.DescriptorType == null) Assert.Ignore("Install the real VRChat SDK to run its registered callbacks.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             VrcAvatar.AddDescriptor(fixture.Source);
-            var reference = new GameObject("Reference") { tag = "EditorOnly" };
-            reference.transform.SetParent(fixture.Source.transform, false);
-            Object.DestroyImmediate(fixture.Copy);
-            fixture.Copy = Object.Instantiate(fixture.Source); fixture.Copy.name = fixture.Source.name;
+            AddEditorOnly(fixture);
             Assert.That(NdmfExportPreparation.NeedsProcessing(fixture.Copy), Is.False);
-            var read = false;
-            using (var lease = NdmfExportPreparation.Prepare(fixture.Source, fixture.Copy, afterTransforming: _ =>
+            var read = true;
+            var warnings = new List<string>();
+            using (var lease = NdmfExportPreparation.Prepare(fixture.Source, fixture.Copy, warnings, afterTransforming: _ =>
             {
-                read = fixture.Copy.transform.Find("Reference") != null;
+                read = fixture.Copy.transform.Find("Reference") != null || fixture.Copy.transform.Find("Hidden/Nested") != null;
             }, stopBeforeOptimizing: preview))
             {
-                Assert.That(read, Is.True, "The export reads the copy before the SDK removes EditorOnly objects.");
-                Assert.That(fixture.Copy.transform.Find("Reference") != null, Is.EqualTo(preview));
-                Assert.That(lease.Completed, Is.EqualTo(!preview));
+                Assert.That(read, Is.False, "The export reads the copy without its EditorOnly objects.");
+                Assert.That(fixture.Copy.transform.Find("Hidden"), Is.Not.Null, "An untagged parent stays.");
+                Assert.That(fixture.Copy.transform.Find("Hidden/Nested"), Is.Null);
+                Assert.That(lease.Completed, Is.EqualTo(!preview), string.Join(System.Environment.NewLine, warnings));
+                Assert.That(warnings.Where(warning => warning.Contains("VRChat SDK")), Is.Empty);
                 if (!preview) Assert.That(lease.Playables(), Is.Not.Null, "The copy needs no NDMF build and still gives its playables.");
             }
-            Assert.That(fixture.Source.transform.Find("Reference"), Is.Not.Null);
+            Assert.That(fixture.Source.transform.Find("Reference"), Is.Not.Null, "The source avatar is not edited.");
+            Assert.That(fixture.Source.transform.Find("Hidden/Nested"), Is.Not.Null);
+        }
+
+        // Without a VRC Avatar Descriptor no upload removes anything, and the
+        // export keeps the objects as it did before.
+        [Test]
+        public void EditorOnlyObjectsStayOnAnAvatarWithoutTheVrchatDescriptor()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            AddEditorOnly(fixture);
+            Assert.That(NdmfExportPreparation.NeedsProcessing(fixture.Copy), Is.False);
+            var read = false;
+            using (NdmfExportPreparation.Prepare(fixture.Source, fixture.Copy, afterTransforming: _ =>
+            {
+                read = fixture.Copy.transform.Find("Reference") != null;
+            })) { }
+            Assert.That(read, Is.True);
+            Assert.That(fixture.Copy.transform.Find("Hidden/Nested"), Is.Not.Null);
+        }
+
+        // An inactive EditorOnly object, and one under an untagged inactive
+        // parent, as avatars ship spare bodies and outfits.
+        static void AddEditorOnly(AttachmentConnectionTests.Fixture fixture)
+        {
+            var reference = new GameObject("Reference") { tag = "EditorOnly" };
+            reference.transform.SetParent(fixture.Source.transform, false);
+            reference.SetActive(false);
+            var hidden = new GameObject("Hidden");
+            hidden.transform.SetParent(fixture.Source.transform, false);
+            hidden.SetActive(false);
+            new GameObject("Nested") { tag = "EditorOnly" }.transform.SetParent(hidden.transform, false);
+            Object.DestroyImmediate(fixture.Copy);
+            fixture.Copy = Object.Instantiate(fixture.Source); fixture.Copy.name = fixture.Source.name;
         }
     }
 }

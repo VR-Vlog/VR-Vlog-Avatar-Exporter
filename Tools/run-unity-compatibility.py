@@ -1060,7 +1060,8 @@ INTEGRATION_CASES = {
     'UploadedAvatarPlayablesTests': {
         'PlayablesAreTheCustomLayersAndTheExpressionsTheDescriptorGivesVrchat': 1,
         'FinalFxPointsAtTheShapesOfTheMeshTheExportWrites': 1,
-        'RegisteredEditorOnlyRemovalRunsAfterTheExportReadsTheCopy': 2,
+        'EditorOnlyObjectsAreRemovedBeforeTheExportReadsTheCopy': 2,
+        'EditorOnlyObjectsStayOnAnAvatarWithoutTheVrchatDescriptor': 1,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real

@@ -40,7 +40,7 @@ VRChat のアップロードでは、VRChat SDK が登録されたビルド前�
 
 読む位置より後のコールバックは VRM に入るオブジェクトを変えうる。
 
-- EditorOnly のタグのオブジェクト: NDMF のビルドをかけるアバターでは、NDMF が Resolving で消すので、これまでも VRM に入らなかった。NDMF のビルドが要らない VRChat のアバターでは、これまで VRM に入っていたが、VRChat SDK の削除（-1024）で消えるようになる。アップロードでも消えるオブジェクトで、NDMF のビルドの有無で扱いが分かれていたのが揃う。
+- EditorOnly のタグのオブジェクト: NDMF のビルドをかけるアバターでは、NDMF が Resolving で消すので、これまでも VRM に入らなかった。NDMF のビルドが要らない VRChat のアバターでは、これまで VRM に入っていたが、VRChat SDK の削除（-1024）で消えるようになる。アップロードでも消えるオブジェクトで、NDMF のビルドの有無で扱いが分かれていたのが揃う。（2026-11-15 に、消す時点を書き出しが読む前に移した。`2026-11-15-editor-only-before-read.md`）
 - IEditorOnly のコンポーネント（Modular Avatar・VRCFury の設定など）: 最後に消える。VRM には入らないので、出力は変わらない。
 - VRCFury のパラメーターの圧縮: パラメーターが上限を超えたときに FX とパラメーターを書き換える。書き出しが読んだあとなので VRM の表情は変わらない。`Playables()` が返すものには入る。
 
@@ -56,7 +56,7 @@ VRChat のアップロードでは、VRChat SDK が登録されたビルド前�
 - `UploadedAvatarPlayablesTests` で、インストールした VRChat SDK・NDMF・Avatar Optimizer をそのまま使い、次を確かめる。
   - `AvatarPlayables` が、カスタムにしたレイヤーとメニュー・パラメーターを返し、既定のままのものは返さないこと。
   - FX が BlendShape を動かす 2 つのメッシュを AAO で 1 つに結合したアバターで、最後まで処理したコピーの FX の BlendShape のカーブが、すべて結合後のメッシュとそのメッシュにある BlendShape を指していること。
-  - 登録された VRChat SDK のコールバックが、書き出しが読んだあとに EditorOnly のオブジェクトを消し、プレビューでは消さないこと。
+  - 登録された VRChat SDK のコールバックが、書き出しが読んだあとに EditorOnly のオブジェクトを消し、プレビューでは消さないこと。（2026-11-15 に、読む前に消すことを確かめるテストに置き換えた）
 - `Tools/run-export-regression.ps1` と `Tools/compare-exports.py` で、変更前（develop）と変更後を比べた。アバターは VRChat SDK に付属の人型のサンプルをもとに、何も足さないもの・EditorOnly のオブジェクトを足したもの・その上に Modular Avatar の Merge Animator を足したもの・Avatar Optimizer の Trace and Optimize を足したもの・VRCFury の Toggle を足したものの 5 体を作った。
   - EditorOnly のオブジェクトを足しただけのアバターだけが違い、変更後の VRM からはそのオブジェクトが消えた（上の「出力が変わる場合」のとおり）。書き出した VRM の正面と背面の画像も、そのオブジェクトの範囲だけが違った。
   - ほかの 4 体は、VRM のファイルが変更前と 1 バイトも違わなかった。Modular Avatar のアバターは NDMF のビルドで EditorOnly のオブジェクトを消すので、変更前から VRM に入っていなかった。

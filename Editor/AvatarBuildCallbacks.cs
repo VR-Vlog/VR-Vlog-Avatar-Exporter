@@ -50,9 +50,7 @@ namespace VRVlog.LilToonExporter
         // exporter runs itself. The SDK runs them only on a VRChat avatar.
         internal static AvatarBuildCallbacks For(GameObject avatar)
         {
-            var isVrcAvatar = avatar.GetComponents<Component>().Any(component => component != null &&
-                component.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var registered = RegisteredOverride != null ? RegisteredOverride() : isVrcAvatar ? Registered() : null;
+            var registered = RegisteredOverride != null ? RegisteredOverride() : IsVrcAvatar(avatar) ? Registered() : null;
             var list = new List<Callback>();
             foreach (var instance in registered ?? Enumerable.Empty<object>())
             {
@@ -73,6 +71,9 @@ namespace VRVlog.LilToonExporter
             // order among equal ones; OrderBy is stable.
             return new AvatarBuildCallbacks(list.OrderBy(callback => callback.Order).ToList());
         }
+
+        internal static bool IsVrcAvatar(GameObject avatar) => avatar.GetComponents<Component>().Any(component => component != null &&
+            component.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         private static IEnumerable<object> Registered()
         {
