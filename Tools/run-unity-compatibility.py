@@ -745,6 +745,12 @@ BEHAVIOR_CASES = {
         'UnsavedSharedAssetsAreIsolatedBeforeAnyPassCanMutateThem': 1,
         'UnvalidatedVersionsFailBeforeProcessing': 5,
         'UsesGenericOnlyWhenSourceHasNoPrimaryPlatform': 1,
+        'SdkCallbacksRunAroundTheBuildStepsInUploadOrder': 1,
+        'SdkCallbacksRunInUploadOrderWhenNothingNeedsNdmf': 1,
+        'PreviewLeavesOutTheSdkCallbacksAfterTheExportReadsTheCopy': 2,
+        'SdkCallbacksThatBracketTheUploadAreNotRun': 1,
+        'ToleratedSdkCallbackFailureLeavesOutOnlyThatCallback': 1,
+        'FailedSdkCallbackStopsAStrictExport': 2,
     },
     'DirectFxExpressionDiscoveryTests': {
         'DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone': 1,
@@ -1050,6 +1056,11 @@ INTEGRATION_CASES = {
     'PhysBoneSpringExportTests': {
         'InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport': 2,
         'InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid': 1,
+    },
+    'UploadedAvatarPlayablesTests': {
+        'PlayablesAreTheCustomLayersAndTheExpressionsTheDescriptorGivesVrchat': 1,
+        'FinalFxPointsAtTheShapesOfTheMeshTheExportWrites': 1,
+        'RegisteredEditorOnlyRemovalRunsAfterTheExportReadsTheCopy': 2,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real

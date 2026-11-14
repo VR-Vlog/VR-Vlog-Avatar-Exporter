@@ -5,6 +5,8 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/Compatibility/ExportNoteText.cs'),
     (Join-Path $taskRepo 'Editor/Compatibility/DependencyPolicy.Generated.cs'),
     (Join-Path $taskRepo 'Editor/NdmfExportPreparation.cs'),
+    (Join-Path $taskRepo 'Editor/AvatarBuildCallbacks.cs'),
+    (Join-Path $taskRepo 'Editor/AvatarPlayables.cs'),
     (Join-Path $taskRepo 'Editor/SerializedReferences.cs'),
     (Join-Path $taskRepo 'Editor/ExportTypeNames.cs'),
     (Join-Path $taskRepo 'Editor/ExceptionChain.cs'),
