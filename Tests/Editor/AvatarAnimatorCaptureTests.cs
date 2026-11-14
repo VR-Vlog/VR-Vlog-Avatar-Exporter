@@ -232,12 +232,20 @@ namespace VRVlog.LilToonExporter.Tests
         public void BlendShapeCurvesAreWrittenAndMaterialCurvesCounted()
         {
             using var avatar = new AnimatorAvatar();
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
             var data = Read(json);
             var nodes = Nodes(json);
 
             // "other" is the root's activeSelf curve, whose last key is past the hour the contract allows.
             Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("material", 1), ("other", 1) }));
+            // The result lists the curves left out, by kind.
+            var line = ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurvesNote, string.Join(ExporterLocalization.T("、"), new[]
+            {
+                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("マテリアル"), 1),
+                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("その他"), 1),
+            }));
+            Assert.That(warnings.Count(warning => warning == line), Is.EqualTo(1), string.Join("\n", warnings));
             Assert.That(data.Targets.Where(t => t.Property == "active").Select(t => nodes[t.Node]).OrderBy(name => name), Is.EqualTo(new[] { "Glasses", "Hat" }));
             var morph = data.Targets.Single(t => t.Property == "morph");
             Assert.That(nodes[morph.Node], Is.EqualTo("Front"));
@@ -896,6 +904,53 @@ namespace VRVlog.LilToonExporter.Tests
 
         sealed class PreventingOperation { public bool preventRepeats; }
         sealed class OlderOperation { public float chance; }
+
+        // A face read from the board names the clip it plays in the written
+        // FX, the build's copy of the board's clip, and the ways into the
+        // states that play it: an entry and an Any State transition into the
+        // state, and a state's transition into a blend tree that holds it. The
+        // first state plays nothing, so it is not a way in.
+        [Test]
+        public void AFaceListsTheWaysIntoTheStatesThatPlayItsClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var smile = avatar.Clip("Smile");
+            AnimationUtility.SetEditorCurve(smile, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
+            avatar.Fx.AddLayer("Face");
+            var layerIndex = avatar.Fx.layers.Length - 1;
+            var machine = avatar.Fx.layers[layerIndex].stateMachine;
+            var neutral = machine.AddState("Neutral");
+            var smiling = machine.AddState("Smiling");
+            smiling.motion = smile;
+            var mix = avatar.Fx.CreateBlendTreeInController("Mix", out var tree, layerIndex);
+            tree.blendParameter = "Blend";
+            tree.AddChild(avatar.ClipNamed("Glasses off"), 0);
+            tree.AddChild(smile, 1);
+            machine.defaultState = neutral;
+            machine.AddEntryTransition(smiling).AddCondition(AnimatorConditionMode.Equals, 3, "GestureLeft");
+            var any = machine.AddAnyStateTransition(smiling);
+            any.AddCondition(AnimatorConditionMode.Equals, 3, "GestureLeft");
+            neutral.AddTransition(mix).AddCondition(AnimatorConditionMode.Equals, 2, "GestureLeft");
+
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(UniVrmOneClickExporter.Export(avatar.Source, "Avatar animator", "Tests", warnings: warnings,
+                exporterVersion: "0.11.8", lilToonVersion: "2.3.4", gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, inferEmotionPresets: false,
+                listFaces: new[] { ("Face A", smile, 0f) })).Json;
+            var data = Read(json);
+            var custom = ((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])["VRMC_vrm"])["expressions"])["custom"]).Keys;
+            var face = data.Expressions.Single();
+            Assert.That(custom, Has.Member(face.Name), string.Join("\n", warnings));
+            var layers = data.Controllers.Single().Layers;
+            var written = layers.Single(l => l.Name == "Face");
+            var states = written.States.Select(st => st.Name).ToList();
+            Assert.That(face.Clips, Is.EqualTo(new[] { data.Motions[written.States[states.IndexOf("Smiling")].Motion].Clip }));
+            var names = data.Parameters.Select(p => p.Name).ToList();
+            string Ways(AvatarAnimatorData.Entrance w) => states[w.State] + " " + w.From + (w.From == "state" ? " " + states[w.FromState] : "") + (w.From == "entry" ? " " + w.Machine : "")
+                + ": " + string.Join(", ", w.Conditions.Select(c => names[c.Parameter] + " " + c.Mode + " " + c.Threshold));
+            Assert.That(face.When.Select(w => w.Layer).Distinct(), Is.EqualTo(new[] { layers.IndexOf(written) }));
+            Assert.That(face.When.Select(Ways), Is.EqualTo(new[] { "Smiling entry 0: GestureLeft equals 3", "Smiling any: GestureLeft equals 3", "Mix state Neutral: GestureLeft equals 2" }));
+        }
 
         [Test]
         public void AnAvatarWithoutADescriptorHasNoExtension()

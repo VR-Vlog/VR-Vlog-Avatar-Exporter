@@ -36,7 +36,7 @@
 - クリップの設定のCycle Offsetを`cycleOffset`として常に書く。ステートの`cycleOffset`とは別の値
 - Parameter Driverの操作の`source`は、種類が`copy`のときだけ読む。ほかの種類はSDKが`source`を使わないが、Inspectorで切り替えた前の名前が残っていることがあり、それを読むとパラメーターの表に使われない行が増えるため
 - 曲線のパスが複製に無いものは`missingNode`に数える。出力にノードの無い対象（空のノードの除去やコンストレイントの処理で消えたもの）も、対応付けのときに`missingNode`に数える
-- `expressions`は予約で、schema 1では空の配列だけを許す
+- （2026-11-14に解消: [表情ごとに、その顔を出すステートへの入り方と条件を書く](2026-11-14-avatar-animator-expressions.md)）`expressions`は予約で、schema 1では空の配列だけを許す
 
 ## 検討した代替案と不採用理由
 

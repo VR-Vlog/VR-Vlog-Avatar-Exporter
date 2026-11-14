@@ -176,6 +176,73 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(At(json, "controllers", 0, "layers", 0, "machines", 0, "behaviours", 0, "operations", 0)["preventRepeats"], Is.EqualTo(false));
         }
 
+        // A face of the sample plays clip 0: state Off directly, the first
+        // state of the layer and entered from nothing else, and state On in its
+        // trees, entered from Any State and from Off.
+        static AvatarAnimatorData WithFace()
+        {
+            var data = Sample();
+            var face = new AvatarAnimatorData.Expression { Name = "Face A" };
+            face.Clips.Add(0);
+            face.When.Add(new AvatarAnimatorData.Entrance { Layer = 0, State = 0, From = "default" });
+            var any = new AvatarAnimatorData.Entrance { Layer = 0, State = 1, From = "any" };
+            any.Conditions.Add(new AvatarAnimatorData.Condition { Parameter = 2, Mode = "equals", Threshold = 3 });
+            face.When.Add(any);
+            var fromOff = new AvatarAnimatorData.Entrance { Layer = 0, State = 1, From = "state", FromState = 0 };
+            fromOff.Conditions.Add(new AvatarAnimatorData.Condition { Parameter = 0, Mode = "if", Threshold = 0 });
+            face.When.Add(fromOff);
+            face.When.Add(new AvatarAnimatorData.Entrance { Layer = 0, State = 0, From = "entry", Machine = 1 });
+            data.Expressions.Add(face);
+            return data;
+        }
+
+        [Test]
+        public void AnExpressionRoundTripsWithTheWaysIntoItsStates()
+        {
+            var json = Json(WithFace());
+            var read = AvatarAnimatorData.Read(json).Expressions.Single();
+            Assert.That((read.Name, string.Join(",", read.Clips)), Is.EqualTo(("Face A", "0")));
+            Assert.That(read.When.Select(w => (w.Layer, w.State, w.From, w.Machine, w.FromState)),
+                Is.EqualTo(new[] { (0, 0, "default", -1, -1), (0, 1, "any", -1, -1), (0, 1, "state", -1, 0), (0, 0, "entry", 1, -1) }));
+            Assert.That(read.When[1].Conditions.Select(c => (c.Parameter, c.Mode, c.Threshold)), Is.EqualTo(new[] { (2, "equals", 3d) }));
+            Assert.That(At(json, "expressions", 0, "when", 0).Keys, Is.EqualTo(new[] { "layer", "state", "from", "conditions" }));
+            Assert.That(At(json, "expressions", 0, "when", 2).Keys, Is.EqualTo(new[] { "layer", "state", "from", "fromState", "conditions" }));
+            Assert.That(At(json, "expressions", 0, "when", 3).Keys, Is.EqualTo(new[] { "layer", "state", "from", "machine", "conditions" }));
+        }
+
+        [Test]
+        public void ReadRejectsAnExpressionThatDoesNotFitTheFx()
+        {
+            void RejectsFace(Action<Dictionary<string, object>> change)
+            {
+                var json = Json(WithFace());
+                change(json);
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+            }
+            Dictionary<string, object> Face(Dictionary<string, object> json) => At(json, "expressions", 0);
+            Dictionary<string, object> When(Dictionary<string, object> json, int index) => At(json, "expressions", 0, "when", index);
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithFace())));
+            RejectsFace(json => Face(json)["name"] = "");
+            RejectsFace(json => ((List<object>)json["expressions"]).Add(JsonDom.Parse(JsonDom.Serialize(Face(json)))));
+            RejectsFace(json => Face(json)["clips"] = new List<object>());
+            RejectsFace(json => Face(json)["clips"] = new List<object> { 1L, 0L });
+            RejectsFace(json => Face(json)["clips"] = new List<object> { 0L, 0L });
+            RejectsFace(json => Face(json)["clips"] = new List<object> { 2L });
+            // Inner plays nothing; layer 1 has no motions; layer 2 is not there.
+            RejectsFace(json => When(json, 1)["state"] = 2L);
+            RejectsFace(json => When(json, 1)["layer"] = 1L);
+            RejectsFace(json => When(json, 1)["layer"] = 2L);
+            RejectsFace(json => When(json, 1)["from"] = "exit");
+            RejectsFace(json => When(json, 1)["machine"] = 0L);
+            RejectsFace(json => When(json, 3).Remove("machine"));
+            RejectsFace(json => When(json, 3)["machine"] = 2L);
+            RejectsFace(json => When(json, 2)["fromState"] = 3L);
+            RejectsFace(json => When(json, 0)["conditions"] = ((List<object>)When(json, 1)["conditions"]).ToList());
+            // equals on the bool Hat is a mode Unity never takes.
+            RejectsFace(json => At(json, "expressions", 0, "when", 1, "conditions", 0)["parameter"] = 0L);
+            RejectsFace(json => At(json, "expressions", 0, "when", 1, "conditions", 0)["parameter"] = 4L);
+        }
+
         // Unity moves a float parameter by a curve and holds any other at the
         // controller's default, so a parameter target is a parameter of the
         // table, its rest a value of its type, and only a float has tracks.

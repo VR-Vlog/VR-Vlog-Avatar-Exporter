@@ -26,6 +26,9 @@ namespace VRVlog.AvatarAnimator
         // The motions under one motion, itself included, counting a tree
         // once for each parent that holds it: what playing one state walks.
         public const int MaximumExpandedMotions = 4096;
+        // The custom expressions listed, and the ways into states one lists.
+        public const int MaximumExpressions = 4096;
+        public const int MaximumEntrances = 16384;
 
         public static readonly string[] ParameterTypes = { "bool", "int", "float", "trigger" };
         public static readonly string[] ParameterOrigins = { "expression", "animator", "builtin" };
@@ -49,6 +52,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] Properties = { "active", "morph", "parameter" };
         // The order the omitted kinds are written in.
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
+        public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
         public readonly List<Menu> Menus = new List<Menu>();
@@ -57,6 +61,7 @@ namespace VRVlog.AvatarAnimator
         public readonly List<Clip> Clips = new List<Clip>();
         public readonly List<Target> Targets = new List<Target>();
         public readonly List<Omission> Omitted = new List<Omission>();
+        public readonly List<Expression> Expressions = new List<Expression>();
 
         // Saved, Synced and ExpressionType belong to origin "expression" only.
         public sealed class Parameter
@@ -204,6 +209,27 @@ namespace VRVlog.AvatarAnimator
 
         public sealed class Omission { public string Kind; public int Count; }
 
+        // A custom expression of VRMC_vrm by name: the clips it was read from
+        // (in increasing order) and the ways into the FX states that play one
+        // of them, directly or in a blend tree.
+        public sealed class Expression
+        {
+            public string Name;
+            public readonly List<int> Clips = new List<int>();
+            public readonly List<Entrance> When = new List<Entrance>();
+        }
+
+        // From picks how State of Layer is entered: default (the layer starts
+        // in it), entry (an entry transition of Machine goes to it), any (an
+        // Any State transition does) or state (a transition of FromState does).
+        // Conditions are that transition's; default has none.
+        public sealed class Entrance
+        {
+            public int Layer, State, Machine = -1, FromState = -1;
+            public string From;
+            public readonly List<Condition> Conditions = new List<Condition>();
+        }
+
         public static Dictionary<string, object> Write(AvatarAnimatorData data)
         {
             if (data == null) throw Json.Bad();
@@ -212,7 +238,10 @@ namespace VRVlog.AvatarAnimator
                 ["schemaVersion"] = (long)SchemaVersion,
                 ["parameters"] = data.Parameters.Select(p => (object)WriteParameter(p)).ToList(),
                 ["menus"] = data.Menus.Select(m => (object)new Dictionary<string, object> { ["controls"] = m.Controls.Select(c => (object)WriteControl(c)).ToList() }).ToList(),
-                ["expressions"] = new List<object>(),
+                ["expressions"] = data.Expressions.Select(e => (object)new Dictionary<string, object>
+                {
+                    ["name"] = e.Name, ["clips"] = e.Clips.Select(c => (object)(long)c).ToList(), ["when"] = e.When.Select(w => (object)WriteEntrance(w)).ToList()
+                }).ToList(),
                 ["controllers"] = data.Controllers.Select(c => (object)new Dictionary<string, object>
                 {
                     ["playable"] = c.Playable, ["layers"] = c.Layers.Select(l => (object)WriteLayer(l)).ToList()
@@ -301,12 +330,23 @@ namespace VRVlog.AvatarAnimator
                 result["interruptionSource"] = t.InterruptionSource; result["orderedInterruption"] = t.OrderedInterruption;
                 result["canTransitionToSelf"] = t.CanTransitionToSelf;
             }
-            result["conditions"] = t.Conditions.Select(c => (object)new Dictionary<string, object>
-            {
-                ["parameter"] = (long)c.Parameter, ["mode"] = c.Mode, ["threshold"] = c.Threshold
-            }).ToList();
+            result["conditions"] = WriteConditions(t.Conditions);
             return (object)result;
         }).ToList();
+
+        static List<object> WriteConditions(List<Condition> conditions) => conditions.Select(c => (object)new Dictionary<string, object>
+        {
+            ["parameter"] = (long)c.Parameter, ["mode"] = c.Mode, ["threshold"] = c.Threshold
+        }).ToList();
+
+        static Dictionary<string, object> WriteEntrance(Entrance w)
+        {
+            var result = new Dictionary<string, object> { ["layer"] = (long)w.Layer, ["state"] = (long)w.State, ["from"] = w.From };
+            if (w.From == "entry") result["machine"] = (long)w.Machine;
+            if (w.From == "state") result["fromState"] = (long)w.FromState;
+            result["conditions"] = WriteConditions(w.Conditions);
+            return result;
+        }
 
         static List<object> WriteBehaviours(List<Behaviour> behaviours) => behaviours.Select(b =>
         {
@@ -376,7 +416,7 @@ namespace VRVlog.AvatarAnimator
             var motions = Json.Arr(root["motions"], 0, 65536);
             var clips = Json.Arr(root["clips"], 0, 16384);
             var targets = Json.Arr(root["targets"], 0, 65536);
-            Json.Arr(root["expressions"], 0, 0);
+            var expressions = Json.Arr(root["expressions"], 0, MaximumExpressions);
 
             foreach (var raw in parameters)
             {
@@ -594,6 +634,46 @@ namespace VRVlog.AvatarAnimator
                 if (target.Property == "parameter" && data.Parameters[target.Parameter].Type != "float") throw Json.Bad();
             }
 
+            // A face names the states that play its clips, in the FX above.
+            var layerList = data.Controllers.Count > 0 ? data.Controllers[0].Layers : new List<Layer>();
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var raw in expressions)
+            {
+                var e = Json.Obj(raw, "name", "clips", "when");
+                var expression = new Expression { Name = Name(e["name"]) };
+                if (expression.Name.Length == 0 || !names.Add(expression.Name)) throw Json.Bad();
+                foreach (var clip in Json.Arr(e["clips"], 1, 1024))
+                {
+                    var index = Index(clip, data.Clips.Count);
+                    if (expression.Clips.Count > 0 && index <= expression.Clips[expression.Clips.Count - 1]) throw Json.Bad();
+                    expression.Clips.Add(index);
+                }
+                var faceClips = new HashSet<int>(expression.Clips);
+                foreach (var rawEntrance in Json.Arr(e["when"], 0, MaximumEntrances))
+                {
+                    var w = Json.Obj(rawEntrance);
+                    var from = Choice(Get(w, "from"), EntranceSources);
+                    Json.Obj(w, from == "entry" ? new[] { "layer", "state", "from", "machine", "conditions" }
+                        : from == "state" ? new[] { "layer", "state", "from", "fromState", "conditions" } : new[] { "layer", "state", "from", "conditions" });
+                    var entrance = new Entrance { From = from, Layer = Index(w["layer"], layerList.Count) };
+                    var layer = layerList[entrance.Layer];
+                    entrance.State = Index(w["state"], layer.States.Count);
+                    if (!Plays(data, layer.States[entrance.State].Motion, faceClips)) throw Json.Bad();
+                    if (from == "entry") entrance.Machine = Index(w["machine"], layer.Machines.Count);
+                    if (from == "state") entrance.FromState = Index(w["fromState"], layer.States.Count);
+                    var conditions = Json.Arr(w["conditions"], 0, from == "default" ? 0 : 256);
+                    foreach (var rawCondition in conditions)
+                    {
+                        var c = Json.Obj(rawCondition, "parameter", "mode", "threshold");
+                        var condition = new Condition { Parameter = Index(c["parameter"], parameterCount), Mode = Choice(c["mode"], ConditionModes), Threshold = Json.Number(c["threshold"]) };
+                        Reads(condition.Parameter, ConditionTypes(condition.Mode));
+                        entrance.Conditions.Add(condition);
+                    }
+                    expression.When.Add(entrance);
+                }
+                data.Expressions.Add(expression);
+            }
+
             var kind = -1;
             foreach (var raw in Json.Arr(root["omitted"], 0, OmittedKinds.Length))
             {
@@ -768,6 +848,24 @@ namespace VRVlog.AvatarAnimator
 
         // Names may be empty: Unity and the SDK allow it.
         static string Name(object value) => value is string s && s.Length <= 1024 ? s : throw Json.Bad();
+
+        // Whether a motion plays one of the clips, itself or through the
+        // children of its blend trees. The motion table has no cycle.
+        public static bool Plays(AvatarAnimatorData data, int motion, ICollection<int> clips)
+        {
+            var seen = new HashSet<int>();
+            var pending = new Stack<int>();
+            pending.Push(motion);
+            while (pending.Count > 0)
+            {
+                var index = pending.Pop();
+                if (index < 0 || !seen.Add(index)) continue;
+                var m = data.Motions[index];
+                if (m.Type == "clip") { if (clips.Contains(m.Clip)) return true; continue; }
+                foreach (var child in m.Children) pending.Push(child.Motion);
+            }
+            return false;
+        }
 
         // A synced layer copies its source's machines and states, index for index.
         internal static bool SyncedShape(Layer layer, Layer source)

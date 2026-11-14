@@ -318,6 +318,25 @@ namespace VRVlog.LilToonExporter
                         report.Fallbacks.Record(ExportOutcome.Approximated, "表情", entry.Name ?? entry.Id ?? "", message);
         }
 
+        // The board's own clip of a listed face clip, or null.
+        internal static UnityEngine.Object ListFaceSource(IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
+            IReadOnlyList<AnimationClip> listFaceSources, UnityEngine.Object clip)
+        {
+            if (listFaces == null || listFaceSources == null || clip == null) return null;
+            for (var index = 0; index < listFaces.Count && index < listFaceSources.Count; index++)
+                if (listFaces[index].Clip == clip) return listFaceSources[index];
+            return null;
+        }
+
+        // The asset NDMF records value as made from; null when the registry
+        // cannot be read.
+        static UnityEngine.Object RegisteredOriginal(object registry, UnityEngine.Object value)
+        {
+            try { return NdmfExportPreparation.RegisteredOriginal(registry, value); }
+            catch (System.Reflection.TargetInvocationException) { return null; }
+            catch (ArgumentException) { return null; }
+        }
+
         // An animated expression whose loop ends neutral shows no change in
         // apps that only read the VRM expression. Listed after saving.
         internal static void RecordExpressionsEndingNeutral(IEnumerable<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
@@ -870,7 +889,11 @@ namespace VRVlog.LilToonExporter
                 guard.Watch(optimizerStage, () => ValidatePreparedHumanoid(source, clone));
                 // The FX, menus and parameters as the build and the optimizer
                 // left them. Only read; nothing below changes the FX.
-                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest), () => null);
+                // The faces are matched to its clips here, while the build's
+                // record of the clips it copied is still open.
+                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest)?.ReadFaces(expressions,
+                    clip => ListFaceSource(listFaces, listFaceSources, clip), preparation != null ? preparation.IsolatedCopyOf : (Func<UnityEngine.Object, UnityEngine.Object>)null,
+                    value => RegisteredOriginal(preparation?.ObjectRegistry, value)), () => null);
                 // The same holds for expressions or materials the optimizer
                 // lost: the routes feed the menu, blink, Lip Sync and tracking
                 // output, so the file is written again without Optimizing.
@@ -1180,7 +1203,10 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
-                if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData), () => exported);
+                if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, avatarAnimator.FaceClips), () => exported);
+                // The curves the written extension left out, by kind.
+                if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
+                    warnings?.Add(leftOut);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
