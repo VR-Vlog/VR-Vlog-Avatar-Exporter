@@ -102,6 +102,18 @@ namespace VRVlog.AvatarAnimator.Comparison
 
         static string Path(int target) => "T" + target;
 
+        static BlendTreeType TreeType(string blendType)
+        {
+            switch (blendType)
+            {
+                case "1d": return BlendTreeType.Simple1D;
+                case "2dSimpleDirectional": return BlendTreeType.SimpleDirectional2D;
+                case "2dFreeformDirectional": return BlendTreeType.FreeformDirectional2D;
+                case "2dFreeformCartesian": return BlendTreeType.FreeformCartesian2D;
+                default: return BlendTreeType.Direct;
+            }
+        }
+
         // The controller Unity plays for the data: what AvatarAnimatorCapture
         // reads back into the same data.
         static AnimatorController Controller(AvatarAnimatorComparison.Case c, string path)
@@ -156,8 +168,9 @@ namespace VRVlog.AvatarAnimator.Comparison
                 var motion = data.Motions[index];
                 if (motion.Type == "clip") return motions[index] = clips[motion.Clip];
                 var tree = new BlendTree { name = "Tree " + index, useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy };
-                tree.blendType = motion.BlendType == "1d" ? BlendTreeType.Simple1D : BlendTreeType.Direct;
-                if (motion.BlendType == "1d") tree.blendParameter = data.Parameters[motion.Parameters[0]].Name;
+                tree.blendType = TreeType(motion.BlendType);
+                if (motion.Parameters.Count > 0) tree.blendParameter = data.Parameters[motion.Parameters[0]].Name;
+                if (motion.Parameters.Count > 1) tree.blendParameterY = data.Parameters[motion.Parameters[1]].Name;
                 AssetDatabase.AddObjectToAsset(tree, controller);
                 tree.children = motion.Children.Select(child => new ChildMotion
                 {

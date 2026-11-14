@@ -523,6 +523,9 @@ namespace VRVlog.AvatarAnimator
                             X = Json.Number(position[0]), Y = Json.Number(position[1]),
                             TimeScale = Json.Number(ch["timeScale"]), CycleOffset = Json.Number(ch["cycleOffset"]), Mirror = Flag(ch["mirror"])
                         };
+                        // Unity holds a position as a float. Past that range the
+                        // 2D weights (M12) would overflow into NaN.
+                        if (Math.Abs(child.X) > float.MaxValue || Math.Abs(child.Y) > float.MaxValue) throw Json.Bad();
                         if (direct) child.DirectParameter = Index(ch["directParameter"], parameterCount);
                         Reads(child.DirectParameter, "float");
                         motion.Children.Add(child);

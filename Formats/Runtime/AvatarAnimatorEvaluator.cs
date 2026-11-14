@@ -15,7 +15,7 @@ namespace VRVlog.AvatarAnimator
     // that is the Unity BlendShape weight, not the glTF weight.
     //
     // The marks name rules the README explains ("Avatar animator evaluator").
-    // M1-M7 and M11 are measured: Tests/AnimatorComparison records Unity's Animator
+    // M1-M7, M11 and M12 are measured: Tests/AnimatorComparison records Unity's Animator
     // and Tools/Fixtures/AvatarAnimator replays the recordings here.
     // M1 an animated activeSelf is on at any value other than 0; M2 an exit
     // time e is crossed when the state's normalized time passes e (e >= 1
@@ -46,6 +46,11 @@ namespace VRVlog.AvatarAnimator
     // none did; an int, bool or trigger with a curve stays at that default;
     // neither the host nor a Parameter Driver changes such a parameter, and
     // transitions and trees see the value of the frame before.
+    // M12 a 2D Freeform Cartesian tree gives each child the smallest, over
+    // the other children, of a weight that falls from 1 at its own position
+    // to 0 at the other's along the line between the two, not below 0, and
+    // then divides by the sum; a child without a motion is not in the tree,
+    // and two children at one position do not limit each other.
     // M8-M10 stay assumptions: M8 and M10 are VRChat behaviours that plain
     // Unity cannot record, and no recording covers M9. M8 the behaviours of a state run when the transition into
     // it starts, the machines' (outer first) before the state's, and their
@@ -68,8 +73,8 @@ namespace VRVlog.AvatarAnimator
         // Whether this evaluator plays the controller as Unity would. False
         // when the exporter left out something that drives transitions, or the
         // controller uses what is not implemented yet (additive layers, synced
-        // layers that affect timing, 2D blend trees, a random that prevents
-        // repeats). reason is null when true.
+        // layers that affect timing, 2D blend trees other than Freeform
+        // Cartesian, a random that prevents repeats). reason is null when true.
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -107,9 +112,9 @@ namespace VRVlog.AvatarAnimator
                     { reason = "A synced layer does not match its source layer."; return false; }
                 }
             foreach (var motion in data.Motions)
-                if (motion.Type == "blendTree" && motion.BlendType != "1d" && motion.BlendType != "direct")
+                if (motion.Type == "blendTree" && motion.BlendType != "1d" && motion.BlendType != "direct" && motion.BlendType != "2dFreeformCartesian")
                 {
-                    reason = "2D blend trees are not supported.";
+                    reason = "2D blend trees other than Freeform Cartesian are not supported.";
                     return false;
                 }
             reason = null;
@@ -783,10 +788,30 @@ namespace VRVlog.AvatarAnimator
                     for (var c = 0; c < weights.Length; c++) weights[c] /= sum;
                 return weights;
             }
+            var children = m.Children;
+            if (m.BlendType == "2dFreeformCartesian")
+            {
+                // M12.
+                double x = parameters[m.Parameters[0]], y = parameters[m.Parameters[1]], sum = 0;
+                for (var i = 0; i < weights.Length; i++)
+                {
+                    if (children[i].Motion < 0) continue;
+                    double w = 1, fromX = x - children[i].X, fromY = y - children[i].Y;
+                    for (var j = 0; j < weights.Length && w > 0; j++)
+                    {
+                        if (j == i || children[j].Motion < 0) continue;
+                        double toX = children[j].X - children[i].X, toY = children[j].Y - children[i].Y, distance = toX * toX + toY * toY;
+                        if (distance > 0) w = Math.Min(w, 1 - (fromX * toX + fromY * toY) / distance);
+                    }
+                    sum += weights[i] = Math.Max(0, w);
+                }
+                if (sum > 0)
+                    for (var c = 0; c < weights.Length; c++) weights[c] /= sum;
+                return weights;
+            }
             // 1D: between the two neighbouring thresholds, clamped at the ends.
             var p = parameters[m.Parameters[0]];
             var order = childOrder[motion];
-            var children = m.Children;
             if (p <= children[order[0]].Threshold) { weights[order[0]] = 1; return weights; }
             var last = order[order.Length - 1];
             if (p >= children[last].Threshold) { weights[last] = 1; return weights; }

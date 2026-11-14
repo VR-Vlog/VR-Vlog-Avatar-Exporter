@@ -420,6 +420,9 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.NaN);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = double.PositiveInfinity);
             Rejects(json => At(json, "clips", 0)["cycleOffset"] = "0.25");
+            // A blend tree child's position is a Unity float.
+            Rejects(json => At(json, "motions", 1, "children", 0)["position"] = new List<object> { 1e39, 0.0 });
+            Rejects(json => At(json, "motions", 1, "children", 0)["position"] = new List<object> { 0.0, -1e200 });
         }
 
         // Adds a chain of blend trees on top of the first clip. Outer first puts
