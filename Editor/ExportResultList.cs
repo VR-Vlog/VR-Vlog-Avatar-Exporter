@@ -59,8 +59,8 @@ namespace VRVlog.LilToonExporter
     {
         internal const string CountFormat = "{0}件";
         internal const string NoticeGroup = "そのほかの知らせ";
-        internal const string StageOmittedContent = "処理に失敗したため省きました";
-        internal const string StageApproximatedContent = "処理に失敗したため簡易な形にしました";
+        internal const string StageOmittedContent = "処理を終えられなかったため省きました";
+        internal const string StageApproximatedContent = "処理を終えられなかったため簡易な形にしました";
 
         // Most severe first. The tabs and each group follow this order.
         internal static readonly ExportOutcome[] Order =
