@@ -133,6 +133,7 @@ public static class AvatarAnimatorEvaluatorTests
         ParameterCurves();
         LayerControl();
         BlendTrees();
+        FreeformCartesianTrees();
         ValuesPassUnclamped();
         Morphs();
         SyncedLayers();
@@ -739,7 +740,11 @@ public static class AvatarAnimatorEvaluatorTests
         var tree = b.Tree("1d", blend, (0, 0));
         b.Data.Motions[tree].BlendType = "2dSimpleDirectional";
         b.Data.Motions[tree].Parameters.Add(blend);
-        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D trees");
+        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Simple Directional trees");
+        b.Data.Motions[tree].BlendType = "2dFreeformCartesian";
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Cartesian trees are played");
+        b.Data.Motions[tree].BlendType = "2dFreeformDirectional";
+        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Directional trees");
 
         var s = new Builder();
         var sn = s.Target();
@@ -751,6 +756,54 @@ public static class AvatarAnimatorEvaluatorTests
         Builder.State(copy, "A", -1);
         Check(!AvatarAnimatorEvaluator.Supports(s.Data, out _), "a synced layer with fewer states than its source");
         Throws<NotSupportedException>(() => new AvatarAnimatorEvaluator(s.Data, () => 0), "is refused before it can index past its states");
+    }
+
+    // M12. The recordings of the freeformCartesian case hold Unity's weights; these are the same rule by hand.
+    static void FreeformCartesianTrees()
+    {
+        var b = new Builder();
+        var x = b.Parameter("X", "float");
+        var y = b.Parameter("Y", "float");
+        var node = b.Target();
+        var tree = b.Tree("1d", x, (b.Clip(1, true, (node, 0)), 0), (b.Clip(1, true, (node, 10)), 0), (b.Clip(1, true, (node, 20)), 0), (-1, 0));
+        var motion = b.Data.Motions[tree];
+        motion.BlendType = "2dFreeformCartesian";
+        motion.Parameters.Add(y);
+        // Children at (0, 0), (1, 0) and (0, 1), and one without a motion at (.25, .25).
+        motion.Children[1].X = 1;
+        motion.Children[2].Y = 1;
+        motion.Children[3].X = motion.Children[3].Y = .25;
+        Builder.State(b.Layer("2D"), "Tree", tree);
+        var e = b.Build();
+        e.Set(x, 1);
+        e.Advance(Frame);
+        Near(e.Values[node], 10, "Freeform Cartesian: all of the child at the point");
+        e.Set(x, .5);
+        e.Advance(Frame);
+        Near(e.Values[node], 5, "Freeform Cartesian: between two children, a child off the line has no weight");
+        // .75, .25 and .25 before the division by their sum; the child without a motion is not in the tree.
+        e.Set(x, .25);
+        e.Set(y, .25);
+        e.Advance(Frame);
+        Near(e.Values[node], 6, "Freeform Cartesian: the smallest weight against each other child, normalized");
+        e.Set(x, 3);
+        e.Set(y, -2);
+        e.Advance(Frame);
+        Near(e.Values[node], 10, "Freeform Cartesian: outside the children");
+
+        // Two children at one position share the weight.
+        var s = new Builder();
+        var sx = s.Parameter("X", "float");
+        var sy = s.Parameter("Y", "float");
+        var sn = s.Target();
+        var same = s.Tree("1d", sx, (s.Clip(1, true, (sn, 2)), 0), (s.Clip(1, true, (sn, 4)), 0), (s.Clip(1, true, (sn, 9)), 0));
+        s.Data.Motions[same].BlendType = "2dFreeformCartesian";
+        s.Data.Motions[same].Parameters.Add(sy);
+        s.Data.Motions[same].Children[2].X = 1;
+        Builder.State(s.Layer("2D"), "Tree", same);
+        e = s.Build();
+        e.Advance(Frame);
+        Near(e.Values[sn], 3, "Freeform Cartesian: two children at one position");
     }
 
     static void Arguments()
