@@ -567,7 +567,7 @@ namespace VRVlog.LilToonExporter
             LilToonFullContract.Object(extras)[InstalledLilToonVersionKey] = installedLilToonVersion;
             var used = List(glb.Json, "extensionsUsed"); if (!used.Contains(LilToonMobileProfile.ExtensionName)) used.Add(LilToonMobileProfile.ExtensionName);
             GlbBinaryOptimizer.Compact(glb);
-            if (System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(glb.Json)) > 8 * 1024 * 1024) throw new InvalidDataException("JSONが8MiB上限を超えています。");
+            if (System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(glb.Json)) > 8 * 1024 * 1024) throw new InvalidDataException("JSONが8MB上限を超えています。");
             var output = glb.Write();
             LilToonFullContract.Validate(glb.Json, output.LongLength, glb.Binary.Length);
             return output;

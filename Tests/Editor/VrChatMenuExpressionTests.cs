@@ -574,7 +574,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(rows * (long)vertices * 36, Is.GreaterThan(128L * 1024 * 1024));
                 if (!zero)
-                    Assert.That(Assert.Throws<InvalidOperationException>(() => BakeCopy(clone, menu, owned)).Message, Does.Contain("128 MiB"));
+                    Assert.That(Assert.Throws<InvalidOperationException>(() => BakeCopy(clone, menu, owned)).Message, Does.Contain("128MB"));
                 else
                 {
                     var expressions = BakeCopy(clone, menu, owned);
@@ -630,7 +630,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(rows * 2L * vertices * 36, Is.GreaterThan(128L * 1024 * 1024), "Unpooled animation frames exceed the unchanged cap.");
                 if (!duplicate)
-                    Assert.That(Assert.Throws<InvalidOperationException>(() => BakeCopy(clone, menu, owned)).Message, Does.Contain("128 MiB"));
+                    Assert.That(Assert.Throws<InvalidOperationException>(() => BakeCopy(clone, menu, owned)).Message, Does.Contain("128MB"));
                 else
                 {
                     var expressions = BakeCopy(clone, menu, owned);

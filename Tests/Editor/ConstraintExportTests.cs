@@ -465,6 +465,25 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EquivalentTo(new[] { ConstraintExport.OmittedRest, ConstraintExport.OmittedCycle }));
         }
 
+        // Two aims at each other, one with an offset: the aim of that one sits
+        // on its node, and the cycle check follows the node, so only one aim
+        // is written whichever comes first.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AimsAtEachOtherWithAnOffsetOnOneConvertOnlyOneInEitherOrder(bool firstHasOffset)
+        {
+            using var f = new Fixture();
+            var (offset, straight) = firstHasOffset ? (f.A, f.B) : (f.B, f.A);
+            f.Constraint<AimConstraint>(f.A, 1, f.B).aimVector = Vector3.forward;
+            f.Constraint<AimConstraint>(f.B, 1, f.A).aimVector = Vector3.forward;
+            straight.rotation = Quaternion.LookRotation(offset.position - straight.position);
+            offset.rotation = Quaternion.LookRotation(Vector3.up);
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<Vrm10AimConstraint>(), Has.Length.EqualTo(1));
+            Assert.That(f.Report.Results.Select(r => r.Reason),
+                Is.EquivalentTo(new[] { ConstraintExport.ApproximatedAim, ConstraintExport.OmittedCycle }));
+        }
+
         [Test]
         public void ScaleKeepsThePose()
         {
