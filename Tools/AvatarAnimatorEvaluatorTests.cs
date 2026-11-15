@@ -134,6 +134,7 @@ public static class AvatarAnimatorEvaluatorTests
         LayerControl();
         BlendTrees();
         FreeformCartesianTrees();
+        DirectionalTrees();
         ValuesPassUnclamped();
         Morphs();
         SyncedLayers();
@@ -771,11 +772,13 @@ public static class AvatarAnimatorEvaluatorTests
         var tree = b.Tree("1d", blend, (0, 0));
         b.Data.Motions[tree].BlendType = "2dSimpleDirectional";
         b.Data.Motions[tree].Parameters.Add(blend);
-        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Simple Directional trees");
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Simple Directional trees are played");
         b.Data.Motions[tree].BlendType = "2dFreeformCartesian";
         Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Cartesian trees are played");
         b.Data.Motions[tree].BlendType = "2dFreeformDirectional";
-        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Directional trees");
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Directional trees are played");
+        b.Data.Motions[tree].BlendType = "2dSomethingElse";
+        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "a blend tree of another kind");
 
         var s = new Builder();
         var sn = s.Target();
@@ -844,6 +847,76 @@ public static class AvatarAnimatorEvaluatorTests
         e.Set(sx, .5);
         e.Advance(Frame);
         Check(!double.IsNaN(e.Values[sn]), "Freeform Cartesian: the farthest position a float holds gives a number");
+    }
+
+    // M13 and M14. The recordings of the simpleDirectional and freeformDirectional cases hold Unity's weights.
+    static void DirectionalTrees()
+    {
+        AvatarAnimatorEvaluator Directional(string type, out int x, out int y, out int node, params (double X, double Y, double Value)[] children)
+        {
+            var b = new Builder();
+            x = b.Parameter("X", "float");
+            y = b.Parameter("Y", "float");
+            var target = b.Target();
+            var tree = b.Tree("1d", x);
+            var motion = b.Data.Motions[tree];
+            motion.BlendType = type;
+            motion.Parameters.Add(y);
+            foreach (var child in children)
+                motion.Children.Add(new AvatarAnimatorData.Child { Motion = b.Clip(1, true, (target, child.Value)), X = child.X, Y = child.Y, TimeScale = 1 });
+            Builder.State(b.Layer("2D"), "Tree", tree);
+            node = target;
+            return b.Build();
+        }
+
+        var e = Directional("2dSimpleDirectional", out var sx, out var sy, out var sn, (0, 0, 0), (1, 0, 10), (0, 1, 20), (-1, 0, 30), (0, -1, 40));
+        e.Set(sx, .25);
+        e.Advance(Frame);
+        Near(e.Values[sn], 2.5, "Simple Directional: between the centre and one direction");
+        e.Set(sx, .25);
+        e.Set(sy, .5);
+        e.Advance(Frame);
+        Near(e.Values[sn], 12.5, "Simple Directional: inside the triangle of two directions and the centre");
+        e.Set(sx, 1.25);
+        e.Set(sy, .75);
+        e.Advance(Frame);
+        Near(e.Values[sn], 10 * 1.25 / 2 + 20 * .75 / 2, "Simple Directional: past the line between two directions");
+        e = Directional("2dSimpleDirectional", out sx, out sy, out sn, (1, 0, 10), (0, 1, 20), (-1, 0, 30), (0, -1, 40));
+        e.Set(sx, .5);
+        e.Advance(Frame);
+        Near(e.Values[sn], 5 + .5 * 25, "Simple Directional: without a centre, the directions share its weight");
+        e = Directional("2dSimpleDirectional", out sx, out sy, out sn, (0, 0, 5), (1, 0, 10), (0, 1, 20));
+        e.Set(sx, -1);
+        e.Advance(Frame);
+        Near(e.Values[sn], 5, "Simple Directional: between neighbours more than 180 degrees apart, the centre");
+        e = Directional("2dSimpleDirectional", out sx, out sy, out sn, (0, 0, 5), (1, 0, 10), (0, 0, 20));
+        e.Set(sx, .5);
+        e.Advance(Frame);
+        Near(e.Values[sn], 0, "Simple Directional: with two centres no child has weight away from (0, 0)");
+        e.Set(sx, 0);
+        e.Advance(Frame);
+        Near(e.Values[sn], 5, "Simple Directional: with two centres the first takes all at (0, 0)");
+
+        e = Directional("2dFreeformDirectional", out var fx, out var fy, out var fn, (1, 0, 10), (0, 1, 20), (-1, 0, 30), (0, -1, 40));
+        e.Set(fx, .5);
+        e.Set(fy, .5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 15, "Freeform Directional: halfway in angle between two directions of one length");
+        e = Directional("2dFreeformDirectional", out fx, out fy, out fn, (0, 0, 0), (1, 0, 10), (2, 0, 20), (0, 1, 30), (-1, 0, 40), (0, -1, 50));
+        e.Set(fx, 1.5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 15, "Freeform Directional: halfway in length between two children in one direction");
+        e.Set(fx, .5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 5, "Freeform Directional: halfway between the centre and a child");
+        e = Directional("2dFreeformDirectional", out fx, out fy, out fn, (0, 0, 10), (.5, .5, 20));
+        e.Set(fx, -2.5);
+        e.Set(fy, -2.5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 15, "Freeform Directional: with no weight left the children share equally");
+        e = Directional("2dFreeformDirectional", out fx, out fy, out fn, (1, 0, 10), (0, 2, 20), (-2, 0, 30), (0, -1, 40));
+        e.Advance(Frame);
+        Near(e.Values[fn], 25, "Freeform Directional: at (0, 0) without a child there the children share equally");
     }
 
     static void Arguments()
