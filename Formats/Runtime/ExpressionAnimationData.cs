@@ -80,6 +80,9 @@ namespace VRVlog.Expressions
                 }
                 var a = Keys[lo]; var b = Keys[hi];
                 if (time == a.Time || !a.OutTangent.HasValue || !b.InTangent.HasValue) return a.Value;
+                // A flat segment is its value; the Bezier below would wobble by
+                // a rounding error from frame to frame.
+                if (a.Value == b.Value && a.OutTangent.Value == 0 && b.InTangent.Value == 0) return a.Value;
                 var duration = b.Time - a.Time;
                 var x = (time - a.Time) / duration;
                 // Weighted Unity tangents are cubic Bezier handles in normalized
