@@ -602,6 +602,9 @@ namespace VRVlog.LilToonExporter
             Dictionary<(int Renderer, string Shape), string> animatorMorphReverses = null;
             AvatarAnimatorCapture avatarAnimator = null;
             VRVlog.AvatarAnimator.AvatarAnimatorData avatarAnimatorData = null;
+            // The particles the VRM cannot carry, for VRVLOG_avatar_effects.
+            AvatarEffectsExport effects = null;
+            Dictionary<string, object> effectsData = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -612,6 +615,11 @@ namespace VRVlog.LilToonExporter
                 // Source getters can use an enclosing root or no root at all.
                 guard.Step(ExportStage.CopyValidation, () => NdmfExportPreparation.ValidateCopy(source, clone,
                     target => exclusions.ContainsCopyTransform(clone, target)));
+                // Read before the build removes the objects that hold particles,
+                // while the copy still matches the source. A failure writes the
+                // file without the extension.
+                try { effects = AvatarEffectsExport.Capture(clone, target => manualExclusions.ContainsCopyTransform(clone, target)); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
                 // Lip Sync captured before the caller removed the descriptor
@@ -1047,6 +1055,8 @@ namespace VRVlog.LilToonExporter
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
                             AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
                                 animatorMorphReverses), material => model.Materials.IndexOf(material)), () => null);
+                        try { effectsData = effects?.Resolve(OutputNode); }
+                        catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
@@ -1204,6 +1214,13 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
                 if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, avatarAnimator.FaceClips), () => exported);
+                if (effectsData != null)
+                    try
+                    {
+                        exported = AvatarEffectsExport.Inject(exported, effectsData);
+                        if (AvatarEffectsExport.ResultLine(effectsData) is string effectsLeftOut) warnings?.Add(effectsLeftOut);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);
