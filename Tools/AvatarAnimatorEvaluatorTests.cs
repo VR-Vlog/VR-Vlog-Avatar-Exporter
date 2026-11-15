@@ -144,6 +144,7 @@ public static class AvatarAnimatorEvaluatorTests
         StateOptions();
         Unsupported();
         Controllers();
+        ControllerOmitted();
         Arguments();
         Settled();
         NoAllocation();
@@ -1016,6 +1017,71 @@ public static class AvatarAnimatorEvaluatorTests
             if (e.Values[node] != f.Values[node] || e.Written[node] != f.Written[node]) { Check(false, what + " at frame " + i); return; }
         }
         Check(true, what);
+    }
+
+    // #3666: what the exporter left out while reading a gesture or action
+    // controller is its own; omissions there that change its transitions
+    // skip only it, and data with the FX alone is written and played as before.
+    static void ControllerOmitted()
+    {
+        // The FX alone writes no omitted of its controller, so a reader of
+        // the extension before this sees the same data.
+        var (alone, _, _) = FxToggle();
+        alone.Data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "unreadParameter", Count = 2 });
+        var written = AvatarAnimatorData.Write(alone.Data);
+        var fxController = (Dictionary<string, object>)((List<object>)written["controllers"])[0];
+        Check(fxController.Count == 2 && fxController.ContainsKey("playable") && fxController.ContainsKey("layers"), "the FX's controller has only its playable and layers");
+        Check(((List<object>)written["omitted"]).Count == 1, "the FX's omissions stay in the root");
+        Check(!AvatarAnimatorEvaluator.Supports(AvatarAnimatorData.Read(written), out _), "an FX omission that changes its transitions still refuses the data");
+
+        foreach (var playable in new[] { "gesture", "action" })
+            foreach (var kind in new[] { "unreadParameter", "operation", "parameter" })
+            {
+                var (b, hat, node) = FxToggle();
+                Playable(b, playable);
+                var hand = b.Target();
+                Builder.State(b.Layer("Hands"), "Fist", b.Clip(0, false, (hand, 1)));
+                b.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 1 });
+                b.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = 3 });
+                var read = AvatarAnimatorData.Read(AvatarAnimatorData.Write(b.Data));
+                var c = read.Controllers[1];
+                Check(c.Omitted.Count == 2 && c.Omitted[0].Kind == "blendShape" && c.Omitted[1].Kind == kind && c.Omitted[1].Count == 3 && read.Omitted.Count == 0 && read.Controllers[0].Omitted.Count == 0,
+                    playable + " " + kind + ": its omitted is read back as its own");
+                Check(AvatarAnimatorEvaluator.Supports(read, out var reason) && reason == null, playable + " " + kind + ": does not refuse the FX");
+                var e = new AvatarAnimatorEvaluator(read, () => 0);
+                Check(e.SkipReason(1) != null && e.SkipReason(0) == null && e.LayerCount == 1, playable + " " + kind + ": skips only that controller");
+                SameAsFxAlone(b, hat, node, playable + " " + kind + ": the FX plays as without it");
+            }
+
+        // Omitted curves of a gesture do not skip it.
+        var (g, _, _) = FxToggle();
+        Playable(g, "gesture");
+        var target = g.Target();
+        Builder.State(g.Layer("Hands"), "Fist", g.Clip(0, false, (target, 1)));
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 1 });
+        var played = new AvatarAnimatorEvaluator(AvatarAnimatorData.Read(AvatarAnimatorData.Write(g.Data)), () => 0);
+        played.Advance(Frame);
+        Check(played.SkipReason(1) == null && played.Values[target] == 1, "omitted curves of a gesture do not skip it");
+
+        // Newer kinds after the known ones are read; the FX, an empty list,
+        // a kind twice or out of order are not.
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "somethingNewer", Count = 1 });
+        Check(AvatarAnimatorData.Read(AvatarAnimatorData.Write(g.Data)).Controllers[1].Omitted[1].Kind == "somethingNewer", "a newer kind of a controller's omission is read");
+        g.Controller.Omitted.Insert(0, new AvatarAnimatorData.Omission { Kind = "unreadParameter", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(g.Data), "known kinds out of order are not written");
+        g.Controller.Omitted.Clear();
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 1 });
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(g.Data), "a kind twice is not written");
+        var fx = FxToggle().Item1;
+        fx.Data.Controllers[0].Omitted.Add(new AvatarAnimatorData.Omission { Kind = "unreadParameter", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(fx.Data), "the FX's omissions are not written in its controller");
+        var raw = AvatarAnimatorData.Write(FxToggle().Item1.Data);
+        var gesture = new Dictionary<string, object> { ["playable"] = "gesture", ["layers"] = new List<object>(), ["omitted"] = new List<object>() };
+        ((List<object>)raw["controllers"]).Add(gesture);
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(raw), "an empty omitted of a controller is not read");
+        gesture.Remove("omitted");
+        Check(AvatarAnimatorData.Read(raw).Controllers[1].Omitted.Count == 0, "a controller without omitted is read");
     }
 
     // #3666: the gesture and action controllers under the FX, each over the
