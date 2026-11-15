@@ -29,10 +29,11 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       uses, which the exporter adds at the end of the glTF materials. The materials at the end of
       B's list past A's count are removed from B when B's extension names each of them (the rest
       or a key of a materialSlot target, or the material of another target) and no primitive of
-      B uses it, with the VRVLOG_liltoon_full material record that names it. Removing stops at
+      B uses it, with the VRVLOG_materials_liltoon_unbound record that names it (that extension
+      goes too, as --allow-added-extension removes it, when this empties it). Removing stops at
       the first material from the end that does not qualify, which stays a difference; textures
-      and images are never relaxed, and the extension itself is compared as before (add
-      --allow-added-extension when A does not have it). Each row lists the number of removed
+      and images are never relaxed, and the extensions themselves are compared as before (add
+      --allow-added-extension for each that A does not have). Each row lists the number of removed
       materials as information only, and the summary counts the pairs where one was removed.
   --allow-kept-morphs (with two directories only)
       For a change that makes VRVLOG_avatar_animator write the BlendShapes that the FX moves, which
@@ -327,7 +328,7 @@ def remove_added_extensions(json_a, json_b, names):
 
 
 ANIMATOR = "VRVLOG_avatar_animator"
-LILTOON_FULL = "VRVLOG_liltoon_full"
+LILTOON_UNBOUND = "VRVLOG_materials_liltoon_unbound"
 
 
 def _extension_materials(document, name):
@@ -368,8 +369,9 @@ def _used_materials(document):
 
 def remove_added_materials(json_a, json_b, name):
     """Return (copy of json_b, count) without the materials at the end of B past A's count that
-    B's extension name names and no primitive of B uses, and without B's VRVLOG_liltoon_full
-    records of them. It stops at the first material from the end that does not qualify."""
+    B's extension name names and no primitive of B uses, and without B's
+    VRVLOG_materials_liltoon_unbound records of them (nor that extension, when that empties it
+    and A does not have it). It stops at the first material from the end that does not qualify."""
     materials_a = _member(json_a, "materials")
     materials_b = _member(json_b, "materials")
     if not isinstance(materials_b, list):
@@ -388,9 +390,12 @@ def remove_added_materials(json_a, json_b, name):
     del json_b["materials"][kept:]
     if not json_b["materials"] and "materials" not in json_a:
         del json_b["materials"]
-    records = _member(_member(_member(json_b, "extensions"), LILTOON_FULL), "materials")
+    records = _member(_member(_member(json_b, "extensions"), LILTOON_UNBOUND), "materials")
     if isinstance(records, list):
         records[:] = [record for record in records if not (_index(_member(record, "materialIndex")) or 0) >= kept]
+        # The exporter writes that extension only for such materials: emptied, it goes as an added one.
+        if not records:
+            json_b, _ = remove_added_extensions(json_a, json_b, [LILTOON_UNBOUND])
     return json_b, count
 
 

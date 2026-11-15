@@ -32,6 +32,8 @@ namespace VRVlog.AvatarFormats
             [(AvatarConstraints.AvatarConstraintsData.Extension, AvatarConstraints.AvatarConstraintsData.SchemaVersion)] = "1.2.8",
             // Provisional: see Documentation~/decisions/2026-11-15-avatar-effects-particles.md.
             [("VRVLOG_avatar_effects", 1)] = "1.2.8",
+            // Provisional: see Documentation~/decisions/2026-11-15-liltoon-unbound-materials.md.
+            [(LilToon.LilToonFullContract.UnboundExtensionName, LilToon.LilToonFullContract.UnboundSchemaVersion)] = "1.2.8",
         };
 
         public static string RequiredAppVersion(string extension, int schemaVersion) =>

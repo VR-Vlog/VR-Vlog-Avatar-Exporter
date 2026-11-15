@@ -995,7 +995,8 @@ def animator(morphs=(), value=1.0, blend=2):
 
 def with_materials(doc, used=1, added=0, slot_keys=None, records=True):
     """used materials on the primitives of mesh 0 and added more at the end, each named by the
-    animator extension as the key of a materialSlot track, with their liltoon_full records."""
+    animator extension as the key of a materialSlot track, with lilToon records: the used ones in
+    VRVLOG_materials_liltoon and the added ones in VRVLOG_materials_liltoon_unbound."""
     total = used + added
     doc['materials'] = [{'name': 'M%d' % i} for i in range(total)]
     doc['meshes'][0]['primitives'] = [{'attributes': {}, 'material': i} for i in range(used)]
@@ -1006,7 +1007,11 @@ def with_materials(doc, used=1, added=0, slot_keys=None, records=True):
         'clips': [{'tracks': [{'target': 0, 'curves': [{'keys': [{'time': 0, 'value': v} for v in keys]}]}]}],
     }
     if records:
-        doc['extensions']['VRVLOG_liltoon_full'] = {'materials': [{'materialIndex': i} for i in range(total)]}
+        doc['extensions']['VRVLOG_materials_liltoon'] = {'materials': [{'materialIndex': i} for i in range(used)]}
+        if added:
+            doc['extensions']['VRVLOG_materials_liltoon_unbound'] = {
+                'schemaVersion': 1, 'materials': [{'materialIndex': i} for i in range(used, total)]}
+            doc.setdefault('extensionsUsed', []).append('VRVLOG_materials_liltoon_unbound')
     return doc
 
 

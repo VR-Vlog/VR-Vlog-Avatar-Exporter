@@ -762,13 +762,14 @@ namespace VRVlog.LilToonExporter
         // each clip's tracks on them, each key the glTF index of the material
         // it sets (-1 for none). A slot curve names the material, which the
         // file writes as the material of each slot that held it when the
-        // curves were read. One on a renderer the file has no mesh for, or
+        // curves were read, or else as the copy the export added at the end of
+        // the glTF materials (AddedMaterials). One on a renderer the file has no mesh for, or
         // whose slot it dropped, is counted as missingNode (missing). One
         // that sets a material the file does not write, or that a clip of an
         // additive layer plays, is counted as material (lost), and one that
         // sets a material of a shader other than official lilToon as
         // materialSlotShader (shader): the app shows a swapped slot with
-        // VRVLOG_liltoon_full.
+        // VRVLOG_materials_liltoon or VRVLOG_materials_liltoon_unbound.
         List<List<(int Target, ExpressionAnimationData.Curve Curve)>> SlotTargets(Func<GameObject, int> node, Func<Material, int> material,
             out int missing, out int lost, out int shader)
         {
@@ -785,7 +786,7 @@ namespace VRVlog.LilToonExporter
                     var now = nodeIndex < 0 || !rendererSlotsAtRead.TryGetValue(renderer, out var slots) ? -1 : Array.FindIndex(slots, each => each.Slot == slot);
                     // A renderer that is off when the file is written is no mesh there.
                     if (now < 0 || !(renderer.enabled && renderer.gameObject.activeInHierarchy) || now >= SubmeshCount(renderer) || now >= renderer.sharedMaterials.Length) { missing++; continue; }
-                    if (frames.Any(frame => frame.value is Material swapped && (swapped.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(swapped.shader.name))))
+                    if (frames.Any(frame => frame.value is Material swapped && !IsOfficialLilToon(swapped)))
                     {
                         shader++;
                         continue;
@@ -815,8 +816,8 @@ namespace VRVlog.LilToonExporter
         }
 
         // The glTF index of a material a slot curve sets: that of a slot that
-        // held it when the curves were read; -1 for none, -2 when no slot the
-        // file writes held it.
+        // held it when the curves were read, else that of its added copy; -1
+        // for none, -2 when the file writes neither.
         int SlotMaterial(Material swapped, Func<GameObject, int> node, Func<Material, int> material)
         {
             if (swapped == null) return -1;
@@ -828,13 +829,64 @@ namespace VRVlog.LilToonExporter
                 var now = renderer.sharedMaterials;
                 for (var s = 0; s < pair.Value.Length && s < now.Length; s++)
                 {
-                    if (pair.Value[s].Material != swapped || now[s] == null) continue;
+                    if (!Holds(pair.Value[s].Material, swapped) || now[s] == null) continue;
                     var index = material(now[s]);
                     if (index >= 0) return index;
                 }
             }
+            // A material no slot held is written at the end of the glTF
+            // materials as the copy the export made of it (UnboundSwaps).
+            if (AddedMaterials != null && AddedMaterials.TryGetValue(swapped, out var added) && added != null)
+            {
+                var index = material(added);
+                if (index >= 0) return index;
+            }
             return -2;
         }
+
+        // The official lilToon materials that slot curves on the renderers the
+        // file writes as meshes (shown) set and that no slot of those held when
+        // the curves were read, in the order the curves name them. No mesh
+        // draws with them, so the export adds a copy of each at the end of the
+        // glTF materials and gives the copies back in AddedMaterials;
+        // VRVLOG_materials_liltoon_unbound carries their lilToon records.
+        // Curves an additive layer plays, and curves that also set another
+        // shader's material, are left out as SlotTargets leaves them out.
+        internal IReadOnlyList<Material> UnboundSwaps(IEnumerable<Renderer> shown)
+        {
+            var result = new List<Material>();
+            if (rendererSlotsAtRead == null || shown == null) return result;
+            var written = new HashSet<Renderer>(shown.Where(renderer => renderer != null));
+            var held = new HashSet<Material>(rendererSlotsAtRead.Where(pair => written.Contains(pair.Key))
+                .SelectMany(pair => pair.Value.Select(each => each.Material)).Where(each => each != null)
+                .SelectMany(each => new[] { each, SourceOf?.Invoke(each) }).Where(each => each != null));
+            for (var i = 0; i < clipSlotTracks.Count; i++)
+            {
+                if (additiveClips.Contains(i)) continue;
+                foreach (var (renderer, _, frames) in clipSlotTracks[i])
+                {
+                    if (renderer == null || !written.Contains(renderer)) continue;
+                    if (frames.Any(frame => frame.value is Material swapped && !IsOfficialLilToon(swapped))) continue;
+                    foreach (var frame in frames)
+                        if (frame.value is Material swapped && !held.Contains(swapped) && !result.Contains(swapped)) result.Add(swapped);
+                }
+            }
+            return result;
+        }
+
+        // The export copies materials before the curves are read (AudioLink
+        // off, recovery); the curves still name the original. SourceOf gives
+        // the original of such a copy; null leaves each material as it is.
+        internal Func<Material, Material> SourceOf { get; set; }
+
+        bool Holds(Material held, Material swapped) =>
+            held == swapped || held != null && SourceOf != null && SourceOf(held) == swapped;
+
+        static bool IsOfficialLilToon(Material material) => material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name);
+
+        // The output copy of each material UnboundSwaps returned, set by the
+        // export before Resolve; null when it adds none.
+        internal IReadOnlyDictionary<Material, Material> AddedMaterials { get; set; }
 
         static int SubmeshCount(Renderer renderer)
         {
