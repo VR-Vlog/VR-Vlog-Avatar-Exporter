@@ -551,11 +551,17 @@ namespace VRVlog.LilToonExporter
             foreach (var parameter in data.Parameters)
                 if (parameter.Origin != "expression")
                     parameter.Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.Name) || physBones != null && physBones.Contains(parameter.Name) ? "builtin" : "animator";
+            // Over the size, the parts' enabled curves go first (they count as
+            // before), then the BlendShape curves.
             Build(node, sources, material, constraint, true, part);
-            if (morphBinds.Count > 0 && Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes)
+            if (partTargetCount > 0 && OverMaximumBytes())
+                Build(node, sources, material, constraint, true, part = null);
+            if (morphBinds.Count > 0 && OverMaximumBytes())
                 Build(node, sources, material, constraint, false, part);
             return data;
         }
+
+        bool OverMaximumBytes() => Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes;
 
         const int MissingMorph = -1, OmittedMorph = -2;
 
@@ -750,8 +756,9 @@ namespace VRVlog.LilToonExporter
                     data.Clips[i].Tracks.Add(track);
                 }
                 // The parts' enabled curves, added after them all, take the
-                // room left: one track per part a curve turns. A curve no part
-                // takes counts as it did before.
+                // room left: one track per part a curve turns, each with the
+                // curve's keys. A curve no part takes counts as it did before.
+                var clipKeys = data.Clips[i].Tracks.Sum(t => t.Curves.Sum(c => c.Keys.Count));
                 foreach (var (source, curve) in clipPartTracks[i])
                 {
                     var made = partTargets[source];
@@ -764,7 +771,9 @@ namespace VRVlog.LilToonExporter
                     }
                     foreach (var target in made)
                     {
-                        if (data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip) { off++; continue; }
+                        if (data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip ||
+                            clipKeys + curve.Keys.Count > AvatarAnimatorData.MaximumKeysPerClip) { off++; continue; }
+                        clipKeys += curve.Keys.Count;
                         var track = new AvatarAnimatorData.Track { Target = target };
                         track.Curves.Add(curve);
                         data.Clips[i].Tracks.Add(track);

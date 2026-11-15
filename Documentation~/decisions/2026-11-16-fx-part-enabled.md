@@ -20,7 +20,9 @@
 - 書き出しで消えたオブジェクト、またはファイルにノードが無いオブジェクトの`activeSelf`の曲線は、その下（子孫を含む）の部品ごとに1つの`enabled`の対象にする。同じ曲線を部品の数だけのトラックで指す。`rest`はそのオブジェクトの書き出したときの`activeSelf`
 - 部品が自分の`enabled`の曲線も持つときは、祖先の`activeSelf`から来た対象と別の対象で書く。同じ`component`と`index`に対象が2つ以上できる。アプリは同じ部品を指す`enabled`の対象をすべて掛け合わせ（AND）、全部が1のときだけ部品を動かす。Unityが非アクティブなオブジェクトの下の部品を動かさないのと同じになる
 - 表の上限（`effectLimit`・`contactLimit`）で外れた部品、表がノードを見つけられず外した部品（PhysBoneの根が書かれていない、エフェクトの祖先が無い）は指さない。その曲線は今までと同じ種類で数える（自分の曲線は`enabled`か`other`、`activeSelf`の曲線は`missingNode`）
-- 新しい対象は`targets`の最後に足し、トラックは各クリップの最後に置いて、クリップのトラックの上限の残りだけを使う。キーの数の上限も、ほかの曲線が使った残りだけを使う。入りきらないトラックは`enabled`で数える。これで今までファイルに入っていた曲線は1本も減らない
+- 新しい対象は`targets`の最後に足し、トラックは各クリップの最後に置いて、クリップのトラックの上限の残りだけを使う。キーの数の上限（`MaximumKeysPerClip`）も、ほかの曲線が使った残りだけを使う。1本の`activeSelf`の曲線を部品の数だけ写すので、写すたびにそのキーの数を数える。入りきらないトラックは`enabled`で数える。これで今までファイルに入っていた曲線は1本も減らない
+- 拡張が大きさの上限（4MB）を超えたら、まず部品の`enabled`の対象とトラックを全部やめて（曲線は今までと同じ種類で数える）作り直し、それでも超えるときだけ今までどおりBlendShapeの曲線をやめる。部品の曲線のせいで表情の曲線や拡張が落ちることはない
+- 部品の祖先のパスは、Unityが曲線をつなぐのと同じく、アバターの根からそのパスを引いて最初に見つかるオブジェクトがその祖先のときだけ使う。同じ名前の兄弟が前にあるときは、そのパスの曲線はその兄弟を動かすので、この部品を指さない
 - 共有の読み手（`AvatarAnimatorData`）の`Components`には足さない。キーは対象の`Fields`に持たせ、読み手は知らない`component`の対象として書いたまま保つ（`Known`が偽）。`Components`に足すと読み手が同じ`component`と`index`の重なりを拒むので、上の2つ目の対象が書けない
 
 ## 古い出力との関係
@@ -37,10 +39,12 @@
 
 ## 確かめたこと
 
-- EditModeテスト（Unity 2022.3、batchmode、VRChat SDK入りの使い捨ての複製）: `AvatarAnimatorCaptureTests`の`PartEnabledCurvesAreTargetsOfTheirTableEntry`と`ActiveCurvesOfObjectsWithoutANodeTurnThePartsUnderThem`（3ケース）、`AvatarEffectsExportTests.IndexOfIsTheEntryInItsOwnTable`、`AvatarContactsExportTests.IndexOfCountsTheSendersThenTheReceivers`、`AvatarPhysBonesExportTests.CaptureReadsTheSettingsAndResolveBindsTheRoots`
+- EditModeテスト（Unity 2022.3、batchmode、VRChat SDK入りの使い捨ての複製）: `AvatarAnimatorCaptureTests`の`PartEnabledCurvesAreTargetsOfTheirTableEntry`と`ActiveCurvesOfObjectsWithoutANodeTurnThePartsUnderThem`（3ケース）、`CurvesOnASharedPathTurnTheFirstSiblingsParts`、`PartTracksStayWithinTheKeysOfAClip`、`ExportWritesPartEnabledTargetsOfTheEffectsTable`（書き出し全体を通す）、`AvatarEffectsExportTests.IndexOfIsTheEntryInItsOwnTable`、`AvatarContactsExportTests.IndexOfCountsTheSendersThenTheReceivers`、`AvatarPhysBonesExportTests.CaptureReadsTheSettingsAndResolveBindsTheRoots`
 - 回帰の比較: PRの本文に書く
 
 ## 残したこと
 
 - アプリが同じ部品の`enabled`の対象をANDで当てる。書き出したときに非アクティブだったエフェクトを、`enabled`の対象が1にしたら出す
 - ビルドが部品の祖先を別の場所へ動かしたとき、FXの曲線のパスと部品の読んだときのパスが合わず、置き換えられない。そのときの曲線は今までどおり`missingNode`で数える
+- アバターの根に付いた部品は、祖先のパスを持たないので指さない。根の部品の自分の`enabled`の曲線は今までどおり`enabled`で数える
+- FXはエフェクトとContactの表より先に書く。表を書くときに例外が出て表が落ちると、FXに残った`particle`・`contact`などの対象の`index`は指す先が無い。ConstraintとPhysBoneのように表が落ちたらFXを作り直す形にはしていないので、アプリが表に無い`index`を読み飛ばすことを確かめるか、Exporterで作り直す

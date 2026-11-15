@@ -44,7 +44,9 @@ namespace VRVlog.LilToonExporter
             // The full name of the component's type (a binding's type).
             internal string Type;
             // The path from the avatar root of its object, then of each
-            // ancestor below the root, with each one's activeSelf.
+            // ancestor below the root, with each one's activeSelf. A path
+            // Unity binds to another object (a sibling of the same name
+            // before it) is null: a curve on it does not turn this part.
             internal string[] Paths;
             internal bool[] ActiveSelf;
             // Its own enabled when read: the component's (a particle system's
@@ -59,7 +61,8 @@ namespace VRVlog.LilToonExporter
             var active = new List<bool>();
             for (var current = component.transform; current != null && current != root; current = current.parent)
             {
-                paths.Add(AnimationUtility.CalculateTransformPath(current, root));
+                var path = AnimationUtility.CalculateTransformPath(current, root);
+                paths.Add(root.Find(path) == current ? path : null);
                 active.Add(current.gameObject.activeSelf);
             }
             var system = component as ParticleSystem;
@@ -91,6 +94,8 @@ namespace VRVlog.LilToonExporter
         }
 
         readonly List<Part> parts = new List<Part>();
+        // The part targets the last Build wrote.
+        int partTargetCount;
         // The parts under each path, by the path of their object or an ancestor.
         readonly Dictionary<string, List<int>> partsUnder = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         readonly List<PartSource> partSources = new List<PartSource>();
@@ -102,10 +107,10 @@ namespace VRVlog.LilToonExporter
             if (read == null) return;
             foreach (var part in read)
             {
-                if (part?.Paths == null || part.Paths.Length == 0) continue;
+                if (part?.Paths == null || part.Paths.All(path => path == null)) continue;
                 var index = parts.Count;
                 parts.Add(part);
-                foreach (var path in part.Paths)
+                foreach (var path in part.Paths.Where(path => path != null))
                 {
                     if (!partsUnder.TryGetValue(path, out var under)) partsUnder[path] = under = new List<int>();
                     under.Add(index);
@@ -167,6 +172,7 @@ namespace VRVlog.LilToonExporter
         // the file has a node for (its active target turns it).
         List<int>[] PartTargets(int[] map, Func<UnityEngine.Component, (int Index, int Node)> part)
         {
+            partTargetCount = 0;
             var result = new List<int>[partSources.Count];
             for (var s = 0; s < partSources.Count; s++)
             {
@@ -179,6 +185,7 @@ namespace VRVlog.LilToonExporter
                     var (index, node) = part(parts[p].Source);
                     if (index < 0) continue;
                     var component = parts[p].Component;
+                    partTargetCount++;
                     result[s].Add(data.Targets.Count);
                     data.Targets.Add(new AvatarAnimatorData.Target
                     {
