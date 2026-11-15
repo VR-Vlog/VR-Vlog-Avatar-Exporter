@@ -39,6 +39,7 @@ namespace VRVlog.LilToonExporter
             ("parameter", "パラメーター"), ("muscle", "Humanoidのマッスル"), ("other", "その他"), ("missingNode", "VRMに無いオブジェクト"),
             ("materialProperty", "アプリで扱わないマテリアルのプロパティ"), ("materialSwitch", "マテリアルの機能のオン・オフ"),
             ("materialSlotShader", "lilToon以外のマテリアルへの差し替え"),
+            ("humanoidTransform", "Humanoidのボーンを動かすTransform"), ("rotationMixed", "角度と四元数が混ざる回転"),
         };
         internal static string TooLarge => ExporterLocalization.Format(TooLargeReason, MaximumMegabytes);
         internal static string TooDeep => ExporterLocalization.Format(TooDeepReason, AvatarAnimatorData.MaximumBlendTreeDepth);
@@ -85,6 +86,13 @@ namespace VRVlog.LilToonExporter
         // file writes under the slots that held them; the export later swaps
         // lilToon slots for fallback copies and drops empty ones (KeepSlots).
         Dictionary<Renderer, (Material Material, int Slot)[]> rendererSlotsAtRead;
+        // Transform curves stay an object and the channel they move
+        // (TransformCurve) until the output nodes are known.
+        readonly List<(GameObject Object, (string Property, string Channel, bool Euler) Moves)> transforms = new List<(GameObject, (string, string, bool))>();
+        readonly Dictionary<(GameObject, (string, string, bool)), int> transformIndex = new Dictionary<(GameObject, (string, string, bool)), int>();
+        readonly List<List<(int Transform, ExpressionAnimationData.Curve Curve)>> clipTransformTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // The Humanoid bones of the copy, read with the first Transform curve.
+        HashSet<Transform> humanoidBones;
 
         // The export drops empty submeshes with their slots after the curves
         // were read (UniVrmOneClickExporter.DropEmptySubmeshes): kept holds,
@@ -572,7 +580,10 @@ namespace VRVlog.LilToonExporter
             }
             var (floatMap, channelMap) = MaterialTargets(node, material, room, constraintTracks, out var materialMissing, out var materialLost);
             var slotMap = SlotTargets(node, material, out var slotMissing, out var slotLost, out var slotShader);
+            var transformMap = TransformTargets(node, out var mixedRotation);
             var missing = materialMissing + slotMissing;
+            var transformLost = 0;
+            var mixed = 0;
             var lost = 0;
             var off = 0;
             for (var i = 0; i < data.Clips.Count; i++)
@@ -639,14 +650,85 @@ namespace VRVlog.LilToonExporter
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
+                // The Transform channels, added after them, take the room left.
+                foreach (var (index, curve) in clipTransformTracks[i])
+                {
+                    if (mixedRotation[index]) { mixed++; continue; }
+                    if (transformMap[index] < 0) { missing++; continue; }
+                    if (data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip) { transformLost++; continue; }
+                    var track = new AvatarAnimatorData.Track { Target = transformMap[index] };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
             }
             data.Omitted.Clear();
             foreach (var kind in AvatarAnimatorData.OmittedKinds)
             {
                 var count = (omitted.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0) +
-                            (kind == "material" ? materialLost + slotLost : 0) + (kind == "enabled" ? off : 0) + (kind == "materialSlotShader" ? slotShader : 0);
+                            (kind == "material" ? materialLost + slotLost : 0) + (kind == "enabled" ? off : 0) + (kind == "materialSlotShader" ? slotShader : 0) +
+                            (kind == "transform" ? transformLost : 0) + (kind == "rotationMixed" ? mixed : 0);
                 if (count > 0) data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = count });
             }
+        }
+
+        // Adds the translation, rotation and scale targets, ordered by node,
+        // kind and channel, and returns each Transform curve's target, or -1
+        // when the file has no node for its object. Rest is the object's local
+        // value when the file is written, which its glTF node holds; that of
+        // an Euler rotation is the angles the inspector shows, those Unity's
+        // Animator starts the channels a clip leaves from. A node that Euler
+        // and quaternion rotation curves both move, in any clips of the
+        // controller, has its rotation curves left out: mixed is true for
+        // them, and they are counted as rotationMixed.
+        int[] TransformTargets(Func<GameObject, int> node, out bool[] mixed)
+        {
+            var map = new int[transforms.Count];
+            mixed = new bool[transforms.Count];
+            var eulerOf = new Dictionary<GameObject, bool>();
+            var mixedObjects = new HashSet<GameObject>();
+            foreach (var (gameObject, moves) in transforms)
+            {
+                if (moves.Property != "rotation" || gameObject == null) continue;
+                if (eulerOf.TryGetValue(gameObject, out var euler) && euler != moves.Euler) mixedObjects.Add(gameObject);
+                eulerOf[gameObject] = moves.Euler;
+            }
+            var order = new List<(int Index, int Node)>();
+            for (var i = 0; i < transforms.Count; i++)
+            {
+                var (gameObject, moves) = transforms[i];
+                mixed[i] = moves.Property == "rotation" && mixedObjects.Contains(gameObject);
+                var index = gameObject == null || mixed[i] ? -1 : node(gameObject);
+                map[i] = -1;
+                if (index >= 0) order.Add((i, index));
+            }
+            int Channel(string property, string channel) =>
+                Array.IndexOf(property == "rotation" ? AvatarAnimatorData.QuaternionChannels : AvatarAnimatorData.VectorChannels, channel);
+            foreach (var (i, index) in order.OrderBy(entry => Array.IndexOf(AvatarAnimatorData.Properties, transforms[entry.Index].Moves.Property)).ThenBy(entry => entry.Node)
+                         .ThenBy(entry => Channel(transforms[entry.Index].Moves.Property, transforms[entry.Index].Moves.Channel)))
+            {
+                var (gameObject, moves) = transforms[i];
+                map[i] = data.Targets.Count;
+                var target = new AvatarAnimatorData.Target
+                {
+                    Node = index, Property = moves.Property, Channel = moves.Channel, Euler = moves.Euler, Rest = TransformValue(gameObject.transform, moves)
+                };
+                data.Targets.Add(target);
+                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Object = gameObject, Path = PathAtRead(gameObject) };
+            }
+            return map;
+        }
+
+        // The local value of a Transform channel, in Unity's space.
+        static double TransformValue(Transform transform, (string Property, string Channel, bool Euler) moves)
+        {
+            var vector = moves.Property == "translation" ? transform.localPosition : moves.Property == "scale" ? transform.localScale
+                : moves.Euler ? TransformUtils.GetInspectorRotation(transform) : Vector3.zero;
+            if (moves.Property == "rotation" && !moves.Euler)
+            {
+                var rotation = transform.localRotation;
+                return new[] { rotation.x, rotation.y, rotation.z, rotation.w }[Array.IndexOf(AvatarAnimatorData.QuaternionChannels, moves.Channel)];
+            }
+            return vector[Array.IndexOf(AvatarAnimatorData.VectorChannels, moves.Channel)];
         }
 
         // Adds the material targets, the materialFloat ones first, each kind
@@ -1559,12 +1641,15 @@ namespace VRVlog.LilToonExporter
             clipMaterialTracks.Add(materialTracks);
             var slotTracks = new List<(Renderer, int, ObjectReferenceKeyframe[])>();
             clipSlotTracks.Add(slotTracks);
+            var transformTracks = new List<(int, ExpressionAnimationData.Curve)>();
+            clipTransformTracks.Add(transformTracks);
             var keys = 0;
             var bindings = AnimationUtility.GetCurveBindings(clip);
             var shapes = new List<EditorCurveBinding>();
             var switches = new List<EditorCurveBinding>();
             var constraintSwitches = new List<EditorCurveBinding>();
             var floats = new List<EditorCurveBinding>();
+            var transformCurves = new List<EditorCurveBinding>();
             // The clip's key and track room goes to activeSelf curves first, then
             // to parameter curves, then to BlendShape curves, then to renderer
             // enabled curves, then to material curves, then to
@@ -1585,6 +1670,7 @@ namespace VRVlog.LilToonExporter
                     else if (RendererSwitch(binding)) switches.Add(binding);
                     else if (binding.propertyName == "m_Enabled" && AvatarConstraintsExport.IsConstraint(binding.type)) constraintSwitches.Add(binding);
                     else if (MaterialCurve(binding, out var materialOmitted) != null) floats.Add(binding);
+                    else if (TransformCurve(binding) != null) transformCurves.Add(binding);
                     else Omit(materialOmitted ?? Kind(binding));
                     continue;
                 }
@@ -1674,6 +1760,22 @@ namespace VRVlog.LilToonExporter
                 pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
                 slotTracks.Add((renderer, slot, frames));
             }
+            // Transform curves come after them all and take the room left.
+            // A curve on a Humanoid bone is counted as humanoidTransform: the
+            // app's pose and hand tracking write those bones every frame. One
+            // on the avatar root, which the app places, stays counted as
+            // transform, as before the extension.
+            foreach (var binding in transformCurves)
+            {
+                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                if (target == null) { Omit("missingNode"); continue; }
+                if (target == root.transform) { Omit("transform"); continue; }
+                if (HumanoidBones().Contains(target)) { Omit("humanoidTransform"); continue; }
+                var converted = Full() || tracks.Count + parameterTracks.Count + morphTracks.Count + enabledTracks.Count + constraintTracks.Count +
+                    materialTracks.Count + slotTracks.Count + transformTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip ? null : Curve(clip, binding, ref keys);
+                if (converted == null) { Omit("transform"); continue; }
+                transformTracks.Add((TransformTarget(target.gameObject, TransformCurve(binding).Value), converted));
+            }
             return index;
         }
 
@@ -1699,6 +1801,53 @@ namespace VRVlog.LilToonExporter
             catch (InvalidOperationException) { return null; }
             keys += converted.Keys.Count;
             return converted;
+        }
+
+        int TransformTarget(GameObject gameObject, (string, string, bool) moves)
+        {
+            if (transformIndex.TryGetValue((gameObject, moves), out var index)) return index;
+            transformIndex[(gameObject, moves)] = transforms.Count;
+            pathAtRead[gameObject] = AnimationUtility.CalculateTransformPath(gameObject.transform, root.transform);
+            transforms.Add((gameObject, moves));
+            return transforms.Count - 1;
+        }
+
+        HashSet<Transform> HumanoidBones()
+        {
+            if (humanoidBones != null) return humanoidBones;
+            humanoidBones = new HashSet<Transform>();
+            var animator = root.GetComponent<Animator>();
+            if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return humanoidBones;
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+            {
+                var transform = animator.GetBoneTransform(bone);
+                if (transform != null) humanoidBones.Add(transform);
+            }
+            return humanoidBones;
+        }
+
+        // What a Transform curve moves: m_LocalPosition.x a translation
+        // channel, m_LocalScale.x a scale channel, m_LocalRotation.x a
+        // quaternion rotation channel and localEulerAnglesRaw.x an Euler one,
+        // which Unity blends as angles (the Euler Angles interpolation). Null
+        // for another curve, counted as transform: an Euler Angles
+        // (Quaternion) curve, whose angles Unity plays as baked quaternions,
+        // is among them.
+        internal static (string Property, string Channel, bool Euler)? TransformCurve(EditorCurveBinding binding)
+        {
+            if (binding.type != typeof(Transform)) return null;
+            var property = binding.propertyName ?? "";
+            var dot = property.LastIndexOf('.');
+            if (dot < 0) return null;
+            var channel = property.Substring(dot + 1);
+            switch (property.Substring(0, dot))
+            {
+                case "m_LocalPosition": return Array.IndexOf(AvatarAnimatorData.VectorChannels, channel) >= 0 ? ("translation", channel, false) : ((string, string, bool)?)null;
+                case "m_LocalScale": return Array.IndexOf(AvatarAnimatorData.VectorChannels, channel) >= 0 ? ("scale", channel, false) : ((string, string, bool)?)null;
+                case "m_LocalRotation": return Array.IndexOf(AvatarAnimatorData.QuaternionChannels, channel) >= 0 ? ("rotation", channel, false) : ((string, string, bool)?)null;
+                case "localEulerAnglesRaw": return Array.IndexOf(AvatarAnimatorData.VectorChannels, channel) >= 0 ? ("rotation", channel, true) : ((string, string, bool)?)null;
+                default: return null;
+            }
         }
 
         int Target(GameObject gameObject)
