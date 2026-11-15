@@ -2630,6 +2630,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Add("Loud", loud, animator);
                 Add("Loose", loose, animator);
                 warnings.Clear();
+                // AddUnbound logs why the record could not be read.
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new Regex("AudioLink"));
                 var json = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
                 Assert.That(((List<object>)json["materials"]).Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
                 var extensions = (Dictionary<string, object>)json["extensions"];
