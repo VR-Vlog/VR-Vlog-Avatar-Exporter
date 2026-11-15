@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_avatar_constraints/1/schema.json",
+  "title": "VRVLOG_avatar_constraints 1",
+  "description": "The Unity and VRChat constraints that the exporter could not turn into VRMC_node_constraint, with their settings as authored, for the app to solve the way Unity does. The exporter writes a constraint here when it leaves it in its current pose (several sources, weights, Scale, Parent offsets, Solve In Local Space and the like) and the file has nodes for its target, every source and its up object. Each entry is one constraint component; an FX curve on its enabled flag is a VRVLOG_avatar_animator target with property enabled, component constraint and index the entry's position in constraints. Vectors are [x, y, z] in Unity's frames as the editor shows them (positions in metres, Euler angles in degrees); the app reads the nodes back into the same frames through UniVRM. Each type carries the keys of the settings it has and no others: position (positionAxes, positionAtRest, positionOffset), rotation (rotationAxes, rotationAtRest, rotationOffset), scale (scaleAxes, scaleAtRest, scaleOffset), parent (positionAxes, rotationAxes, positionAtRest, rotationAtRest, and positionOffset and rotationOffset on each source), aim (rotationAxes, rotationAtRest, rotationOffset, aimAxis, upAxis, worldUp, worldUpVector, worldUpNode) and lookAt (rotationAtRest, rotationOffset, roll, useUpNode, worldUpNode). The shared reader (AvatarConstraintsData.Read) enforces these per-type keys and that localSpace and freeze are false for origin unity. Node indices must be less than the glTF node count.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "constraints"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "constraints": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": { "$ref": "#/$defs/constraint" }
+    }
+  },
+  "$defs": {
+    "node": { "type": "integer", "minimum": 0 },
+    "vector": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "axes": {
+      "description": "Whether the constraint moves the X, Y and Z axis.",
+      "type": "array", "items": { "type": "boolean" }, "minItems": 3, "maxItems": 3
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "weight"],
+      "properties": {
+        "node": { "$ref": "#/$defs/node", "description": "The glTF node the constraint follows." },
+        "weight": { "type": "number" },
+        "positionOffset": { "$ref": "#/$defs/vector", "description": "parent only: the target's position offset from this source." },
+        "rotationOffset": { "$ref": "#/$defs/vector", "description": "parent only: the target's rotation offset from this source." }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "type", "origin", "enabled", "active", "locked", "weight", "localSpace", "freeze", "sources"],
+      "properties": {
+        "node": { "$ref": "#/$defs/node", "description": "The glTF node the constraint moves (a VRC Constraint's Target Transform, or its own object)." },
+        "type": { "enum": ["position", "rotation", "scale", "parent", "aim", "lookAt"] },
+        "origin": { "enum": ["unity", "vrchat"], "description": "UnityEngine.Animations constraint or VRC Constraint; the two solve slightly differently." },
+        "enabled": { "type": "boolean", "description": "The component's enabled flag (m_Enabled), which FX curves turn on and off." },
+        "active": { "type": "boolean", "description": "Is Active (constraintActive)." },
+        "locked": { "type": "boolean" },
+        "weight": { "type": "number" },
+        "localSpace": { "type": "boolean", "description": "VRChat's Solve In Local Space; false for unity." },
+        "freeze": { "type": "boolean", "description": "VRChat's Freeze To World; false for unity." },
+        "sources": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/source" } },
+        "positionAxes": { "$ref": "#/$defs/axes" },
+        "rotationAxes": { "$ref": "#/$defs/axes" },
+        "scaleAxes": { "$ref": "#/$defs/axes" },
+        "positionAtRest": { "$ref": "#/$defs/vector" },
+        "rotationAtRest": { "$ref": "#/$defs/vector" },
+        "scaleAtRest": { "$ref": "#/$defs/vector" },
+        "positionOffset": { "$ref": "#/$defs/vector" },
+        "rotationOffset": { "$ref": "#/$defs/vector" },
+        "scaleOffset": { "$ref": "#/$defs/vector" },
+        "aimAxis": { "$ref": "#/$defs/vector" },
+        "upAxis": { "$ref": "#/$defs/vector" },
+        "worldUp": { "enum": ["sceneUp", "objectUp", "objectRotationUp", "vector", "none"] },
+        "worldUpVector": { "$ref": "#/$defs/vector" },
+        "worldUpNode": { "type": "integer", "minimum": -1, "description": "The up object's glTF node, or -1 when none is set." },
+        "roll": { "type": "number" },
+        "useUpNode": { "type": "boolean" }
+      }
+    }
+  }
+}

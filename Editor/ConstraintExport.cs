@@ -65,8 +65,12 @@ namespace VRVlog.LilToonExporter
             internal readonly List<(Transform Transform, float Weight)> Sources = new List<(Transform, float)>();
         }
 
+        // extension, when given, takes each constraint left in its pose for
+        // VRVLOG_avatar_constraints (AvatarConstraintsExport), except one on a
+        // target this pass moved under a source: its settings are in the frame
+        // it had before.
         internal static Result Convert(GameObject source, GameObject copy, ICollection<string> warnings, ExportFallbackReport fallbacks = null,
-            ObjectToggleCapture toggles = null)
+            ObjectToggleCapture toggles = null, AvatarConstraintsExport extension = null)
         {
             if (source == null || copy == null || source == copy || copy.transform.IsChildOf(source.transform) ||
                 source.transform.IsChildOf(copy.transform) || EditorUtility.IsPersistent(copy))
@@ -136,6 +140,7 @@ namespace VRVlog.LilToonExporter
                 else result.Approximated++;
                 var entry = fallbacks?.Record(outcome, Category, plan.Target.name + " (" + plan.Component.GetType().Name + ")", reason);
                 if (entry != null) entry.Path = paths[order];
+                if (outcome == ExportOutcome.Omitted && !followed.Contains(plan.Target)) extension?.Add(plan.Component);
             }
             if (added.Count > 0 && copy.GetComponent<Vrm10Instance>() == null) copy.AddComponent<Vrm10Instance>();
             if (result.Sources > 0)
