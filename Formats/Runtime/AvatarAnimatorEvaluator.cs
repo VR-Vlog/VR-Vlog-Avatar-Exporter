@@ -437,6 +437,7 @@ namespace VRVlog.AvatarAnimator
         public void SetLayerWeight(int layer, double weight)
         {
             if (double.IsNaN(weight) || double.IsInfinity(weight)) throw new ArgumentOutOfRangeException(nameof(weight));
+            if (layer == 0) return;
             layers[layer].WeightBlending = false;
             layers[layer].Weight = weight;
         }
@@ -1176,8 +1177,10 @@ namespace VRVlog.AvatarAnimator
                 for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
             for (var k = 0; k < animated.Length; k++) OutputTarget(layer, k, weight);
-            // M7: a layer at weight 0 forgets its own values, as one that never wrote.
-            if (weight <= 0) Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
+            // M7: a layer resting at weight 0 forgets its own values, as one that never
+            // wrote. Mid-transition they stay, as an interruption copies them (not measured
+            // in Unity).
+            if (weight <= 0 && !layer.Transitioning) Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
         }
 
         bool Wrote(int t) => written[t] || (animatedWritten && isAnimated[t]);

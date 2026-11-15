@@ -649,6 +649,41 @@ public static class AvatarAnimatorEvaluatorTests
         e.Advance(Frame);
         Near(e.Values[shared], 2, "back at weight 1 the empty state passes the layer below through");
         Near(e.Values[alone], 0, "and keeps the rest it left");
+
+        // Mid-transition at weight 0 the layer keeps its values, so an
+        // interruption right after freezes the blend it had.
+        Check(InterruptAfter(true) == InterruptAfter(false), "a weight-0 frame mid-transition keeps the still copy");
+    }
+
+    static double InterruptAfter(bool zero)
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        var stop = b.Parameter("Stop", "bool");
+        var node = b.Target();
+        var other = b.Target();
+        Builder.State(b.Layer("Base"), "Idle", b.Clip(1, true, (other, 0)));
+        var layer = b.Layer("L");
+        var a = Builder.State(layer, "A", b.Clip(1, true, (node, 1)), writeDefaults: false);
+        var to = Builder.State(layer, "B", b.Clip(1, true, (node, 3)), writeDefaults: false);
+        var away = Builder.State(layer, "C", b.Clip(1, true, (node, 5)), writeDefaults: false);
+        var slow = To(to, duration: 1).When(go, "if");
+        slow.InterruptionSource = "source";
+        layer.States[a].Transitions.Add(slow);
+        layer.States[a].Transitions.Add(To(away, duration: 1).When(stop, "if"));
+        var e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Set(go, 0);
+        e.Advance(.5);
+        if (zero) e.SetLayerWeight(1, 0);
+        e.Advance(Frame);
+        e.SetLayerWeight(1, 1);
+        e.Set(stop, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        return e.Values[node];
     }
 
     static void BlendTrees()
