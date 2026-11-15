@@ -478,6 +478,24 @@ namespace VRVlog.AvatarAnimator
             }
             for (var c = 0; c < controllerCount; c++)
                 foreach (var t in controllerTargets[c]) controllerAnimated[c][t] = true;
+            // M11 holds for a parameter a playing controller animates. One only a
+            // skipped controller animates stays a parameter the host and the
+            // drivers set, with its declared default, as without that controller.
+            for (var c = 0; c < controllerCount; c++)
+            {
+                if (skipReasons[c] == null) continue;
+                foreach (var m in Reached(data, data.Controllers[c]))
+                    foreach (var t in motionTargets[m])
+                    {
+                        var plays = false;
+                        foreach (var targets in controllerTargets) plays |= targets.Contains(t);
+                        if (!isParameter[t] || plays) continue;
+                        var parameter = data.Targets[t].Parameter;
+                        isParameter[t] = false;
+                        parameterTargets[parameter] = -1;
+                        parameters[parameter] = Convert(types[parameter], data.Parameters[parameter].Default);
+                    }
+            }
             var entries = 0;
             for (var l = 0; l < source.Count; l++)
             {
@@ -1235,7 +1253,8 @@ namespace VRVlog.AvatarAnimator
                     break;
                 case "layerControl":
                     var controller = Controller(behaviour.Playable);
-                    if (controller >= 0 && behaviour.Layer < controllerEnd[controller] - controllerStart[controller])
+                    // A controller's base layer stays at 1, as with SetLayerWeight.
+                    if (controller >= 0 && behaviour.Layer > 0 && behaviour.Layer < controllerEnd[controller] - controllerStart[controller])
                     {
                         var target = layers[controllerStart[controller] + behaviour.Layer];
                         // M10: a 0 s blend takes the goal at once.
@@ -1299,7 +1318,10 @@ namespace VRVlog.AvatarAnimator
             isAnimated = controllerAnimated[c];
             if (stacked)
             {
+                // Its layers start from the last frame's values, as a single
+                // controller does, not from what the controllers below left.
                 Array.Copy(values, below, values.Length);
+                Array.Copy(previous, values, values.Length);
                 Array.Copy(written, belowWritten, written.Length);
                 Array.Clear(written, 0, written.Length);
             }
@@ -1329,8 +1351,11 @@ namespace VRVlog.AvatarAnimator
                 {
                     if (weight < 1) values[t] = Blend(t, belowWritten[t] ? below[t] : rest[t], values[t], weight);
                 }
-                // The layers set values only where they wrote, so it holds what the controllers below left.
-                else written[t] = belowWritten[t];
+                else
+                {
+                    values[t] = below[t];
+                    written[t] = belowWritten[t];
+                }
             }
         }
 

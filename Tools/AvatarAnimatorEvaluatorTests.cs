@@ -1167,6 +1167,55 @@ public static class AvatarAnimatorEvaluatorTests
         e.Advance(Frame);
         Check(e.LayerWeight(e.LayerIndex(1, 0)) == 1, "a controller's base layer stays at 1");
 
+        // A Layer Control on a controller's base layer leaves it at 1 too.
+        top.States[raise].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "layerControl", Playable = "gesture", Layer = 0, GoalWeight = 0, BlendDuration = 0 });
+        e = b.Build();
+        e.Set(go, 1);
+        Run(e, .1);
+        Check(e.LayerWeight(e.LayerIndex(1, 0)) == 1 && e.Values[finger] == 5, "a Layer Control on a base layer leaves it at 1");
+
+        // An FX layer without Write Defaults resting in a state that does not
+        // write a target it animates keeps the last frame's value, at weight 1
+        // as below it, not what the gesture under the FX writes this frame.
+        b = new Builder();
+        var x = b.Target();
+        var y = b.Target();
+        b.Layer("Base");
+        var hold = b.Layer("Hold");
+        Builder.State(hold, "Y", b.Clip(0, false, (y, 1)), writeDefaults: false);
+        Builder.State(hold, "X", b.Clip(0, false, (x, 7)), writeDefaults: false);
+        Playable(b, "gesture");
+        var ramp = b.Layer("Ramp");
+        Builder.State(ramp, "Ramp", b.Ramp(1, true, x, 4));
+        foreach (var weight in new[] { 1, .999999 })
+        {
+            e = b.Build();
+            e.SetLayerWeight(1, weight);
+            var last = double.NaN;
+            for (var i = 0; i < 30; i++)
+            {
+                e.Advance(Frame);
+                if (i > 0) Check(Math.Abs(e.Values[x] - last) < 1e-4, "an FX layer holding a target keeps it at weight " + weight);
+                last = e.Values[x];
+            }
+        }
+
+        // A float parameter only a skipped controller animates is still set by the host.
+        (b, hat, node) = FxToggle();
+        var amount = b.Parameter("Amount", "float");
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = amount });
+        var amountTarget = b.Data.Targets.Count - 1;
+        Playable(b, "gesture");
+        var skippedLayer = b.Layer("Additive");
+        skippedLayer.Blending = "additive";
+        Builder.State(skippedLayer, "Drive", b.Clip(0, false, (amountTarget, .5)));
+        e = b.Build();
+        Check(e.SkipReason(1) != null, "the gesture animating the parameter is skipped");
+        e.Set(amount, .75);
+        e.Advance(Frame);
+        Check(e.Get(amount) == .75, "the host still sets a parameter only a skipped controller animates");
+        SameAsFxAlone(b, hat, node, "the FX plays as without that gesture");
+
         Masks();
     }
 
