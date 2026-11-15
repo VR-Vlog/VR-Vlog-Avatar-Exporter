@@ -39,7 +39,9 @@ namespace VRVlog.AvatarAnimator
     // approached frame by frame in a transition into it. A layer with a
     // state without Write Defaults keeps a value of every target the
     // controller animates; M7 a layer under weight 1 blends over the
-    // layers below it, or over the rest when none wrote the target.
+    // layers below it, or over the rest when none wrote the target; at
+    // weight 0 that leaves the layers below (or the rest), and the layer
+    // forgets its own values, as if it had never written them.
     // M11 a float parameter a clip animates is a target that M6 and M7
     // blend as a node, with one difference: in a transition into a state
     // without a motion or Write Defaults, the layer's own value of it starts
@@ -428,6 +430,17 @@ namespace VRVlog.AvatarAnimator
         public double NextNormalizedTime(int layer) => layers[layer].Transitioning ? layers[layer].NextTime : 0;
         public double LayerWeight(int layer) => layers[layer].Weight;
         public double FxWeight => fxWeight;
+
+        // As Unity's Animator.SetLayerWeight: from the next Advance, ending a
+        // Layer Control blend. The base layer stays at 1. The comparison with
+        // Unity drives weights through this.
+        public void SetLayerWeight(int layer, double weight)
+        {
+            if (double.IsNaN(weight) || double.IsInfinity(weight)) throw new ArgumentOutOfRangeException(nameof(weight));
+            if (layer == 0) return;
+            layers[layer].WeightBlending = false;
+            layers[layer].Weight = weight;
+        }
 
         // One frame of deltaTime seconds (0 or more). The first call enters
         // every layer's default state, then advances.
@@ -1164,6 +1177,10 @@ namespace VRVlog.AvatarAnimator
                 for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
             for (var k = 0; k < animated.Length; k++) OutputTarget(layer, k, weight);
+            // M7: a layer resting at weight 0 forgets its own values, as one that never
+            // wrote. Mid-transition they stay, as an interruption copies them (not measured
+            // in Unity).
+            if (weight <= 0 && !layer.Transitioning) Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
         }
 
         bool Wrote(int t) => written[t] || (animatedWritten && isAnimated[t]);
@@ -1227,10 +1244,10 @@ namespace VRVlog.AvatarAnimator
             if (isParameter[t])
                 layer.Own[k] = layer.Transitioning && layer.Progress > 0 && states[layer.Next].Motion < 0 && !states[layer.Next].WriteDefaults
                     ? rest[t] + (b - rest[t]) * Math.Min(1, layer.Progress) : layer.Out[k];
-            if (!has || weight <= 0) return;
+            if (!has) return;
             // M7: over the layers below, or over the rest when none of them wrote it.
             var below = Wrote(t) ? values[t] : rest[t];
-            values[t] = weight >= 1 ? value : below + (value - below) * weight;
+            values[t] = weight >= 1 ? value : below + (value - below) * Math.Max(0, weight);
             written[t] = true;
             logLayer[logCount] = layer.Index;
             logValue[logCount] = values[t];
