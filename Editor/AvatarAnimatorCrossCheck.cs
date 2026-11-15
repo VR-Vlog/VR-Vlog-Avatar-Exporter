@@ -783,6 +783,7 @@ namespace VRVlog.LilToonExporter
                 this.random = random;
                 blends.Clear();
                 playableBlends.Clear();
+                entered = null;
                 PlayableLayerControlled = false;
                 animator.Rebind();
                 if (Graph) Build();
@@ -880,7 +881,7 @@ namespace VRVlog.LilToonExporter
                     playableBlends[i] = (input, from, goal, duration, elapsed);
                 }
                 playableBlends.RemoveAll(blend => blend.Duration <= 0 || blend.Elapsed >= blend.Duration);
-                if (Graph) graph.Evaluate((float)seconds);
+                if (Graph) { graph.Evaluate((float)seconds); Enter(); }
                 else animator.Update((float)seconds);
             }
 
@@ -892,10 +893,50 @@ namespace VRVlog.LilToonExporter
                 return -1;
             }
 
+            // The states each layer of each played controller was in or going to.
+            HashSet<int>[][] entered;
+
+            // On the graph the SDK's Layer Controls are copies the playables
+            // hold, which Hooks cannot reach (Adopt reads the Animator's), so
+            // the data's Layer Controls of each state a layer enters this
+            // frame play here instead; the Parameter Drivers still come
+            // through Hooks. Only the state's own behaviours, not its
+            // machines'.
+            void Enter()
+            {
+                if (entered == null)
+                    entered = data.Controllers.Select((c, i) => playables[i].IsValid() ? c.Layers.Select(_ => new HashSet<int>()).ToArray() : null).ToArray();
+                for (var c = 0; c < entered.Length; c++)
+                {
+                    if (entered[c] == null) continue;
+                    for (var l = 0; l < entered[c].Length && l < LayerCount(c); l++)
+                    {
+                        var now = new HashSet<int> { StateHash(c, l, false) };
+                        if (InTransition(c, l)) now.Add(StateHash(c, l, true));
+                        var states = data.Controllers[c].Layers[l].States;
+                        foreach (var hash in now)
+                        {
+                            if (entered[c][l].Contains(hash)) continue;
+                            var state = states.FindIndex(s => Animator.StringToHash(s.Name) == hash);
+                            if (state < 0) continue;
+                            foreach (var behaviour in states[state].Behaviours)
+                                if (behaviour.Type != "parameterDriver") Apply(behaviour);
+                        }
+                        entered[c][l] = now;
+                    }
+                }
+            }
+
             internal void Behaviour(StateMachineBehaviour behaviour)
             {
                 var read = behaviour == null ? null : readBehaviour?.Invoke(behaviour);
                 if (read == null) return;
+                // On the graph only the drivers come from the SDK (see Enter).
+                if (!Graph || read.Type == "parameterDriver") Apply(read);
+            }
+
+            void Apply(AvatarAnimatorData.Behaviour read)
+            {
                 switch (read.Type)
                 {
                     case "parameterDriver":

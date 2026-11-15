@@ -357,9 +357,10 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // A Gesture whose Fist moves Body to x 0.5 and an Action that would
-        // move it to 2 play under the FX on the graph: the Gesture shows, the
-        // Action stays at weight 0, and data with another Fist value differs.
+        // A Gesture whose Fist moves Body to x 0.5 and an Action that moves it
+        // to 2 play under the FX on the graph: the Gesture shows, the Action
+        // stays at weight 0 until the Hat's On blends it in, and data with
+        // another Fist value differs.
         [Test]
         public void GestureAndActionPlayUnderTheFx()
         {
@@ -386,6 +387,9 @@ namespace VRVlog.LilToonExporter.Tests
             gesture.Layers.Add(Layer("Pose", 4, 5, Gesture, "equals", "notEqual", 1, .2));
             var action = new AvatarAnimatorData.Controller { Playable = "action" };
             action.Layers.Add(Layer("Wave", 6, 6, Hat, "if", "ifNot", 0, 0));
+            // The Hat's On blends the Action in, from the data: the playables'
+            // copies of the SDK's Layer Controls are out of the hooks' reach.
+            action.Layers[0].States[1].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "action", GoalWeight = 1, BlendDuration = .1 });
             data.Controllers.Add(gesture);
             data.Controllers.Add(action);
             var controllers = new List<RuntimeAnimatorController> { fx };
