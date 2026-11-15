@@ -30,6 +30,8 @@ namespace VRVlog.AvatarFormats
             [(AvatarAnimator.AvatarAnimatorData.Extension, AvatarAnimator.AvatarAnimatorData.SchemaVersion)] = "1.2.8",
             // Provisional: see Documentation~/decisions/2026-11-15-avatar-constraints-extension.md.
             [(AvatarConstraints.AvatarConstraintsData.Extension, AvatarConstraints.AvatarConstraintsData.SchemaVersion)] = "1.2.8",
+            // Provisional: see Documentation~/decisions/2026-11-15-avatar-effects-particles.md.
+            [("VRVLOG_avatar_effects", 1)] = "1.2.8",
         };
 
         public static string RequiredAppVersion(string extension, int schemaVersion) =>
