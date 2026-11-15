@@ -784,7 +784,7 @@ namespace VRVlog.LilToonExporter
                     var nodeIndex = renderer == null ? -1 : node(renderer.gameObject);
                     var now = nodeIndex < 0 || !rendererSlotsAtRead.TryGetValue(renderer, out var slots) ? -1 : Array.FindIndex(slots, each => each.Slot == slot);
                     // A renderer that is off when the file is written is no mesh there.
-                    if (now < 0 || !(renderer.enabled && renderer.gameObject.activeInHierarchy) || now >= SubmeshCount(renderer)) { missing++; continue; }
+                    if (now < 0 || !(renderer.enabled && renderer.gameObject.activeInHierarchy) || now >= SubmeshCount(renderer) || now >= renderer.sharedMaterials.Length) { missing++; continue; }
                     if (frames.Any(frame => frame.value is Material swapped && (swapped.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(swapped.shader.name))))
                     {
                         shader++;
@@ -796,6 +796,8 @@ namespace VRVlog.LilToonExporter
                     if (additiveClips.Contains(i) || curve.Keys.Any(key => key.Value < -1) || !Valid(curve)) { lost++; continue; }
                     var held = renderer.sharedMaterials[now];
                     var rest = held == null || material == null ? -1 : material(held);
+                    // -1 is an empty slot: a held material the file does not write is no rest.
+                    if (held != null && rest < 0) { lost++; continue; }
                     rests[(nodeIndex, now)] = (renderer, rest);
                     found.Add((i, (nodeIndex, now), curve));
                 }
