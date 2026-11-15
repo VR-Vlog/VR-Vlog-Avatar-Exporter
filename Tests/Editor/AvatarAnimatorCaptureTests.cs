@@ -1229,6 +1229,234 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Omitted(without, "enabled"), Is.EqualTo(2));
         }
 
+        static GameObject Child(Transform parent, string name)
+        {
+            var child = new GameObject(name);
+            child.transform.SetParent(parent, false);
+            return child;
+        }
+
+        static AvatarAnimatorData WithParts(AnimatorAvatar avatar, IEnumerable<AvatarAnimatorCapture.Part> parts, Func<GameObject, int> node,
+            Func<Component, (int, int)> part) =>
+            AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null, null, parts)
+                .Resolve(node, null, material => material.name == "Animator" ? 0 : -1, null, null, part)));
+
+        // The part enabled targets as (component, index, rest, node), in the target table's order.
+        static (string, long, long, long)[] PartTargets(AvatarAnimatorData data) =>
+            data.Targets.Where(t => !t.Known).Select(t => ((string)t.Fields["component"], Convert.ToInt64(t.Fields["index"]),
+                Convert.ToInt64(t.Fields["rest"]), Convert.ToInt64(t.Fields["node"]))).ToArray();
+
+        // The own enabled curve of a part the effects table writes is an
+        // enabled target of its component and its index in that table, its
+        // keys in Fields; a particle system has two (emission and its
+        // renderer). They come after every other target and track. A part
+        // a table left out (index -1) gets none and its curve counts as before.
+        [Test]
+        public void PartEnabledCurvesAreTargetsOfTheirTableEntry()
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var glasses = root.Find("Glasses");
+            var system = Child(glasses, "Spark").AddComponent<ParticleSystem>();
+            var trail = Child(glasses, "Trail").AddComponent<TrailRenderer>();
+            var line = Child(root.Find("Hat"), "Line").AddComponent<LineRenderer>();
+            var light = Child(glasses, "Lamp").AddComponent<Light>();
+            light.enabled = false;
+            var clip = avatar.Clip("Switch");
+            void Curve(string path, Type type, string property, float value) =>
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, type, property), AnimationCurve.Constant(0, 1f / 60, value));
+            Curve("Glasses/Spark", typeof(ParticleSystem), "EmissionModule.enabled", 0);
+            Curve("Glasses/Spark", typeof(ParticleSystemRenderer), "m_Enabled", 0);
+            Curve("Glasses/Trail", typeof(TrailRenderer), "m_Enabled", 0);
+            Curve("Hat/Line", typeof(LineRenderer), "m_Enabled", 0);
+            Curve("Glasses/Lamp", typeof(Light), "m_Enabled", 1);
+            // Glasses holds no light: no part takes it.
+            Curve("Glasses", typeof(Light), "m_Enabled", 1);
+            AddLayer(avatar, "Switch", clip);
+            var parts = new[]
+            {
+                AvatarAnimatorCapture.ReadPart("particle", system, root), AvatarAnimatorCapture.ReadPart("trail", trail, root),
+                AvatarAnimatorCapture.ReadPart("line", line, root), AvatarAnimatorCapture.ReadPart("light", light, root),
+            };
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            (int, int) Part(Component component) =>
+                ReferenceEquals(component, system) ? (1, 9) : ReferenceEquals(component, trail) ? (0, -1) : ReferenceEquals(component, light) ? (2, -1) : (-1, -1);
+
+            var data = WithParts(avatar, parts, Node, Part);
+            Assert.That(PartTargets(data), Is.EquivalentTo(new[] { ("particle", 1L, 1L, 9L), ("particle", 1L, 1L, 9L), ("trail", 0L, 1L, -1L), ("light", 2L, 0L, -1L) }));
+            var first = data.Targets.FindIndex(t => !t.Known);
+            Assert.That(data.Targets.Skip(first).All(t => !t.Known), "After every other target.");
+            Assert.That(data.Targets.Where(t => !t.Known).All(t => (string)t.Fields["property"] == "enabled"));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Known), Is.EqualTo(new[] { false, false, false, false }));
+            var lamp = tracks.Single(t => (string)data.Targets[t.Target].Fields["component"] == "light");
+            Assert.That(lamp.Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 1d, 1d }));
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(2), "The line the table left out and the light Glasses does not have.");
+
+            // Without the tables the file is as before.
+            var without = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(without.Targets.All(t => t.Known), Is.True);
+            Assert.That(ClipOf(without, "Switch").Tracks, Is.Empty);
+            Assert.That(Omitted(without, "enabled"), Is.EqualTo(5));
+            Assert.That(Omitted(without, "other") - Omitted(data, "other"), Is.EqualTo(1), "EmissionModule.enabled; the fixture counts other curves of its own.");
+            // Parts with no index count their curves as before.
+            var unwritten = WithParts(avatar, parts, Node, _ => (-1, -1));
+            Assert.That(PartTargets(unwritten), Is.Empty);
+            Assert.That((Omitted(unwritten, "enabled"), Omitted(unwritten, "other")), Is.EqualTo((5, Omitted(without, "other"))));
+        }
+
+        // Through the exporter: a light the effects table writes gets the
+        // enabled targets of component light at its index there, for its own
+        // curve and, when the file has no node for the object over it, for
+        // that object's activeSelf curve; with a node the object keeps its
+        // active target.
+        [Test]
+        public void ExportWritesPartEnabledTargetsOfTheEffectsTable()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            fx.SetActive(false);
+            var clip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", clip);
+
+            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var extensions = (Dictionary<string, object>)json["extensions"];
+            Assert.That(((List<object>)((Dictionary<string, object>)extensions["VRVLOG_avatar_effects"])["lights"]).Count, Is.EqualTo(1));
+            var data = Read(json);
+            var parts = PartTargets(data).Select(p => (p.Item1, p.Item2, p.Item3)).ToArray();
+            var nodes = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            var fxNode = nodes.FindIndex(n => n.TryGetValue("name", out var name) && (string)name == "Fx");
+            var tracks = ClipOf(data, "Lamp").Tracks;
+            if (fxNode < 0)
+            {
+                Assert.That(parts, Is.EquivalentTo(new[] { ("light", 0L, 0L), ("light", 0L, 1L) }), "Fx's activeSelf and the light's own.");
+                Assert.That(tracks.Count(t => !data.Targets[t.Target].Known), Is.EqualTo(2));
+            }
+            else
+            {
+                Assert.That(parts, Is.EqualTo(new[] { ("light", 0L, 1L) }));
+                Assert.That(tracks.Any(t => data.Targets[t.Target].Property == "active" && data.Targets[t.Target].Node == fxNode), Is.True);
+            }
+            Assert.That(Omitted(data, "missingNode"), Is.EqualTo(0));
+        }
+
+        // The activeSelf curve of an object the file has no node for, removed
+        // or not, turns every part under it: one enabled target per part a
+        // table writes, resting at the object's activeSelf, separate from the
+        // part's own enabled target on the same index. An object whose parts
+        // no table writes counts its curve as before; an object the file has
+        // a node for keeps its active target only.
+        [TestCase("noNode")]
+        [TestCase("removed")]
+        [TestCase("written")]
+        public void ActiveCurvesOfObjectsWithoutANodeTurnThePartsUnderThem(string mode)
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var fx = Child(root, "Fx");
+            var lamp = Child(fx.transform, "Lamp").AddComponent<Light>();
+            var dropped = Child(fx.transform, "Dropped").AddComponent<Light>();
+            fx.SetActive(false);
+            var gone = Child(root, "Gone");
+            var goneLight = Child(gone.transform, "Lamp").AddComponent<Light>();
+            var clip = avatar.Clip("Switch", ("Fx", true), ("Gone", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+            var parts = new[] { lamp, dropped, goneLight }.Select(l => AvatarAnimatorCapture.ReadPart("light", l, root)).ToArray();
+            if (mode == "removed")
+            {
+                Object.DestroyImmediate(fx);
+                Object.DestroyImmediate(gone);
+            }
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject)
+            {
+                bool Under(GameObject parent) => parent != null && gameObject.transform.IsChildOf(parent.transform);
+                if (Under(gone) || Under(fx) && !(mode == "written" && gameObject == fx)) return -1;
+                return nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            }
+            (int, int) Part(Component component) => ReferenceEquals(component, lamp) ? (5, -1) : (-1, -1);
+
+            var data = WithParts(avatar, parts, Node, Part);
+            var tracks = ClipOf(data, "Switch").Tracks;
+            if (mode == "written")
+            {
+                Assert.That(PartTargets(data), Is.EqualTo(new[] { ("light", 5L, 1L, -1L) }), "Only its own enabled curve.");
+                Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active" && data.Targets[t.Target].Node == nodes[fx]), Is.EqualTo(1));
+                Assert.That(Omitted(data, "missingNode"), Is.EqualTo(1), "Gone.");
+                return;
+            }
+            Assert.That(PartTargets(data), Is.EquivalentTo(new[] { ("light", 5L, 0L, -1L), ("light", 5L, 1L, -1L) }));
+            var turns = tracks.Where(t => !data.Targets[t.Target].Known).Select(t => (Convert.ToInt64(data.Targets[t.Target].Fields["rest"]), t.Curves.Single().Keys.First().Value));
+            Assert.That(turns, Is.EquivalentTo(new[] { (0L, 1d), (1L, 0d) }), "The activeSelf curve and the light's own.");
+            Assert.That(Omitted(data, "missingNode"), Is.EqualTo(1), "Gone: no table writes its light.");
+
+            var without = WithParts(avatar, null, Node, null);
+            Assert.That(PartTargets(without), Is.Empty);
+            Assert.That(Omitted(without, "missingNode"), Is.EqualTo(2));
+        }
+
+        // Unity binds a path to the first child of each name, so a curve on a
+        // path two siblings share turns the parts of the first one only.
+        [Test]
+        public void CurvesOnASharedPathTurnTheFirstSiblingsParts()
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var first = Child(root, "Fx");
+            var second = Child(root, "Fx");
+            var lights = new[] { first, second }.Select(fx => Child(fx.transform, "Lamp").AddComponent<Light>()).ToArray();
+            var clip = avatar.Clip("Switch", ("Fx", false));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+            var parts = lights.Select(l => AvatarAnimatorCapture.ReadPart("light", l, root)).ToArray();
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) =>
+                gameObject.transform.IsChildOf(first.transform) || gameObject.transform.IsChildOf(second.transform) ? -1
+                    : nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            (int, int) Part(Component component) => (Array.IndexOf(lights, component), -1);
+
+            var data = WithParts(avatar, parts, Node, Part);
+            Assert.That(PartTargets(data).Select(p => p.Item2), Is.EqualTo(new[] { 0L, 0L }), "Fx's activeSelf and Fx/Lamp's own, on the first light.");
+
+            // With the first light left out, the curves turn none.
+            var left = WithParts(avatar, parts, Node, c => ReferenceEquals(c, lights[0]) ? (-1, -1) : (1, -1));
+            Assert.That(PartTargets(left), Is.Empty);
+        }
+
+        // The copies of a curve for each part take the clip's keys left: one
+        // that would go over MaximumKeysPerClip is not written and counts as
+        // enabled, and the file still reads.
+        [Test]
+        public void PartTracksStayWithinTheKeysOfAClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var fx = Child(root, "Fx");
+            var lights = Enumerable.Range(0, 3).Select(i => Child(fx.transform, "Lamp" + i).AddComponent<Light>()).ToArray();
+            var clip = avatar.Clip("Switch");
+            var keys = Enumerable.Range(0, 6000).Select(i => new Keyframe(i / 60f, i % 2, float.PositiveInfinity, float.PositiveInfinity)).ToArray();
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx", typeof(GameObject), "m_IsActive"), new AnimationCurve(keys));
+            AddLayer(avatar, "Switch", clip);
+            var parts = lights.Select(l => AvatarAnimatorCapture.ReadPart("light", l, root)).ToArray();
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) =>
+                gameObject.transform.IsChildOf(fx.transform) ? -1 : nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+
+            var data = WithParts(avatar, parts, Node, c => (Array.IndexOf(lights, c), -1));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            var copies = tracks.Count(t => !data.Targets[t.Target].Known);
+            var length = tracks.First(t => !data.Targets[t.Target].Known).Curves.Single().Keys.Count;
+            Assume.That(length * 3, Is.GreaterThan(AvatarAnimatorData.MaximumKeysPerClip), "The curve keeps its keys.");
+            Assert.That(tracks.Sum(t => t.Curves.Sum(c => c.Keys.Count)), Is.LessThanOrEqualTo(AvatarAnimatorData.MaximumKeysPerClip));
+            Assert.That(copies, Is.EqualTo(AvatarAnimatorData.MaximumKeysPerClip / length));
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(3 - copies));
+        }
+
         static EditorCurveBinding Moves(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
 
         // Local position, scale and rotation curves are translation, scale

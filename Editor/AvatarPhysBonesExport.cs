@@ -21,11 +21,17 @@ namespace VRVlog.LilToonExporter
         {
             internal Transform Root;
             internal AvatarPhysBonesData.PhysBone Values;
+            // The component on the copy, which FX's enabled targets of component physBone name.
+            internal Component Source;
         }
 
         readonly List<Entry> entries = new List<Entry>();
 
         internal int Count => entries.Count;
+        // Each PhysBone's index and node as the last Resolve wrote it.
+        readonly Dictionary<int, (int Index, int Node)> tableIndex = new Dictionary<int, (int, int)>();
+        internal (int Index, int Node) IndexOf(Component component) =>
+            component is object && tableIndex.TryGetValue(component.GetInstanceID(), out var at) ? at : (-1, -1);
 
         // Null when the copy has no PhysBone. VRChat removes objects tagged
         // EditorOnly at upload, so their PhysBones are not read.
@@ -41,7 +47,7 @@ namespace VRVlog.LilToonExporter
                 if (root == null) root = component.transform;
                 capture.entries.Add(new Entry
                 {
-                    Root = root,
+                    Root = root, Source = component,
                     Values = new AvatarPhysBonesData.PhysBone
                     {
                         Parameter = Member(component, "parameter") as string ?? "",
@@ -82,10 +88,12 @@ namespace VRVlog.LilToonExporter
         internal AvatarPhysBonesData Resolve(Func<GameObject, int> node)
         {
             var data = new AvatarPhysBonesData();
+            tableIndex.Clear();
             foreach (var entry in entries)
             {
                 var index = entry.Root == null ? -1 : node(entry.Root.gameObject);
                 if (index < 0) continue;
+                if (entry.Source is object) tableIndex[entry.Source.GetInstanceID()] = (data.PhysBones.Count, index);
                 var values = entry.Values;
                 data.PhysBones.Add(new AvatarPhysBonesData.PhysBone
                 {

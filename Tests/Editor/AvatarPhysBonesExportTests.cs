@@ -107,6 +107,11 @@ namespace VRVlog.LilToonExporter.Tests
                 // The disabled Ear is builtin; Skirt, whose root has no node, is not.
                 Assert.That(AvatarPhysBonesExport.ParameterNames(data), Is.EquivalentTo(
                     AvatarPhysBonesData.ParameterNames("Tail").Concat(AvatarPhysBonesData.ParameterNames("Ear"))));
+                // FX's enabled targets of component physBone name an entry by its index (#3667).
+                Assert.That(capture.IndexOf(tailBone), Is.EqualTo((0, 4)));
+                Assert.That(capture.IndexOf(earBone), Is.EqualTo((1, 7)));
+                Assert.That(capture.IndexOf(skirtBone), Is.EqualTo((-1, -1)), "Left out with its root.");
+                Assert.That(AvatarAnimatorCapture.PhysBoneParts(root).Select(p => p.Source), Is.EqualTo(new[] { tailBone, earBone, skirtBone, editorOnly.GetComponent(type) }));
                 Assert.That(AvatarPhysBonesExport.ParameterNames(null), Is.Empty);
                 Assert.That(capture.Resolve(_ => -1), Is.Null, "No root written, no table.");
             }

@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter
     // Menu and Expression Parameters, written as they are for the app to play.
     // Only reads: the copy, its assets and its Animator are left as they are.
     // Curves are kept for activeSelf only; the others are counted by kind.
-    internal sealed class AvatarAnimatorCapture
+    internal sealed partial class AvatarAnimatorCapture
     {
         // Why the stage was left out, listed after the stage's name.
         internal const string TooLargeReason = "データが上限の{0}MBを超えています。";
@@ -300,8 +300,10 @@ namespace VRVlog.LilToonExporter
 
         // enabledRest gives renderers whose enabled the export's own steps
         // changed the value they had (ObjectToggleCapture.CopiedEnablementRest).
+        // parts are those the effects, contacts and PhysBones tables may write
+        // (AvatarAnimatorParts.cs), read before the export removed objects.
         internal static AvatarAnimatorCapture Capture(GameObject clone, IReadOnlyDictionary<GameObject, bool> rest,
-            IReadOnlyDictionary<Renderer, bool> enabledRest = null)
+            IReadOnlyDictionary<Renderer, bool> enabledRest = null, IEnumerable<Part> parts = null)
         {
             var descriptor = VrChatExpressionMenu.Descriptor(clone);
             if (descriptor == null) return null;
@@ -310,6 +312,7 @@ namespace VRVlog.LilToonExporter
             var controller = ExpressionDependencies.Controller(fx);
             var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), enabledRest ?? new Dictionary<Renderer, bool>(),
                 ExpressionDependencies.Overrides(fx)) { Controller = fx };
+            capture.ReadParts(parts);
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller, "fx"));
@@ -543,21 +546,27 @@ namespace VRVlog.LilToonExporter
         // GestureLeft. Without it they are animator, the file written before
         // the table.
         internal AvatarAnimatorData Resolve(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources = null,
-            Func<Material, int> material = null, Func<Component, int> constraint = null, ISet<string> physBones = null)
+            Func<Material, int> material = null, Func<Component, int> constraint = null, ISet<string> physBones = null, Func<Component, (int Index, int Node)> part = null)
         {
             foreach (var parameter in data.Parameters)
                 if (parameter.Origin != "expression")
                     parameter.Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.Name) || physBones != null && physBones.Contains(parameter.Name) ? "builtin" : "animator";
-            Build(node, sources, material, constraint, true);
-            if (morphBinds.Count > 0 && Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes)
-                Build(node, sources, material, constraint, false);
+            // Over the size, the parts' enabled curves go first (they count as
+            // before), then the BlendShape curves.
+            Build(node, sources, material, constraint, true, part);
+            if (partTargetCount > 0 && OverMaximumBytes())
+                Build(node, sources, material, constraint, true, part = null);
+            if (morphBinds.Count > 0 && OverMaximumBytes())
+                Build(node, sources, material, constraint, false, part);
             return data;
         }
+
+        bool OverMaximumBytes() => Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes;
 
         const int MissingMorph = -1, OmittedMorph = -2;
 
         void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, Func<Material, int> material,
-            Func<Component, int> constraint, bool writeMorphs)
+            Func<Component, int> constraint, bool writeMorphs, Func<Component, (int Index, int Node)> part = null)
         {
             data.Targets.Clear();
             morphBinds.Clear();
@@ -646,6 +655,12 @@ namespace VRVlog.LilToonExporter
             // A mask names the nodes of the objects its transform mask lets move.
             foreach (var (mask, objects) in masks)
                 mask.Nodes = objects?.Select(found => found == null ? -1 : node(found)).Where(index => index >= 0).Distinct().OrderBy(index => index).ToList();
+            // Then the parts' enabled targets (AvatarAnimatorParts.cs), last.
+            var partTargets = PartTargets(map, part);
+            var substituted = new bool[targets.Count];
+            for (var s = 0; s < partSources.Count; s++)
+                if (partSources[s].ActiveTarget >= 0 && partTargets[s] != null && partTargets[s].Count > 0) substituted[partSources[s].ActiveTarget] = true;
+            var partOmitted = new Dictionary<string, int>(StringComparer.Ordinal);
             var muscleLost = 0;
             var missing = materialMissing + slotMissing;
             var transformLost = 0;
@@ -657,7 +672,8 @@ namespace VRVlog.LilToonExporter
                 data.Clips[i].Tracks.Clear();
                 foreach (var (target, curve) in clipTracks[i])
                 {
-                    if (map[target] < 0) { missing++; continue; }
+                    // A removed object's curve that turns parts counts with them.
+                    if (map[target] < 0) { if (!substituted[target]) missing++; continue; }
                     var track = new AvatarAnimatorData.Track { Target = map[target] };
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
@@ -739,6 +755,30 @@ namespace VRVlog.LilToonExporter
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
+                // The parts' enabled curves, added after them all, take the
+                // room left: one track per part a curve turns, each with the
+                // curve's keys. A curve no part takes counts as it did before.
+                var clipKeys = data.Clips[i].Tracks.Sum(t => t.Curves.Sum(c => c.Keys.Count));
+                foreach (var (source, curve) in clipPartTracks[i])
+                {
+                    var made = partTargets[source];
+                    if (made == null) continue;
+                    if (made.Count == 0)
+                    {
+                        // An activeSelf curve of an object the copy still has was counted with the active tracks.
+                        if (partSources[source].ActiveTarget < 0) partOmitted[partSources[source].OmitKind] = (partOmitted.TryGetValue(partSources[source].OmitKind, out var n) ? n : 0) + 1;
+                        continue;
+                    }
+                    foreach (var target in made)
+                    {
+                        if (data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip ||
+                            clipKeys + curve.Keys.Count > AvatarAnimatorData.MaximumKeysPerClip) { off++; continue; }
+                        clipKeys += curve.Keys.Count;
+                        var track = new AvatarAnimatorData.Track { Target = target };
+                        track.Curves.Add(curve);
+                        data.Clips[i].Tracks.Add(track);
+                    }
+                }
             }
             // A gesture or action controller keeps what changes its own
             // transitions, which skips only it (M15); what it leaves out of
@@ -761,7 +801,8 @@ namespace VRVlog.LilToonExporter
             {
                 var count = (shared.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0) +
                             (kind == "material" ? materialLost + slotLost : 0) + (kind == "enabled" ? off : 0) + (kind == "materialSlotShader" ? slotShader : 0) +
-                            (kind == "transform" ? transformLost : 0) + (kind == "rotationMixed" ? mixed : 0) + (kind == "muscle" ? muscleLost : 0);
+                            (kind == "transform" ? transformLost : 0) + (kind == "rotationMixed" ? mixed : 0) + (kind == "muscle" ? muscleLost : 0) +
+                            (partOmitted.TryGetValue(kind, out var partCount) ? partCount : 0);
                 if (count > 0) data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = count });
             }
         }
@@ -1911,6 +1952,10 @@ namespace VRVlog.LilToonExporter
             var muscleTracks = new List<(int, ExpressionAnimationData.Curve)>();
             clipMuscleTracks.Add(muscleTracks);
             var muscleCurves = new List<(EditorCurveBinding Binding, int Muscle)>();
+            var partTracks = new List<(int, ExpressionAnimationData.Curve)>();
+            clipPartTracks.Add(partTracks);
+            var partSwitches = new List<(EditorCurveBinding Binding, string Kind)>();
+            var lostActive = new List<EditorCurveBinding>();
             var keys = 0;
             var bindings = AnimationUtility.GetCurveBindings(clip);
             var shapes = new List<EditorCurveBinding>();
@@ -1945,6 +1990,7 @@ namespace VRVlog.LilToonExporter
                     }
                     else if (Kind(binding) == "blendShape") shapes.Add(binding);
                     else if (RendererSwitch(binding)) switches.Add(binding);
+                    else if (PartSwitch(binding) is string partKind && HasPartsUnder(binding.path)) partSwitches.Add((binding, partKind));
                     else if (binding.propertyName == "m_Enabled" && AvatarConstraintsExport.IsConstraint(binding.type)) constraintSwitches.Add(binding);
                     else if (MaterialCurve(binding, out var materialOmitted) != null) floats.Add(binding);
                     else if (TransformCurve(binding) != null) transformCurves.Add(binding);
@@ -1952,10 +1998,15 @@ namespace VRVlog.LilToonExporter
                     continue;
                 }
                 var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                // An object the export removed may hold parts: read with them, last.
+                if (target == null && HasPartsUnder(binding.path)) { lostActive.Add(binding); continue; }
                 if (target == null) { Omit("missingNode"); continue; }
                 var converted = Full() ? null : Curve(clip, binding, ref keys);
                 if (converted == null) { Omit("other"); continue; }
-                tracks.Add((Target(target.gameObject), converted));
+                var activeTarget = Target(target.gameObject);
+                tracks.Add((activeTarget, converted));
+                // The same curve turns the parts under it when the file has no node for the object.
+                if (target != root.transform && HasPartsUnder(binding.path)) partTracks.Add((ActivePartSource(binding.path, activeTarget), converted));
             }
             // On an Additive layer Unity adds a parameter curve's value less its
             // value at the reference pose, which is the clip's first frame unless
@@ -2060,6 +2111,24 @@ namespace VRVlog.LilToonExporter
                     materialTracks.Count + slotTracks.Count + transformTracks.Count + muscleTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip ? null : Curve(clip, binding, ref keys);
                 if (converted == null) { Omit("muscle"); continue; }
                 muscleTracks.Add((muscle, converted));
+            }
+            // The parts' own enabled curves and the activeSelf curves of the
+            // objects the export removed come after them all and take the keys
+            // left (Build gives them the track room left). Without a part they
+            // count as before.
+            foreach (var (binding, kind) in partSwitches)
+            {
+                var source = OwnPartSource(binding, kind, Kind(binding));
+                if (source < 0) { Omit(Kind(binding)); continue; }
+                var converted = Curve(clip, binding, ref keys);
+                if (converted == null) { Omit(Kind(binding)); continue; }
+                partTracks.Add((source, converted));
+            }
+            foreach (var binding in lostActive)
+            {
+                var converted = Curve(clip, binding, ref keys);
+                if (converted == null) { Omit("missingNode"); continue; }
+                partTracks.Add((ActivePartSource(binding.path, -1), converted));
             }
             return index;
         }
