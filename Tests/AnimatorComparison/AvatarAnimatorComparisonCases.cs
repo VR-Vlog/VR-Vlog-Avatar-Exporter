@@ -25,6 +25,8 @@ namespace VRVlog.AvatarAnimator.Comparison
             public readonly AvatarAnimatorData Data = new AvatarAnimatorData();
             // Parameter values set before the first frame that starts at or after Time.
             public readonly List<(double Time, int Parameter, double Value)> Inputs = new List<(double, int, double)>();
+            // Layer weights set (Animator.SetLayerWeight) before the first frame that starts at or after Time.
+            public readonly List<(double Time, int Layer, double Weight)> LayerWeights = new List<(double, int, double)>();
             // Targets Unity plays as GameObject.activeSelf; the others are a
             // float (Transform.localPosition.x) so blends compare exactly.
             public readonly HashSet<int> ActiveTargets = new HashSet<int>();
@@ -57,18 +59,23 @@ namespace VRVlog.AvatarAnimator.Comparison
         }
 
         // The inputs to set before each frame.
-        public static List<(int Parameter, double Value)>[] Inputs(Case c, double[] steps)
+        public static List<(int Parameter, double Value)>[] Inputs(Case c, double[] steps) => PerFrame(c.Inputs, steps);
+
+        // The layer weights to set before each frame.
+        public static List<(int Layer, double Weight)>[] LayerWeights(Case c, double[] steps) => PerFrame(c.LayerWeights, steps);
+
+        static List<(int, double)>[] PerFrame(List<(double Time, int Index, double Value)> timed, double[] steps)
         {
             var result = new List<(int, double)>[steps.Length];
             var start = 0.0;
             var next = 0;
-            var ordered = c.Inputs.OrderBy(input => input.Time).ToList();
+            var ordered = timed.OrderBy(input => input.Time).ToList();
             for (var i = 0; i < steps.Length; i++)
             {
                 result[i] = new List<(int, double)>();
                 while (next < ordered.Count && ordered[next].Time <= start + 1e-9)
                 {
-                    result[i].Add((ordered[next].Parameter, ordered[next].Value));
+                    result[i].Add((ordered[next].Index, ordered[next].Value));
                     next++;
                 }
                 start += steps[i];
@@ -84,11 +91,13 @@ namespace VRVlog.AvatarAnimator.Comparison
             var evaluator = new AvatarAnimatorEvaluator(data, () => 0);
             var steps = Steps(c, timing);
             var inputs = Inputs(c, steps);
+            var weights = LayerWeights(c, steps);
             values = new double[steps.Length][];
             parameters = new double[steps.Length][];
             for (var i = 0; i < steps.Length; i++)
             {
                 foreach (var (parameter, value) in inputs[i]) evaluator.Set(parameter, value);
+                foreach (var (layer, weight) in weights[i]) evaluator.SetLayerWeight(layer, weight);
                 evaluator.Advance(steps[i]);
                 values[i] = new double[data.Targets.Count];
                 for (var t = 0; t < values[i].Length; t++)
@@ -224,6 +233,7 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return ParameterCurves();
             yield return ParameterHold();
             yield return ParameterPass();
+            yield return LayerZero();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -926,6 +936,35 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
+        // Layers whose weight drops to 0 at once after they wrote (as a 0 s
+        // Layer Control does), one at a time and then together, over a ramp:
+        // a Write Defaults motion, a motion without Write Defaults that passes
+        // the others through, and an empty state without Write Defaults
+        // holding its own values. Targets no other layer writes rest at 1.
+        static Case LayerZero()
+        {
+            var c = new Builder("layerZero", 3);
+            var go = c.Parameter("Go", "bool");
+            var shared = c.Target(0);
+            var aloneOn = c.Target(1);
+            var aloneOff = c.Target(1);
+            var held = c.Target(1);
+            var bottom = c.Layer("Bottom");
+            c.State(bottom, "A", c.Ramp(1, true, shared, 0, 2));
+            var on = c.Layer("On");
+            c.State(on, "A", c.Constant(1, true, (shared, 5), (aloneOn, 7)));
+            var off = c.Layer("Off");
+            c.State(off, "B", c.Constant(1, true, (aloneOff, 4)), writeDefaults: false);
+            var hold = c.Layer("Hold");
+            var full = c.State(hold, "C", c.Constant(1, true, (held, 6), (shared, -3)), writeDefaults: false);
+            var empty = c.State(hold, "Empty", -1, writeDefaults: false);
+            hold.States[full].Transitions.Add(To(empty).When(go, "if"));
+            c.Input(.2, go, 1);
+            c.Weight(.5, 1, 0).Weight(.9, 2, 0).Weight(1.3, 3, 0);
+            foreach (var layer in new[] { 1, 2, 3 }) c.Weight(1.7, layer, 1).Weight(2.1, layer, .5).Weight(2.5, layer, 0);
+            return c.Case;
+        }
+
         static AvatarAnimatorData.Transition To(int state, double duration = 0, bool exitTime = false, double at = 0, bool fixedDuration = true) =>
             new AvatarAnimatorData.Transition { ToState = state, Timed = true, Duration = duration, HasFixedDuration = fixedDuration, HasExitTime = exitTime, ExitTime = at };
 
@@ -944,6 +983,8 @@ namespace VRVlog.AvatarAnimator.Comparison
             internal Builder(string name, double seconds) { Case = new Case { Name = name, Seconds = seconds }; }
 
             internal Builder Input(double time, int parameter, double value) { Case.Inputs.Add((time, parameter, value)); return this; }
+
+            internal Builder Weight(double time, int layer, double weight) { Case.LayerWeights.Add((time, layer, weight)); return this; }
 
             internal int Parameter(string name, string type, double value = 0)
             {
