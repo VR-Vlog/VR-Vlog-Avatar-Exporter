@@ -1018,21 +1018,30 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // In a real export a materialFloat target names a material of the
-        // file's glTF materials table, and Inject takes no other.
+        // file's glTF materials table, and Inject takes no other. The export
+        // swaps the lilToon material for a fallback; a property only lilToon
+        // has is still written, with the lilToon value as rest.
         [Test]
         public void AnExportedMaterialFloatTargetNamesAGltfMaterial()
         {
             using var avatar = new AnimatorAvatar();
+            var lilToon = avatar.Source.transform.Find("Glasses").GetComponent<MeshRenderer>().sharedMaterial;
+            Assume.That(lilToon.HasFloat("_AlphaMaskValue"), Is.True, "lilToon has _AlphaMaskValue.");
+            lilToon.SetFloat("_AlphaMaskValue", .375f);
             var clip = avatar.Clip("Glasses fade");
             AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(MeshRenderer), "material._AlphaMaskValue"), AnimationCurve.Constant(0, 1f / 60, .5f));
             AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Glasses fade", clip);
             var exported = avatar.Export(new List<string>(), null);
             var json = GlbDocument.Read(exported).Json;
             var data = Read(json);
             var materials = (List<object>)json["materials"];
-            var target = data.Targets.Single(t => t.Property == "materialFloat");
+            var mask = data.Targets.Single(t => t.Property == "materialFloat" && t.Name == "_AlphaMaskValue");
+            Assert.That(mask.Rest, Is.EqualTo(.375).Within(1e-6));
+            var target = data.Targets.Single(t => t.Property == "materialFloat" && t.Name == "_Cutoff");
             Assert.That(target.Material, Is.LessThan(materials.Count));
+            Assert.That(mask.Material, Is.EqualTo(target.Material));
             var glasses = data.Targets.Single(t => t.Property == "enabled");
             var meshIndex = (long)((Dictionary<string, object>)((List<object>)json["nodes"])[glasses.Node])["mesh"];
             var primitives = (List<object>)((Dictionary<string, object>)((List<object>)json["meshes"])[(int)meshIndex])["primitives"];
@@ -1040,6 +1049,49 @@ namespace VRVlog.LilToonExporter.Tests
 
             target.Material = materials.Count;
             Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("material"));
+        }
+
+        // A material float curve moves each slot of the renderer: a target per
+        // material. Whether a slot has the property and its rest come from the
+        // material read with the curve, though the slot later holds another
+        // (the export's fallback), whose index is written. A renderer that is
+        // off when the file is written is no mesh there: its enabled curves
+        // are counted as enabled.
+        [Test]
+        public void EachSlotIsATargetReadFromTheMaterialBeforeTheSwap()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").GetComponent<MeshRenderer>();
+            var fixture = glasses.sharedMaterial;
+            var first = new Material(fixture) { name = "First" };
+            var second = new Material(fixture) { name = "Second" };
+            first.SetFloat("_Cutoff", .125f);
+            second.SetFloat("_Cutoff", .625f);
+            glasses.sharedMaterials = new[] { first, second };
+            var clip = avatar.Clip("Fade");
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Fade", clip);
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var fallbacks = new[] { new Material(Shader.Find("Unlit/Color")) { name = "First fallback" }, new Material(Shader.Find("Unlit/Color")) { name = "Second fallback" } };
+            try
+            {
+                Assume.That(fallbacks[0].HasFloat("_Cutoff"), Is.False);
+                glasses.sharedMaterials = fallbacks;
+                glasses.enabled = false;
+                var nodes = new Dictionary<GameObject, int>();
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count,
+                    null, material => Array.IndexOf(fallbacks, material))));
+                var targets = data.Targets.Where(t => t.Property == "materialFloat").ToList();
+                Assert.That(targets.Select(t => (t.Material, t.Name, t.Rest)), Is.EqualTo(new[] { (0, "_Cutoff", .125), (1, "_Cutoff", .625) }));
+                Assert.That(ClipOf(data, "Fade").Tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "materialFloat" }));
+                Assert.That(data.Targets.Any(t => t.Property == "enabled"), Is.False);
+                Assert.That(Omitted(data, "enabled"), Is.EqualTo(1));
+            }
+            finally
+            {
+                foreach (var material in fallbacks.Concat(new[] { first, second })) UnityEngine.Object.DestroyImmediate(material);
+            }
         }
 
         // Unity never reads the first key's in-tangent or the last key's

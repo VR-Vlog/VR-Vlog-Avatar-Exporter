@@ -15,12 +15,15 @@ FXのクリップには、メッシュのレンダラーの`m_Enabled`と、マ�
 - `materialFloat`: キーは`property`・`material`（glTFの`materials`の番号）・`name`（シェーダーのプロパティ名）・`rest`。ノードを持たない。重複は(`material`, `name`)で見る
 - `component`が文字列で`renderer`以外の`enabled`は、4-1で足した「知らない種類の対象」として読む。`component`が無い・文字列でない`enabled`は壊れたものとして拡張ごと断る
 - `rest`は書き出す前のアバターが持つ値（レンダラーの`enabled`、マテリアルの値）
+- 書き出しはlilToonのマテリアルをMToonの代わりのマテリアルに差し替えてからglTFにする。マテリアルがそのfloatを持つかと`rest`は、曲線を読んだとき（差し替えの前）のスロットのマテリアルで見て、番号だけを書き出しのときにそのスロットにあるマテリアルから引く。代わりのマテリアルで見ると、lilToonにしかないプロパティ（`_AlphaMaskValue`など）がすべて落ち、`rest`も代わりのマテリアルの値になる
+- ファイルを書くときに無効なレンダラーや、非アクティブなオブジェクトの下のレンダラーは、glTFのメッシュにならない（UniVRMの`ModelExporter`）。その`enabled`の対象は書かず、曲線を`enabled`に数える
 - Unityはレンダラーの`material.X`の曲線を、そのレンダラーのすべてのマテリアルに当てる（MaterialPropertyBlock）。そこで1本の曲線を、レンダラーが描くマテリアルのうち、ファイルに書かれていてそのfloatを持つものの対象ごとのトラックに展開する。マテリアルを共有するレンダラーは対象も共有する
 - マテリアルの番号は、書き出しの`afterExport`で`model.Materials`（glTFの`materials`と同じ順）の位置から引く。`Resolve`にマテリアルを渡さないときは、`material`として数える
 - 1つのクリップの中で、2本目以降の曲線が同じ対象に当たったら、その曲線は捨てて`material`に数える（例: 同じマテリアルを使う2つのレンダラーを同じクリップが動かす）
 - 加算レイヤーのクリップが動かす`materialFloat`の対象は、基準のポーズを持たないので、その対象のトラックごと捨てて`material`に数える（BlendShapeと同じ扱い）
 - 色・ベクトルの1チャンネル（`material._Color.r`）は今までどおり`material`に数える。パーティクル・トレイル・ラインのレンダラーの`m_Enabled`は、glTFのメッシュにならないので今までどおり`enabled`に数える
 - クリップのトラックの枠は、`activeSelf`→パラメーター→BlendShape→`enabled`→マテリアルの順に配る。新しい種類は表の末尾に置き、今までの種類の番号と順を変えない
+- 1本のマテリアルの曲線は、読むときはトラックの枠を1つと数える。展開したトラックでクリップのトラックが4096を超えるときは、その曲線をトラックごと捨てて`material`に数える
 - `Inject`は、`materialFloat`の`material`がglTFの`materials`の数以上なら断る
 - 突き合わせ（`AvatarAnimatorCrossCheck`）は、`enabled`をレンダラーの`enabled`と、`materialFloat`をレンダラーのMaterialPropertyBlockの値（無ければマテリアルの値）と比べる。floatの許容差は大きさあたり`1e-4`
 
@@ -41,5 +44,6 @@ FXのクリップには、メッシュのレンダラーの`m_Enabled`と、マ�
 
 ## 残したこと
 
-- 書き出しのときに無効なレンダラーは、glTFのメッシュにならない。FXがそれを有効にしても、アプリでは出せない（`enabled`の対象は書くが、ノードにメッシュが無い）
+- 書き出しのときに無効なレンダラーは、glTFのメッシュにならない。FXがそれを有効にしても、アプリでは出せない（`enabled`に数える）。オブジェクトのトグルと同じく書き出す前にオンにして`rest` 0で隠す形は、メッシュが増えて今の出力が変わるので、この単位では入れない
+- 共有マテリアルの対象は、突き合わせで最初のレンダラーだけを見る
 - プロパティ名の検査・`materialProperty`・`materialSwitch`は単位4-4、`materialSlot`は4-5
