@@ -200,11 +200,20 @@ namespace VRVlog.AvatarAnimator
         // target reaches at 1, so a weight v shows the glTF weight
         // (v - Baked) / (End - Baked). A parameter target is FX parameter
         // Parameter, which belongs to no node (Node is -1).
+        // A target of a property this reader does not know (Known is false)
+        // is read without looking at its keys: a newer exporter may write
+        // kinds a reader takes later. Clips may move it and an evaluator
+        // gives it values, but a player writes it nowhere. Its Node is -1,
+        // its Rest the "rest" key when that is a number and 0 otherwise, and
+        // Fields its keys as read, which Write writes back unchanged (a
+        // target made with no Fields is written as its property and rest).
         public sealed class Target
         {
             public int Node; public string Property = "active"; public double Rest;
             public int Morph; public double Baked, End;
             public int Parameter;
+            public Dictionary<string, object> Fields;
+            public bool Known => Array.IndexOf(Properties, Property) >= 0;
         }
 
         public sealed class Omission { public string Kind; public int Count; }
@@ -263,7 +272,8 @@ namespace VRVlog.AvatarAnimator
         }
 
         static Dictionary<string, object> WriteTarget(Target t) =>
-            t.Property == "morph" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
+            !t.Known ? (t.Fields != null ? new Dictionary<string, object>(t.Fields) : new Dictionary<string, object> { ["property"] = t.Property, ["rest"] = t.Rest })
+            : t.Property == "morph" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
             : t.Property == "parameter" ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
@@ -597,7 +607,17 @@ namespace VRVlog.AvatarAnimator
             foreach (var raw in targets)
             {
                 var t = Json.Obj(raw);
-                var target = new Target { Property = Choice(Get(t, "property"), Properties) };
+                var target = new Target { Property = Name(Get(t, "property")) };
+                if (!target.Known)
+                {
+                    // Another kind, kept for a reader that knows it.
+                    if (target.Property.Length == 0) throw Json.Bad();
+                    target.Node = -1;
+                    target.Rest = IsNumber(Get(t, "rest")) ? Json.Number(t["rest"]) : 0;
+                    target.Fields = new Dictionary<string, object>(t);
+                    data.Targets.Add(target);
+                    continue;
+                }
                 if (target.Property == "morph")
                 {
                     Json.Obj(t, "node", "property", "morph", "rest", "baked", "end");
@@ -879,6 +899,7 @@ namespace VRVlog.AvatarAnimator
             return true;
         }
 
+        static bool IsNumber(object value) => (value is double || value is float || value is long || value is int) && !double.IsNaN(Convert.ToDouble(value)) && !double.IsInfinity(Convert.ToDouble(value));
         static bool Flag(object value) => value is bool b ? b : throw Json.Bad();
 
         static string Choice(object value, params string[] allowed) => value is string s && Array.IndexOf(allowed, s) >= 0 ? s : throw Json.Bad();
