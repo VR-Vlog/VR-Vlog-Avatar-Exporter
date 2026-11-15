@@ -366,7 +366,10 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 1, "behaviours", 0)["playable"] = "sitting");
             Rejects(json => At(json, "controllers", 0, "layers", 0, "states", 1, "behaviours", 0)["type"] = "playAudio");
             Rejects(json => At(json, "motions", 1)["blendType"] = "3d");
-            Rejects(json => At(json, "targets", 0)["property"] = "blendShape");
+            // Any other text is a kind a newer exporter writes (AnUnknownTargetIsReadAsOneNothingWrites).
+            Rejects(json => At(json, "targets", 0)["property"] = "");
+            Rejects(json => At(json, "targets", 0)["property"] = 1L);
+            Rejects(json => At(json, "targets", 0).Remove("property"));
             Rejects(json => At(json, "targets", 0)["rest"] = 2L);
             Rejects(json => At(json, "omitted", 0)["kind"] = "camera");
         }
@@ -662,6 +665,88 @@ namespace VRVlog.LilToonExporter.Tests
             var data = WithMorph();
             data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "morph", Morph = 2, Rest = 0, Baked = 0, End = 100 });
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
+        }
+
+        // A target of a property the reader does not know, as a newer
+        // exporter writes one, with a track of clip 0 on it.
+        static Dictionary<string, object> WithUnknown(Dictionary<string, object> target)
+        {
+            var json = Json(Sample());
+            var targets = (List<object>)json["targets"];
+            targets.Add(target);
+            var curve = At(json, "clips", 0, "tracks", 0)["curves"];
+            ((List<object>)At(json, "clips", 0)["tracks"]).Add(new Dictionary<string, object> { ["target"] = (long)(targets.Count - 1), ["curves"] = curve });
+            return json;
+        }
+
+        static Dictionary<string, object> MaterialFloat(object rest) => new Dictionary<string, object>
+        {
+            ["node"] = 3L, ["property"] = "materialFloat", ["material"] = 1L, ["name"] = "_Cutoff", ["rest"] = rest,
+            ["range"] = new List<object> { 0L, 1L }
+        };
+
+        [Test]
+        public void AnUnknownTargetIsReadAsOneNothingWrites()
+        {
+            var json = WithUnknown(MaterialFloat(.5));
+            var text = JsonDom.Serialize(json);
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            var unknown = read.Targets[3];
+            Assert.That((unknown.Known, unknown.Property, unknown.Node, unknown.Rest), Is.EqualTo((false, "materialFloat", -1, .5)));
+            Assert.That(read.Targets.Take(3).All(t => t.Known), Is.True);
+            Assert.That(read.Clips[0].Tracks.Select(t => t.Target), Is.EqualTo(new[] { 0, 1, 3 }), "A clip may move it.");
+            // Write keeps every key as read, so Write -> Read -> Write is the same text.
+            var written = JsonDom.Serialize(AvatarAnimatorData.Write(read));
+            Assert.That(written, Is.EqualTo(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(AvatarAnimatorData.Read(JsonDom.Parse(written)))), Is.EqualTo(written));
+
+            // Its keys are not looked at: a rest that is not a number reads as 0,
+            // no rest at all too, and two alike are both kept.
+            Assert.That(AvatarAnimatorData.Read(WithUnknown(MaterialFloat("half"))).Targets[3].Rest, Is.EqualTo(0));
+            Assert.That(AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["property"] = "enabled" })).Targets[3].Rest, Is.EqualTo(0));
+            var twice = WithUnknown(MaterialFloat(1L));
+            ((List<object>)twice["targets"]).Add(MaterialFloat(1L));
+            Assert.That(AvatarAnimatorData.Read(twice).Targets.Count(t => !t.Known), Is.EqualTo(2));
+
+            // One made in code, with no keys read, is written as its property and rest.
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "enabled", Node = -1, Rest = 1 });
+            var made = Json(data);
+            Assert.That(At(made, "targets", 3).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "property", "rest" }));
+            Assert.That(AvatarAnimatorData.Read(made).Targets[3].Rest, Is.EqualTo(1));
+
+            // A known kind still has to carry its own keys.
+            Rejects(changed => At(changed, "targets", 0)["material"] = 1L);
+        }
+
+        // An evaluator gives an unknown target values like any other: rest
+        // before a layer runs, then what the clip holds.
+        [Test]
+        public void AnEvaluatorMovesAnUnknownTarget()
+        {
+            var data = new AvatarAnimatorData();
+            var controller = new AvatarAnimatorData.Controller();
+            var layer = new AvatarAnimatorData.Layer { Name = "Base", Weight = 1, Blending = "override" };
+            layer.Machines.Add(new AvatarAnimatorData.Machine { Name = "Base", DefaultState = 0 });
+            layer.States.Add(new AvatarAnimatorData.State { Name = "Hold", Machine = 0, Motion = 0 });
+            controller.Layers.Add(layer);
+            data.Controllers.Add(controller);
+            data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = 0 });
+            var clip = new AvatarAnimatorData.Clip { Name = "Hold", Duration = 1, Loop = true };
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = .75, InTangent = 0, OutTangent = 0 });
+            var track = new AvatarAnimatorData.Track { Target = 0 };
+            track.Curves.Add(curve);
+            clip.Tracks.Add(track);
+            data.Clips.Add(clip);
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "materialFloat", Node = -1, Rest = .5 });
+            var read = AvatarAnimatorData.Read(Json(data));
+            Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(read, () => 0);
+            Assert.That(evaluator.Values[0], Is.EqualTo(.5));
+            evaluator.Advance(0);
+            Assert.That(evaluator.Values[0], Is.EqualTo(.75).Within(1e-9));
+            Assert.That(evaluator.Written[0], Is.True);
         }
     }
 }
