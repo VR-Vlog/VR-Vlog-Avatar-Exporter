@@ -13,6 +13,7 @@
 - Trail・Lineは、パーティクルのレンダラーと同じ規則でレンダラーのシリアライズの値を、`TrailRenderer`・`LineRenderer`の下に書く。時間（`m_Time`）・幅の曲線と色のグラデーション（`m_Parameters`の`widthCurve`・`colorGradient`）・点（`m_Positions`）などが入る。ライティング・ソート・参照のフィールドは落とし、`m_Enabled`を残す
 - ワールド空間のLine（`useWorldSpace`）は、点を書き出し時の位置のまま自分の空間に直し、`m_UseWorldSpace: false`で書く。アプリはエフェクトをノードの下に置くので、ワールドの座標はアプリの中で意味を持たない。アバターが動いても点がその場に残る、という振る舞いは再現しない
 - Lightは`type`（`point`・`spot`・`directional`）・`color`（保存されている値）・`intensity`・`range`・`spotAngle`と、コンポーネントの`enabled`を書く。影・Cookie・カリングは書かない。エリアライトとBakedのライトは、アバターでは実行時に何も照らさないので書かず、数えもしない
+- `EditorOnly`タグのオブジェクト（自身か祖先）にあるエフェクトは、パーティクルも含めて読まない。VRChatはアップロードでこれを消すので、アバターの中のプレビュー用のLightなどがアプリで点いたり、上限の枠を取ったりしないようにする
 - 置き場所・姿勢・`active`・`missingNode`は、パーティクルと同じ規則（書き出されたいちばん近い祖先のノード、無ければルートの`node: -1`）にした
 - 上限: Trail・Lineは合わせて16本、Lightは2灯。階層の順に入れ、超えた分を`effectLimit`に数える。パーティクルの上限（16本・粒の合計2000）はそのまま
 - マテリアルはパーティクル・Trail・Lineで1つの表にし、同じマテリアルは1つの記録にまとめる。表の上限を16から32に上げた（パーティクル16本とTrail・Line16本が別々のマテリアルを持てるように）
@@ -40,4 +41,5 @@ ParticleSystem・TrailRenderer・LineRenderer・Light（実行時に照らすも
 
 - FXが消えたオブジェクトの`activeSelf`を動かす曲線を、`enabled`の`trail`・`line`・`light`の対象に読み替えるのは、`AvatarAnimatorCapture`の側の単位で入れる（パーティクルと同じ）
 - テクスチャのアニメーション（Texture Sheet Animation）とTrailのテクスチャの`textureMode`の再現は、アプリの7-4で決める
-- 線形（sRGBでない）として読み込まれたテクスチャをGPUで描くと、sRGBへ変換されて値が変わる。エフェクトの画像はほぼ色の画像なので扱いを分けていない
+- 線形（sRGBでない）として読み込まれたテクスチャは、読める画像ならCPUで値のまま書き、読めない画像はGPUで描くのでsRGBへ変換されて値が変わる。Read/Writeの設定で色が変わることになるが、エフェクトの画像はほぼ色の画像なので扱いを分けていない
+- GPUで縮めるときは1回のバイリニアなので、ミップマップの無い大きな画像はCPUで縮めたものより粗くなる
