@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using VRVlog.AvatarAnimator;
 using VRVlog.AvatarFormats;
 using VRVlog.ObjectToggles;
 using Object = UnityEngine.Object;
@@ -441,6 +442,114 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(nodes.Any(node => node.TryGetValue("name", out var value) && (string)value == "Dress" && node.ContainsKey("mesh")), Is.True);
             }
             finally { Object.DestroyImmediate(material); }
+        }
+
+        // AAO's Merge Skinned Mesh merges Hat (and Brim below it), a toggle
+        // target that is off by default, into Merged after the toggles turned
+        // Hat on. With copyEnablementAnimation AAO moves Hat's toggle to
+        // Merged's enabled: the toggle's lost object is not warned about, and
+        // Merged's enabled target rests off as Hat did, where VRChat's build
+        // leaves it, while Merged keeps its mesh for the FX to show. Without it
+        // the merge keeps what it did: Hat's toggle is lost with a warning and
+        // nothing turns Merged off. AAO 1.8 copies no m_IsActive for Hat alone (see
+        // ObjectToggleCapture.ReadCopiedEnablement); the warning then stays
+        // exactly when Merged gets no enabled target.
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public void AMergeThatCopiesEnablementHandsTheToggleToTheMergedRendererAtTheTargetsRest(bool copies, bool brim)
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            var mergeType = OptionalTools.Find("Anatawa12.AvatarOptimizer.MergeSkinnedMesh");
+            var initialize = mergeType?.GetMethod("Initialize", new[] { typeof(int) });
+            if (initialize == null || mergeType.GetProperty("SourceSkinnedMeshRenderers") == null)
+                Assert.Ignore("Install AAO with the supported Merge Skinned Mesh configuration API.");
+            using var avatar = new ToggleAvatar();
+            var material = new Material(shader) { name = "Toggles" };
+            var meshes = new List<Mesh>();
+            try
+            {
+                foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                // Meshes skinned to the head leave nothing on their objects once
+                // merged, so AAO removes the objects (RemoveEmptyRendererObject below).
+                var hat = avatar.Source.transform.Find("Hat").gameObject;
+                var head = avatar.Source.GetComponentsInChildren<Transform>(true).First(t => t.name == "Head" && t.parent != null && t.parent.name == "Neck");
+                var shape = hat.GetComponent<MeshFilter>().sharedMesh;
+                Object.DestroyImmediate(hat.GetComponent<MeshRenderer>());
+                Object.DestroyImmediate(hat.GetComponent<MeshFilter>());
+                SkinnedMeshRenderer Skin(GameObject holder)
+                {
+                    var mesh = Object.Instantiate(shape);
+                    meshes.Add(mesh);
+                    mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, mesh.vertexCount).ToArray();
+                    mesh.bindposes = new[] { head.worldToLocalMatrix * holder.transform.localToWorldMatrix };
+                    var skin = holder.AddComponent<SkinnedMeshRenderer>();
+                    skin.sharedMesh = mesh;
+                    skin.bones = new[] { head };
+                    skin.rootBone = head;
+                    skin.sharedMaterial = material;
+                    return skin;
+                }
+                var skins = new List<SkinnedMeshRenderer> { Skin(hat) };
+                if (brim)
+                {
+                    var holder = new GameObject("Brim");
+                    holder.transform.SetParent(hat.transform, false);
+                    // First, so AAO removes Brim before it finds Hat empty.
+                    skins.Insert(0, Skin(holder));
+                }
+                var merged = new GameObject("Merged");
+                merged.transform.SetParent(avatar.Source.transform, false);
+                merged.AddComponent<SkinnedMeshRenderer>();
+                var merge = merged.AddComponent(mergeType);
+                initialize.Invoke(merge, new object[] { 2 });
+                var sources = mergeType.GetProperty("SourceSkinnedMeshRenderers").GetValue(merge);
+                foreach (var skin in skins) sources.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) }).Invoke(sources, new object[] { skin });
+                mergeType.GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
+                using (var serialized = new SerializedObject(merge))
+                {
+                    serialized.FindProperty("copyEnablementAnimation").boolValue = copies;
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var warnings = new List<string>();
+                var json = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+
+                var nodes = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+                var mergedNode = nodes.FindIndex(node => node.TryGetValue("name", out var name) && (string)name == "Merged");
+                Assert.That(mergedNode, Is.GreaterThanOrEqualTo(0), string.Join("\n", warnings));
+                Assert.That(nodes[mergedNode].ContainsKey("mesh"), Is.True, "Merged must be written with its mesh.");
+                Assert.That(nodes.Any(node => node.TryGetValue("name", out var name) && (string)name == "Hat"), Is.False, "The merge must have removed Hat.");
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                var toggles = ObjectToggleData.Read(extensions[ObjectToggleData.Extension]);
+                Assert.That(toggles.Groups.Select(group => group.Parameter), Has.No.Member("Hat"));
+                var animator = AvatarAnimatorData.Read(extensions[AvatarAnimatorData.Extension]);
+                var enabled = animator.Targets.Where(target => target.Property == "enabled" && target.Node == mergedNode).ToList();
+                var warned = warnings.Contains(ExporterLocalization.T(ObjectToggleCapture.MissingWarning) + "Hat");
+                if (copies && !brim)
+                {
+                    Assert.That(warned, Is.EqualTo(enabled.Count == 0), string.Join("\n", warnings));
+                    return;
+                }
+                Assert.That(warned, Is.EqualTo(!copies), string.Join("\n", warnings));
+                if (!copies)
+                {
+                    Assert.That(enabled, Is.Empty);
+                    return;
+                }
+                Assert.That(enabled, Has.Count.EqualTo(1), "Merged's enabled must be a target.");
+                Assert.That(enabled[0].Component, Is.EqualTo("renderer"));
+                Assert.That(enabled[0].Rest, Is.EqualTo(0), "Merged must rest off as Hat did before the toggles.");
+                var target = animator.Targets.IndexOf(enabled[0]);
+                var values = animator.Clips.SelectMany(clip => clip.Tracks).Where(track => track.Target == target)
+                    .SelectMany(track => track.Curves).SelectMany(curve => curve.Keys).Select(key => key.Value).Distinct().OrderBy(value => value);
+                Assert.That(values, Is.EqualTo(new[] { 0.0, 1.0 }), "The FX must turn Merged off and on as it did Hat.");
+                Assert.That(avatar.Source.transform.Find("Hat").gameObject.activeSelf, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                foreach (var mesh in meshes) Object.DestroyImmediate(mesh);
+            }
         }
 
         static byte[] Export(GameObject source, ICollection<string> warnings, ExportRecoveryReport report) =>
