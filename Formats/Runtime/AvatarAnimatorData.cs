@@ -52,7 +52,15 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST", "materialSlot", "translation", "rotation", "scale" };
+        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST", "materialSlot", "translation", "rotation", "scale", "muscle" };
+        // The number of humanoid muscles, the indices of Unity's
+        // HumanTrait.MuscleName a muscle target names.
+        public const int MuscleCount = 95;
+        // The body parts of Unity's AvatarMaskBodyPart a layer's mask names.
+        public const int BodyPartCount = 13;
+        // The playables of the controllers, in the order they are written:
+        // the first is the FX, which the expressions name.
+        public static readonly string[] ControllerPlayables = { "fx", "gesture", "action" };
         // The components an enabled target turns on and off: a renderer of
         // the node, or a constraint of VRVLOG_avatar_constraints by index.
         public static readonly string[] Components = { "renderer", "constraint" };
@@ -65,7 +73,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] QuaternionChannels = { "x", "y", "z", "w" };
         // The order the omitted kinds are written in. A newer exporter adds
         // kinds at the end; a reader keeps those it does not know (see Read).
-        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader", "humanoidTransform", "rotationMixed" };
+        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader", "humanoidTransform", "rotationMixed", "humanoidRoot" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
@@ -106,14 +114,27 @@ namespace VRVlog.AvatarAnimator
         // state behaviours. The source is the layer that owns the machines, so
         // it is never a synced layer itself. The first layer has Weight 1 and
         // Blending override, as Unity plays it.
+        // Mask is the layer's AvatarMask, or null when it has none and moves
+        // everything.
         public sealed class Layer
         {
             public string Name, Blending = "override";
             public double Weight;
             public int SyncedLayer = -1;
             public bool SyncedLayerAffectsTiming;
+            public Mask Mask;
             public readonly List<Machine> Machines = new List<Machine>();
             public readonly List<State> States = new List<State>();
+        }
+
+        // A layer's AvatarMask: Humanoid lists the body parts it lets move
+        // (Unity's AvatarMaskBodyPart, in increasing order), and Nodes the
+        // nodes its transform mask lets move (in increasing order), or is
+        // null when the mask names no transforms and so lets every node move.
+        public sealed class Mask
+        {
+            public readonly List<int> Humanoid = new List<int>();
+            public List<int> Nodes;
         }
 
         // Entry and exit transitions are untimed; Any State transitions are timed.
@@ -236,6 +257,9 @@ namespace VRVlog.AvatarAnimator
         // (x, y or z, Unity's localEulerAnglesRaw) that a player turns into a
         // rotation with Quaternion.Euler after blending, as Unity does. The
         // rotation targets of one node are all Euler or all quaternion.
+        // A muscle target is humanoid muscle Muscle (an index of Unity's
+        // HumanTrait.MuscleName), which belongs to no node (Node is -1), its
+        // Rest the T-pose's 0.
         // A target of a property this reader does not know (Known is false),
         // or an enabled target of a component it does not know,
         // is read without looking at its keys: a newer exporter may write
@@ -255,6 +279,7 @@ namespace VRVlog.AvatarAnimator
             public int Material;
             public int Index;
             public int Slot;
+            public int Muscle;
             public bool Euler;
             public Dictionary<string, object> Fields;
             public bool Stepped => Property == "materialSlot";
@@ -326,6 +351,7 @@ namespace VRVlog.AvatarAnimator
             : t.Property == "materialFloat" ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["rest"] = t.Rest }
             : IsMaterialChannel(t.Property) ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["channel"] = t.Channel, ["rest"] = t.Rest }
             : t.Property == "materialSlot" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["slot"] = (long)t.Slot, ["rest"] = (long)t.Rest }
+            : t.Property == "muscle" ? new Dictionary<string, object> { ["property"] = t.Property, ["muscle"] = (long)t.Muscle, ["rest"] = t.Rest }
             : IsTransform(t.Property) && t.Euler ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["channel"] = t.Channel, ["euler"] = true, ["rest"] = t.Rest }
             : IsTransform(t.Property) ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["channel"] = t.Channel, ["rest"] = t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
@@ -351,19 +377,28 @@ namespace VRVlog.AvatarAnimator
             return result;
         }
 
-        static Dictionary<string, object> WriteLayer(Layer l) => new Dictionary<string, object>
+        static Dictionary<string, object> WriteLayer(Layer l)
         {
-            ["name"] = l.Name, ["weight"] = l.Weight, ["blending"] = l.Blending,
-            ["syncedLayer"] = (long)l.SyncedLayer, ["syncedLayerAffectsTiming"] = l.SyncedLayerAffectsTiming,
-            ["machines"] = l.Machines.Select(m => (object)new Dictionary<string, object>
+            var layer = new Dictionary<string, object>
+            {
+                ["name"] = l.Name, ["weight"] = l.Weight, ["blending"] = l.Blending,
+                ["syncedLayer"] = (long)l.SyncedLayer, ["syncedLayerAffectsTiming"] = l.SyncedLayerAffectsTiming
+            };
+            if (l.Mask != null)
+            {
+                var mask = new Dictionary<string, object> { ["humanoid"] = l.Mask.Humanoid.Select(i => (object)(long)i).ToList() };
+                if (l.Mask.Nodes != null) mask["nodes"] = l.Mask.Nodes.Select(i => (object)(long)i).ToList();
+                layer["mask"] = mask;
+            }
+            layer["machines"] = l.Machines.Select(m => (object)new Dictionary<string, object>
             {
                 ["name"] = m.Name, ["parent"] = (long)m.Parent, ["defaultState"] = (long)m.DefaultState,
                 ["entryTransitions"] = WriteTransitions(m.EntryTransitions),
                 ["anyStateTransitions"] = WriteTransitions(m.AnyStateTransitions),
                 ["exitTransitions"] = WriteTransitions(m.ExitTransitions),
                 ["behaviours"] = WriteBehaviours(m.Behaviours)
-            }).ToList(),
-            ["states"] = l.States.Select(s =>
+            }).ToList();
+            layer["states"] = l.States.Select(s =>
             {
                 var state = new Dictionary<string, object>
                 {
@@ -377,8 +412,9 @@ namespace VRVlog.AvatarAnimator
                 state["transitions"] = WriteTransitions(s.Transitions);
                 state["behaviours"] = WriteBehaviours(s.Behaviours);
                 return (object)state;
-            }).ToList()
-        };
+            }).ToList();
+            return layer;
+        }
 
         static List<object> WriteTransitions(List<Transition> transitions) => transitions.Select(t =>
         {
@@ -523,10 +559,15 @@ namespace VRVlog.AvatarAnimator
                 data.Menus.Add(menu);
             }
 
-            foreach (var raw in Json.Arr(root["controllers"], 0, 1))
+            // The FX first, then the gesture and the action, each at most once.
+            var playable = -1;
+            foreach (var raw in Json.Arr(root["controllers"], 0, ControllerPlayables.Length))
             {
                 var c = Json.Obj(raw, "playable", "layers");
-                var controller = new Controller { Playable = Choice(c["playable"], "fx") };
+                var controller = new Controller { Playable = Choice(c["playable"], ControllerPlayables) };
+                var next = Array.IndexOf(ControllerPlayables, controller.Playable);
+                if (playable < 0 ? next != 0 : next <= playable) throw Json.Bad();
+                playable = next;
                 var layers = Json.Arr(c["layers"], 0, 1024);
                 for (var index = 0; index < layers.Count; index++)
                     controller.Layers.Add(ReadLayer(layers[index], index, layers.Count, data.Parameters, motions.Count));
@@ -717,6 +758,13 @@ namespace VRVlog.AvatarAnimator
                     target.Slot = Json.NonNegative(t["slot"]);
                     target.Rest = SlotValue(t["rest"]);
                 }
+                else if (target.Property == "muscle")
+                {
+                    Json.Obj(t, "property", "muscle", "rest");
+                    target.Node = -1;
+                    target.Muscle = Index(t["muscle"], MuscleCount);
+                    target.Rest = Json.Number(t["rest"]);
+                }
                 else if (IsTransform(target.Property))
                 {
                     // Only a rotation is Euler, and its euler key is true.
@@ -743,10 +791,11 @@ namespace VRVlog.AvatarAnimator
                 // parameter, (node, component) for enabled, (component, index) for a
                 // constraint's enabled (an entry moves one node), (material, name) for materialFloat,
                 // (material, name, channel) for materialColor and materialTextureST,
-                // (node, slot) for materialSlot, (node, channel) for translation, rotation and scale.
+                // (node, slot) for materialSlot, (node, channel) for translation, rotation and scale,
+                // (muscle) for muscle.
                 var material = target.Property == "materialFloat" || IsMaterialChannel(target.Property);
                 var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material :
-                    target.Property == "materialSlot" ? target.Slot : target.Property == "enabled" ? target.Index : 0;
+                    target.Property == "materialSlot" ? target.Slot : target.Property == "enabled" ? target.Index : target.Property == "muscle" ? target.Muscle : 0;
                 var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "")
                     : IsTransform(target.Property) ? target.Channel : null;
                 var keyNode = target.Property == "enabled" && target.Component == "constraint" ? -1 : target.Node;
@@ -825,12 +874,30 @@ namespace VRVlog.AvatarAnimator
         static Layer ReadLayer(object raw, int layerIndex, int layerCount, List<Parameter> parameters, int motionCount)
         {
             var parameterCount = parameters.Count;
-            var l = Json.Obj(raw, "name", "weight", "blending", "syncedLayer", "syncedLayerAffectsTiming", "machines", "states");
+            var layerKeys = new List<string> { "name", "weight", "blending", "syncedLayer", "syncedLayerAffectsTiming", "machines", "states" };
+            if (raw is Dictionary<string, object> rawLayer && rawLayer.ContainsKey("mask")) layerKeys.Add("mask");
+            var l = Json.Obj(raw, layerKeys.ToArray());
             var layer = new Layer
             {
                 Name = Name(l["name"]), Weight = Json.Number(l["weight"]), Blending = Choice(l["blending"], Blendings),
                 SyncedLayer = Index(l["syncedLayer"], layerCount, true), SyncedLayerAffectsTiming = Flag(l["syncedLayerAffectsTiming"])
             };
+            if (l.ContainsKey("mask"))
+            {
+                var m = Json.Obj(l["mask"]);
+                Json.Obj(m, m.ContainsKey("nodes") ? new[] { "humanoid", "nodes" } : new[] { "humanoid" });
+                layer.Mask = new Mask();
+                foreach (var part in Json.Arr(m["humanoid"], 0, BodyPartCount)) layer.Mask.Humanoid.Add(Index(part, BodyPartCount));
+                if (m.ContainsKey("nodes"))
+                {
+                    layer.Mask.Nodes = new List<int>();
+                    foreach (var node in Json.Arr(m["nodes"], 0, 65536)) layer.Mask.Nodes.Add(Json.NonNegative(node));
+                }
+                // Each list is in increasing order, each entry once.
+                foreach (var list in new[] { layer.Mask.Humanoid, layer.Mask.Nodes ?? new List<int>() })
+                    for (var i = 1; i < list.Count; i++)
+                        if (list[i] <= list[i - 1]) throw Json.Bad();
+            }
             // A layer is not synced to itself.
             if (layer.SyncedLayer == layerIndex) throw Json.Bad();
             var machines = Json.Arr(l["machines"], 1, 4096);
