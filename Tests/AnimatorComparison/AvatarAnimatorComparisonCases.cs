@@ -90,8 +90,10 @@ namespace VRVlog.AvatarAnimator.Comparison
         }
 
         // The evaluator's values and parameters after each frame, in the
-        // shape Unity's recording has.
-        public static void Play(Case c, string timing, out double[][] values, out double[][] parameters)
+        // shape Unity's recording has. With a host pose (HostPose), a muscle
+        // is what the host shows with its pose under the controllers:
+        // Values + (host - rest) * HostShare.
+        public static void Play(Case c, string timing, out double[][] values, out double[][] parameters, double[] host = null)
         {
             var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(c.Data));
             var evaluator = new AvatarAnimatorEvaluator(data, () => 0);
@@ -107,7 +109,9 @@ namespace VRVlog.AvatarAnimator.Comparison
                 evaluator.Advance(steps[i]);
                 values[i] = new double[data.Targets.Count];
                 for (var t = 0; t < values[i].Length; t++)
-                    values[i][t] = c.ActiveTargets.Contains(t) ? (AvatarAnimatorEvaluator.Active(evaluator.Values[t]) ? 1 : 0) : evaluator.Values[t];
+                    values[i][t] = c.ActiveTargets.Contains(t) ? (AvatarAnimatorEvaluator.Active(evaluator.Values[t]) ? 1 : 0)
+                        : host != null && data.Targets[t].Property == "muscle" ? evaluator.Values[t] + (host[t] - data.Targets[t].Rest) * evaluator.HostShare[t]
+                        : evaluator.Values[t];
                 parameters[i] = new double[data.Parameters.Count];
                 for (var p = 0; p < parameters[i].Length; p++) parameters[i][p] = evaluator.Get(p);
             }
@@ -115,9 +119,9 @@ namespace VRVlog.AvatarAnimator.Comparison
 
         // Null when the evaluator plays what Unity recorded; otherwise the first
         // difference and how many values differ.
-        public static string Mismatch(Case c, string timing, double[][] unityValues, double[][] unityParameters)
+        public static string Mismatch(Case c, string timing, double[][] unityValues, double[][] unityParameters, double[] host = null)
         {
-            Play(c, timing, out var values, out var parameters);
+            Play(c, timing, out var values, out var parameters, host);
             if (values.Length != unityValues.Length) return "frame count " + values.Length + " against Unity's " + unityValues.Length;
             string first = null;
             var differences = 0;
@@ -140,6 +144,17 @@ namespace VRVlog.AvatarAnimator.Comparison
                     }
             }
             return first == null ? null : c.Name + "/" + timing + ": " + differences + " differences, first at " + first;
+        }
+
+        // A pose the host holds under the controllers, as VRChat's Base:
+        // per muscle target a value away from its rest, each muscle its own.
+        public static double[] HostPose(Case c)
+        {
+            var host = new double[c.Data.Targets.Count];
+            var k = 0;
+            for (var t = 0; t < host.Length; t++)
+                if (c.Data.Targets[t].Property == "muscle") host[t] = c.Data.Targets[t].Rest + .15 + .1 * (k++ % 3);
+            return host;
         }
 
         // A recording: the case's data, so a stale recording is found, and
@@ -245,6 +260,7 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return NodeMask();
             yield return GestureAction();
             yield return ActionMask();
+            yield return ActionOverHands();
             yield return HumanoidNodeMask();
             yield return HandsOverEmpty("handsOverEmpty", true);
             yield return HandsOverEmpty("handsOverNoMotion", false);
@@ -1133,6 +1149,35 @@ namespace VRVlog.AvatarAnimator.Comparison
             arm.States[wait].Transitions.Add(To(pose, duration: .25).When(go, "if"));
             c.State(c.Layer("Lean", .5, Mask(new[] { 1 })), "Lean", c.Constant(1, true, (spine, -.4), (rightArm, .8)));
             c.Input(.4, go, 1);
+            return c.Case;
+        }
+
+        // The Gesture moves only the left hand, as most avatars' do, so the
+        // body is left to what lies under the controllers (the host's pose
+        // in CompareOverHost). The Action's idle writes the spine; at weight
+        // 0 it leaves the host's pose, and Go blends it to 1 over 0.3 s and
+        // back to 0 over 0.25 s, writing the rest where its clips have none.
+        static Case ActionOverHands()
+        {
+            var c = new Builder("actionOverHands", 1.6);
+            var go = c.Parameter("Go", "bool");
+            var spine = c.Muscle(0);
+            var leftArm = c.Muscle(39);
+            var rightArm = c.Muscle(48);
+            var leftIndex = c.Muscle(59);
+            c.Controller("fx");
+            c.Controller("gesture");
+            var hand = c.Layer("Left Hand", mask: Mask(new[] { 7 }));
+            c.State(hand, "Point", c.Constant(1, true, (leftIndex, -.5)));
+            c.Controller("action");
+            var action = c.Layer("Action");
+            var idle = c.State(action, "Idle", c.Constant(1, true, (spine, .4)));
+            var wave = c.State(action, "Wave", c.Ramp(1, true, leftArm, .2, .8));
+            c.PlayableControl(action, idle, "action", 0, .25);
+            c.PlayableControl(action, wave, "action", 1, .3);
+            action.States[idle].Transitions.Add(To(wave, duration: .2).When(go, "if"));
+            action.States[wave].Transitions.Add(To(idle, duration: .2).When(go, "ifNot"));
+            c.Input(.3, go, 1).Input(1, go, 0);
             return c.Case;
         }
 

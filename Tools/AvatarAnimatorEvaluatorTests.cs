@@ -1306,6 +1306,7 @@ public static class AvatarAnimatorEvaluatorTests
         SameAsFxAlone(b, hat, node, "the FX plays as without that gesture");
 
         Masks();
+        HostShare();
     }
 
     // A layer's mask moves the muscles of its body parts, and an FX whose
@@ -1365,6 +1366,93 @@ public static class AvatarAnimatorEvaluatorTests
         e = nodes.Build();
         e.Advance(Frame);
         Check(e.Values[kept] == 2 && e.Values[moved] == 2, "a mask without transforms moves every node");
+    }
+
+    // HostShare: how much of what lies under every controller (the host's
+    // pose, VRChat's Base) is left in each target. The action writes every
+    // muscle of its mask, the rest where its clip has none, also at weight 0;
+    // over a host pose h, Values + (h - rest) * share keeps the host's pose
+    // there and moves from it as the action's weight rises.
+    static void HostShare()
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        var gestureWeight = b.Parameter("Half", "bool");
+        var spine = Muscle(b, 0);
+        var finger = Muscle(b, 55);
+        var arm = Muscle(b, 39);
+        var node = b.Target();
+        var control = b.Layer("Control");
+        var wait = Builder.State(control, "Wait", b.Clip(0, false, (node, 1)));
+        var play = Builder.State(control, "Play", -1);
+        var half = Builder.State(control, "Half", -1);
+        control.States[wait].Transitions.Add(To(play).When(go, "if"));
+        control.States[wait].Transitions.Add(To(half).When(gestureWeight, "if"));
+        control.States[play].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "action", GoalWeight = 1, BlendDuration = .3 });
+        control.States[half].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "gesture", GoalWeight = .5, BlendDuration = 0 });
+        Playable(b, "gesture");
+        var hands = b.Layer("Left");
+        hands.Mask = new AvatarAnimatorData.Mask();
+        hands.Mask.Humanoid.Add(7);
+        Builder.State(hands, "Point", b.Clip(0, false, (finger, .5)));
+        Playable(b, "action");
+        var body = b.Layer("Action");
+        body.Mask = new AvatarAnimatorData.Mask();
+        body.Mask.Humanoid.Add(1);
+        body.Mask.Humanoid.Add(7);
+        Builder.State(body, "Idle", b.Clip(0, false, (spine, .6)));
+        const double host = .3;
+        foreach (var skips in new[] { true, false })
+        {
+            var e = b.Build();
+            e.SkipsSettledFrames = skips;
+            Run(e, .5);
+            Check(e.PlayableWeight(2) == 0 && e.Written[spine] && e.Values[spine] == 0, "the action writes the rest of its muscles at weight 0");
+            Check(e.HostShare[spine] == 1, "and leaves the host's pose whole there");
+            Check(e.HostShare[finger] == 0 && e.Values[finger] == .5, "the gesture at weight 1 covers the host on the fingers it writes");
+            Check(!e.Written[arm] && e.HostShare[arm] == 1, "a muscle no controller writes is the host's");
+            Check(e.HostShare[node] == 0 && e.Values[node] == 1, "an FX target's share follows the FX");
+            e.Set(go, 1);
+            var last = e.Values[spine] + (host - 0) * e.HostShare[spine];
+            var steps = 0;
+            for (var i = 0; i < 30; i++)
+            {
+                e.Advance(Frame);
+                var w = e.PlayableWeight(2);
+                Near(e.HostShare[spine], 1 - w, "the host's share is what the action's weight leaves, at " + w);
+                var shown = e.Values[spine] + (host - 0) * e.HostShare[spine];
+                Near(shown, host + (.6 - host) * w, "the spine moves from the host's pose to the action's by its weight, at " + w);
+                if (Math.Abs(shown - last) > (.6 - host) * Frame / .3 + 1e-9) { Check(false, "the spine does not jump in the blend, at " + w); return; }
+                if (w > 0 && w < 1) steps++;
+                last = shown;
+                Check(e.HostShare[finger] == 0 && e.HostShare[arm] == 1, "the other muscles' shares stay through the blend");
+            }
+            Check(steps > 5 && e.PlayableWeight(2) == 1 && e.HostShare[spine] == 0 && e.Values[spine] == .6, "at weight 1 the action covers the host");
+            Run(e, .5);
+            Check(e.HostShare[spine] == 0, "and keeps it while settled");
+        }
+
+        // Controllers under a weight below 1 multiply what they leave.
+        var g = b.Build();
+        g.Set(gestureWeight, 1);
+        Run(g, .1);
+        Near(g.PlayableWeight(1), .5, "the gesture's weight");
+        Near(g.HostShare[finger], .5, "a gesture at half weight leaves half the host on its fingers");
+        Near(g.Values[finger] + (host - 0) * g.HostShare[finger], .5 * .5 + .5 * host, "and blends them over the host's pose");
+        Check(g.HostShare[spine] == 1, "under an action at weight 0");
+
+        // One controller alone: what it writes takes its weight's share.
+        var fx = new Builder();
+        var m = Muscle(fx, 3);
+        var other = Muscle(fx, 55);
+        var top = fx.Layer("FX");
+        top.Mask = new AvatarAnimatorData.Mask();
+        top.Mask.Humanoid.Add(1);
+        Builder.State(top, "Pose", fx.Clip(0, false, (m, .7)));
+        var alone = fx.Build();
+        alone.Advance(Frame);
+        Check(alone.HostShare[m] == 0 && alone.Values[m] == .7, "an FX alone at weight 1 covers the muscles it writes");
+        Check(alone.HostShare[other] == 1 && !alone.Written[other], "and leaves the host's where its mask keeps it off");
     }
 
     // M12. The recordings of the freeformCartesian case hold Unity's weights; these are the same rule by hand.
