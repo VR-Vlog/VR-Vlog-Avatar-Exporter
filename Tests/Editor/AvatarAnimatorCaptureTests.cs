@@ -1062,7 +1062,11 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo(new[] { ("muscle", MuscleIndex("Left Index 1 Stretched"), 1d) }), "The override controller's clip, and Blend is an int there.");
             var fxFist = data.Clips[data.Motions[data.Controllers[0].Layers.Single(l => l.Name == "Fist").States.Single().Motion].Clip];
             Assert.That(fxFist.Tracks.Single().Curves.Single().Keys[0].Value, Is.EqualTo(-1d), "The FX reads the clip without the Gesture's override.");
-            Assert.That(Omitted(data, "parameter"), Is.EqualTo(1), "The Gesture's Blend curve.");
+            Assert.That(Omitted(data, "parameter"), Is.EqualTo(0), "The Gesture's Blend curve is the Gesture's.");
+            Assert.That(data.Controllers[1].Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("parameter", 1) }));
+            Assert.That(data.Controllers[2].Omitted, Is.Empty);
+            Assert.That(AvatarAnimatorCapture.OmittedCurvesLine(data),
+                Does.Contain(ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("パラメーター"), 1)), "The result still counts it.");
             var gestureLeft = data.Parameters.Single(p => p.Name == "GestureLeft");
             Assert.That((gestureLeft.Type, gestureLeft.Origin), Is.EqualTo(("int", "builtin")));
             Assert.That(data.Parameters.Single(p => p.Name == "Blend").Type, Is.EqualTo("float"), "The FX declares Blend first.");
@@ -1071,6 +1075,57 @@ namespace VRVlog.LilToonExporter.Tests
             // A default Action is not read.
             avatar.Playables(("Gesture", overrides), ("Action", null), ("FX", avatar.Fx));
             Assert.That(CapturedWithMaterials(avatar, nodes).Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture" }));
+        }
+
+        // What a Gesture or an Action leaves out that changes its own
+        // transitions is written on that controller, so the evaluator skips
+        // only it and plays the FX; on the FX it stays in the data's omitted
+        // and refuses the whole. Here each reads Blend, a float, from a state
+        // option while it declares Blend an int (unreadParameter). What it
+        // leaves out of its clips (a curve of no muscle) counts with the
+        // data's omitted, as before.
+        [Test]
+        public void AGestureOrActionKeepsWhatItLeavesOutOfItsTransitions()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Wave", ("Hat", true));
+            var odd = avatar.Clip("Odd", ("Hat", true));
+            AnimationUtility.SetEditorCurve(odd, EditorCurveBinding.FloatCurve("", typeof(Animator), "NoSuchMuscle"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimatorController Reading(string name, int states)
+            {
+                var controller = avatar.Controller(name);
+                controller.AddParameter("Blend", AnimatorControllerParameterType.Int);
+                var machine = controller.layers[0].stateMachine;
+                for (var i = 0; i < states; i++)
+                {
+                    var state = machine.AddState("Speed " + i);
+                    state.motion = odd;
+                    state.speedParameterActive = true;
+                    state.speedParameter = "Blend";
+                }
+                return controller;
+            }
+            avatar.Playables(("Gesture", Reading("Gesture", 1)), ("Action", Reading("Action", 2)), ("FX", avatar.Fx));
+            AddLayer(avatar, "Wave", clip);
+
+            var data = Captured(avatar);
+            Assert.That(data.Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture", "action" }));
+            Assert.That(Omitted(data, "unreadParameter"), Is.EqualTo(0));
+            Assert.That(Omitted(data, "muscle"), Is.EqualTo(2), "The Odd clip, read once by each.");
+            Assert.That(data.Controllers.Select(c => string.Join(" ", c.Omitted.Select(o => o.Kind + ":" + o.Count))),
+                Is.EqualTo(new[] { "", "unreadParameter:1", "unreadParameter:2" }));
+            Assert.That(AvatarAnimatorEvaluator.Supports(data, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(data, () => 0);
+            Assert.That((evaluator.SkipReason(0), evaluator.SkipReason(1) != null, evaluator.SkipReason(2) != null), Is.EqualTo(((string)null, true, true)));
+
+            // The same on the FX: GestureLeft is an int there.
+            var fxState = avatar.Fx.layers.Single(l => l.name == "Wave").stateMachine.states.Single().state;
+            fxState.speedParameterActive = true;
+            fxState.speedParameter = "GestureLeft";
+            data = Captured(avatar);
+            Assert.That(Omitted(data, "unreadParameter"), Is.EqualTo(1));
+            Assert.That(data.Controllers.Select(c => c.Omitted.Count), Is.EqualTo(new[] { 0, 1, 1 }));
+            Assert.That(AvatarAnimatorEvaluator.Supports(data, out _), Is.False);
         }
 
         static int Omitted(AvatarAnimatorData data, string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
