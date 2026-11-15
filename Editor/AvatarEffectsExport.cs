@@ -7,14 +7,17 @@ using UnityEngine;
 namespace VRVlog.LilToonExporter
 {
     // The root extension VRVLOG_avatar_effects (Schema/VRVLOG_avatar_effects.1.schema.json):
-    // the avatar's ParticleSystems, which the VRM itself cannot carry, for
-    // the app to build again under the output nodes. Each system keeps the
-    // modules it can play in Unity's serialized names and values; the other
-    // modules it uses are counted, not written. Its material becomes a small
-    // unlit record (color and blend), not a lilToon record.
+    // the avatar's ParticleSystems, TrailRenderers, LineRenderers and Lights,
+    // which the VRM itself cannot carry, for the app to build again under the
+    // output nodes. Particle systems, trails and lines keep their settings in
+    // Unity's serialized names and values; a particle system's other modules
+    // in use are counted, not written. Their materials become a small unlit
+    // record (color, blend and the main texture as a PNG in the extension's
+    // own image table), not a lilToon record. A light keeps its type, color,
+    // intensity, range and spot angle; shadows are not written.
     //
-    // The export removes the objects that hold particles before the build
-    // (ExportGimmickDetection) or prunes them as empty, so a system hangs
+    // The export removes the objects that hold effects before the build
+    // (ExportGimmickDetection) or prunes them as empty, so an effect hangs
     // from the nearest ancestor that is written, with its pose relative to
     // that node, or from the avatar root (node -1) in the model space.
     // Capture reads the copy before those objects go; Rebind measures the
@@ -25,26 +28,33 @@ namespace VRVlog.LilToonExporter
     {
         internal const string Extension = "VRVLOG_avatar_effects";
         internal const int SchemaVersion = 1;
-        // Per avatar, as the app reads it: more systems or particles are left
+        // Per avatar, as the app reads it: more effects of a kind are left
         // out in hierarchy order and counted as effectLimit.
         internal const int MaximumParticleSystems = 16;
         internal const int MaximumParticles = 2000;
+        // Trails and lines together.
+        internal const int MaximumTrailsAndLines = 16;
+        internal const int MaximumLights = 2;
+        // The long side of an effect image; larger ones are scaled down.
+        internal const int MaximumTextureSize = 512;
         // ParticleSystem module properties the extension writes, in this order.
         internal static readonly string[] WrittenModules =
             { "InitialModule", "EmissionModule", "ShapeModule", "ColorModule", "SizeModule", "VelocityModule" };
         internal static readonly string[] OmittedKinds = { "particleModule", "effectLimit", "effectTexture", "missingNode" };
+        // The lists of the extension, in this order.
+        internal static readonly string[] Kinds = { "particles", "trails", "lines", "lights" };
 
-        internal const string ResultNote = "アプリに渡すパーティクルで省いたもの: {0}";
+        internal const string ResultNote = "アプリに渡すエフェクトで省いたもの: {0}";
         internal const string ModuleCount = "未対応のモジュール{0}個";
-        internal const string LimitCount = "書き出せなかったパーティクル{0}個";
+        internal const string LimitCount = "書き出せなかったエフェクト{0}個";
         internal const string TextureCount = "テクスチャ{0}枚";
 
-        // Root properties of the serialized ParticleSystem that are not part of
+        // Root properties of the serialized components that are not part of
         // the object itself.
         static readonly HashSet<string> ObjectFields = new HashSet<string>(StringComparer.Ordinal)
             { "m_ObjectHideFlags", "m_CorrespondingSourceObject", "m_PrefabInstance", "m_PrefabAsset", "m_GameObject", "m_Script", "m_Name", "m_EditorHideFlags", "m_EditorClassIdentifier" };
         // Renderer properties that are scene or lighting state the app does
-        // not take from here; the render mode and particle size settings stay.
+        // not take from here; the render mode, size, width and color settings stay.
         static readonly HashSet<string> RendererSkipped = new HashSet<string>(StringComparer.Ordinal)
         {
             "m_Enabled", "m_CastShadows", "m_ReceiveShadows", "m_DynamicOccludee", "m_StaticShadowCaster", "m_MotionVectors",
@@ -58,71 +68,119 @@ namespace VRVlog.LilToonExporter
             "m_MeshWeighting", "m_MeshWeighting1", "m_MeshWeighting2", "m_MeshWeighting3", "m_MaskInteraction", "m_SmallMeshCulling"
         };
 
-        sealed class Particle
+        sealed class Effect
         {
-            // The system's own object, then each ancestor up to the root.
+            // One of Kinds.
+            internal string Kind;
+            // The effect's own object, then each ancestor up to the root.
             internal Transform[] Ancestors;
             // Its pose against each of them (Rebind); against the root in the model space.
             internal Matrix4x4[] Offsets;
             internal Matrix4x4 World;
             internal bool Active;
-            // Modules in use that are not written.
+            // Modules in use that are not written (particle systems only).
             internal int Modules;
             internal Dictionary<string, object> Values;
+            // Index into materials; lights have none.
             internal int Material = -1;
+            internal bool HasMaterial = true;
+        }
+
+        sealed class Image
+        {
+            internal byte[] Png;
         }
 
         Transform root;
-        readonly List<Particle> particles = new List<Particle>();
+        readonly List<Effect> effects = new List<Effect>();
         readonly List<Dictionary<string, object>> materials = new List<Dictionary<string, object>>();
-        readonly List<bool> materialTextures = new List<bool>();
+        // Per material: the image index, -1 for none, -2 for a texture that could not be read.
+        readonly List<int> materialImages = new List<int>();
         readonly Dictionary<Material, int> materialIndex = new Dictionary<Material, int>();
+        readonly List<Image> images = new List<Image>();
+        readonly Dictionary<Texture, int> imageIndex = new Dictionary<Texture, int>();
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        internal int Count => particles.Count;
+        internal int Count => effects.Count;
         // The result line of the last Resolve, also when it wrote nothing; null when nothing was left out.
         internal string LeftOut { get; private set; }
 
-        // Reads the ParticleSystems under root (the export copy), skipping those
+        // Reads the effects under root (the export copy), skipping those
         // excluded (objects the user left out of the export). Null when there are none.
         internal static AvatarEffectsExport Capture(GameObject root, Func<Transform, bool> excluded = null)
         {
             if (root == null) throw new ArgumentNullException(nameof(root));
             var capture = new AvatarEffectsExport { root = root.transform };
+            bool Excluded(Component component) => excluded != null && excluded(component.transform);
+
+            var systems = 0;
             var total = 0;
             foreach (var system in root.GetComponentsInChildren<ParticleSystem>(true))
             {
-                if (excluded != null && excluded(system.transform)) continue;
+                if (Excluded(system)) continue;
                 var max = Math.Max(0, system.main.maxParticles);
-                if (capture.particles.Count >= MaximumParticleSystems || total + max > MaximumParticles)
+                if (systems >= MaximumParticleSystems || total + max > MaximumParticles)
                 {
                     capture.Omit("effectLimit");
                     continue;
                 }
+                systems++;
                 total += max;
-                capture.particles.Add(capture.Read(system, root.transform));
+                capture.effects.Add(capture.ReadParticle(system, root.transform));
+            }
+            // Trails and lines share one limit, in hierarchy order.
+            var strokes = 0;
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!(renderer is TrailRenderer) && !(renderer is LineRenderer) || Excluded(renderer)) continue;
+                if (strokes >= MaximumTrailsAndLines)
+                {
+                    capture.Omit("effectLimit");
+                    continue;
+                }
+                strokes++;
+                capture.effects.Add(capture.ReadStroke(renderer, root.transform));
+            }
+            var lights = 0;
+            foreach (var light in root.GetComponentsInChildren<Light>(true))
+            {
+                // Area lights and baked lights light nothing on an avatar at run time.
+                if (Excluded(light) || LightType(light) == null || light.lightmapBakeType == LightmapBakeType.Baked) continue;
+                if (lights >= MaximumLights)
+                {
+                    capture.Omit("effectLimit");
+                    continue;
+                }
+                lights++;
+                capture.effects.Add(capture.ReadLight(light, root.transform));
             }
             capture.Rebind();
-            return capture.particles.Count == 0 && capture.omitted.Count == 0 ? null : capture;
+            return capture.effects.Count == 0 && capture.omitted.Count == 0 ? null : capture;
         }
 
-        Particle Read(ParticleSystem system, Transform root)
+        // The build may remove the effect's object or any ancestor, and
+        // Resolve takes the nearest one written. Whether it plays is its
+        // object's state in the copy; the FX that turns it on is not read here.
+        static Effect Place(string kind, Component component, Transform root)
         {
-            // The build may remove the system's object or any ancestor, and
-            // Resolve takes the nearest one written. Whether it plays is its
-            // object's state in the copy; the FX that turns it on is not read yet.
             var ancestors = new List<Transform>();
-            for (var ancestor = system.transform; ancestor != null; ancestor = ancestor.parent)
+            for (var ancestor = component.transform; ancestor != null; ancestor = ancestor.parent)
             {
                 ancestors.Add(ancestor);
                 if (ancestor == root) break;
             }
-            var particle = new Particle
+            return new Effect
             {
+                Kind = kind,
                 Ancestors = ancestors.ToArray(),
-                World = system.transform.localToWorldMatrix,
-                Active = system.gameObject.activeInHierarchy
+                World = component.transform.localToWorldMatrix,
+                Active = component.gameObject.activeInHierarchy
             };
+        }
+
+        Effect ReadParticle(ParticleSystem system, Transform root)
+        {
+            var particle = Place("particles", system, root);
             using var serialized = new SerializedObject(system);
             var values = new Dictionary<string, object>();
             var main = new Dictionary<string, object>();
@@ -151,25 +209,79 @@ namespace VRVlog.LilToonExporter
             var renderer = system.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
-                using var serializedRenderer = new SerializedObject(renderer);
-                var rendered = new Dictionary<string, object>();
-                var field = serializedRenderer.GetIterator();
-                if (field.Next(true))
-                    do
-                    {
-                        if (ObjectFields.Contains(field.name) || RendererSkipped.Contains(field.name)) continue;
-                        if (Value(field, 0) is object value) rendered[field.name] = value;
-                    } while (field.Next(false));
-                rendered["m_Enabled"] = renderer.enabled;
-                values["ParticleSystemRenderer"] = rendered;
+                values["ParticleSystemRenderer"] = RendererValues(renderer);
                 particle.Material = AddMaterial(renderer.sharedMaterial);
             }
             particle.Values = values;
             return particle;
         }
 
-        // The approximation of a particle material: its tint and how it
-        // blends. Shared materials share one record.
+        // A trail or a line: the renderer's own settings (time, width curve,
+        // color gradient, positions and the rest) under its type name.
+        Effect ReadStroke(Renderer renderer, Transform root)
+        {
+            var stroke = Place(renderer is TrailRenderer ? "trails" : "lines", renderer, root);
+            var values = RendererValues(renderer);
+            // A line in world space keeps its points where they are in the copy:
+            // they are written in its own space, which the app places.
+            if (renderer is LineRenderer line && line.useWorldSpace)
+            {
+                var points = new Vector3[line.positionCount];
+                line.GetPositions(points);
+                values["m_Positions"] = points.Select(p => (object)Vector(renderer.transform.InverseTransformPoint(p))).ToList();
+                values["m_UseWorldSpace"] = false;
+            }
+            stroke.Values = new Dictionary<string, object> { { renderer.GetType().Name, values } };
+            stroke.Material = AddMaterial(renderer.sharedMaterial);
+            return stroke;
+        }
+
+        Effect ReadLight(Light light, Transform root)
+        {
+            var effect = Place("lights", light, root);
+            var color = light.color;
+            effect.HasMaterial = false;
+            effect.Values = new Dictionary<string, object>
+            {
+                { "enabled", light.enabled },
+                { "type", LightType(light) },
+                { "color", new List<object> { (double)color.r, (double)color.g, (double)color.b, (double)color.a } },
+                { "intensity", Number(light.intensity) },
+                { "range", Number(light.range) },
+                { "spotAngle", Number(light.spotAngle) }
+            };
+            return effect;
+        }
+
+        // The run-time light types; null for the area lights, which are baked only.
+        static string LightType(Light light)
+        {
+            switch (light.type)
+            {
+                case UnityEngine.LightType.Point: return "point";
+                case UnityEngine.LightType.Spot: return "spot";
+                case UnityEngine.LightType.Directional: return "directional";
+                default: return null;
+            }
+        }
+
+        static Dictionary<string, object> RendererValues(Renderer renderer)
+        {
+            using var serialized = new SerializedObject(renderer);
+            var values = new Dictionary<string, object>();
+            var field = serialized.GetIterator();
+            if (field.Next(true))
+                do
+                {
+                    if (ObjectFields.Contains(field.name) || RendererSkipped.Contains(field.name)) continue;
+                    if (Value(field, 0) is object value) values[field.name] = value;
+                } while (field.Next(false));
+            values["m_Enabled"] = renderer.enabled;
+            return values;
+        }
+
+        // The approximation of an effect material: its tint, how it blends
+        // and its main texture. Shared materials share one record.
         int AddMaterial(Material material)
         {
             if (material == null) return -1;
@@ -183,10 +295,50 @@ namespace VRVlog.LilToonExporter
             };
             index = materials.Count;
             materials.Add(record);
-            // The texture is not written yet: see Documentation~/decisions/2026-11-15-avatar-effects-particles.md.
-            materialTextures.Add(HasMainTexture(material));
+            materialImages.Add(MainTexture(material) is Texture texture ? AddImage(texture) : -1);
             materialIndex.Add(material, index);
             return index;
+        }
+
+        // The image index of a texture, -2 when it cannot be read.
+        int AddImage(Texture texture)
+        {
+            if (imageIndex.TryGetValue(texture, out var index)) return index;
+            byte[] png = null;
+            try { png = Png(texture); }
+            catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogWarning("VR Vlog: " + texture.name + ": " + error.Message); }
+            index = png == null ? -2 : images.Count;
+            if (png != null) images.Add(new Image { Png = png });
+            imageIndex.Add(texture, index);
+            return index;
+        }
+
+        // The texture as an sRGB PNG at most MaximumTextureSize on its long
+        // side: a readable 8-bit image from its pixels, else drawn and read
+        // back on the GPU. Null without a graphics device for the others.
+        internal static byte[] Png(Texture texture)
+        {
+            if (texture == null) throw new ArgumentNullException(nameof(texture));
+            var size = TextureResizePolicy.Size(texture.width, texture.height, MaximumTextureSize);
+            if (texture is Texture2D readable && PngWriter.Supports(readable))
+            {
+                var pixels = readable.GetPixels32();
+                if (size.Item1 == readable.width && size.Item2 == readable.height) return PngWriter.Encode(pixels, size.Item1, size.Item2);
+                var rgba = new byte[checked(pixels.Length * 4)];
+                for (var i = 0; i < pixels.Length; i++)
+                {
+                    rgba[i * 4] = pixels[i].r; rgba[i * 4 + 1] = pixels[i].g;
+                    rgba[i * 4 + 2] = pixels[i].b; rgba[i * 4 + 3] = pixels[i].a;
+                }
+                var resized = TextureResizePolicy.Resize(rgba, readable.width, readable.height, true, MaximumTextureSize);
+                var colors = new Color32[resized.Length / 4];
+                for (var i = 0; i < colors.Length; i++) colors[i] = new Color32(resized[i * 4], resized[i * 4 + 1], resized[i * 4 + 2], resized[i * 4 + 3]);
+                return PngWriter.Encode(colors, size.Item1, size.Item2);
+            }
+            if (!GpuReadback.Available) return null;
+            var baked = GpuReadback.BakeRgba32(size.Item1, size.Item2, texture.name, texture, target => Graphics.Blit(texture, target));
+            try { return PngWriter.Encode(baked); }
+            finally { UnityEngine.Object.DestroyImmediate(baked); }
         }
 
         internal static Color Tint(Material material)
@@ -219,16 +371,16 @@ namespace VRVlog.LilToonExporter
             return material.renderQueue >= (int)UnityEngine.Rendering.RenderQueue.Transparent ? "alpha" : "opaque";
         }
 
-        static bool HasMainTexture(Material material)
+        static Texture MainTexture(Material material)
         {
             foreach (var name in new[] { "_MainTex", "_BaseMap" })
-                if (material.HasProperty(name) && material.GetTexture(name) != null) return true;
-            return false;
+                if (material.HasProperty(name) && material.GetTexture(name) is Texture texture && texture != null) return texture;
+            return null;
         }
 
         void Omit(string kind) => omitted[kind] = (omitted.TryGetValue(kind, out var count) ? count : 0) + 1;
 
-        // Measures each system's pose, as captured, against the ancestors that
+        // Measures each effect's pose, as captured, against the ancestors that
         // are still there. The export calls it again once the build has moved
         // and removed objects, before the empty ones are pruned and before
         // RootScaleBake moves the root scale into the root's children; the
@@ -237,104 +389,143 @@ namespace VRVlog.LilToonExporter
         internal void Rebind()
         {
             if (root == null) return;
-            foreach (var particle in particles)
+            foreach (var effect in effects)
             {
                 // The build may move an object under another parent (a bone it
                 // merges into): from the nearest object still there, walk the
                 // parents as they are now.
                 var chain = new List<Transform>();
-                for (var ancestor = particle.Ancestors.FirstOrDefault(a => a != null); ancestor != null; ancestor = ancestor.parent)
+                for (var ancestor = effect.Ancestors.FirstOrDefault(a => a != null); ancestor != null; ancestor = ancestor.parent)
                 {
                     chain.Add(ancestor);
                     if (ancestor == root) break;
                 }
                 if (chain.Count == 0 || chain[chain.Count - 1] != root) chain.Add(root);
-                particle.Ancestors = chain.ToArray();
-                particle.Offsets = new Matrix4x4[particle.Ancestors.Length];
-                for (var i = 0; i < particle.Ancestors.Length; i++)
+                effect.Ancestors = chain.ToArray();
+                effect.Offsets = new Matrix4x4[effect.Ancestors.Length];
+                for (var i = 0; i < effect.Ancestors.Length; i++)
                 {
-                    var ancestor = particle.Ancestors[i];
+                    var ancestor = effect.Ancestors[i];
                     if (ancestor == null) continue;
-                    particle.Offsets[i] = ancestor == root
-                        ? Matrix4x4.Scale(root.localScale) * root.worldToLocalMatrix * particle.World
-                        : ancestor.worldToLocalMatrix * particle.World;
+                    effect.Offsets[i] = ancestor == root
+                        ? Matrix4x4.Scale(root.localScale) * root.worldToLocalMatrix * effect.World
+                        : ancestor.worldToLocalMatrix * effect.World;
                 }
             }
         }
 
         // The extension once the output nodes are known: node gives the output
-        // node of an object of the copy, -1 when it is not written. A system
+        // node of an object of the copy, -1 when it is not written. An effect
         // with no written ancestor hangs from the root (node -1); one whose
         // ancestors are all gone is counted as missingNode. Only the written
-        // systems count their modules and textures. Null when no system is
-        // written; LeftOut still tells what was left out.
+        // effects count their modules and textures. Null when no effect is
+        // written; LeftOut still tells what was left out. The images carry
+        // their PNG bytes until Inject places them in the binary chunk.
         internal Dictionary<string, object> Resolve(Func<GameObject, int> node)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
-            var written = new List<object>();
+            var lists = Kinds.ToDictionary(kind => kind, _ => new List<object>(), StringComparer.Ordinal);
             var counts = new Dictionary<string, int>(omitted, StringComparer.Ordinal);
             void Add(string kind, int count) { if (count > 0) counts[kind] = (counts.TryGetValue(kind, out var c) ? c : 0) + count; }
             var used = new HashSet<int>();
-            foreach (var particle in particles)
+            var written = new List<Dictionary<string, object>>();
+            foreach (var effect in effects)
             {
                 var at = -1;
                 var output = -1;
-                for (var i = 0; i < particle.Ancestors.Length && at < 0; i++)
+                for (var i = 0; i < effect.Ancestors.Length && at < 0; i++)
                 {
-                    var ancestor = particle.Ancestors[i];
+                    var ancestor = effect.Ancestors[i];
                     if (ancestor == null) continue;
                     if (ancestor == root) { at = i; output = -1; }
                     else if ((output = node(ancestor.gameObject)) >= 0) at = i;
                 }
                 if (at < 0) { Add("missingNode", 1); continue; }
-                var offset = particle.Offsets[at];
+                var offset = effect.Offsets[at];
                 var entry = new Dictionary<string, object>
                 {
                     { "node", output },
                     { "position", Vector(offset.GetColumn(3)) },
                     { "rotation", Quaternion(offset.rotation) },
                     { "scale", Vector(offset.lossyScale) },
-                    { "active", particle.Active },
-                    { "material", particle.Material }
+                    { "active", effect.Active }
                 };
-                foreach (var pair in particle.Values) entry[pair.Key] = pair.Value;
-                Add("particleModule", particle.Modules);
-                if (particle.Material >= 0) used.Add(particle.Material);
+                if (effect.HasMaterial) entry["material"] = effect.Material;
+                foreach (var pair in effect.Values) entry[pair.Key] = pair.Value;
+                Add("particleModule", effect.Modules);
+                if (effect.Material >= 0) used.Add(effect.Material);
+                lists[effect.Kind].Add(entry);
                 written.Add(entry);
             }
-            // Materials only the left-out systems used are dropped and the rest renumbered.
+            // Materials and images only the left-out effects used are dropped and the rest renumbered.
             var renumber = new Dictionary<int, int>();
+            var keptImages = new Dictionary<int, int>();
             var kept = new List<object>();
-            foreach (var index in used.OrderBy(i => i)) { renumber[index] = kept.Count; kept.Add(materials[index]); }
-            foreach (Dictionary<string, object> entry in written)
-                if ((int)entry["material"] >= 0) entry["material"] = renumber[(int)entry["material"]];
-            Add("effectTexture", used.Count(i => materialTextures[i]));
+            var imageList = new List<object>();
+            foreach (var index in used.OrderBy(i => i))
+            {
+                renumber[index] = kept.Count;
+                var record = new Dictionary<string, object>(materials[index]);
+                var image = materialImages[index];
+                if (image >= 0)
+                {
+                    if (!keptImages.TryGetValue(image, out var keptImage))
+                    {
+                        keptImages[image] = keptImage = imageList.Count;
+                        imageList.Add(new Dictionary<string, object> { { "mimeType", "image/png" }, { "bytes", images[image].Png } });
+                    }
+                    record["texture"] = keptImage;
+                }
+                kept.Add(record);
+            }
+            foreach (var entry in written)
+                if (entry.TryGetValue("material", out var material) && (int)material >= 0) entry["material"] = renumber[(int)material];
+            Add("effectTexture", used.Count(i => materialImages[i] == -2));
             var omissions = OmittedKinds.Where(kind => counts.ContainsKey(kind))
                 .Select(kind => (object)new Dictionary<string, object> { { "kind", kind }, { "count", counts[kind] } }).ToList();
-            var extension = new Dictionary<string, object>
-            {
-                { "schemaVersion", SchemaVersion },
-                { "particles", written },
-                { "materials", kept },
-                { "omitted", omissions }
-            };
+            var extension = new Dictionary<string, object> { { "schemaVersion", SchemaVersion } };
+            foreach (var kind in Kinds) extension[kind] = lists[kind];
+            extension["materials"] = kept;
+            extension["images"] = imageList;
+            extension["omitted"] = omissions;
             LeftOut = ResultLine(extension);
             return written.Count == 0 ? null : extension;
         }
 
-        // Adds the extension to the root of the finished GLB. Null keeps the bytes.
+        // Adds the extension to the root of the finished GLB, its images
+        // appended to the binary chunk as bufferViews. Null keeps the bytes.
+        // The extension given is not changed.
         internal static byte[] Inject(byte[] bytes, Dictionary<string, object> extension)
         {
             if (extension == null) return bytes;
             var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list.Count : 0;
-            var count = ((List<object>)extension["materials"]).Count;
-            foreach (Dictionary<string, object> particle in (List<object>)extension["particles"])
+            var materialCount = ((List<object>)extension["materials"]).Count;
+            var sourceImages = ((List<object>)extension["images"]).Cast<Dictionary<string, object>>().ToArray();
+            foreach (var kind in Kinds)
+                foreach (Dictionary<string, object> effect in (List<object>)extension[kind])
+                {
+                    if ((int)effect["node"] < -1 || (int)effect["node"] >= nodes) throw new InvalidOperationException("Avatar effects node is out of range.");
+                    if (effect.TryGetValue("material", out var material) && (int)material >= materialCount) throw new InvalidOperationException("Avatar effects material is out of range.");
+                }
+            foreach (Dictionary<string, object> material in (List<object>)extension["materials"])
+                if (material.TryGetValue("texture", out var texture) && (int)texture >= sourceImages.Length) throw new InvalidOperationException("Avatar effects texture is out of range.");
+            var written = new Dictionary<string, object>(extension);
+            var imageList = new List<object>();
+            if (sourceImages.Length > 0)
             {
-                if ((int)particle["node"] < -1 || (int)particle["node"] >= nodes) throw new InvalidOperationException("Avatar effects node is out of range.");
-                if ((int)particle["material"] >= count) throw new InvalidOperationException("Avatar effects material is out of range.");
+                if (!document.Json.TryGetValue("bufferViews", out var rawViews)) document.Json["bufferViews"] = rawViews = new List<object>();
+                var views = (List<object>)rawViews;
+                var payloads = sourceImages.Select(image => (byte[])image["bytes"]).ToArray();
+                var offsets = document.AppendBinaryBatch(payloads);
+                for (var i = 0; i < payloads.Length; i++)
+                {
+                    imageList.Add(new Dictionary<string, object> { { "bufferView", views.Count }, { "mimeType", sourceImages[i]["mimeType"] } });
+                    views.Add(new Dictionary<string, object> { { "buffer", 0 }, { "byteOffset", offsets[i] }, { "byteLength", payloads[i].Length } });
+                }
             }
-            document.PlaceExtension(Extension, extension);
+            written["images"] = imageList;
+            document.PlaceExtension(Extension, written);
             return document.Write();
         }
 
@@ -350,6 +541,7 @@ namespace VRVlog.LilToonExporter
             if (Of("effectTexture") is var textures && textures > 0) parts.Add(ExporterLocalization.Format(TextureCount, textures));
             return parts.Count == 0 ? null : ExporterLocalization.Format(ResultNote, string.Join(ExporterLocalization.T("、"), parts));
         }
+
 
         static List<object> Vector(Vector3 v) => new List<object> { Number(v.x), Number(v.y), Number(v.z) };
         static List<object> Quaternion(Quaternion q) => new List<object> { Number(q.x), Number(q.y), Number(q.z), Number(q.w) };
