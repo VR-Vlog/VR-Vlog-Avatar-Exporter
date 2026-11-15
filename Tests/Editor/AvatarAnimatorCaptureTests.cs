@@ -104,10 +104,9 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, fx);
             shown.motion = clip;
             var go = drive.AddTransition(shown);
-            // Transitions see a driver's change from the next frame (M8); the
-            // exit time keeps the transition after the value is set.
-            go.hasExitTime = true;
-            go.exitTime = .26f;
+            // No exit time: the transition waits only for Shown, which it sees
+            // from the frame after the driver sets it (M8), as in Unity.
+            go.hasExitTime = false;
             go.duration = 0;
             go.AddCondition(AnimatorConditionMode.If, 0, "Shown");
             var control = shown.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl"));
@@ -967,6 +966,45 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Omitted(before, "material"), Is.EqualTo(2));
             Assert.That(before.Targets.Any(t => t.Property == "materialFloat"), Is.False);
             Assert.That(before.Targets.Count(t => t.Property == "enabled"), Is.EqualTo(1));
+        }
+
+        // A constraint enabled curve is an enabled target of component
+        // constraint on the node the constraint moves, with index its
+        // VRVLOG_avatar_constraints entry, after the material targets in the
+        // clip. A reader that does not know the component keeps it unwritten.
+        // A constraint the extension does not write keeps its curve counted.
+        [Test]
+        public void ConstraintEnabledCurvesBindToTheirExtensionEntry()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var constraint = glasses.AddComponent<UnityEngine.Animations.ScaleConstraint>();
+            var clip = avatar.Clip("Switch");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(UnityEngine.Animations.ScaleConstraint), "m_Enabled"),
+                AnimationCurve.Constant(0, 1f / 60, 0));
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(UnityEngine.Animations.RotationConstraint), "m_Enabled"),
+                AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(Node, null, material => material.name == "Animator" ? 0 : -1, component => component == constraint ? 3 : -1)));
+            var target = data.Targets.Single(t => t.Component == "constraint");
+            Assert.That(target.Known, Is.False);
+            Assert.That((target.Property, target.Node, target.Rest), Is.EqualTo(("enabled", -1, 1d)));
+            Assert.That(target.Fields["node"], Is.EqualTo((long)nodes[glasses]));
+            Assert.That(target.Fields["index"], Is.EqualTo(3L));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "enabled" }));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 0d }));
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(1), "The curve on a constraint Hat does not have.");
+
+            var without = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(without.Targets.Any(t => t.Component == "constraint"), Is.False);
+            Assert.That(ClipOf(without, "Switch").Tracks.Select(t => without.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat" }));
+            Assert.That(Omitted(without, "enabled"), Is.EqualTo(2));
         }
 
         // Renderers that share a material share its target: clips on either

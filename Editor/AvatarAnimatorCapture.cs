@@ -57,6 +57,12 @@ namespace VRVlog.LilToonExporter
         readonly List<(Renderer Renderer, int Default)> renderers = new List<(Renderer, int)>();
         readonly Dictionary<Renderer, int> rendererIndex = new Dictionary<Renderer, int>();
         readonly List<List<(int Renderer, ExpressionAnimationData.Curve Curve)>> clipEnabledTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // Constraint enabled curves stay components until the constraints
+        // VRVLOG_avatar_constraints writes are known, each with its enabled
+        // flag when its first curve was read.
+        readonly List<(Behaviour Constraint, int Default)> constraints = new List<(Behaviour, int)>();
+        readonly Dictionary<Behaviour, int> constraintIndex = new Dictionary<Behaviour, int>();
+        readonly List<List<(int Constraint, ExpressionAnimationData.Curve Curve)>> clipConstraintTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
         // Material float curves stay a renderer and a property name until the
         // output materials are known.
         readonly List<List<(Renderer Renderer, string Name, ExpressionAnimationData.Curve Curve)>> clipMaterialTracks = new List<List<(Renderer, string, ExpressionAnimationData.Curve)>>();
@@ -459,18 +465,22 @@ namespace VRVlog.LilToonExporter
         // shapes would take the extension past MaximumBytes, all of them are.
         // material gives the glTF index of a material the file writes, or -1;
         // without it, material float curves are counted as material.
+        // constraint gives the VRVLOG_avatar_constraints entry of a
+        // constraint component, or -1; without it, or for -1, constraint
+        // enabled curves are counted as enabled.
         internal AvatarAnimatorData Resolve(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources = null,
-            Func<Material, int> material = null)
+            Func<Material, int> material = null, Func<Component, int> constraint = null)
         {
-            Build(node, sources, material, true);
+            Build(node, sources, material, constraint, true);
             if (morphBinds.Count > 0 && Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes)
-                Build(node, sources, material, false);
+                Build(node, sources, material, constraint, false);
             return data;
         }
 
         const int MissingMorph = -1, OmittedMorph = -2;
 
-        void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, Func<Material, int> material, bool writeMorphs)
+        void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, Func<Material, int> material,
+            Func<Component, int> constraint, bool writeMorphs)
         {
             data.Targets.Clear();
             morphBinds.Clear();
@@ -513,6 +523,27 @@ namespace VRVlog.LilToonExporter
                 var target = new AvatarAnimatorData.Target { Node = index, Property = "enabled", Component = "renderer", Rest = renderers[i].Default };
                 data.Targets.Add(target);
                 shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Path = PathAtRead(renderer.gameObject) };
+            }
+            // Then the constraint enabled targets: component "constraint", the
+            // node the constraint moves and index its entry. A reader that
+            // does not know the component keeps them unwritten (Target.Known).
+            // A constraint the extension does not write (converted to VRM or
+            // left out) has no entry: its curves are counted as enabled.
+            var constraintMap = new int[constraints.Count];
+            for (var i = 0; i < constraints.Count; i++)
+            {
+                var entry = constraints[i].Constraint == null || constraint == null ? -1 : constraint(constraints[i].Constraint);
+                var entryNode = entry < 0 ? -1 : ConstraintNode(constraints[i].Constraint, node);
+                constraintMap[i] = entryNode < 0 ? -1 : data.Targets.Count;
+                if (constraintMap[i] < 0) continue;
+                data.Targets.Add(new AvatarAnimatorData.Target
+                {
+                    Node = -1, Property = "enabled", Component = "constraint", Rest = constraints[i].Default,
+                    Fields = new Dictionary<string, object>
+                    {
+                        ["node"] = (long)entryNode, ["property"] = "enabled", ["component"] = "constraint", ["index"] = (long)entry, ["rest"] = (long)constraints[i].Default
+                    }
+                });
             }
             // Material float curves take the track room the other kinds leave.
             var room = new int[data.Clips.Count];
@@ -559,6 +590,16 @@ namespace VRVlog.LilToonExporter
                 foreach (var (target, curve) in materialMap[i])
                 {
                     var track = new AvatarAnimatorData.Track { Target = target };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
+                // Constraint enabled curves come last and take the room the
+                // material targets leave, so they never leave out a track the
+                // file wrote before the extension.
+                foreach (var (index, curve) in clipConstraintTracks[i])
+                {
+                    if (constraintMap[index] < 0 || data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip) { off++; continue; }
+                    var track = new AvatarAnimatorData.Track { Target = constraintMap[index] };
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
@@ -1297,21 +1338,25 @@ namespace VRVlog.LilToonExporter
             clipMorphTracks.Add(morphTracks);
             var enabledTracks = new List<(int, ExpressionAnimationData.Curve)>();
             clipEnabledTracks.Add(enabledTracks);
+            var constraintTracks = new List<(int, ExpressionAnimationData.Curve)>();
+            clipConstraintTracks.Add(constraintTracks);
             var materialTracks = new List<(Renderer, string, ExpressionAnimationData.Curve)>();
             clipMaterialTracks.Add(materialTracks);
             var keys = 0;
             var bindings = AnimationUtility.GetCurveBindings(clip);
             var shapes = new List<EditorCurveBinding>();
             var switches = new List<EditorCurveBinding>();
+            var constraintSwitches = new List<EditorCurveBinding>();
             var floats = new List<EditorCurveBinding>();
             // The clip's key and track room goes to activeSelf curves first, then
             // to parameter curves, then to BlendShape curves, then to renderer
-            // enabled curves, then to material float curves, so a kind written
+            // enabled curves, then to material float curves, then to
+            // constraint enabled curves, so a kind written
             // later never leaves out one written before. A curve past the room
             // is left out alone (see Curve). A material float curve counts as
             // one track here; Resolve leaves it out when the materials it
             // becomes take the clip past the room.
-            bool Full() => tracks.Count + parameterTracks.Count + morphTracks.Count + enabledTracks.Count + materialTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip;
+            bool Full() => tracks.Count + parameterTracks.Count + morphTracks.Count + enabledTracks.Count + constraintTracks.Count + materialTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip;
             foreach (var binding in bindings)
             {
                 if (AnimatedParameter(binding) >= 0) continue;
@@ -1321,6 +1366,7 @@ namespace VRVlog.LilToonExporter
                     // activeSelf and parameters leave of the room.
                     if (Kind(binding) == "blendShape") shapes.Add(binding);
                     else if (RendererSwitch(binding)) switches.Add(binding);
+                    else if (binding.propertyName == "m_Enabled" && AvatarConstraintsExport.IsConstraint(binding.type)) constraintSwitches.Add(binding);
                     else if (MaterialFloat(binding) != null) floats.Add(binding);
                     else Omit(Kind(binding));
                     continue;
@@ -1377,6 +1423,17 @@ namespace VRVlog.LilToonExporter
                     slotsAtRead[(renderer, name)] = renderer.sharedMaterials.Select(slot => slot != null && slot.HasFloat(name) ? (slot, true, slot.GetFloat(name)) : (slot, false, 0f)).ToArray();
                 materialTracks.Add((renderer, name, converted));
             }
+            // A curve on a constraint the avatar does not have is counted as
+            // enabled, as before the extension.
+            foreach (var binding in constraintSwitches)
+            {
+                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                var constraint = target == null ? null : target.GetComponent(binding.type) as Behaviour;
+                if (constraint == null) { Omit("enabled"); continue; }
+                var converted = Full() ? null : Curve(clip, binding, ref keys);
+                if (converted == null) { Omit("enabled"); continue; }
+                constraintTracks.Add((ConstraintTarget(constraint), converted));
+            }
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 Omit(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith("m_Materials", StringComparison.Ordinal) ? "material" : "other");
             return index;
@@ -1422,6 +1479,20 @@ namespace VRVlog.LilToonExporter
             pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
             renderers.Add((renderer, (enabledRest.TryGetValue(renderer, out var enabled) ? enabled : renderer.enabled) ? 1 : 0));
             return renderers.Count - 1;
+        }
+
+        static int ConstraintNode(Behaviour constraint, Func<GameObject, int> node)
+        {
+            var target = AvatarConstraintsExport.TargetOf(constraint);
+            return target == null ? -1 : node(target.gameObject);
+        }
+
+        int ConstraintTarget(Behaviour constraint)
+        {
+            if (constraintIndex.TryGetValue(constraint, out var index)) return index;
+            constraintIndex[constraint] = constraints.Count;
+            constraints.Add((constraint, constraint.enabled ? 1 : 0));
+            return constraints.Count - 1;
         }
 
         // The renderers an enabled target turns on and off: those the export

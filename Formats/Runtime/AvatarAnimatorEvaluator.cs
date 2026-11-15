@@ -39,7 +39,9 @@ namespace VRVlog.AvatarAnimator
     // approached frame by frame in a transition into it. A layer with a
     // state without Write Defaults keeps a value of every target the
     // controller animates; M7 a layer under weight 1 blends over the
-    // layers below it, or over the rest when none wrote the target.
+    // layers below it, or over the rest when none wrote the target; at
+    // weight 0 that leaves the layers below (or the rest), and the layer
+    // forgets its own values, as if it had never written them.
     // M11 a float parameter a clip animates is a target that M6 and M7
     // blend as a node, with one difference: in a transition into a state
     // without a motion or Write Defaults, the layer's own value of it starts
@@ -180,14 +182,32 @@ namespace VRVlog.AvatarAnimator
             internal double Weight, WeightFrom, WeightGoal, WeightDuration, WeightElapsed;
             internal bool WeightBlending;
             internal int EnterSerial, EnteredState = -1, SeenEnterSerial, InterruptSerial, SeenInterruptSerial, HeldSerial;
+            // Per state: the indexes in Animated of the targets its motion writes.
+            internal int[][] StateKeys;
+            // The state in which the layer passed the other targets through in
+            // the last frame (see Output), or -1. Out does not hold those targets then.
+            internal int Passed = -1;
         }
 
         readonly AvatarAnimatorData data;
         readonly Func<double> random;
         readonly int[] types;
         readonly double[] parameters;
-        readonly double[] rest, values, previous;
+        readonly double[] rest, values;
+        // The values at the start of this frame and of the last one.
+        double[] previous, lastPrevious;
         readonly bool[] written;
+        // Whether the controller's motions write a target, and whether a layer
+        // passing every such target through (see Output) has marked them all
+        // written this frame; Wrote reads both.
+        readonly bool[] isAnimated;
+        bool animatedWritten;
+        // Each value a layer set in values this frame and the last, in layer
+        // order: the layer, the value and the same target's entry before it
+        // (-1 none). Head holds each target's latest entry (-1 none).
+        int[] logLayer, logEarlier, logHead, lastLayer, lastEarlier, lastHead;
+        double[] logValue, lastValue;
+        int logCount;
         // M11: per parameter, the target of a clip's curves on it, or -1.
         readonly int[] parameterTargets;
         // M11: per target, whether it is a parameter.
@@ -247,7 +267,9 @@ namespace VRVlog.AvatarAnimator
             }
             values = (double[])rest.Clone();
             previous = (double[])rest.Clone();
+            lastPrevious = (double[])rest.Clone();
             written = new bool[targetCount];
+            isAnimated = new bool[targetCount];
             sideA = NewSide(targetCount);
             sideB = NewSide(targetCount);
 
@@ -284,6 +306,8 @@ namespace VRVlog.AvatarAnimator
                     controllerTargets.UnionWith(stateTargets[l][s]);
                 }
             }
+            foreach (var t in controllerTargets) isAnimated[t] = true;
+            var entries = 0;
             for (var l = 0; l < source.Count; l++)
             {
                 var layer = source[l];
@@ -300,14 +324,26 @@ namespace VRVlog.AvatarAnimator
                 if (keepsAll) animated.UnionWith(controllerTargets);
                 var list = new List<int>(animated);
                 list.Sort();
+                entries += list.Count;
+                var keys = new int[layer.States.Count][];
+                for (var s = 0; s < keys.Length; s++)
+                {
+                    keys[s] = new int[stateTargets[l][s].Length];
+                    for (var i = 0; i < keys[s].Length; i++) keys[s][i] = list.BinarySearch(stateTargets[l][s][i]);
+                }
                 layers[l] = new LayerRun
                 {
                     Layer = layer, Index = l, Source = layer.SyncedLayer, Animated = list.ToArray(),
                     Out = new double[list.Count], Snapshot = new double[list.Count], Held = new double[list.Count], Own = new double[list.Count],
                     OutWritten = new bool[list.Count], SnapshotWritten = new bool[list.Count],
-                    Weight = l == 0 ? 1 : layer.Weight
+                    Weight = l == 0 ? 1 : layer.Weight, StateKeys = keys
                 };
             }
+            // A layer sets each target it keeps at most once a frame.
+            logLayer = new int[entries]; logEarlier = new int[entries]; logValue = new double[entries];
+            lastLayer = new int[entries]; lastEarlier = new int[entries]; lastValue = new double[entries];
+            logHead = new int[targetCount]; lastHead = new int[targetCount];
+            for (var t = 0; t < targetCount; t++) logHead[t] = lastHead[t] = -1;
             // A resolution passes each machine at most twice (in through Entry, out through Exit).
             chain = new AvatarAnimatorData.Transition[2 * machines + 2];
             // A layer enters at most two states in a frame (its default state and
@@ -395,13 +431,31 @@ namespace VRVlog.AvatarAnimator
         public double LayerWeight(int layer) => layers[layer].Weight;
         public double FxWeight => fxWeight;
 
+        // As Unity's Animator.SetLayerWeight: from the next Advance, ending a
+        // Layer Control blend. The base layer stays at 1. The comparison with
+        // Unity drives weights through this.
+        public void SetLayerWeight(int layer, double weight)
+        {
+            if (double.IsNaN(weight) || double.IsInfinity(weight)) throw new ArgumentOutOfRangeException(nameof(weight));
+            if (layer == 0) return;
+            layers[layer].WeightBlending = false;
+            layers[layer].Weight = weight;
+        }
+
         // One frame of deltaTime seconds (0 or more). The first call enters
         // every layer's default state, then advances.
         public void Advance(double deltaTime)
         {
             if (!(deltaTime >= 0) || double.IsInfinity(deltaTime)) throw new ArgumentOutOfRangeException(nameof(deltaTime));
+            var swap = lastPrevious; lastPrevious = previous; previous = swap;
             Array.Copy(values, previous, values.Length);
             Array.Clear(written, 0, written.Length);
+            var swapLog = lastLayer; lastLayer = logLayer; logLayer = swapLog;
+            swapLog = lastEarlier; lastEarlier = logEarlier; logEarlier = swapLog;
+            swapLog = lastHead; lastHead = logHead; logHead = swapLog;
+            var swapValue = lastValue; lastValue = logValue; logValue = swapValue;
+            for (var t = 0; t < logHead.Length; t++) logHead[t] = -1;
+            logCount = 0;
             // M10: a weight blend started by a behaviour moves from the next frame on.
             foreach (var layer in layers) BlendWeight(layer, deltaTime);
             if (fxBlending)
@@ -416,6 +470,11 @@ namespace VRVlog.AvatarAnimator
                 if (layer.Source >= 0) Sync(layer);
                 else Step(layer, deltaTime);
                 Output(layer);
+            }
+            if (animatedWritten)
+            {
+                animatedWritten = false;
+                for (var t = 0; t < written.Length; t++) written[t] |= isAnimated[t];
             }
             if (fxWeight < 1)
                 for (var t = 0; t < values.Length; t++)
@@ -619,8 +678,7 @@ namespace VRVlog.AvatarAnimator
             if (layer.Transitioning)
             {
                 // M5: the interrupted blend continues as a still copy.
-                Array.Copy(layer.Out, layer.Snapshot, layer.Out.Length);
-                Array.Copy(layer.OutWritten, layer.SnapshotWritten, layer.OutWritten.Length);
+                Snap(layer);
                 layer.Frozen = true;
                 layer.InterruptSerial++;
             }
@@ -647,6 +705,14 @@ namespace VRVlog.AvatarAnimator
             if (layer.Duration <= 0 || layer.Progress >= 1) Complete(layer);
         }
 
+        // A layer that passed keeps no Out, so rebuild it before copying.
+        void Snap(LayerRun layer)
+        {
+            if (layer.Passed >= 0) Rebuild(layer);
+            Array.Copy(layer.Out, layer.Snapshot, layer.Out.Length);
+            Array.Copy(layer.OutWritten, layer.SnapshotWritten, layer.OutWritten.Length);
+        }
+
         static void Complete(LayerRun layer)
         {
             layer.State = layer.Next;
@@ -666,8 +732,7 @@ namespace VRVlog.AvatarAnimator
             if (source.InterruptSerial != layer.SeenInterruptSerial)
             {
                 layer.SeenInterruptSerial = source.InterruptSerial;
-                Array.Copy(layer.Out, layer.Snapshot, layer.Out.Length);
-                Array.Copy(layer.OutWritten, layer.SnapshotWritten, layer.OutWritten.Length);
+                Snap(layer);
             }
             layer.State = source.State;
             layer.Next = source.Next;
@@ -1087,71 +1152,107 @@ namespace VRVlog.AvatarAnimator
             if (layer.Transitioning) Evaluate(sideB, layer, layer.Next, layer.NextTime);
             var weight = layer.Index == 0 ? 1 : layer.Weight;
             var states = layer.Layer.States;
+            // A layer resting in a motion state without Write Defaults at full weight passes
+            // every target its motion does not write through unchanged: the value stays what
+            // the layers below leave, the target counts as written and the layer's own value
+            // of it is that value. A controller of many such layers (one per menu toggle) would
+            // visit layers × targets every frame (#3664), so such a layer only visits its
+            // motion's targets, marks the rest written at once, and rebuilds its own values
+            // from the last frame's log in the first frame it stops passing.
+            var passes = !layer.Transitioning && !layer.Frozen && weight >= 1
+                && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults;
+            if (layer.Passed >= 0 && !passes) Rebuild(layer);
+            if (passes)
+            {
+                // Such a state is without Write Defaults, so Animated holds every animated target.
+                animatedWritten = true;
+                layer.Passed = layer.State;
+                foreach (var k in layer.StateKeys[layer.State]) OutputTarget(layer, k, weight);
+                return;
+            }
             var serial = layer.Source >= 0 ? layer.SeenEnterSerial : layer.EnterSerial;
             if (layer.Transitioning && layer.HeldSerial != serial)
             {
                 layer.HeldSerial = serial;
                 for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
-            // A layer resting in a motion state without Write Defaults at full weight passes
-            // every target its motion does not write through unchanged. The loop below gives the
-            // same through SideValue; this writes it directly, as a controller of many such layers
-            // (one per menu toggle) visits layers × targets every frame (#3664).
-            var passes = !layer.Transitioning && !layer.Frozen && weight >= 1
-                && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults;
-            for (var k = 0; k < animated.Length; k++)
+            for (var k = 0; k < animated.Length; k++) OutputTarget(layer, k, weight);
+            // M7: a layer resting at weight 0 forgets its own values, as one that never
+            // wrote. Mid-transition they stay, as an interruption copies them (not measured
+            // in Unity).
+            if (weight <= 0 && !layer.Transitioning) Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
+        }
+
+        bool Wrote(int t) => written[t] || (animatedWritten && isAnimated[t]);
+
+        // A passing layer's own value of a target its motion did not write, as
+        // of the last frame: what the layers below it left then.
+        void Rebuild(LayerRun layer)
+        {
+            var animated = layer.Animated;
+            var own = layer.StateKeys[layer.Passed];
+            layer.Passed = -1;
+            for (int k = 0, j = 0; k < animated.Length; k++)
             {
+                // Keys are in ascending order, as Animated is.
+                if (j < own.Length && own[j] == k) { j++; continue; }
                 var t = animated[k];
-                if (passes && sideA.Stamp[t] != sideA.Current)
-                {
-                    var kept = written[t] ? values[t] : previous[t];
-                    layer.Out[k] = kept;
-                    layer.OutWritten[k] = true;
-                    if (isParameter[t]) layer.Own[k] = kept;
-                    values[t] = kept;
-                    written[t] = true;
-                    continue;
-                }
-                // What the layers below leave: this frame's value, else the last frame's.
-                var through = written[t] ? values[t] : previous[t];
-                // Mid-transition the layer holds a target either side's motion writes.
-                var bound = layer.Transitioning && layer.Progress > 0 && (sideB.Stamp[t] == sideB.Current
-                    || (layer.Frozen ? layer.SnapshotWritten[k] : sideA.Stamp[t] == sideA.Current));
-                double value, b = 0;
-                bool has;
-                if (layer.Frozen)
-                {
-                    value = layer.Snapshot[k];
-                    has = layer.SnapshotWritten[k];
-                    if (!has) value = through;
-                }
-                else has = SideValue(sideA, layer, layer.State, t, k, through, bound, out value);
-                if (layer.Transitioning)
-                {
-                    var hasB = SideValue(sideB, layer, layer.Next, t, k, through, bound, out b);
-                    // M6: an empty source without Write Defaults holds the layer's
-                    // values from when the transition started.
-                    if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
-                    has |= hasB;
-                    value += (b - value) * Math.Min(1, layer.Progress);
-                }
-                if (has || layer.Transitioning)
-                {
-                    layer.Out[k] = value;
-                    layer.OutWritten[k] = has;
-                }
-                // M11: moving into an empty state without Write Defaults, a
-                // parameter's own value takes the rest where the source had it:
-                // it starts from the layer's last value and nears the rest.
-                if (isParameter[t])
-                    layer.Own[k] = layer.Transitioning && layer.Progress > 0 && states[layer.Next].Motion < 0 && !states[layer.Next].WriteDefaults
-                        ? rest[t] + (b - rest[t]) * Math.Min(1, layer.Progress) : layer.Out[k];
-                if (!has || weight <= 0) continue;
-                // M7: over the layers below, or over the rest when none of them wrote it.
-                var below = written[t] ? values[t] : rest[t];
-                values[t] = weight >= 1 ? value : below + (value - below) * weight;
-                written[t] = true;
+                var e = lastHead[t];
+                while (e >= 0 && lastLayer[e] >= layer.Index) e = lastEarlier[e];
+                var kept = e >= 0 ? lastValue[e] : lastPrevious[t];
+                layer.Out[k] = kept;
+                layer.OutWritten[k] = true;
+                if (isParameter[t]) layer.Own[k] = kept;
             }
+        }
+
+        void OutputTarget(LayerRun layer, int k, double weight)
+        {
+            var states = layer.Layer.States;
+            var t = layer.Animated[k];
+            // What the layers below leave: this frame's value, else the last frame's.
+            var through = Wrote(t) ? values[t] : previous[t];
+            // Mid-transition the layer holds a target either side's motion writes.
+            var bound = layer.Transitioning && layer.Progress > 0 && (sideB.Stamp[t] == sideB.Current
+                || (layer.Frozen ? layer.SnapshotWritten[k] : sideA.Stamp[t] == sideA.Current));
+            double value, b = 0;
+            bool has;
+            if (layer.Frozen)
+            {
+                value = layer.Snapshot[k];
+                has = layer.SnapshotWritten[k];
+                if (!has) value = through;
+            }
+            else has = SideValue(sideA, layer, layer.State, t, k, through, bound, out value);
+            if (layer.Transitioning)
+            {
+                var hasB = SideValue(sideB, layer, layer.Next, t, k, through, bound, out b);
+                // M6: an empty source without Write Defaults holds the layer's
+                // values from when the transition started.
+                if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
+                has |= hasB;
+                value += (b - value) * Math.Min(1, layer.Progress);
+            }
+            if (has || layer.Transitioning)
+            {
+                layer.Out[k] = value;
+                layer.OutWritten[k] = has;
+            }
+            // M11: moving into an empty state without Write Defaults, a
+            // parameter's own value takes the rest where the source had it:
+            // it starts from the layer's last value and nears the rest.
+            if (isParameter[t])
+                layer.Own[k] = layer.Transitioning && layer.Progress > 0 && states[layer.Next].Motion < 0 && !states[layer.Next].WriteDefaults
+                    ? rest[t] + (b - rest[t]) * Math.Min(1, layer.Progress) : layer.Out[k];
+            if (!has) return;
+            // M7: over the layers below, or over the rest when none of them wrote it.
+            var below = Wrote(t) ? values[t] : rest[t];
+            values[t] = weight >= 1 ? value : below + (value - below) * Math.Max(0, weight);
+            written[t] = true;
+            logLayer[logCount] = layer.Index;
+            logValue[logCount] = values[t];
+            logEarlier[logCount] = logHead[t];
+            logHead[t] = logCount++;
         }
 
         // M6: one side's value of a target its motion does not write. With
@@ -1179,7 +1280,7 @@ namespace VRVlog.AvatarAnimator
                     value = rest[t];
                     return true;
                 }
-                value = s.WriteDefaults && !written[t] ? rest[t] : through;
+                value = s.WriteDefaults && !Wrote(t) ? rest[t] : through;
                 return true;
             }
             if (!s.WriteDefaults)
@@ -1189,7 +1290,7 @@ namespace VRVlog.AvatarAnimator
                 return layer.OutWritten[k];
             }
             // Write Defaults: the layers below, or the rest when none wrote it.
-            value = written[t] ? values[t] : rest[t];
+            value = Wrote(t) ? values[t] : rest[t];
             return true;
         }
     }

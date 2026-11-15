@@ -128,10 +128,12 @@ public static class AvatarAnimatorEvaluatorTests
         AnyState();
         SubMachines();
         WriteDefaults();
+        PassThroughThenHold();
         LayerWeights();
         ParameterDrivers();
         ParameterCurves();
         LayerControl();
+        LayerAtZero();
         BlendTrees();
         FreeformCartesianTrees();
         DirectionalTrees();
@@ -404,6 +406,37 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e.Values[node] == 0 && e.Written[node], "WD on writes the rest");
     }
 
+    // A layer that passes the layers below through (WD off, a motion, weight 1) keeps no
+    // value of its own while it does; the first frame it stops, its own value is rebuilt
+    // as the layers below it left the target in the frame before, not the layers above.
+    static void PassThroughThenHold()
+    {
+        var b = new Builder();
+        var hold = b.Parameter("Hold", "bool");
+        var node = b.Target();
+        var own = b.Target();
+        var bottom = b.Layer("Bottom");
+        Builder.State(bottom, "Ramp", b.Ramp(1, true, node, 1));
+        var middle = b.Layer("Middle");
+        var pass = Builder.State(middle, "Pass", b.Clip(0, false, (own, 1)), writeDefaults: false);
+        var held = Builder.State(middle, "Held", -1, writeDefaults: false);
+        middle.States[pass].Transitions.Add(To(held).When(hold, "if"));
+        var top = b.Layer("Top", weight: .5);
+        Builder.State(top, "Seven", b.Clip(0, false, (node, 7)));
+        var e = b.Build();
+        Run(e, .3);
+        var before = e.Values[node];
+        e.Advance(Frame);
+        Check(e.Values[node] != before, "the bottom layer moves the node every frame");
+        before = e.Values[node];
+        e.Set(hold, 1);
+        e.Advance(Frame);
+        Check(e.State(1) == held, "the middle layer left the passing state");
+        Near(e.Values[node], before, "M6: the empty state applies what the layers below left in the last frame");
+        Run(e, .2);
+        Near(e.Values[node], before, "M6: and keeps applying it while the bottom layer moves");
+    }
+
     static void LayerWeights()
     {
         var b = new Builder();
@@ -576,7 +609,7 @@ public static class AvatarAnimatorEvaluatorTests
         Builder.State(second, "On", b.Clip(0, false, (node, 1)));
         var e = b.Build();
         e.Advance(Frame);
-        Check(e.Values[node] == 0 && !e.Written[node], "a layer at weight 0 writes nothing");
+        Check(e.Values[node] == 0, "a layer at weight 0 leaves the rest");
         e.Set(go, 1);
         e.Advance(Frame);
         e.Advance(.25);
@@ -584,6 +617,73 @@ public static class AvatarAnimatorEvaluatorTests
         Near(e.Values[node], .5, "the layer's values follow the weight");
         e.Advance(.5);
         Near(e.LayerWeight(1), 1, "and stops at the goal");
+        e.SetLayerWeight(1, 0);
+        e.Advance(Frame);
+        Check(e.Values[node] == 0, "weight 0 after writing: the rest, not the last value (M7)");
+    }
+
+    // M7 at weight 0 over a lower layer, and a layer without Write Defaults
+    // that held its own values forgetting them at weight 0.
+    static void LayerAtZero()
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        var shared = b.Target();
+        var alone = b.Target();
+        var bottom = b.Layer("Bottom");
+        Builder.State(bottom, "A", b.Clip(1, true, (shared, 2)));
+        var hold = b.Layer("Hold");
+        var full = Builder.State(hold, "Full", b.Clip(1, true, (shared, 5), (alone, 1)), writeDefaults: false);
+        var empty = Builder.State(hold, "Empty", -1, writeDefaults: false);
+        hold.States[full].Transitions.Add(To(empty).When(go, "if"));
+        var e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        Check(e.State(1) == empty && e.Values[shared] == 5 && e.Values[alone] == 1, "the empty state holds its own values");
+        e.SetLayerWeight(1, 0);
+        e.Advance(Frame);
+        Check(e.Values[shared] == 2, "weight 0: the layer below");
+        Check(e.Values[alone] == 0, "weight 0: the rest where no layer below wrote");
+        e.SetLayerWeight(1, 1);
+        e.Advance(Frame);
+        Near(e.Values[shared], 2, "back at weight 1 the empty state passes the layer below through");
+        Near(e.Values[alone], 0, "and keeps the rest it left");
+
+        // Mid-transition at weight 0 the layer keeps its values, so an
+        // interruption right after freezes the blend it had.
+        Check(InterruptAfter(true) == InterruptAfter(false), "a weight-0 frame mid-transition keeps the still copy");
+    }
+
+    static double InterruptAfter(bool zero)
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        var stop = b.Parameter("Stop", "bool");
+        var node = b.Target();
+        var other = b.Target();
+        Builder.State(b.Layer("Base"), "Idle", b.Clip(1, true, (other, 0)));
+        var layer = b.Layer("L");
+        var a = Builder.State(layer, "A", b.Clip(1, true, (node, 1)), writeDefaults: false);
+        var to = Builder.State(layer, "B", b.Clip(1, true, (node, 3)), writeDefaults: false);
+        var away = Builder.State(layer, "C", b.Clip(1, true, (node, 5)), writeDefaults: false);
+        var slow = To(to, duration: 1).When(go, "if");
+        slow.InterruptionSource = "source";
+        layer.States[a].Transitions.Add(slow);
+        layer.States[a].Transitions.Add(To(away, duration: 1).When(stop, "if"));
+        var e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Set(go, 0);
+        e.Advance(.5);
+        if (zero) e.SetLayerWeight(1, 0);
+        e.Advance(Frame);
+        e.SetLayerWeight(1, 1);
+        e.Set(stop, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        return e.Values[node];
     }
 
     static void BlendTrees()

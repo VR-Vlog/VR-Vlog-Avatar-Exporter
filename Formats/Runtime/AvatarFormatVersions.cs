@@ -28,6 +28,8 @@ namespace VRVlog.AvatarFormats
             [(Expressions.LipSyncData.Extension, Expressions.LipSyncData.SchemaVersion)] = "1.0.9",
             // Provisional: see Documentation~/decisions/2026-11-12-avatar-animator-extension.md.
             [(AvatarAnimator.AvatarAnimatorData.Extension, AvatarAnimator.AvatarAnimatorData.SchemaVersion)] = "1.2.8",
+            // Provisional: see Documentation~/decisions/2026-11-15-avatar-constraints-extension.md.
+            [(AvatarConstraints.AvatarConstraintsData.Extension, AvatarConstraints.AvatarConstraintsData.SchemaVersion)] = "1.2.8",
         };
 
         public static string RequiredAppVersion(string extension, int schemaVersion) =>
