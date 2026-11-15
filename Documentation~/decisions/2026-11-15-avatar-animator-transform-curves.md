@@ -13,6 +13,7 @@ FX のクリップがノードの位置・回転・拡大率を動かすカー�
 - 書くのは Unity の`m_LocalPosition`・`m_LocalRotation`・`localEulerAnglesRaw`・`m_LocalScale`の 4 つ。`localEulerAnglesRaw`（補間が Euler Angles）の回転は`euler: true`を付けて角度のまま書き、アプリは角度で混ぜてから`Quaternion.Euler`で回転にする
 - 1 つのノードの回転を角度のカーブと四元数のカーブの両方で動かすコントローラーでは、そのノードの回転のカーブを`rotationMixed`として数えて書かない。読み込みも、1 つのノードで両方が混ざる回転を拡張ごと断る
 - Humanoid のボーンを動かすカーブは`humanoidTransform`として数えて書かない。アプリのボーンの扱いが決まるまで、ほかの Transform と分けて数を残す
+- Additive のレイヤーのクリップが動かす Transform のカーブは`transform`として数える。Unity はポーズに足すが、アプリは float として混ぜるため
 - アバターのルートを動かすカーブと、補間が Euler Angles (Quaternion) の回転（`localEulerAnglesBaked`など）は、今までどおり`transform`として数える。ルートの位置はアプリが決める
 - `rest`は書き出すときのローカルの値。Euler の回転はインスペクターに出る角度（`TransformUtils.GetInspectorRotation`）
 - トラックの枠はマテリアルのスロットの後に使い、あふれた分は`transform`として数える。重なりの判定は`(node, channel)`を種類ごとに見る

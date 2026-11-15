@@ -653,6 +653,9 @@ namespace VRVlog.LilToonExporter
                 // The Transform channels, added after them, take the room left.
                 foreach (var (index, curve) in clipTransformTracks[i])
                 {
+                    // Unity adds an additive layer's Transform curves to the pose,
+                    // which a player blending floats does not do.
+                    if (additiveClips.Contains(i)) { transformLost++; continue; }
                     if (mixedRotation[index]) { mixed++; continue; }
                     if (transformMap[index] < 0) { missing++; continue; }
                     if (data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip) { transformLost++; continue; }
@@ -671,8 +674,9 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Adds the translation, rotation and scale targets, ordered by node,
-        // kind and channel, and returns each Transform curve's target, or -1
+        // Adds the translation, rotation and scale targets that a clip of a
+        // layer that is not additive moves, ordered by kind, node and channel,
+        // and returns each Transform curve's target, or -1
         // when the file has no node for its object. Rest is the object's local
         // value when the file is written, which its glTF node holds; that of
         // an Euler rotation is the angles the inspector shows, those Unity's
@@ -686,8 +690,10 @@ namespace VRVlog.LilToonExporter
             mixed = new bool[transforms.Count];
             var eulerOf = new Dictionary<GameObject, bool>();
             var mixedObjects = new HashSet<GameObject>();
-            foreach (var (gameObject, moves) in transforms)
+            var played = new HashSet<int>(clipTransformTracks.Where((_, clip) => !additiveClips.Contains(clip)).SelectMany(tracks => tracks.Select(track => track.Item1)));
+            foreach (var i in played)
             {
+                var (gameObject, moves) = transforms[i];
                 if (moves.Property != "rotation" || gameObject == null) continue;
                 if (eulerOf.TryGetValue(gameObject, out var euler) && euler != moves.Euler) mixedObjects.Add(gameObject);
                 eulerOf[gameObject] = moves.Euler;
@@ -697,7 +703,7 @@ namespace VRVlog.LilToonExporter
             {
                 var (gameObject, moves) = transforms[i];
                 mixed[i] = moves.Property == "rotation" && mixedObjects.Contains(gameObject);
-                var index = gameObject == null || mixed[i] ? -1 : node(gameObject);
+                var index = gameObject == null || mixed[i] || !played.Contains(i) ? -1 : node(gameObject);
                 map[i] = -1;
                 if (index >= 0) order.Add((i, index));
             }
@@ -1770,7 +1776,7 @@ namespace VRVlog.LilToonExporter
                 var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
                 if (target == null) { Omit("missingNode"); continue; }
                 if (target == root.transform) { Omit("transform"); continue; }
-                if (HumanoidBones().Contains(target)) { Omit("humanoidTransform"); continue; }
+                if (HumanoidBoneSet().Contains(target)) { Omit("humanoidTransform"); continue; }
                 var converted = Full() || tracks.Count + parameterTracks.Count + morphTracks.Count + enabledTracks.Count + constraintTracks.Count +
                     materialTracks.Count + slotTracks.Count + transformTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip ? null : Curve(clip, binding, ref keys);
                 if (converted == null) { Omit("transform"); continue; }
@@ -1812,15 +1818,14 @@ namespace VRVlog.LilToonExporter
             return transforms.Count - 1;
         }
 
-        HashSet<Transform> HumanoidBones()
+        HashSet<Transform> HumanoidBoneSet()
         {
             if (humanoidBones != null) return humanoidBones;
             humanoidBones = new HashSet<Transform>();
             var animator = root.GetComponent<Animator>();
-            if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return humanoidBones;
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
             {
-                var transform = animator.GetBoneTransform(bone);
+                var transform = HumanoidBones.Resolve(animator, bone);
                 if (transform != null) humanoidBones.Add(transform);
             }
             return humanoidBones;

@@ -1101,6 +1101,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ClipOf(data, "Euler").Tracks.Select(t => data.Targets[t.Target].Property), Is.EquivalentTo(new[] { "translation", "rotation" }));
         }
 
+        // Unity adds an additive layer's Transform curves to the pose, so they
+        // are counted as transform, and a node only they move has no target.
+        [Test]
+        public void TransformCurvesOfAnAdditiveLayerAreCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Grow");
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalScale.x"), AnimationCurve.Constant(0, 1f / 60, 2));
+            avatar.Fx.AddLayer("Added");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState("On").motion = clip;
+            avatar.Fx.layers = layers;
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(data.Targets.Any(t => AvatarAnimatorData.IsTransform(t.Property)), Is.False);
+            Assert.That(Omitted(data, "transform"), Is.EqualTo(1));
+        }
+
         // Renderers that share a material share its target: clips on either
         // move it, and a second curve of the same clip on it is counted.
         [Test]
