@@ -1162,7 +1162,7 @@
       "items": false
     },
     "target": {
-      "description": "active: the node's activeSelf, rest 0 or 1. parameter: FX parameter `parameter`, which a clip of the controller animates; it has no node. rest is the controller's default for it, a value of its type (0 or 1 for a bool or trigger), and may differ from the parameter's default when Expression Parameters also declare it. Unity moves only a float parameter by a curve, so only a float target has tracks; a curve on an int, bool or trigger holds it at rest. While any clip animates a parameter, the animator owns it: menus, Parameter Drivers and the app do not change it, and it is rest whenever no layer writes it. morph: morph target `morph` of the mesh on `node`, as in morphTargetBinds. a morph target's rest is the Unity BlendShape weight when no layer writes it; the base geometry already holds the weight `baked`, and the glTF weight 1 shows the weight `end`, so an animated weight v is the glTF weight (v - baked) / (end - baked), not clamped. When the base holds a shape at its end weight, the morph target is the reverse one the export adds, which takes the base back to weight 0, and end is 0. enabled: the enabled flag of `component` on `node`, rest 0 or 1; component renderer is the renderer the node draws, and it shows only while the node and its parents are also active (enabled is not inherited). materialFloat: the float shader property `name` of glTF material `material`, rest its value in the exported material; it has no node. Unity animates a renderer's material property for every material of that renderer, so a curve becomes a track of each target of a material the renderer draws with that has the property; materials shared by renderers share the target. materialColor: channel `channel` (r, g, b or a) of the color shader property `name` of glTF material `material`. materialTextureST: channel `channel` of the scale and offset of the texture shader property `name` (Unity's name_ST: x and y the scale, z and w the offset). Each is one float like materialFloat, with rest its value in the exported material. An enabled target with component constraint is the enabled flag of entry `index` of VRVLOG_avatar_constraints, whose node it names; a curve on a constraint that table does not have is counted as enabled. Any other property, or enabled of another component (an enabled target always names its component as a string), is a kind a newer exporter may write: a reader takes it without looking at its other keys, reads rest when it is a number, lets clips move it and writes it nowhere, and keeps its keys when it writes the file again.",
+      "description": "active: the node's activeSelf, rest 0 or 1. parameter: FX parameter `parameter`, which a clip of the controller animates; it has no node. rest is the controller's default for it, a value of its type (0 or 1 for a bool or trigger), and may differ from the parameter's default when Expression Parameters also declare it. Unity moves only a float parameter by a curve, so only a float target has tracks; a curve on an int, bool or trigger holds it at rest. While any clip animates a parameter, the animator owns it: menus, Parameter Drivers and the app do not change it, and it is rest whenever no layer writes it. morph: morph target `morph` of the mesh on `node`, as in morphTargetBinds. a morph target's rest is the Unity BlendShape weight when no layer writes it; the base geometry already holds the weight `baked`, and the glTF weight 1 shows the weight `end`, so an animated weight v is the glTF weight (v - baked) / (end - baked), not clamped. When the base holds a shape at its end weight, the morph target is the reverse one the export adds, which takes the base back to weight 0, and end is 0. enabled: the enabled flag of `component` on `node`, rest 0 or 1; component renderer is the renderer the node draws, and it shows only while the node and its parents are also active (enabled is not inherited). materialFloat: the float shader property `name` of glTF material `material`, rest its value in the exported material; it has no node. Unity animates a renderer's material property for every material of that renderer, so a curve becomes a track of each target of a material the renderer draws with that has the property; materials shared by renderers share the target. materialColor: channel `channel` (r, g, b or a) of the color shader property `name` of glTF material `material`. materialTextureST: channel `channel` of the scale and offset of the texture shader property `name` (Unity's name_ST: x and y the scale, z and w the offset). Each is one float like materialFloat, with rest its value in the exported material. materialSlot: material slot `slot` (a submesh, in order) of the mesh on `node`; rest and every key are the index of the glTF material the slot draws with, -1 for none. It is never interpolated: in a blend tree it takes the value of the motion of the greatest weight, and over a transition, a layer or the FX weight the next value once its weight passes 0.5. A slot swapped to a material of a shader other than official lilToon is counted as materialSlotShader, and one swapped to a material the file does not write as material. An enabled target with component constraint is the enabled flag of entry `index` of VRVLOG_avatar_constraints, whose node it names; a curve on a constraint that table does not have is counted as enabled. Any other property, or enabled of another component (an enabled target always names its component as a string) is a kind a newer exporter may write: a reader takes it without looking at its other keys, reads rest when it is a number, lets clips move it and writes it nowhere, and keeps its keys when it writes the file again.",
       "oneOf": [
         {
           "type": "object",
@@ -1405,6 +1405,33 @@
         },
         {
           "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "property",
+            "slot",
+            "rest"
+          ],
+          "properties": {
+            "node": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "property": {
+              "const": "materialSlot"
+            },
+            "slot": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rest": {
+              "type": "integer",
+              "minimum": -1
+            }
+          }
+        },
+        {
+          "type": "object",
           "required": [
             "property"
           ],
@@ -1420,7 +1447,8 @@
                   "parameter",
                   "materialFloat",
                   "materialColor",
-                  "materialTextureST"
+                  "materialTextureST",
+                  "materialSlot"
                 ]
               }
             }
@@ -1460,7 +1488,7 @@
       ],
       "properties": {
         "kind": {
-          "description": "One of blendShape, material, transform, enabled, parameter, muscle, other, missingNode, behaviour, operation, unreadParameter, materialProperty and materialSwitch, in that order. A kind a newer exporter adds comes after them, each once; a reader keeps it.",
+          "description": "One of blendShape, material, transform, enabled, parameter, muscle, other, missingNode, behaviour, operation, unreadParameter, materialProperty, materialSwitch and materialSlotShader, in that order. A kind a newer exporter adds comes after them, each once; a reader keeps it.",
           "type": "string",
           "minLength": 1,
           "maxLength": 1024

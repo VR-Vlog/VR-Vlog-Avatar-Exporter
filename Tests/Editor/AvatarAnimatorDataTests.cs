@@ -997,5 +997,154 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(evaluator.Values[0], Is.EqualTo(.75).Within(1e-9));
             Assert.That(evaluator.Written[0], Is.True);
         }
+
+        // A materialSlot target follows the sample's active and parameter
+        // targets, with a track of clip 0 that swaps the slot and empties it.
+        const int SlotTarget = 3;
+
+        static AvatarAnimatorData WithMaterialSlot()
+        {
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "materialSlot", Slot = 1, Rest = 2 });
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 0 });
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1d / 60, Value = -1 });
+            var track = new AvatarAnimatorData.Track { Target = SlotTarget };
+            track.Curves.Add(curve);
+            data.Clips[0].Tracks.Add(track);
+            return data;
+        }
+
+        static void RejectsMaterialSlot(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithMaterialSlot());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void AMaterialSlotTargetRoundTrips()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithMaterialSlot()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            var slot = read.Targets[SlotTarget];
+            Assert.That((slot.Known, slot.Node, slot.Property, slot.Slot, slot.Rest, slot.Stepped), Is.EqualTo((true, 3, "materialSlot", 1, 2d, true)));
+            Assert.That(read.Targets.Take(SlotTarget).Any(t => t.Stepped), Is.False);
+            var json = Json(WithMaterialSlot());
+            Assert.That(At(json, "targets", SlotTarget).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "node", "property", "rest", "slot" }));
+            Assert.That(At(json, "targets", SlotTarget)["rest"], Is.EqualTo(2L));
+            // An empty slot rests at -1; another slot of the node, and the
+            // same slot of another node, are their own targets.
+            var data = WithMaterialSlot();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "materialSlot", Slot = 0, Rest = -1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "materialSlot", Slot = 1, Rest = 0 });
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
+        }
+
+        [Test]
+        public void ReadRejectsABrokenMaterialSlotTarget()
+        {
+            // A materialSlot target names a node and a slot, and rests on a
+            // material index or -1.
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget).Remove("node"));
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["node"] = -1L);
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget).Remove("slot"));
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["slot"] = -1L);
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["slot"] = .5);
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["rest"] = -2L);
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["rest"] = 1.5);
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["rest"] = "1");
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["material"] = 0L);
+            RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["extra"] = 1L);
+            RejectsMaterialSlot(json => ((List<object>)json["targets"]).Add(At(json, "targets", SlotTarget)));
+            // Its keys are material indices or -1 too.
+            static List<object> Key(Dictionary<string, object> json, int key) =>
+                (List<object>)((List<object>)At(json, "clips", 0, "tracks", 2, "curves", 0)["keys"])[key];
+            RejectsMaterialSlot(json => Key(json, 0)[1] = .5);
+            RejectsMaterialSlot(json => Key(json, 1)[1] = -2L);
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithMaterialSlot())));
+        }
+
+        // A clip for each of values, holding it on target 0 (a materialSlot)
+        // and target 1 (a float).
+        static AvatarAnimatorData Slots(params double[] values)
+        {
+            var data = new AvatarAnimatorData();
+            data.Parameters.Add(new AvatarAnimatorData.Parameter { Name = "Blend", Type = "float", Default = 0, Origin = "animator" });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 0, Property = "materialSlot", Slot = 0, Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 0, Rest = 0 });
+            foreach (var value in values)
+            {
+                var clip = new AvatarAnimatorData.Clip { Name = "Slot " + value, Duration = 1, Loop = true };
+                for (var t = 0; t < 2; t++)
+                {
+                    var curve = new ExpressionAnimationData.Curve();
+                    curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = value });
+                    var track = new AvatarAnimatorData.Track { Target = t };
+                    track.Curves.Add(curve);
+                    clip.Tracks.Add(track);
+                }
+                data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = data.Clips.Count });
+                data.Clips.Add(clip);
+            }
+            return data;
+        }
+
+        static AvatarAnimatorData.Layer Hold(string name, int motion)
+        {
+            var layer = new AvatarAnimatorData.Layer { Name = name, Weight = 1, Blending = "override" };
+            layer.Machines.Add(new AvatarAnimatorData.Machine { Name = name, DefaultState = 0 });
+            layer.States.Add(new AvatarAnimatorData.State { Name = name, Machine = 0, Motion = motion });
+            return layer;
+        }
+
+        // A blend tree does not mix material indices: the slot takes the
+        // child of the greatest weight, while a float mixes.
+        [Test]
+        public void AnEvaluatorDoesNotBlendAMaterialSlotInATree()
+        {
+            var data = Slots(4, 7);
+            var tree = new AvatarAnimatorData.Motion { Type = "blendTree", BlendType = "1d" };
+            tree.Parameters.Add(0);
+            tree.Children.Add(new AvatarAnimatorData.Child { Motion = 0, Threshold = 0 });
+            tree.Children.Add(new AvatarAnimatorData.Child { Motion = 1, Threshold = 1 });
+            data.Motions.Add(tree);
+            var controller = new AvatarAnimatorData.Controller();
+            controller.Layers.Add(Hold("Base", 2));
+            data.Controllers.Add(controller);
+            var read = AvatarAnimatorData.Read(Json(data));
+            Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(read, () => 0);
+            foreach (var (blend, slot, mixed) in new[] { (.25, 4d, 4.75), (.75, 7d, 6.25), (0d, 4d, 4d), (1d, 7d, 7d) })
+            {
+                evaluator.Set(0, blend);
+                evaluator.Advance(0);
+                Assert.That(evaluator.Values[0], Is.EqualTo(slot), $"blend {blend}");
+                Assert.That(evaluator.Values[1], Is.EqualTo(mixed).Within(1e-9), $"blend {blend}");
+            }
+        }
+
+        // An override layer over another takes the slot from the upper one
+        // only past half its weight.
+        [Test]
+        public void AnEvaluatorDoesNotBlendAMaterialSlotAcrossLayers()
+        {
+            var data = Slots(4, 7);
+            var controller = new AvatarAnimatorData.Controller();
+            controller.Layers.Add(Hold("Base", 0));
+            controller.Layers.Add(Hold("Upper", 1));
+            data.Controllers.Add(controller);
+            var read = AvatarAnimatorData.Read(Json(data));
+            Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(read, () => 0);
+            foreach (var (weight, slot, mixed) in new[] { (.25, 4d, 4.75), (.75, 7d, 6.25), (1d, 7d, 7d), (0d, 4d, 4d) })
+            {
+                evaluator.SetLayerWeight(1, weight);
+                evaluator.Advance(0);
+                Assert.That(evaluator.Values[0], Is.EqualTo(slot), $"weight {weight}");
+                Assert.That(evaluator.Values[1], Is.EqualTo(mixed).Within(1e-9), $"weight {weight}");
+            }
+        }
     }
 }

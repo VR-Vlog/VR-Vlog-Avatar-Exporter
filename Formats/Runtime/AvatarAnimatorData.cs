@@ -52,7 +52,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST" };
+        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST", "materialSlot" };
         // The components an enabled target turns on and off: a renderer of
         // the node, or a constraint of VRVLOG_avatar_constraints by index.
         public static readonly string[] Components = { "renderer", "constraint" };
@@ -61,7 +61,7 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] TextureChannels = { "x", "y", "z", "w" };
         // The order the omitted kinds are written in. A newer exporter adds
         // kinds at the end; a reader keeps those it does not know (see Read).
-        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch" };
+        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
@@ -219,6 +219,10 @@ namespace VRVlog.AvatarAnimator
         // (r, g, b or a) of its color property Name, and a materialTextureST
         // target Channel (x, y: scale, z, w: offset) of the scale and offset
         // of its texture property Name (Unity's Name_ST), each one float.
+        // A materialSlot target is slot Slot of the renderer on Node, its
+        // values glTF material indices (-1 an empty slot), Rest among them.
+        // It is Stepped: an evaluator never blends it, but takes the value
+        // with the most weight, as Unity does with an object reference curve.
         // A target of a property this reader does not know (Known is false),
         // or an enabled target of a component it does not know,
         // is read without looking at its keys: a newer exporter may write
@@ -237,7 +241,9 @@ namespace VRVlog.AvatarAnimator
             public string Component, Name, Channel;
             public int Material;
             public int Index;
+            public int Slot;
             public Dictionary<string, object> Fields;
+            public bool Stepped => Property == "materialSlot";
             public bool Known => Array.IndexOf(Properties, Property) >= 0 && (Property != "enabled" || Array.IndexOf(Components, Component) >= 0);
         }
 
@@ -305,6 +311,7 @@ namespace VRVlog.AvatarAnimator
             : t.Property == "enabled" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["component"] = t.Component, ["rest"] = (long)t.Rest }
             : t.Property == "materialFloat" ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["rest"] = t.Rest }
             : IsMaterialChannel(t.Property) ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["channel"] = t.Channel, ["rest"] = t.Rest }
+            : t.Property == "materialSlot" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["slot"] = (long)t.Slot, ["rest"] = (long)t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
@@ -686,6 +693,13 @@ namespace VRVlog.AvatarAnimator
                     target.Channel = Choice(t["channel"], target.Property == "materialColor" ? ColorChannels : TextureChannels);
                     target.Rest = Json.Number(t["rest"]);
                 }
+                else if (target.Property == "materialSlot")
+                {
+                    Json.Obj(t, "node", "property", "slot", "rest");
+                    target.Node = Json.NonNegative(t["node"]);
+                    target.Slot = Json.NonNegative(t["slot"]);
+                    target.Rest = SlotValue(t["rest"]);
+                }
                 else
                 {
                     var constraint = target.Property == "enabled" && target.Component == "constraint";
@@ -699,10 +713,11 @@ namespace VRVlog.AvatarAnimator
                 // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for
                 // parameter, (node, component) for enabled, (component, index) for a
                 // constraint's enabled (an entry moves one node), (material, name) for materialFloat,
-                // (material, name, channel) for materialColor and materialTextureST.
+                // (material, name, channel) for materialColor and materialTextureST,
+                // (node, slot) for materialSlot.
                 var material = target.Property == "materialFloat" || IsMaterialChannel(target.Property);
-                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material
-                    : target.Property == "enabled" ? target.Index : 0;
+                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material :
+                    target.Property == "materialSlot" ? target.Slot : target.Property == "enabled" ? target.Index : 0;
                 var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "") : null;
                 var keyNode = target.Property == "enabled" && target.Component == "constraint" ? -1 : target.Node;
                 if (!seenTargets.Add((keyNode, target.Property, key, keyName))) throw Json.Bad();
@@ -714,6 +729,10 @@ namespace VRVlog.AvatarAnimator
             {
                 var target = data.Targets[track.Target];
                 if (target.Property == "parameter" && data.Parameters[target.Parameter].Type != "float") throw Json.Bad();
+                // A materialSlot curve holds material indices.
+                if (target.Stepped)
+                    foreach (var key in track.Curves.SelectMany(curve => curve.Keys))
+                        if (key.Value != Math.Floor(key.Value) || key.Value < -1) throw Json.Bad();
             }
 
             // A face names the states that play its clips, in the FX above.
@@ -964,6 +983,14 @@ namespace VRVlog.AvatarAnimator
 
         static bool IsNumber(object value) => (value is double || value is float || value is long || value is int) && !double.IsNaN(Convert.ToDouble(value)) && !double.IsInfinity(Convert.ToDouble(value));
         static bool Flag(object value) => value is bool b ? b : throw Json.Bad();
+
+        // A material index, or -1 for an empty slot.
+        static double SlotValue(object raw)
+        {
+            var value = Json.Integer(raw);
+            if (value < -1) throw Json.Bad();
+            return value;
+        }
 
         static bool IsMaterialChannel(string property) => property == "materialColor" || property == "materialTextureST";
         static string Choice(object value, params string[] allowed) => value is string s && Array.IndexOf(allowed, s) >= 0 ? s : throw Json.Bad();
