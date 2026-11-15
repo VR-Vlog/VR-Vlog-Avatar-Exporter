@@ -143,6 +143,7 @@ public static class AvatarAnimatorEvaluatorTests
         Interruption();
         StateOptions();
         Unsupported();
+        Controllers();
         Arguments();
         Settled();
         NoAllocation();
@@ -970,6 +971,239 @@ public static class AvatarAnimatorEvaluatorTests
         Builder.State(copy, "A", -1);
         Check(!AvatarAnimatorEvaluator.Supports(s.Data, out _), "a synced layer with fewer states than its source");
         Throws<NotSupportedException>(() => new AvatarAnimatorEvaluator(s.Data, () => 0), "is refused before it can index past its states");
+    }
+
+    // Starts a controller of the playable; the layers that follow go in it.
+    static void Playable(Builder b, string playable)
+    {
+        b.Controller = new AvatarAnimatorData.Controller { Playable = playable };
+        b.Data.Controllers.Add(b.Controller);
+    }
+
+    static int Muscle(Builder b, int muscle)
+    {
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Property = "muscle", Muscle = muscle, Rest = 0 });
+        return b.Data.Targets.Count - 1;
+    }
+
+    // An FX toggle with a timed transition, then whatever gesture and action
+    // controllers add writes the same node: the FX plays the same.
+    static (Builder b, int hat, int node) FxToggle()
+    {
+        var b = new Builder();
+        var hat = b.Parameter("Hat", "bool");
+        var node = b.Target(rest: 1);
+        var layer = b.Layer("Hat");
+        var off = Builder.State(layer, "Off", b.Clip(0, false, (node, 0)));
+        var on = Builder.State(layer, "On", b.Ramp(.5, true, node, 3));
+        layer.States[off].Transitions.Add(To(on, .25).When(hat, "if"));
+        layer.States[on].Transitions.Add(To(off, .25).When(hat, "ifNot"));
+        return (b, hat, node);
+    }
+
+    static void SameAsFxAlone(Builder b, int hat, int node, string what)
+    {
+        var (alone, _, _) = FxToggle();
+        var e = b.Build();
+        var f = alone.Build();
+        for (var i = 0; i < 120; i++)
+        {
+            var v = i % 40 < 20 ? 1 : 0;
+            e.Set(hat, v);
+            f.Set(hat, v);
+            e.Advance(Frame);
+            f.Advance(Frame);
+            if (e.Values[node] != f.Values[node] || e.Written[node] != f.Written[node]) { Check(false, what + " at frame " + i); return; }
+        }
+        Check(true, what);
+    }
+
+    // #3666: the gesture and action controllers under the FX, each over the
+    // ones below with its playable weight; one the evaluator cannot play is
+    // skipped and the FX plays as before.
+    static void Controllers()
+    {
+        // A gesture with an additive layer is skipped, not refused.
+        var (b, hat, node) = FxToggle();
+        Playable(b, "gesture");
+        var additive = b.Layer("Hands");
+        Builder.State(additive, "Fist", b.Clip(0, false, (node, 9)));
+        var extra = b.Layer("Additive");
+        extra.Blending = "additive";
+        Builder.State(extra, "Add", b.Clip(0, false, (node, 9)));
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out var reason) && reason == null, "a gesture with an additive layer does not refuse the FX");
+        var e = b.Build();
+        Check(e.SkipReason(1) != null && e.SkipReason(0) == null, "the gesture is skipped with its reason");
+        Check(e.LayerIndex(1, 0) == -1 && e.LayerIndex(0, 0) == 0 && e.LayerCount == 1, "a skipped controller has no layers");
+        SameAsFxAlone(b, hat, node, "the FX plays as without the skipped gesture");
+
+        // Other things the evaluator cannot play skip an action the same way.
+        foreach (var change in new Action<Builder>[]
+        {
+            x => { var l = x.Layer("Random"); var s = Builder.State(l, "S", -1); var d = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+                   d.Operations.Add(new AvatarAnimatorData.Operation { Type = "random", Parameter = x.Parameter("Pick", "int"), ValueMax = 3, PreventRepeats = true }); l.States[s].Behaviours.Add(d); },
+            x => { Builder.State(x.Layer("Source"), "A", -1); var l = x.Layer("Synced"); l.SyncedLayer = 0; l.SyncedLayerAffectsTiming = true; Builder.State(l, "A", -1); },
+        })
+        {
+            var (c, h, n) = FxToggle();
+            Playable(c, "action");
+            change(c);
+            Check(AvatarAnimatorEvaluator.Supports(c.Data, out reason), "an action the evaluator cannot play does not refuse the FX: " + reason);
+            Check(c.Build().SkipReason(1) != null, "and is skipped");
+            SameAsFxAlone(c, h, n, "the FX plays as without the skipped action");
+        }
+        // The FX itself is still refused.
+        var (fx, _, _) = FxToggle();
+        fx.Data.Controllers[0].Layers[0].Blending = "additive";
+        Check(!AvatarAnimatorEvaluator.Supports(fx.Data, out _), "an FX with an additive layer is refused");
+
+        // A gesture writing other targets plays alongside, and the FX keeps playing the same.
+        (b, hat, node) = FxToggle();
+        Playable(b, "gesture");
+        var hand = b.Target();
+        var gestureLeft = b.Parameter("GestureLeft", "int");
+        var hands = b.Layer("Left");
+        var neutral = Builder.State(hands, "Neutral", b.Clip(0, false, (hand, 0)));
+        var fist = Builder.State(hands, "Fist", b.Clip(0, false, (hand, 1)));
+        hands.States[neutral].Transitions.Add(To(fist).When(gestureLeft, "equals", 1));
+        hands.States[fist].Transitions.Add(To(neutral).When(gestureLeft, "notEqual", 1));
+        SameAsFxAlone(b, hat, node, "the FX plays the same beside a gesture");
+        e = b.Build();
+        e.Advance(Frame);
+        Check(e.Values[hand] == 0 && e.Written[hand], "the gesture writes its target");
+        e.Set(gestureLeft, 1);
+        e.Advance(Frame);
+        Check(e.Values[hand] == 1, "and follows the parameters");
+        Check(e.LayerIndex(1, 0) == 1 && e.State(e.LayerIndex(1, 0)) == fist && e.LayerCount == 2, "its layers follow the FX's");
+
+        // Where both write a target, the FX above takes it; where the FX's
+        // state does not write a target the FX animates, it gives the rest
+        // over the gesture, as its layers do not see the gesture (assumed).
+        b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        var shared = b.Target();
+        var fxLayer = b.Layer("FX");
+        var idle = Builder.State(fxLayer, "Idle", b.Clip(0, false, (b.Target(), 1)));
+        var set = Builder.State(fxLayer, "Set", b.Clip(0, false, (shared, .8)));
+        fxLayer.States[idle].Transitions.Add(To(set).When(go, "if"));
+        Playable(b, "gesture");
+        Builder.State(b.Layer("Gesture"), "Hold", b.Clip(0, false, (shared, .3)));
+        e = b.Build();
+        e.Advance(Frame);
+        Check(e.Values[shared] == 0, "a Write Defaults FX state gives the rest of a target the FX animates");
+        e.Set(go, 1);
+        e.Advance(Frame);
+        Check(e.Values[shared] == .8, "the FX takes a target both write");
+        // Without the FX animating it, the gesture's value shows.
+        b.Data.Controllers[0].Layers[0].States[set].Motion = b.Clip(0, false, (b.Target(), 1));
+        e = b.Build();
+        e.Advance(Frame);
+        Check(e.Values[shared] == .3 && e.Written[shared], "a target only the gesture writes keeps its value under the FX");
+
+        // The action rests at playable weight 0 until a Playable Layer Control raises it.
+        b = new Builder();
+        var emote = b.Parameter("Emote", "bool");
+        var arm = b.Target();
+        var control = b.Layer("Control");
+        var rest = Builder.State(control, "Rest", -1);
+        var play = Builder.State(control, "Play", -1);
+        control.States[rest].Transitions.Add(To(play).When(emote, "if"));
+        control.States[play].Transitions.Add(To(rest).When(emote, "ifNot"));
+        control.States[play].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "action", GoalWeight = 1, BlendDuration = .5 });
+        control.States[rest].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "action", GoalWeight = 0, BlendDuration = 0 });
+        Playable(b, "gesture");
+        Builder.State(b.Layer("Gesture"), "Hold", b.Clip(0, false, (arm, 2)));
+        Playable(b, "action");
+        var dance = b.Layer("Action");
+        Builder.State(dance, "Dance", b.Clip(0, false, (arm, 6)));
+        foreach (var skips in new[] { true, false })
+        {
+            e = b.Build();
+            e.SkipsSettledFrames = skips;
+            Run(e, .5);
+            Check(e.PlayableWeight(2) == 0 && e.Values[arm] == 2, "the action plays at weight 0 over the gesture");
+            Check(e.State(e.LayerIndex(2, 0)) == 0 && e.NormalizedTime(e.LayerIndex(2, 0)) > 0, "while its layers run");
+            e.Set(emote, 1);
+            e.Advance(Frame);
+            e.Advance(.25);
+            Near(e.PlayableWeight(2), .5, "a Playable Layer Control blends the action's weight");
+            Near(e.Values[arm], 4, "the action blends over the gesture by it");
+            Run(e, 1);
+            Check(e.PlayableWeight(2) == 1 && e.Values[arm] == 6, "and at weight 1 takes the target");
+            e.Set(emote, 0);
+            e.Advance(Frame);
+            e.Advance(Frame);
+            Check(e.PlayableWeight(2) == 0 && e.Values[arm] == 2, "a blend of 0 s drops it back at once");
+        }
+        // The FX's playable weight blends toward what the controllers below leave.
+        b.Data.Controllers[0].Layers[0].States[play].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "fx", GoalWeight = .5, BlendDuration = 0 });
+        Builder.State(b.Data.Controllers[0].Layers[0], "Unused", b.Clip(0, false, (arm, 10)));
+        e = b.Build();
+        e.Set(emote, 1);
+        Run(e, 1);
+        Near(e.FxWeight, .5, "the FX's weight");
+        Near(e.Values[arm], 3, "an FX state not writing the target gives the rest over the action at half weight");
+
+        // A Layer Control names a layer of its own playable.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        var finger = b.Target();
+        var top = b.Layer("Control");
+        var wait = Builder.State(top, "Wait", -1);
+        var raise = Builder.State(top, "Raise", -1);
+        top.States[wait].Transitions.Add(To(raise).When(go, "if"));
+        top.States[raise].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "layerControl", Playable = "gesture", Layer = 1, GoalWeight = 1, BlendDuration = 0 });
+        Playable(b, "gesture");
+        Builder.State(b.Layer("Base"), "Open", b.Clip(0, false, (finger, 1)));
+        Builder.State(b.Layer("Point", weight: 0), "Point", b.Clip(0, false, (finger, 5)));
+        e = b.Build();
+        e.Advance(Frame);
+        Check(e.Values[finger] == 1 && e.LayerWeight(e.LayerIndex(1, 1)) == 0, "the gesture's second layer starts at its weight");
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(Frame);
+        Check(e.LayerWeight(e.LayerIndex(1, 1)) == 1 && e.Values[finger] == 5, "a Layer Control on the gesture moves the gesture's layer");
+        e.SetLayerWeight(e.LayerIndex(1, 0), 0);
+        e.Advance(Frame);
+        Check(e.LayerWeight(e.LayerIndex(1, 0)) == 1, "a controller's base layer stays at 1");
+
+        Masks();
+    }
+
+    // A layer's mask moves the muscles of its body parts, and an FX whose
+    // base layer has no mask moves no muscle (VRChat).
+    static void Masks()
+    {
+        Check(AvatarAnimatorEvaluator.MuscleBodyPart(0) == 1 && AvatarAnimatorEvaluator.MuscleBodyPart(20) == 2 && AvatarAnimatorEvaluator.MuscleBodyPart(21) == 3
+            && AvatarAnimatorEvaluator.MuscleBodyPart(37) == 5 && AvatarAnimatorEvaluator.MuscleBodyPart(54) == 6 && AvatarAnimatorEvaluator.MuscleBodyPart(55) == 7
+            && AvatarAnimatorEvaluator.MuscleBodyPart(94) == 8, "the muscles' body parts");
+        var b = new Builder();
+        var node = b.Target();
+        var thumb = Muscle(b, 55);
+        var arm = Muscle(b, 39);
+        var fx = b.Layer("FX");
+        Builder.State(fx, "Pose", b.Clip(0, false, (node, 1), (thumb, .9), (arm, .9)));
+        Playable(b, "gesture");
+        var left = b.Layer("Left");
+        left.Mask = new AvatarAnimatorData.Mask();
+        left.Mask.Humanoid.Add(7);
+        Builder.State(left, "Fist", b.Clip(0, false, (thumb, .5), (arm, .5)), writeDefaults: false);
+        var e = b.Build();
+        e.Advance(Frame);
+        Check(e.Values[node] == 1, "the FX moves its node");
+        Check(e.Values[thumb] == .5 && e.Written[thumb], "the gesture's mask lets the fingers move, and the FX without a mask on its base layer moves no muscle");
+        Check(e.Values[arm] == 0 && !e.Written[arm], "the mask keeps the gesture off the arm");
+        b.Data.Controllers[0].Layers[0].Mask = new AvatarAnimatorData.Mask();
+        b.Data.Controllers[0].Layers[0].Mask.Humanoid.Add(5);
+        e = b.Build();
+        e.Advance(Frame);
+        Check(e.Values[arm] == .9 && e.Values[thumb] == .5, "an FX with a mask on its base layer moves the muscles of its body parts");
+        var none = new Builder();
+        var m = Muscle(none, 3);
+        Builder.State(none.Layer("FX"), "Pose", none.Clip(0, false, (m, .7)));
+        e = none.Build();
+        e.Advance(Frame);
+        Check(e.Values[m] == 0 && !e.Written[m], "an FX alone without a mask moves no muscle");
     }
 
     // M12. The recordings of the freeformCartesian case hold Unity's weights; these are the same rule by hand.
