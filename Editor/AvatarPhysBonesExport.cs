@@ -27,13 +27,15 @@ namespace VRVlog.LilToonExporter
 
         internal int Count => entries.Count;
 
-        // Null when the copy has no PhysBone.
+        // Null when the copy has no PhysBone. VRChat removes objects tagged
+        // EditorOnly at upload, so their PhysBones are not read.
         internal static AvatarPhysBonesExport Capture(GameObject copy)
         {
             if (copy == null) throw new ArgumentNullException(nameof(copy));
             var capture = new AvatarPhysBonesExport();
-            foreach (var component in PhysBones(copy))
+            foreach (var component in copy.GetComponentsInChildren<Component>(true).Where(PhysBoneSpringExport.IsPhysBone))
             {
+                if (EditorOnly(component.transform, copy.transform)) continue;
                 var root = Member(component, "rootTransform") as Transform;
                 // Unity's missing-object sentinel is not CLR null.
                 if (root == null) root = component.transform;
@@ -45,7 +47,8 @@ namespace VRVlog.LilToonExporter
                         Parameter = Member(component, "parameter") as string ?? "",
                         MaxStretch = Math.Max(0, Number(Member(component, "maxStretch"))),
                         // PhysBone 1.0 has no squish; SDKs before 1.1 have no field.
-                        MaxSquish = Math.Max(0, Number(Member(component, "maxSquish"))),
+                        MaxSquish = Member(component, "version") is Enum version && Convert.ToInt32(version) == 0
+                            ? 0 : Math.Max(0, Number(Member(component, "maxSquish"))),
                         AllowGrabbing = Allowed(Member(component, "allowGrabbing")),
                         AllowPosing = Allowed(Member(component, "allowPosing")),
                     }
@@ -54,19 +57,25 @@ namespace VRVlog.LilToonExporter
             return capture.entries.Count > 0 ? capture : null;
         }
 
-        // The FX parameter names VRChat writes for the copy's PhysBones,
-        // enabled or not: VRChat owns them, so the FX extension marks them builtin.
-        internal static HashSet<string> ParameterNames(GameObject copy)
+        // The parameter names VRChat writes for the entries of the table,
+        // enabled or not: the FX extension marks them builtin, so a name is
+        // builtin exactly when the file carries the PhysBone that feeds it.
+        // Empty for null.
+        internal static HashSet<string> ParameterNames(AvatarPhysBonesData data)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
-            if (copy == null) return names;
-            foreach (var component in PhysBones(copy))
-                names.UnionWith(AvatarPhysBonesData.ParameterNames(Member(component, "parameter") as string));
+            if (data != null)
+                foreach (var physBone in data.PhysBones)
+                    names.UnionWith(AvatarPhysBonesData.ParameterNames(physBone.Parameter));
             return names;
         }
 
-        static IEnumerable<Component> PhysBones(GameObject copy) =>
-            copy.GetComponentsInChildren<Component>(true).Where(PhysBoneSpringExport.IsPhysBone);
+        static bool EditorOnly(Transform transform, Transform root)
+        {
+            for (var current = transform; current != null; current = current == root ? null : current.parent)
+                if (current.CompareTag("EditorOnly")) return true;
+            return false;
+        }
 
         // An entry per PhysBone whose root the file has a node for, in the
         // order they were read; null when there is none.
@@ -92,9 +101,19 @@ namespace VRVlog.LilToonExporter
             if (data == null || data.PhysBones.Count == 0) return bytes;
             var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list.Count : 0;
-            if (data.PhysBones.Any(p => p.Node >= nodes)) throw new InvalidOperationException("Avatar PhysBone node is out of range.");
+            Checked(data, nodes);
             document.PlaceExtension(AvatarPhysBonesData.Extension, AvatarPhysBonesData.Write(data));
             return document.Write();
+        }
+
+        // The data when it fits the contract and every node is below nodes;
+        // throws otherwise. Null stays null.
+        internal static AvatarPhysBonesData Checked(AvatarPhysBonesData data, int nodes)
+        {
+            if (data == null) return null;
+            AvatarPhysBonesData.Write(data);
+            if (data.PhysBones.Any(p => p.Node >= nodes)) throw new InvalidOperationException("Avatar PhysBone node is out of range.");
+            return data;
         }
 
         // VRChat's AdvancedBool (False, True, Other: allowed for some) or a bool on older SDKs.

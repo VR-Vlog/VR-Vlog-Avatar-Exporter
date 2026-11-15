@@ -92,6 +92,12 @@ namespace VRVlog.LilToonExporter.Tests
             var physBone = tail.gameObject.AddComponent(physBoneType);
             AvatarPhysBonesExportTests.Set(physBone, "parameter", "Tail");
             AvatarPhysBonesExportTests.Set(physBone, "maxStretch", .25f);
+            // Under EditorOnly, which VRChat removes at upload: no entry, so its names stay animator.
+            var editorOnly = new GameObject("Editor only").transform;
+            editorOnly.SetParent(head, false); editorOnly.tag = "EditorOnly";
+            new GameObject("Editor only tip").transform.SetParent(editorOnly, false);
+            AvatarPhysBonesExportTests.Set(editorOnly.gameObject.AddComponent(physBoneType), "parameter", "Hidden");
+            avatar.Fx.AddParameter("Hidden_Angle", AnimatorControllerParameterType.Float);
             avatar.Fx.AddParameter("Tail_Angle", AnimatorControllerParameterType.Float);
             avatar.Fx.AddParameter("Tail_IsGrabbed", AnimatorControllerParameterType.Bool);
             avatar.Fx.AddParameter("Lone_Angle", AnimatorControllerParameterType.Float);
@@ -102,6 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(parameters["Tail_Angle"].Origin, Is.EqualTo("builtin"), string.Join("\n", warnings));
             Assert.That(parameters["Tail_IsGrabbed"].Origin, Is.EqualTo("builtin"));
             Assert.That(parameters["Lone_Angle"].Origin, Is.EqualTo("animator"), "No PhysBone has the prefix Lone.");
+            Assert.That(parameters["Hidden_Angle"].Origin, Is.EqualTo("animator"), "The file does not carry the PhysBone that feeds it.");
             Assert.That(parameters["BlendX"].Origin, Is.EqualTo("animator"));
 
             Assert.That((List<object>)json["extensionsUsed"], Has.Member(AvatarPhysBonesData.Extension));

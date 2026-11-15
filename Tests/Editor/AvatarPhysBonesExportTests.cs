@@ -47,6 +47,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(() => AvatarPhysBonesData.Read(Written(e => e["limitAngle"] = 200d)), Throws.InvalidOperationException);
             Assert.That(() => AvatarPhysBonesData.Read(Written(e => e["maxStretch"] = -1d)), Throws.InvalidOperationException);
             Assert.That(() => AvatarPhysBonesData.Read(Written(e => e["parameter"] = 1L)), Throws.InvalidOperationException);
+            Assert.That(() => AvatarPhysBonesData.Read(Written(e => e["parameter"] = new string('a', AvatarPhysBonesData.MaximumParameterLength + 1))), Throws.InvalidOperationException);
             Assert.That(() => AvatarPhysBonesData.Read(Written(e => e["immobile"] = 0d)), Throws.InvalidOperationException, "Unknown keys are not read.");
             Assert.That(() => AvatarPhysBonesData.Read(Written(e => e.Remove("allowPosing"))), Throws.InvalidOperationException);
             var newer = Written(_ => { });
@@ -62,8 +63,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(AvatarPhysBonesData.ParameterNames(null), Is.Empty);
         }
 
-        // Capture reads every PhysBone, enabled or not, in hierarchy order;
-        // Resolve keeps those whose root has a node, under the root's node.
+        // Capture reads every PhysBone, enabled or not, in hierarchy order,
+        // but not those under EditorOnly; Resolve keeps those whose root has a
+        // node, under the root's node, and the builtin names are theirs.
         [Test]
         public void CaptureReadsTheSettingsAndResolveBindsTheRoots()
         {
@@ -76,6 +78,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var holder = Child(root.transform, "Holder");
                 var ear = Child(root.transform, "Ear"); Child(ear, "Ear tip");
                 var skirt = Child(root.transform, "Skirt"); Child(skirt, "Skirt tip");
+                var editorOnly = Child(root.transform, "Editor only"); Child(editorOnly, "Editor only tip");
+                editorOnly.tag = "EditorOnly";
 
                 var tailBone = tail.gameObject.AddComponent(type);
                 Set(tailBone, "parameter", "Tail");
@@ -85,20 +89,25 @@ namespace VRVlog.LilToonExporter.Tests
                 // On another object, with its Root Transform on Ear.
                 var earBone = holder.gameObject.AddComponent(type);
                 Set(earBone, "rootTransform", ear);
+                Set(earBone, "parameter", "Ear");
                 SetChoice(earBone, "allowGrabbing", "Other");
                 ((Behaviour)earBone).enabled = false;
                 // Its root is not written.
                 var skirtBone = skirt.gameObject.AddComponent(type);
                 Set(skirtBone, "parameter", "Skirt");
+                // VRChat removes it at upload.
+                Set(editorOnly.gameObject.AddComponent(type), "parameter", "EditorOnly");
 
-                Assert.That(AvatarPhysBonesExport.ParameterNames(root), Is.EquivalentTo(
-                    AvatarPhysBonesData.ParameterNames("Tail").Concat(AvatarPhysBonesData.ParameterNames("Skirt"))));
                 var capture = AvatarPhysBonesExport.Capture(root);
                 Assert.That(capture.Count, Is.EqualTo(3));
                 var nodes = new Dictionary<GameObject, int> { [tail.gameObject] = 4, [ear.gameObject] = 7 };
                 var data = AvatarPhysBonesData.Read(AvatarPhysBonesData.Write(capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1)));
                 Assert.That(data.PhysBones.Select(p => (p.Node, p.Parameter, p.MaxStretch, p.AllowGrabbing, p.AllowPosing)),
-                    Is.EqualTo(new[] { (4, "Tail", (double).5f, true, false), (7, "", 0d, true, ReadChoice(earBone, "allowPosing") != "False") }));
+                    Is.EqualTo(new[] { (4, "Tail", (double).5f, true, false), (7, "Ear", 0d, true, ReadChoice(earBone, "allowPosing") != "False") }));
+                // The disabled Ear is builtin; Skirt, whose root has no node, is not.
+                Assert.That(AvatarPhysBonesExport.ParameterNames(data), Is.EquivalentTo(
+                    AvatarPhysBonesData.ParameterNames("Tail").Concat(AvatarPhysBonesData.ParameterNames("Ear"))));
+                Assert.That(AvatarPhysBonesExport.ParameterNames(null), Is.Empty);
                 Assert.That(capture.Resolve(_ => -1), Is.Null, "No root written, no table.");
             }
             finally { Object.DestroyImmediate(root); }

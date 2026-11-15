@@ -31,6 +31,8 @@ namespace VRVlog.AvatarPhysBones
         public const string Extension = "VRVLOG_avatar_physbones";
         public const int SchemaVersion = 1;
         public const int MaximumPhysBones = 4096;
+        // The longest parameter prefix read, as other contracts limit their strings.
+        public const int MaximumParameterLength = 1024;
         // The suffixes of the parameters VRChat writes for a PhysBone, in this order.
         public static readonly string[] ParameterSuffixes = { "_IsGrabbed", "_IsPosed", "_Angle", "_Stretch", "_Squish" };
 
@@ -73,7 +75,7 @@ namespace VRVlog.AvatarPhysBones
                 var o = Json.Obj(raw, Keys);
                 var p = new PhysBone
                 {
-                    Node = Json.NonNegative(o["node"]), Parameter = o["parameter"] is string s ? s : throw Json.Bad(),
+                    Node = Json.NonNegative(o["node"]), Parameter = o["parameter"] is string s && s.Length <= MaximumParameterLength ? s : throw Json.Bad(),
                     MaxStretch = NonNegative(o["maxStretch"]), MaxSquish = NonNegative(o["maxSquish"]),
                     AllowGrabbing = Flag(o["allowGrabbing"]), AllowPosing = Flag(o["allowPosing"]), LimitAngle = Json.Number(o["limitAngle"]),
                 };

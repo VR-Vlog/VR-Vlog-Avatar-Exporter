@@ -147,9 +147,6 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<int> controllerTyped = new HashSet<int>();
         // The names Expression Parameters or a controller declare.
         readonly HashSet<string> declared = new HashSet<string>(StringComparer.Ordinal);
-        // The parameters VRChat writes for the avatar's PhysBones
-        // (<parameter>_Angle and the like), builtin like GestureLeft.
-        HashSet<string> physBoneParameters = new HashSet<string>(StringComparer.Ordinal);
         // The clips the controller read now overrides.
         Dictionary<AnimationClip, AnimationClip> overrides;
         // The motions and clips of the controller read now, and its blend
@@ -305,7 +302,7 @@ namespace VRVlog.LilToonExporter
             if (fx == null) return null;
             var controller = ExpressionDependencies.Controller(fx);
             var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), enabledRest ?? new Dictionary<Renderer, bool>(),
-                ExpressionDependencies.Overrides(fx)) { Controller = fx, physBoneParameters = AvatarPhysBonesExport.ParameterNames(clone) };
+                ExpressionDependencies.Overrides(fx)) { Controller = fx };
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller, "fx"));
@@ -530,9 +527,17 @@ namespace VRVlog.LilToonExporter
         // constraint gives the VRVLOG_avatar_constraints entry of a
         // constraint component, or -1; without it, or for -1, constraint
         // enabled curves are counted as enabled.
+        // physBones names the parameters VRChat writes for the PhysBones of
+        // the VRVLOG_avatar_physbones table (<parameter>_Angle and the like);
+        // the controller's parameters of those names are builtin like
+        // GestureLeft. Without it they are animator, the file written before
+        // the table.
         internal AvatarAnimatorData Resolve(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources = null,
-            Func<Material, int> material = null, Func<Component, int> constraint = null)
+            Func<Material, int> material = null, Func<Component, int> constraint = null, ISet<string> physBones = null)
         {
+            foreach (var parameter in data.Parameters)
+                if (parameter.Origin != "expression")
+                    parameter.Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.Name) || physBones != null && physBones.Contains(parameter.Name) ? "builtin" : "animator";
             Build(node, sources, material, constraint, true);
             if (morphBinds.Count > 0 && Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes)
                 Build(node, sources, material, constraint, false);
@@ -1332,7 +1337,7 @@ namespace VRVlog.LilToonExporter
                 controllerDefaults[data.Parameters.Count] = value;
                 data.Parameters.Add(new AvatarAnimatorData.Parameter
                 {
-                    Name = parameter.name, Type = type, Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.name) || physBoneParameters.Contains(parameter.name) ? "builtin" : "animator",
+                    Name = parameter.name, Type = type, Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.name) ? "builtin" : "animator",
                     Default = value
                 });
             }
