@@ -486,6 +486,38 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e2.NextState(0) == -1, "its own layer did not start a transition on it");
         e2.Advance(Frame);
         Check(e2.State(0) == done, "its own layer moves on it in the next frame");
+
+        // M8 on the first frame: the default state's driver sets the value its
+        // own transition waits for, which moves from the second frame on.
+        var f = new Builder();
+        var ready = f.Parameter("Ready", "bool");
+        var first = f.Layer("First");
+        var start = Builder.State(first, "Start", -1);
+        var after = Builder.State(first, "After", -1);
+        first.States[start].Transitions.Add(To(after).When(ready, "if"));
+        var setReady = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        setReady.Operations.Add(new AvatarAnimatorData.Operation { Type = "set", Parameter = ready, Value = 1 });
+        first.States[start].Behaviours.Add(setReady);
+        var e3 = f.Build();
+        e3.Advance(Frame);
+        Check(e3.Get(ready) == 1 && e3.State(0) == start && e3.NextState(0) == -1, "M8: the first frame enters the default state and stays");
+        e3.Advance(Frame);
+        Check(e3.State(0) == after, "the second frame takes the transition");
+
+        // M8: drivers of two layers on the same parameter apply in layer order.
+        var g = new Builder();
+        var total = g.Parameter("Total", "int");
+        foreach (var (name, type) in new[] { ("Set", "set"), ("Add", "add") })
+        {
+            var l = g.Layer(name);
+            var s0 = Builder.State(l, "S", -1);
+            var op = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+            op.Operations.Add(new AvatarAnimatorData.Operation { Type = type, Parameter = total, Value = 1 });
+            l.States[s0].Behaviours.Add(op);
+        }
+        var e4 = g.Build();
+        e4.Advance(Frame);
+        Check(e4.Get(total) == 2, "M8: set 1 then add 1 in the same frame gives 2");
     }
 
     // M11: Unity owns a parameter a clip animates.
@@ -695,6 +727,10 @@ public static class AvatarAnimatorEvaluatorTests
         e.Advance(Frame);
         e.Set(go, 1);
         e.Advance(Frame);
+        // M5: unordered, the running transition starts again while Go holds.
+        e.Advance(.25);
+        Check(e.NextState(0) == c && e.TransitionProgress(0) == 0, "M5: the running transition interrupts itself");
+        e.Set(go, 0);
         e.Advance(.5);
         Near(e.Values[node], .5, "halfway to B");
         e.Set(stop, 1);
@@ -712,6 +748,49 @@ public static class AvatarAnimatorEvaluatorTests
         e.Set(stop, 1);
         e.Advance(.5);
         Check(e.NextState(0) == c, "no interruption");
+
+        // Ordered, the running transition does not start again.
+        slow.InterruptionSource = "source";
+        slow.OrderedInterruption = true;
+        e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        Near(e.TransitionProgress(0), .25, "M5: ordered, the running transition goes on");
+
+        // M5: starting again does not run the destination's driver again.
+        slow.OrderedInterruption = false;
+        var count = b.Parameter("Count", "int");
+        var addOne = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        addOne.Operations.Add(new AvatarAnimatorData.Operation { Type = "add", Parameter = count, Value = 1 });
+        layer.States[c].Behaviours.Add(addOne);
+        e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        Check(e.NextState(0) == c && e.Get(count) == 1, "M5: the driver runs once while the transition starts again");
+        layer.States[c].Behaviours.Remove(addOne);
+
+        // Any State interrupts unless the interruption source is none, before
+        // the destination's transitions.
+        var away = Builder.State(layer, "E", b.Clip(1, true, (node, 9)));
+        var any = To(away, duration: 1).When(stop, "if");
+        layer.Machines[0].AnyStateTransitions.Add(any);
+        layer.States[c].Transitions.Add(To(d, duration: 1).When(stop, "if"));
+        foreach (var source in new[] { "none", "destination" })
+        {
+            slow.InterruptionSource = source;
+            e = b.Build();
+            e.Advance(Frame);
+            e.Set(go, 1);
+            e.Advance(Frame);
+            e.Set(stop, 1);
+            e.Advance(Frame);
+            Check(e.NextState(0) == (source == "none" ? c : away), "M5: Any State with interruption source " + source);
+        }
+        layer.Machines[0].AnyStateTransitions.Remove(any);
     }
 
     static void StateOptions()

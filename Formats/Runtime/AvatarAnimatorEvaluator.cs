@@ -22,9 +22,12 @@ namespace VRVlog.AvatarAnimator
     // once, e < 1 at each loop after the start), and the rest of the frame
     // already advances the transition and its destination; M3 a layer whose
     // transition ended this frame starts none until the next; M4 a trigger
-    // used by a transition is reset once every layer has stepped; M5 Any
-    // State transitions are checked only while the layer is not
-    // transitioning, and an interrupted transition blends from a still copy;
+    // used by a transition is reset once every layer has stepped; M5 a
+    // running transition whose interruption source is not none is
+    // interrupted by Any State's transitions first, then by its source's or
+    // destination's; ordered, a list stops before the running transition,
+    // otherwise the running transition interrupts itself; an interrupted
+    // transition blends from a still copy, and its source's time stops;
     // M6 for a target a state's motion does not write: mid-transition, when
     // the other side's motion writes it, a Write Defaults side gives the
     // rest; otherwise a Write Defaults state leaves it to the layers below
@@ -455,7 +458,9 @@ namespace VRVlog.AvatarAnimator
 
             var n0 = layer.Time;
             var length = StateLength(states[layer.State]);
-            layer.Time = AdvanceTime(states[layer.State], n0, dt, length);
+            // M5: after an interruption the source is a still copy, so its time
+            // stops too and its exit times are not crossed again.
+            if (!layer.Frozen) layer.Time = AdvanceTime(states[layer.State], n0, dt, length);
             double next0 = 0;
             if (layer.Transitioning)
             {
@@ -476,30 +481,39 @@ namespace VRVlog.AvatarAnimator
                     TryFire(layer, states[layer.State].Transitions, false, -1, n0, layer.Time, dt, length);
                 return;
             }
-            // M5: Any State interrupts only a transition from Any State whose source allows it.
-            // Interruptions of the running transition by its source or destination.
-            var sourceList = layer.ActiveFromAny ? any : states[layer.State].Transitions;
-            var until = -1;
-            if (layer.Active.OrderedInterruption)
-                until = IndexOf(sourceList, layer.Active);
+            // M5: Any State's transitions interrupt first, unless nothing may.
+            var source = layer.Active.InterruptionSource;
+            if (source == "none") return;
+            var ordered = layer.Active.OrderedInterruption;
+            if (TryFire(layer, any, true, ordered && layer.ActiveFromAny ? IndexOf(any, layer.Active) : -1, n0, layer.Time, dt, length))
+                return;
             var nextLength = StateLength(states[layer.Next]);
-            switch (layer.Active.InterruptionSource)
+            switch (source)
             {
                 case "source":
-                    TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length);
+                    TrySource(layer, ordered, n0, dt, length);
                     break;
                 case "destination":
                     TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength);
                     break;
                 case "sourceThenDestination":
-                    if (!TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length))
+                    if (!TrySource(layer, ordered, n0, dt, length))
                         TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength);
                     break;
                 case "destinationThenSource":
                     if (!TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength))
-                        TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length);
+                        TrySource(layer, ordered, n0, dt, length);
                     break;
             }
+        }
+
+        // The source state's own transitions; a transition from Any State
+        // has had its source checked already.
+        bool TrySource(LayerRun layer, bool ordered, double n0, double dt, double length)
+        {
+            if (layer.ActiveFromAny) return false;
+            var own = layer.Layer.States[layer.State].Transitions;
+            return TryFire(layer, own, false, ordered ? IndexOf(own, layer.Active) : -1, n0, layer.Time, dt, length);
         }
 
         static int IndexOf(List<AvatarAnimatorData.Transition> list, AvatarAnimatorData.Transition transition)
@@ -510,8 +524,8 @@ namespace VRVlog.AvatarAnimator
         }
 
         // The first transition of the list that may be taken now. until >= 0
-        // limits the list to the entries before it (ordered interruption); the
-        // running transition itself never interrupts.
+        // limits the list to the entries before it (ordered interruption);
+        // otherwise the running transition may start again.
         bool TryFire(LayerRun layer, List<AvatarAnimatorData.Transition> list, bool fromAny, int until,
             double n0, double n1, double dt, double sourceLength)
         {
@@ -519,7 +533,6 @@ namespace VRVlog.AvatarAnimator
             for (var i = 0; i < count; i++)
             {
                 var transition = list[i];
-                if (layer.Transitioning && ReferenceEquals(transition, layer.Active)) continue;
                 // Unity never takes a transition with neither an exit time nor a condition.
                 if (!transition.HasExitTime && transition.Conditions.Count == 0) continue;
                 double overshoot = 0;
@@ -536,7 +549,8 @@ namespace VRVlog.AvatarAnimator
                 var machine = layer.Layer.States[layer.State].Machine;
                 var destination = Resolve(layer.Layer, transition, fromAny ? 0 : machine, 0);
                 if (destination < 0) continue;
-                if (fromAny && !transition.CanTransitionToSelf && destination == (layer.Transitioning ? layer.Next : layer.State)) continue;
+                // Mid-transition, "self" is the source of the running transition.
+                if (fromAny && !transition.CanTransitionToSelf && destination == layer.State) continue;
                 Fire(layer, transition, destination, fromAny, sourceLength, overshoot);
                 return true;
             }
@@ -599,6 +613,9 @@ namespace VRVlog.AvatarAnimator
             for (var c = 0; c < chainCount; c++)
                 foreach (var condition in chain[c].Conditions)
                     if (types[condition.Parameter] == TriggerType) spent[condition.Parameter] = true;
+            // M5: a transition that starts itself again does not run its destination's
+            // behaviours again, so they run once as before (not measured in Unity).
+            var restart = layer.Transitioning && ReferenceEquals(transition, layer.Active) && destination == layer.Next;
             if (layer.Transitioning)
             {
                 // M5: the interrupted blend continues as a still copy.
@@ -614,7 +631,12 @@ namespace VRVlog.AvatarAnimator
             layer.NextTime = transition.Offset;
             layer.Progress = 0;
             layer.Duration = transition.HasFixedDuration ? transition.Duration : transition.Duration * sourceLength;
-            Enter(layer, destination);
+            if (restart)
+            {
+                layer.EnterSerial++;
+                layer.EnteredState = -1;
+            }
+            else Enter(layer, destination);
             if (overshoot > 0)
             {
                 var states = layer.Layer.States;
