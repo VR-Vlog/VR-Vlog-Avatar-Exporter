@@ -101,6 +101,41 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Omitted(extension), Is.EqualTo(new[] { ("effectLimit", 1) }));
         }
 
+        // FX's enabled targets name an effect by its index in its own table
+        // (#3667); an effect over a limit is not a part, and one Resolve left
+        // out has no index.
+        [Test]
+        public void IndexOfIsTheEntryInItsOwnTable()
+        {
+            var root = Root();
+            var head = Child(root.transform, "Head");
+            var first = System(head.transform, "First", 10);
+            var second = System(root.transform, "Second", 10);
+            var trail = Child(root.transform, "Trail").AddComponent<TrailRenderer>();
+            var line = Child(root.transform, "Line").AddComponent<LineRenderer>();
+            var trail2 = Child(root.transform, "Trail2").AddComponent<TrailRenderer>();
+            Light Realtime(string name)
+            {
+                var light = Child(root.transform, name).AddComponent<Light>();
+                light.lightmapBakeType = LightmapBakeType.Realtime;
+                return light;
+            }
+            var lights = new[] { Realtime("Light0"), Realtime("Light1"), Realtime("Over") };
+
+            var capture = AvatarEffectsExport.Capture(root);
+            Assert.That(capture.Parts.Select(p => (p.Component, p.Source)),
+                Is.EqualTo(new (string, Component)[] { ("particle", first), ("particle", second), ("trail", trail), ("line", line), ("trail", trail2), ("light", lights[0]), ("light", lights[1]) }));
+            capture.Resolve(go => go == head ? 4 : -1);
+            Assert.That(capture.IndexOf(first), Is.EqualTo((0, 4)));
+            Assert.That(capture.IndexOf(second), Is.EqualTo((1, -1)));
+            Assert.That(capture.IndexOf(trail), Is.EqualTo((0, -1)));
+            Assert.That(capture.IndexOf(line), Is.EqualTo((0, -1)));
+            Assert.That(capture.IndexOf(trail2), Is.EqualTo((1, -1)));
+            Assert.That(capture.IndexOf(lights[1]), Is.EqualTo((1, -1)));
+            Assert.That(capture.IndexOf(lights[2]), Is.EqualTo((-1, -1)), "Over the limit.");
+            Assert.That(capture.IndexOf(null), Is.EqualTo((-1, -1)));
+        }
+
         [Test]
         public void SystemsLeftOutOfTheExportAreNotRead()
         {

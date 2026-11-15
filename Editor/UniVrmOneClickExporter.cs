@@ -219,6 +219,24 @@ namespace VRVlog.LilToonExporter
             return ExporterLocalization.T(headline) == headline || shown != detail ? " (" + shown + ")" : "";
         }
 
+        // The parts FX's enabled curves may turn (AvatarAnimatorParts.cs): the
+        // effects and contacts read before the build removed objects, and the
+        // PhysBones of the copy.
+        internal static IEnumerable<AvatarAnimatorCapture.Part> AnimatorParts(GameObject clone, AvatarEffectsExport effects, AvatarContactsExport contacts) =>
+            (effects?.Parts ?? Enumerable.Empty<AvatarAnimatorCapture.Part>())
+                .Concat(contacts?.Parts ?? Enumerable.Empty<AvatarAnimatorCapture.Part>())
+                .Concat(AvatarAnimatorCapture.PhysBoneParts(clone)).ToList();
+
+        // A part's index and node in the table that wrote it; (-1, -1) for a
+        // part no table wrote. A null table writes nothing.
+        internal static Func<Component, (int Index, int Node)> AnimatorPartIndex(AvatarEffectsExport effects, AvatarContactsExport contacts, AvatarPhysBonesExport physBones) =>
+            component =>
+            {
+                foreach (var found in new[] { effects?.IndexOf(component), contacts?.IndexOf(component), physBones?.IndexOf(component) })
+                    if (found is (int index, int node) && index >= 0) return (index, node);
+                return (-1, -1);
+            };
+
         // Authored VRM clips and generated shapes that the build passes moved
         // or removed (lenient exports only).
         // The shapes each output shape the FX moves was made from. An output
@@ -631,9 +649,11 @@ namespace VRVlog.LilToonExporter
             VRVlog.AvatarPhysBones.AvatarPhysBonesData physBonesData = null;
             // Builds the FX extension again: with the constraint entries while
             // animatorConstraints is set, and with the PhysBone parameters
-            // builtin while animatorPhysBones is.
+            // builtin while animatorPhysBones is, and their enabled curves while
+            // animatorPhysBoneTable is.
             Func<Component, int> animatorConstraints = null;
             ISet<string> animatorPhysBones = null;
+            AvatarPhysBonesExport animatorPhysBoneTable = null;
             Func<VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
@@ -934,7 +954,7 @@ namespace VRVlog.LilToonExporter
                 // record of the clips it copied is still open.
                 // A merge that copies enablement ran only with Optimizing.
                 var enabledRest = optimizes && requiresPreparation ? objectToggles?.CopiedEnablementRest : null;
-                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest, enabledRest)?.ReadFaces(expressions,
+                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest, enabledRest, AnimatorParts(clone, effects, contacts))?.ReadFaces(expressions,
                     clip => ListFaceSource(listFaces, listFaceSources, clip), preparation != null ? preparation.IsolatedCopyOf : (Func<UnityEngine.Object, UnityEngine.Object>)null,
                     value => RegisteredOriginal(preparation?.ObjectRegistry, value)), () => null);
                 // The same holds for expressions or materials the optimizer
@@ -1119,19 +1139,24 @@ namespace VRVlog.LilToonExporter
                         // Also before the FX, whose builtin parameters are those of its entries.
                         try { physBonesData = AvatarPhysBonesExport.Checked(physBones?.Resolve(OutputNode), model.Nodes.Count); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
-                        if (avatarAnimator != null)
-                        {
-                            animatorConstraints = avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null;
-                            animatorPhysBones = physBonesData != null ? AvatarPhysBonesExport.ParameterNames(physBonesData) : null;
-                            resolveAnimator = () => avatarAnimator.Resolve(OutputNode,
-                                AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
-                                    animatorMorphReverses), material => model.Materials.IndexOf(material), animatorConstraints, animatorPhysBones);
-                            avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
-                        }
+                        // The effects and contacts too, whose enabled curves name their entries.
                         try { effectsData = effects?.Resolve(OutputNode); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                         try { contactsData = AvatarContactsExport.Checked(contacts?.Resolve(OutputNode), model.Nodes.Count); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                        if (avatarAnimator != null)
+                        {
+                            animatorConstraints = avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null;
+                            animatorPhysBones = physBonesData != null ? AvatarPhysBonesExport.ParameterNames(physBonesData) : null;
+                            animatorPhysBoneTable = physBonesData != null ? physBones : null;
+                            var animatorEffects = effectsData != null ? effects : null;
+                            var animatorContacts = contactsData != null ? contacts : null;
+                            resolveAnimator = () => avatarAnimator.Resolve(OutputNode,
+                                AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
+                                    animatorMorphReverses), material => model.Materials.IndexOf(material), animatorConstraints, animatorPhysBones,
+                                    AnimatorPartIndex(animatorEffects, animatorContacts, animatorPhysBoneTable));
+                            avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                        }
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
@@ -1310,6 +1335,7 @@ namespace VRVlog.LilToonExporter
                     else if (avatarAnimatorData != null && resolveAnimator != null)
                     {
                         animatorPhysBones = null;
+                        animatorPhysBoneTable = null;
                         avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
                     }
                 }

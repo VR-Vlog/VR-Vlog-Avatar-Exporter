@@ -335,6 +335,41 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(root); }
         }
 
+        // FX's enabled targets of component contact count the senders, then
+        // the receivers (#3667), whatever order the hierarchy has them in.
+        [Test]
+        public void IndexOfCountsTheSendersThenTheReceivers()
+        {
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            var senderType = OptionalTools.Require(AvatarContactsExport.SenderType, "Real VRChat SDK integration test.");
+            var root = new GameObject("Avatar");
+            try
+            {
+                Component Add(string name, Type type)
+                {
+                    var t = new GameObject(name).transform;
+                    t.SetParent(root.transform, false);
+                    return t.gameObject.AddComponent(type);
+                }
+                var pat = Add("Pat", receiverType);
+                var hand = Add("Hand", senderType);
+                var poke = Add("Poke", receiverType);
+                var foot = Add("Foot", senderType);
+                var nodes = new Dictionary<GameObject, int> { [poke.gameObject] = 3 };
+
+                var capture = AvatarContactsExport.Capture(root);
+                Assert.That(capture.Parts.Select(p => (p.Component, p.Source)),
+                    Is.EqualTo(new (string, Component)[] { ("contact", pat), ("contact", hand), ("contact", poke), ("contact", foot) }));
+                var data = capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1);
+                Assert.That((data.Senders.Count, data.Receivers.Count), Is.EqualTo((2, 2)));
+                Assert.That(capture.IndexOf(hand), Is.EqualTo((0, -1)));
+                Assert.That(capture.IndexOf(foot), Is.EqualTo((1, -1)));
+                Assert.That(capture.IndexOf(pat), Is.EqualTo((2, -1)));
+                Assert.That(capture.IndexOf(poke), Is.EqualTo((3, 3)));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         [Test]
         public void CaptureOfACopyWithoutContactsIsNull()
         {

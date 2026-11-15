@@ -40,6 +40,8 @@ namespace VRVlog.LilToonExporter
             // In the root object's units, before its scale.
             internal float Radius, Height;
             internal AvatarContactsData.Contact Values;
+            // The part FX's enabled targets name (AvatarAnimatorParts.cs).
+            internal AvatarAnimatorCapture.Part Part;
         }
 
         Transform root;
@@ -47,6 +49,12 @@ namespace VRVlog.LilToonExporter
         int limited;
 
         internal int Count => entries.Count;
+        // The contacts read, as the parts FX may turn (AvatarAnimatorParts.cs).
+        internal IEnumerable<AvatarAnimatorCapture.Part> Parts => entries.Select(entry => entry.Part);
+        // Each contact's index and node as the last Resolve wrote it: the senders, then the receivers after them.
+        readonly Dictionary<int, (int Index, int Node)> tableIndex = new Dictionary<int, (int, int)>();
+        internal (int Index, int Node) IndexOf(Component component) =>
+            component is object && tableIndex.TryGetValue(component.GetInstanceID(), out var at) ? at : (-1, -1);
         // The result line: null when no Receiver was left out.
         internal string LeftOut => limited == 0 ? null
             : ExporterLocalization.Format(LimitNote, limited, AvatarContactsData.MaximumReceivers);
@@ -66,7 +74,7 @@ namespace VRVlog.LilToonExporter
                 var receiver = IsType(component, ReceiverType);
                 if (!receiver && !IsType(component, SenderType)) continue;
                 if (EditorOnly(component.transform, root.transform) || excluded != null && excluded(component.transform)) continue;
-                var entry = new Entry { Receiver = receiver, Component = component };
+                var entry = new Entry { Receiver = receiver, Component = component, Part = AvatarAnimatorCapture.ReadPart("contact", component, root.transform) };
                 if (!Read(entry, component)) continue;
                 if (receiver && receivers++ >= AvatarContactsData.MaximumReceivers)
                 {
@@ -245,6 +253,15 @@ namespace VRVlog.LilToonExporter
                 };
                 contact.Tags.AddRange(values.Tags);
                 (entry.Receiver ? data.Receivers : data.Senders).Add(contact);
+            }
+            // FX's enabled targets of component contact count the senders, then the receivers.
+            tableIndex.Clear();
+            int sender = 0, receiver = 0;
+            foreach (var entry in entries)
+            {
+                var index = entry.Receiver ? data.Senders.Count + receiver++ : sender++;
+                var written = entry.Receiver ? data.Receivers[index - data.Senders.Count] : data.Senders[index];
+                if (entry.Part?.Source is object) tableIndex[entry.Part.Source.GetInstanceID()] = (index, written.Node);
             }
             if (limited > 0) data.Omitted.Add(new AvatarContactsData.Omission { Kind = "contactLimit", Count = limited });
             return data.Senders.Count == 0 && data.Receivers.Count == 0 ? null : data;

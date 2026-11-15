@@ -84,6 +84,8 @@ namespace VRVlog.LilToonExporter
             // Index into materials; lights have none.
             internal int Material = -1;
             internal bool HasMaterial = true;
+            // The part FX's enabled targets name (AvatarAnimatorParts.cs).
+            internal AvatarAnimatorCapture.Part Part;
         }
 
         sealed class Image
@@ -93,6 +95,8 @@ namespace VRVlog.LilToonExporter
 
         Transform root;
         readonly List<Effect> effects = new List<Effect>();
+        // Each written effect's index in its table and node, by its component (Resolve).
+        readonly Dictionary<int, (int Index, int Node)> tableIndex = new Dictionary<int, (int, int)>();
         readonly List<Dictionary<string, object>> materials = new List<Dictionary<string, object>>();
         // Per material: the image index, -1 for none, -2 for a texture that could not be read.
         readonly List<int> materialImages = new List<int>();
@@ -102,6 +106,11 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
 
         internal int Count => effects.Count;
+        // The effects read, as the parts FX may turn (AvatarAnimatorParts.cs).
+        internal IEnumerable<AvatarAnimatorCapture.Part> Parts => effects.Select(effect => effect.Part);
+        // The index in its table and the node of an effect the last Resolve wrote; (-1, -1) for another.
+        internal (int Index, int Node) IndexOf(Component component) =>
+            component is object && tableIndex.TryGetValue(component.GetInstanceID(), out var at) ? at : (-1, -1);
         // The result line of the last Resolve, also when it wrote nothing; null when nothing was left out.
         internal string LeftOut { get; private set; }
 
@@ -180,6 +189,7 @@ namespace VRVlog.LilToonExporter
             return new Effect
             {
                 Kind = kind,
+                Part = AvatarAnimatorCapture.ReadPart(kind.Substring(0, kind.Length - 1), component, root),
                 Ancestors = ancestors.ToArray(),
                 World = component.transform.localToWorldMatrix,
                 Active = component.gameObject.activeInHierarchy
@@ -436,6 +446,7 @@ namespace VRVlog.LilToonExporter
             var counts = new Dictionary<string, int>(omitted, StringComparer.Ordinal);
             void Add(string kind, int count) { if (count > 0) counts[kind] = (counts.TryGetValue(kind, out var c) ? c : 0) + count; }
             var used = new HashSet<int>();
+            tableIndex.Clear();
             var written = new List<Dictionary<string, object>>();
             foreach (var effect in effects)
             {
@@ -463,6 +474,7 @@ namespace VRVlog.LilToonExporter
                 Add("particleModule", effect.Modules);
                 if (effect.Material >= 0) used.Add(effect.Material);
                 lists[effect.Kind].Add(entry);
+                if (effect.Part?.Source is object) tableIndex[effect.Part.Source.GetInstanceID()] = (lists[effect.Kind].Count - 1, output);
                 written.Add(entry);
             }
             // Materials and images only the left-out effects used are dropped and the rest renumbered.
