@@ -1342,6 +1342,29 @@ public static class AvatarAnimatorEvaluatorTests
         e = none.Build();
         e.Advance(Frame);
         Check(e.Values[m] == 0 && !e.Written[m], "an FX alone without a mask moves no muscle");
+
+        // A mask that names transforms moves only the positions, rotations
+        // and scales of its nodes, and other targets on the nodes it leaves
+        // out; one that names none (Nodes null) moves every node.
+        var nodes = new Builder();
+        var kept = nodes.Target();
+        var moved = nodes.Target();
+        var shown = nodes.Target();
+        nodes.Data.Targets[kept].Property = nodes.Data.Targets[moved].Property = "translation";
+        nodes.Data.Targets[kept].Channel = nodes.Data.Targets[moved].Channel = "x";
+        Builder.State(nodes.Layer("Bottom"), "A", nodes.Clip(0, false, (kept, 1), (moved, 1), (shown, 1)));
+        var top = nodes.Layer("Top");
+        top.Mask = new AvatarAnimatorData.Mask();
+        top.Mask.Nodes = new List<int> { nodes.Data.Targets[moved].Node };
+        Builder.State(top, "B", nodes.Clip(0, false, (kept, 2), (moved, 2), (shown, 0)));
+        e = nodes.Build();
+        e.Advance(Frame);
+        Check(e.Values[kept] == 1 && e.Values[moved] == 2, "a transform mask keeps the layer off the positions of the nodes it leaves out");
+        Check(e.Values[shown] == 0, "a transform mask lets a GameObject it leaves out move");
+        top.Mask.Nodes = null;
+        e = nodes.Build();
+        e.Advance(Frame);
+        Check(e.Values[kept] == 2 && e.Values[moved] == 2, "a mask without transforms moves every node");
     }
 
     // M12. The recordings of the freeformCartesian case hold Unity's weights; these are the same rule by hand.
