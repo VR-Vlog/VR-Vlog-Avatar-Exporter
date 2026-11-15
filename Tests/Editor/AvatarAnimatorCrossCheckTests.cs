@@ -357,6 +357,71 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A Gesture whose Fist moves Body to x 0.5 and an Action that would
+        // move it to 2 play under the FX on the graph: the Gesture shows, the
+        // Action stays at weight 0, and data with another Fist value differs.
+        [Test]
+        public void GestureAndActionPlayUnderTheFx()
+        {
+            var (root, fx, data, bindings) = Build();
+            const int X = 2;
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "translation", Channel = "x", Rest = 0 });
+            var clips = new List<AnimationClip>();
+            foreach (var value in new[] { 0d, .5, 2 })
+            {
+                var clip = new AvatarAnimatorData.Clip { Name = "Clip" + data.Clips.Count, Duration = 1.0 / 60 };
+                var track = new AvatarAnimatorData.Track { Target = X };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = value, InTangent = 0, OutTangent = 0 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1.0 / 60, Value = value, InTangent = 0, OutTangent = 0 });
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+                data.Clips.Add(clip);
+                data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = data.Clips.Count - 1 });
+                var unity = new AnimationClip { name = clip.Name };
+                AnimationUtility.SetEditorCurve(unity, EditorCurveBinding.FloatCurve("Body", typeof(Transform), "m_LocalPosition.x"), AnimationCurve.Constant(0, 1f / 60, (float)value));
+                clips.Add(unity);
+            }
+            var gesture = new AvatarAnimatorData.Controller { Playable = "gesture" };
+            gesture.Layers.Add(Layer("Pose", 4, 5, Gesture, "equals", "notEqual", 1, .2));
+            var action = new AvatarAnimatorData.Controller { Playable = "action" };
+            action.Layers.Add(Layer("Wave", 6, 6, Hat, "if", "ifNot", 0, 0));
+            data.Controllers.Add(gesture);
+            data.Controllers.Add(action);
+            var controllers = new List<RuntimeAnimatorController> { fx };
+            foreach (var (c, name) in new[] { (gesture, "Gesture"), (action, "Action") })
+            {
+                var unity = AnimatorController.CreateAnimatorControllerAtPath(folder.Path + "/" + name + ".controller");
+                unity.RemoveLayer(0);
+                unity.AddParameter("Hat", AnimatorControllerParameterType.Bool);
+                unity.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                var all = new AnimationClip[data.Clips.Count];
+                for (var i = 0; i < clips.Count; i++)
+                {
+                    all[4 + i] = Object.Instantiate(clips[i]);
+                    all[4 + i].name = clips[i].name;
+                    AssetDatabase.AddObjectToAsset(all[4 + i], unity);
+                }
+                AddLayers(unity, data, c, all);
+                controllers.Add(unity);
+            }
+            clips.ForEach(Object.DestroyImmediate);
+            AssetDatabase.SaveAssets();
+            var body = bindings[1].Renderer.gameObject;
+            var withX = bindings.Concat(new[] { new AvatarAnimatorCrossCheck.Binding { Object = body, Path = "Body" } }).ToList();
+            data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+
+            var result = AvatarAnimatorCrossCheck.Run(root, controllers, data, withX, null);
+            Assert.That(result.Unsupported, Is.Null);
+            Assert.That((result.Inputs, result.Compared, result.Targets, result.Unbound, result.Muscles), Is.EqualTo((9, 9, 3, 0, 0)));
+            Assert.That(result.Mismatches.Select(m => $"{m.Input} {m.Frame} T{m.Target} {m.Unity} {m.Evaluator} {m.Layers}"), Is.Empty);
+
+            var changed = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+            changed.Clips[5].Tracks[0].Curves[0].Keys.ForEach(key => key.Value = .25);
+            var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
+            Assert.That(AvatarAnimatorCrossCheck.Run(root, controllers, changed, withX, null).Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, X) }));
+        }
+
         // Smile on also turns the object Head 90 degrees about y with the
         // four quaternion curves; over the 0.25 s transition the evaluator's
         // blend, normalized, follows Unity's.
@@ -583,7 +648,21 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.AddObjectToAsset(unity, controller);
                 return unity;
             }).ToArray();
-            foreach (var layer in fx.Layers)
+            AddLayers(controller, data, fx, clips);
+            AssetDatabase.SaveAssets();
+
+            var bindings = new[]
+            {
+                new AvatarAnimatorCrossCheck.Binding { Object = hat, Path = "Hat" },
+                new AvatarAnimatorCrossCheck.Binding { Renderer = renderer, Shape = "Smile", Path = "Body" },
+            };
+            return (root, controller, data, bindings);
+        }
+
+        // Unity's layers of a data controller, whose motions play clips[clip].
+        static void AddLayers(AnimatorController controller, AvatarAnimatorData data, AvatarAnimatorData.Controller c, IReadOnlyList<AnimationClip> clips)
+        {
+            foreach (var layer in c.Layers)
             {
                 controller.AddLayer(layer.Name);
                 var layers = controller.layers;
@@ -611,14 +690,6 @@ namespace VRVlog.LilToonExporter.Tests
                                 (float)condition.Threshold, data.Parameters[condition.Parameter].Name);
                     }
             }
-            AssetDatabase.SaveAssets();
-
-            var bindings = new[]
-            {
-                new AvatarAnimatorCrossCheck.Binding { Object = hat, Path = "Hat" },
-                new AvatarAnimatorCrossCheck.Binding { Renderer = renderer, Shape = "Smile", Path = "Body" },
-            };
-            return (root, controller, data, bindings);
         }
 
         // Two states playing the motions off and on, each going to the other under its condition.

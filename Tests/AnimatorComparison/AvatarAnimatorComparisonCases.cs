@@ -243,6 +243,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return Hands();
             yield return MaskParts();
             yield return NodeMask();
+            yield return GestureAction();
+            yield return ActionMask();
+            yield return HumanoidNodeMask();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -1062,6 +1065,100 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
+        // VRChat's three playable layers together (M15): the Gesture's left
+        // hand drives Emote from its Fist, which the Action and the FX read.
+        // The Action plays at weight 0 until its Wave's Playable Layer
+        // Control blends it to 1, and its Wait's back to 0. The FX's base
+        // layer has no mask, so the arm muscle its clip writes does not move
+        // (M16). The Gesture's body layer and the Action's Wave both move the
+        // spine and the left arm.
+        static Case GestureAction()
+        {
+            var c = new Builder("gestureAction", 2.8);
+            var left = c.Parameter("GestureLeft", "int");
+            var emote = c.Parameter("Emote", "int");
+            var spine = c.Muscle(0);
+            var leftArm = c.Muscle(39);
+            var leftIndex = c.Muscle(59);
+            var lamp = c.Position(0);
+            c.Controller("fx");
+            var fx = c.Layer("Lamp");
+            var dark = c.State(fx, "Dark", c.Constant(1, true, (lamp, 0), (leftArm, 0)));
+            var lit = c.State(fx, "Lit", c.Constant(1, true, (lamp, 2), (leftArm, -1)));
+            fx.States[dark].Transitions.Add(To(lit, duration: .1).When(emote, "equals", 1));
+            fx.States[lit].Transitions.Add(To(dark, duration: .1).When(emote, "notEqual", 1));
+            c.Controller("gesture");
+            c.State(c.Layer("Body"), "Idle", c.Constant(1, true, (spine, .2), (leftArm, .1)));
+            var hand = c.Layer("Left Hand", mask: Mask(new[] { 7 }));
+            var open = c.State(hand, "Open", c.Constant(1, true, (leftIndex, 0)));
+            var fist = c.State(hand, "Fist", c.Constant(1, true, (leftIndex, -.6)));
+            c.Driver(hand, open, (emote, 0));
+            c.Driver(hand, fist, (emote, 1));
+            hand.States[open].Transitions.Add(To(fist, duration: .2).When(left, "equals", 1));
+            hand.States[fist].Transitions.Add(To(open, duration: .15).When(left, "notEqual", 1));
+            c.Controller("action");
+            var action = c.Layer("Action");
+            var wait = c.State(action, "Wait", c.Constant(1, true, (spine, 0), (leftArm, 0)));
+            var wave = c.State(action, "Wave", c.Ramp(1, true, leftArm, .3, .9));
+            c.PlayableControl(action, wait, "action", 0, .25);
+            c.PlayableControl(action, wave, "action", 1, .3);
+            action.States[wait].Transitions.Add(To(wave, duration: .2).When(emote, "equals", 1));
+            action.States[wave].Transitions.Add(To(wait, duration: .2).When(emote, "notEqual", 1));
+            c.Input(.3, left, 1).Input(1.3, left, 0).Input(1.9, left, 1);
+            return c.Case;
+        }
+
+        // An Action over the Gesture with masks: its base layer's mask lets
+        // only the left arm move, and its second layer at half weight only
+        // the body. Pose's Playable Layer Control blends the Action to 1 over
+        // 0.2 s when Go enters it.
+        static Case ActionMask()
+        {
+            var c = new Builder("actionMask", 1.4);
+            var go = c.Parameter("Go", "bool");
+            var spine = c.Muscle(0);
+            var leftArm = c.Muscle(39);
+            var rightArm = c.Muscle(48);
+            c.Controller("fx");
+            c.Controller("gesture");
+            c.State(c.Layer("Body"), "Idle", c.Constant(1, true, (spine, .2), (leftArm, .1), (rightArm, .3)));
+            c.Controller("action");
+            var arm = c.Layer("Arm", mask: Mask(new[] { 5 }));
+            var wait = c.State(arm, "Wait", c.Constant(1, true, (leftArm, 0)));
+            var pose = c.State(arm, "Pose", c.Constant(1, true, (spine, .6), (leftArm, .9), (rightArm, -.5)));
+            c.PlayableControl(arm, pose, "action", 1, .2);
+            arm.States[wait].Transitions.Add(To(pose, duration: .25).When(go, "if"));
+            c.State(c.Layer("Lean", .5, Mask(new[] { 1 })), "Lean", c.Constant(1, true, (spine, -.4), (rightArm, .8)));
+            c.Input(.4, go, 1);
+            return c.Case;
+        }
+
+        // Transform masks on a humanoid Animator: an upper layer whose mask
+        // names only the first position's transform, over a base layer
+        // moving both positions, a GameObject, a blend shape and a muscle.
+        // The mask keeps the second position, and lets the muscle of its
+        // body part through.
+        static Case HumanoidNodeMask()
+        {
+            var c = new Builder("humanoidNodeMask", 1.2);
+            var go = c.Parameter("Go", "bool");
+            var first = c.Position(0);
+            var second = c.Position(0);
+            var shown = c.Target(1, active: true);
+            var face = c.Morph(0);
+            var spine = c.Muscle(0);
+            var leftArm = c.Muscle(39);
+            c.Controller("fx");
+            c.Controller("gesture");
+            c.State(c.Layer("Bottom"), "A", c.Constant(1, true, (first, 1), (second, 1), (shown, 1), (face, 10), (spine, .1), (leftArm, .1)));
+            var top = c.Layer("Top", mask: Mask(new[] { 1 }, new[] { c.Case.Data.Targets[first].Node }));
+            var a = c.State(top, "A", c.Constant(1, true, (first, 3), (second, 4), (shown, 0), (face, 30), (spine, .4), (leftArm, .5)));
+            var b = c.State(top, "B", c.Constant(1, true, (first, 5), (second, 6), (shown, 1), (face, 60), (spine, -.2), (leftArm, -.5)));
+            top.States[a].Transitions.Add(To(b, duration: .3).When(go, "if"));
+            c.Input(.4, go, 1);
+            return c.Case;
+        }
+
         // The body parts a mask lets move and, unless null, the nodes of the
         // transforms it lets move (it names the others too).
         static AvatarAnimatorData.Mask Mask(int[] humanoid, int[] nodes = null)
@@ -1233,6 +1330,18 @@ namespace VRVlog.AvatarAnimator.Comparison
                 controller.Layers.Add(layer);
                 return layer;
             }
+
+            // A Parameter Driver on the state that sets each parameter.
+            internal void Driver(AvatarAnimatorData.Layer layer, int state, params (int Parameter, double Value)[] sets)
+            {
+                var behaviour = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+                foreach (var (parameter, value) in sets) behaviour.Operations.Add(new AvatarAnimatorData.Operation { Type = "set", Parameter = parameter, Value = value });
+                layer.States[state].Behaviours.Add(behaviour);
+            }
+
+            // A Playable Layer Control on the state.
+            internal void PlayableControl(AvatarAnimatorData.Layer layer, int state, string playable, double goal, double duration) =>
+                layer.States[state].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = playable, GoalWeight = goal, BlendDuration = duration });
 
             internal int State(AvatarAnimatorData.Layer layer, string name, int motion, bool writeDefaults = true, int machine = 0)
             {

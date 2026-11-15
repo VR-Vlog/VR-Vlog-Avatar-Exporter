@@ -6,6 +6,8 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 using VRVlog.Expressions;
 using Object = UnityEngine.Object;
 
@@ -16,6 +18,20 @@ namespace VRVlog.AvatarAnimator.Comparison
     // set to a folder, Unity's values are also written there as
     // <case>.<timing>.json, which Tools/run-avatar-animator-evaluator-tests.ps1
     // replays without Unity (Tools/Fixtures/AvatarAnimator).
+    //
+    // A case with layers in one controller plays it as the Animator's
+    // controller. A case with layers in more than one plays them as VRChat
+    // stacks its playable layers (M15): a PlayableGraph whose
+    // AnimationLayerMixerPlayable has the Gesture, the Action and the FX in
+    // that order, the Action at weight 0, each masked with its base layer's
+    // body parts, as VRChat does, and the FX without muscles when its base
+    // layer has no mask (M16). The data's behaviours are played by the
+    // test, as plain Unity has no VRChat SDK (a StateMachineBehaviour of
+    // this editor-only assembly cannot go on a state): after each frame, a
+    // state that became a layer's current or next state is entered, and its
+    // Parameter Drivers set their values on every controller (M8, after
+    // every layer) and its Playable Layer Controls blend their input's weight
+    // from the next frame (M10). This checks the stacking, not M8 or M10.
     public sealed class AvatarAnimatorEvaluatorComparisonTests
     {
         const string Folder = "Assets/__VRVlogAnimatorComparison";
@@ -48,11 +64,14 @@ namespace VRVlog.AvatarAnimator.Comparison
         {
             var data = c.Data;
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Folder.Substring("Assets/".Length));
-            var played = Played(c, out var layerOffset);
-            var controller = Controller(c, played, Folder + "/" + c.Name + ".controller");
+            var played = Played(c);
+            var controllers = new AnimatorController[data.Controllers.Count];
+            foreach (var p in played) controllers[p] = Controller(c, p, Folder + "/" + c.Name + "." + p + ".controller");
             var root = new GameObject("Comparison");
             Avatar avatar = null;
             HumanPoseHandler poses = null;
+            var graph = default(PlayableGraph);
+            var masks = new List<AvatarMask>();
             try
             {
                 var targets = new GameObject[data.Targets.Count];
@@ -71,48 +90,171 @@ namespace VRVlog.AvatarAnimator.Comparison
                     animator.avatar = avatar;
                     poses = new HumanPoseHandler(avatar, root.transform);
                 }
-                animator.runtimeAnimatorController = controller;
-                animator.Rebind();
+
+                // Each played controller as (data index, its parameters' setters
+                // and getters, its layer weights); the Animator's alone, or the
+                // graph's playables.
+                Action<int, double> set;
+                Func<int, double> get;
+                Action<int, int, double> setLayerWeight;
+                Action<double> update;
+                Action afterFrame = () => { };
+                var layerOwner = new List<(int Controller, int Layer)>();
+                for (var ci = 0; ci < data.Controllers.Count; ci++)
+                    for (var l = 0; l < data.Controllers[ci].Layers.Count; l++) layerOwner.Add((ci, l));
+                if (played.Count == 1)
+                {
+                    animator.runtimeAnimatorController = controllers[played[0]];
+                    animator.Rebind();
+                    set = (p, value) => Set(animator, data.Parameters[p], value);
+                    get = p => Get(animator, data.Parameters[p]);
+                    setLayerWeight = (ci, l, weight) => animator.SetLayerWeight(l, (float)weight);
+                    update = dt => animator.Update((float)dt);
+                }
+                else
+                {
+                    animator.Rebind();
+                    graph = PlayableGraph.Create("Comparison");
+                    graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+                    var order = new[] { "gesture", "action", "fx" }.SelectMany(playable => played.Where(p => data.Controllers[p].Playable == playable)).ToList();
+                    var mixer = AnimationLayerMixerPlayable.Create(graph, order.Count);
+                    var playables = new AnimatorControllerPlayable[data.Controllers.Count];
+                    var inputs = new int[data.Controllers.Count];
+                    for (var i = 0; i < order.Count; i++)
+                    {
+                        var ci = order[i];
+                        playables[ci] = AnimatorControllerPlayable.Create(graph, controllers[ci]);
+                        inputs[ci] = i;
+                        graph.Connect(playables[ci], 0, mixer, i);
+                        mixer.SetInputWeight(i, data.Controllers[ci].Playable == "action" ? 0 : 1);
+                        var baseMask = data.Controllers[ci].Layers[0].Mask;
+                        if (baseMask != null || data.Controllers[ci].Playable == "fx")
+                        {
+                            var parts = new AvatarMask { name = "Playable " + i };
+                            for (var part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+                                parts.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, baseMask != null && baseMask.Humanoid.Contains(part));
+                            masks.Add(parts);
+                            mixer.SetLayerMaskFromAvatarMask((uint)i, parts);
+                        }
+                    }
+                    AnimationPlayableOutput.Create(graph, "Animator", animator).SetSourcePlayable(mixer);
+                    var top = order[order.Count - 1];
+                    set = (p, value) => { foreach (var ci in order) Set(playables[ci], data.Parameters[p], value); };
+                    get = p => Get(playables[top], data.Parameters[p]);
+                    setLayerWeight = (ci, l, weight) => playables[ci].SetLayerWeight(l, (float)weight);
+                    var blends = new List<(int Input, double From, double Goal, double Duration, double Elapsed)>();
+                    update = dt =>
+                    {
+                        // M10: a blend started in a frame moves from the next.
+                        for (var b = 0; b < blends.Count; b++)
+                        {
+                            var (input, from, goal, duration, elapsed) = blends[b];
+                            elapsed += dt;
+                            mixer.SetInputWeight(input, (float)(from + (goal - from) * Math.Min(1, elapsed / duration)));
+                            blends[b] = (input, from, goal, duration, elapsed);
+                        }
+                        blends.RemoveAll(blend => blend.Elapsed >= blend.Duration);
+                        graph.Evaluate((float)dt);
+                    };
+                    // The states each layer was in or going to after the last frame.
+                    var was = order.ToDictionary(ci => ci, ci => data.Controllers[ci].Layers.Select(_ => new HashSet<int>()).ToArray());
+                    afterFrame = () =>
+                    {
+                        foreach (var ci in order)
+                            for (var l = 0; l < data.Controllers[ci].Layers.Count; l++)
+                            {
+                                var states = data.Controllers[ci].Layers[l].States;
+                                var now = new HashSet<int> { playables[ci].GetCurrentAnimatorStateInfo(l).shortNameHash };
+                                if (playables[ci].IsInTransition(l)) now.Add(playables[ci].GetNextAnimatorStateInfo(l).shortNameHash);
+                                foreach (var hash in now.Where(hash => !was[ci][l].Contains(hash)))
+                                {
+                                    var entered = states.FindIndex(state => Animator.StringToHash(state.Name) == hash);
+                                    if (entered < 0) continue;
+                                    foreach (var behaviour in states[entered].Behaviours) Play(behaviour);
+                                }
+                                was[ci][l] = now;
+                            }
+                    };
+                    void Play(AvatarAnimatorData.Behaviour behaviour)
+                    {
+                        if (behaviour.Type == "parameterDriver")
+                            foreach (var operation in behaviour.Operations)
+                            {
+                                Assert.That(operation.Type, Is.EqualTo("set"), "the comparison drives only set");
+                                set(operation.Parameter, operation.Value);
+                            }
+                        else if (behaviour.Type == "playableLayerControl")
+                        {
+                            var owner = order.Where(ci => data.Controllers[ci].Playable == behaviour.Playable).DefaultIfEmpty(-1).First();
+                            if (owner < 0) return;
+                            var input = inputs[owner];
+                            blends.RemoveAll(blend => blend.Input == input);
+                            if (behaviour.BlendDuration > 0) blends.Add((input, mixer.GetInputWeight(input), behaviour.GoalWeight, behaviour.BlendDuration, 0));
+                            else mixer.SetInputWeight(input, (float)behaviour.GoalWeight);
+                        }
+                        else Assert.Fail("the comparison plays no " + behaviour.Type);
+                    }
+                }
                 var pose = new HumanPose();
                 var steps = AvatarAnimatorComparison.Steps(c, timing);
-                var inputs = AvatarAnimatorComparison.Inputs(c, steps);
+                var inputs2 = AvatarAnimatorComparison.Inputs(c, steps);
                 var weights = AvatarAnimatorComparison.LayerWeights(c, steps);
                 values = new double[steps.Length][];
                 parameters = new double[steps.Length][];
                 for (var i = 0; i < steps.Length; i++)
                 {
-                    foreach (var (parameter, value) in inputs[i])
-                    {
-                        var p = data.Parameters[parameter];
-                        switch (p.Type)
-                        {
-                            case "bool": animator.SetBool(p.Name, value != 0); break;
-                            case "int": animator.SetInteger(p.Name, (int)value); break;
-                            case "float": animator.SetFloat(p.Name, (float)value); break;
-                            default: if (value != 0) animator.SetTrigger(p.Name); else animator.ResetTrigger(p.Name); break;
-                        }
-                    }
-                    foreach (var (layer, weight) in weights[i]) animator.SetLayerWeight(layer - layerOffset, (float)weight);
-                    animator.Update((float)steps[i]);
+                    foreach (var (parameter, value) in inputs2[i]) set(parameter, value);
+                    foreach (var (layer, weight) in weights[i]) setLayerWeight(layerOwner[layer].Controller, layerOwner[layer].Layer, weight);
+                    update(steps[i]);
+                    afterFrame();
                     poses?.GetHumanPose(ref pose);
                     values[i] = new double[targets.Length];
                     for (var t = 0; t < targets.Length; t++)
-                        values[i][t] = data.Targets[t].Property == "parameter" ? Get(animator, data.Parameters[data.Targets[t].Parameter])
+                        values[i][t] = data.Targets[t].Property == "parameter" ? get(data.Targets[t].Parameter)
                             : data.Targets[t].Property == "muscle" ? pose.muscles[data.Targets[t].Muscle]
                             : data.Targets[t].Property == "morph" ? targets[t].GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0)
                             : c.ActiveTargets.Contains(t) ? (targets[t].activeSelf ? 1 : 0) : targets[t].transform.localPosition.x;
                     parameters[i] = new double[data.Parameters.Count];
-                    for (var p = 0; p < parameters[i].Length; p++) parameters[i][p] = Get(animator, data.Parameters[p]);
+                    for (var p = 0; p < parameters[i].Length; p++) parameters[i][p] = get(p);
                 }
             }
             finally
             {
+                if (graph.IsValid()) graph.Destroy();
+                masks.ForEach(Object.DestroyImmediate);
                 poses?.Dispose();
                 foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(renderer.sharedMesh);
                 Object.DestroyImmediate(root);
                 if (avatar != null) Object.DestroyImmediate(avatar);
             }
         }
+
+        static void Set(Animator animator, AvatarAnimatorData.Parameter p, double value)
+        {
+            switch (p.Type)
+            {
+                case "bool": animator.SetBool(p.Name, value != 0); break;
+                case "int": animator.SetInteger(p.Name, (int)value); break;
+                case "float": animator.SetFloat(p.Name, (float)value); break;
+                default: if (value != 0) animator.SetTrigger(p.Name); else animator.ResetTrigger(p.Name); break;
+            }
+        }
+
+        static void Set(AnimatorControllerPlayable playable, AvatarAnimatorData.Parameter p, double value)
+        {
+            switch (p.Type)
+            {
+                case "bool": playable.SetBool(p.Name, value != 0); break;
+                case "int": playable.SetInteger(p.Name, (int)value); break;
+                case "float": playable.SetFloat(p.Name, (float)value); break;
+                default: if (value != 0) playable.SetTrigger(p.Name); else playable.ResetTrigger(p.Name); break;
+            }
+        }
+
+        static double Get(AnimatorControllerPlayable playable, AvatarAnimatorData.Parameter parameter) =>
+            parameter.Type == "int" ? playable.GetInteger(parameter.Name)
+            : parameter.Type == "float" ? playable.GetFloat(parameter.Name)
+            : playable.GetBool(parameter.Name) ? 1 : 0;
 
         // A SkinnedMeshRenderer with a mesh of one triangle and one blend shape.
         static SkinnedMeshRenderer Morph(GameObject target)
@@ -124,17 +266,13 @@ namespace VRVlog.AvatarAnimator.Comparison
             return renderer;
         }
 
-        // The controller Unity plays: one Animator plays one controller, so a
-        // case puts its layers in one (the FX, or a gesture or action
-        // controller after an FX without layers). layerOffset is the
-        // evaluator's index of its first layer.
-        static int Played(AvatarAnimatorComparison.Case c, out int layerOffset)
+        // The controllers Unity plays: the data's with layers.
+        static List<int> Played(AvatarAnimatorComparison.Case c)
         {
             var controllers = c.Data.Controllers;
             var played = Enumerable.Range(0, controllers.Count).Where(i => controllers[i].Layers.Count > 0).ToList();
-            Assert.That(played.Count, Is.EqualTo(1), c.Name + " has layers in more than one controller");
-            layerOffset = controllers.Take(played[0]).Sum(controller => controller.Layers.Count);
-            return played[0];
+            Assert.That(played, Is.Not.Empty, c.Name + " has no layers");
+            return played;
         }
 
         // A humanoid rig in a T-pose with every bone of HumanTrait, Hips
