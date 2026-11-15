@@ -94,9 +94,10 @@ namespace VRVlog.LilToonExporter
         readonly List<List<(int Transform, ExpressionAnimationData.Curve Curve)>> clipTransformTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
         // Each clip's muscle curves, by the muscle's index (Muscle).
         readonly List<List<(int Muscle, ExpressionAnimationData.Curve Curve)>> clipMuscleTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
-        // The layers' masks with the paths their transform masks let move,
-        // which become nodes when the output nodes are known (Build).
-        readonly List<(AvatarAnimatorData.Mask Mask, List<string> Paths)> masks = new List<(AvatarAnimatorData.Mask, List<string>)>();
+        // The layers' masks with the objects their transform masks let move,
+        // found when read (the export may rename or move them), which become
+        // nodes when the output nodes are known (Build).
+        readonly List<(AvatarAnimatorData.Mask Mask, List<GameObject> Objects)> masks = new List<(AvatarAnimatorData.Mask, List<GameObject>)>();
         // The Humanoid bones of the copy, read with the first Transform curve.
         HashSet<Transform> humanoidBones;
 
@@ -130,7 +131,7 @@ namespace VRVlog.LilToonExporter
         // The FX parameters a clip of the controller animates. Unity holds each
         // of them: SetFloat and the like no longer change it (see Driven).
         readonly SortedSet<int> driven = new SortedSet<int>();
-        readonly HashSet<Motion> drivenWalked = new HashSet<Motion>();
+        HashSet<Motion> drivenWalked = new HashSet<Motion>();
         // The value the FX controller gives each parameter it declares.
         readonly Dictionary<int, double> controllerDefaults = new Dictionary<int, double>();
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -148,10 +149,13 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<string> declared = new HashSet<string>(StringComparer.Ordinal);
         // The clips the controller read now overrides.
         Dictionary<AnimationClip, AnimationClip> overrides;
-        readonly Dictionary<Motion, int> motionIndex = new Dictionary<Motion, int>();
+        // The motions and clips of the controller read now, and its blend
+        // trees left out: each controller reads them under its own overrides
+        // and parameters, so a motion two controllers share is written twice.
+        Dictionary<Motion, int> motionIndex = new Dictionary<Motion, int>();
         // Blend trees left out because Unity cannot read a parameter they
         // blend by: true when one has another type, false when none is declared.
-        readonly Dictionary<Motion, bool> unreadTrees = new Dictionary<Motion, bool>();
+        Dictionary<Motion, bool> unreadTrees = new Dictionary<Motion, bool>();
         // The uses of a parameter Unity cannot read inside each of
         // data.Motions, counted again wherever the motion is used.
         readonly List<int> unread = new List<int>();
@@ -160,7 +164,7 @@ namespace VRVlog.LilToonExporter
         // The motions each of data.Motions expands to, itself included; it
         // stops counting past the limit.
         readonly List<int> expanded = new List<int>();
-        readonly Dictionary<AnimationClip, int> clipIndex = new Dictionary<AnimationClip, int>();
+        Dictionary<AnimationClip, int> clipIndex = new Dictionary<AnimationClip, int>();
         // Clips an additive layer plays, and whether the layer read now is one.
         readonly HashSet<int> additiveClips = new HashSet<int>();
         // The faces ReadFaces matched, each with the clips it was read from.
@@ -302,20 +306,23 @@ namespace VRVlog.LilToonExporter
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller, "fx"));
-            // Then the Gesture and the Action, each with its own parameters and overrides.
-            var fxParameters = capture.controllerParameters;
-            var fxOverrides = capture.overrides;
+            // Then the Gesture and the Action, each with its own parameters,
+            // overrides, motions and clips; the FX's are kept for the faces.
+            var fxReads = (capture.controllerParameters, capture.overrides, capture.motionIndex, capture.unreadTrees, capture.drivenWalked, capture.clipIndex);
             foreach (var (type, playable) in new[] { ("Gesture", "gesture"), ("Action", "action") })
             {
                 var runtime = Playable(descriptor, type);
                 if (!((runtime is AnimatorOverrideController overridden ? overridden.runtimeAnimatorController : runtime) is AnimatorController other)) continue;
                 capture.controllerParameters = new Dictionary<string, string>(StringComparer.Ordinal);
                 capture.overrides = ExpressionDependencies.Overrides(runtime);
+                capture.motionIndex = new Dictionary<Motion, int>();
+                capture.unreadTrees = new Dictionary<Motion, bool>();
+                capture.drivenWalked = new HashSet<Motion>();
+                capture.clipIndex = new Dictionary<AnimationClip, int>();
                 capture.ReadControllerParameters(other);
                 capture.data.Controllers.Add(capture.ReadController(other, playable));
             }
-            capture.controllerParameters = fxParameters;
-            capture.overrides = fxOverrides;
+            (capture.controllerParameters, capture.overrides, capture.motionIndex, capture.unreadTrees, capture.drivenWalked, capture.clipIndex) = fxReads;
             // Menus name only parameters that Expression Parameters declare.
             if (expressions) capture.ReadMenus(Member(descriptor, "expressionsMenu"));
             return capture;
@@ -619,9 +626,8 @@ namespace VRVlog.LilToonExporter
                 data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "muscle", Muscle = muscle, Rest = 0 });
             }
             // A mask names the nodes of the objects its transform mask lets move.
-            foreach (var (mask, paths) in masks)
-                mask.Nodes = paths?.Select(path => path.Length == 0 ? root.transform : root.transform.Find(path))
-                    .Select(found => found == null ? -1 : node(found.gameObject)).Where(index => index >= 0).Distinct().OrderBy(index => index).ToList();
+            foreach (var (mask, objects) in masks)
+                mask.Nodes = objects?.Select(found => found == null ? -1 : node(found)).Where(index => index >= 0).Distinct().OrderBy(index => index).ToList();
             var muscleLost = 0;
             var missing = materialMissing + slotMissing;
             var transformLost = 0;
@@ -1470,9 +1476,9 @@ namespace VRVlog.LilToonExporter
 
         // A mask that lets every body part and every node move is none.
         // Otherwise the body parts it lets move, and, when it names
-        // transforms, the paths of those it lets move, which Build turns into
-        // nodes (a path the file has no node for is dropped). A mask without
-        // transforms lets every node move.
+        // transforms, the objects of those it lets move, which Build turns
+        // into nodes (an object the file has no node for is dropped). A mask
+        // without transforms lets every node move.
         AvatarAnimatorData.Mask ReadMask(AvatarMask mask)
         {
             if (mask == null) return null;
@@ -1480,10 +1486,15 @@ namespace VRVlog.LilToonExporter
             for (var part = 0; part < AvatarAnimatorData.BodyPartCount; part++)
                 if (mask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)part)) result.Humanoid.Add(part);
             if (mask.transformCount == 0 && result.Humanoid.Count == AvatarAnimatorData.BodyPartCount) return null;
-            var paths = new List<string>();
+            var objects = new List<GameObject>();
             for (var i = 0; i < mask.transformCount; i++)
-                if (mask.GetTransformActive(i)) paths.Add(mask.GetTransformPath(i) ?? "");
-            masks.Add((result, mask.transformCount == 0 ? null : paths));
+            {
+                if (!mask.GetTransformActive(i)) continue;
+                var path = mask.GetTransformPath(i) ?? "";
+                var found = path.Length == 0 ? root.transform : root.transform.Find(path);
+                if (found != null) objects.Add(found.gameObject);
+            }
+            masks.Add((result, mask.transformCount == 0 ? null : objects));
             return result;
         }
 
@@ -1828,8 +1839,11 @@ namespace VRVlog.LilToonExporter
 
         // The FX parameter an Animator curve on the avatar root animates, or
         // -1. Unity takes such a curve only on a name the controller declares.
+        // A name a later controller declares with another type than the data's
+        // is none: the data's parameter is not the one it animates.
         int AnimatedParameter(EditorCurveBinding binding) =>
-            binding.type == typeof(Animator) && binding.path.Length == 0 && binding.propertyName != null && controllerParameters.ContainsKey(binding.propertyName)
+            binding.type == typeof(Animator) && binding.path.Length == 0 && binding.propertyName != null &&
+            controllerParameters.TryGetValue(binding.propertyName, out var own) && data.Parameters[parameterIndex[binding.propertyName]].Type == own
                 ? parameterIndex[binding.propertyName] : -1;
 
         // A clip is written even without a curve the app plays: its length
@@ -1885,8 +1899,11 @@ namespace VRVlog.LilToonExporter
                     // activeSelf and parameters leave of the room.
                     if (binding.type == typeof(Animator) && binding.path.Length == 0)
                     {
+                        // A name the controller declares with another type
+                        // than the data's (see AnimatedParameter).
                         var muscle = Muscle(binding.propertyName);
-                        if (muscle >= 0) muscleCurves.Add((binding, muscle));
+                        if (controllerParameters.ContainsKey(binding.propertyName ?? "")) Omit("parameter");
+                        else if (muscle >= 0) muscleCurves.Add((binding, muscle));
                         else Omit(HumanoidRoot(binding.propertyName) ? "humanoidRoot" : "muscle");
                     }
                     else if (Kind(binding) == "blendShape") shapes.Add(binding);

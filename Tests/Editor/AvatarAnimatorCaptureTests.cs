@@ -970,6 +970,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(fist, Muscle("LeftHand.Index.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, -1));
             var open = avatar.Clip("Open");
             AnimationUtility.SetEditorCurve(open, Muscle("LeftHand.Index.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(open, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
             var wave = avatar.Clip("Wave", ("Hat", true));
 
             var hands = new AvatarMask();
@@ -1001,6 +1002,8 @@ namespace VRVlog.LilToonExporter.Tests
             var additive = avatar.Controller("Additive");
             additive.layers[0].stateMachine.AddState("Wave").motion = wave;
             avatar.Playables(("Base", null), ("Additive", additive), ("Gesture", overrides), ("Action", action), ("FX", avatar.Fx));
+            // The FX plays the clip the Gesture overrides.
+            AddLayer(avatar, "Fist", fist);
 
             var nodes = new Dictionary<GameObject, int>();
             var data = CapturedWithMaterials(avatar, nodes);
@@ -1012,7 +1015,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Controllers[2].Layers.Single().Mask, Is.Null, "A mask that lets everything move.");
             var clip = data.Clips[data.Motions[held.States.Single().Motion].Clip];
             Assert.That(clip.Tracks.Select(t => (data.Targets[t.Target].Property, data.Targets[t.Target].Muscle, t.Curves.Single().Keys[0].Value)),
-                Is.EqualTo(new[] { ("muscle", MuscleIndex("Left Index 1 Stretched"), 1d) }), "The override controller's clip.");
+                Is.EqualTo(new[] { ("muscle", MuscleIndex("Left Index 1 Stretched"), 1d) }), "The override controller's clip, and Blend is an int there.");
+            var fxFist = data.Clips[data.Motions[data.Controllers[0].Layers.Single(l => l.Name == "Fist").States.Single().Motion].Clip];
+            Assert.That(fxFist.Tracks.Single().Curves.Single().Keys[0].Value, Is.EqualTo(-1d), "The FX reads the clip without the Gesture's override.");
+            Assert.That(Omitted(data, "parameter"), Is.EqualTo(1), "The Gesture's Blend curve.");
             var gestureLeft = data.Parameters.Single(p => p.Name == "GestureLeft");
             Assert.That((gestureLeft.Type, gestureLeft.Origin), Is.EqualTo(("int", "builtin")));
             Assert.That(data.Parameters.Single(p => p.Name == "Blend").Type, Is.EqualTo("float"), "The FX declares Blend first.");
