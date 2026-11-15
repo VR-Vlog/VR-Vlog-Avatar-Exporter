@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using VRVlog.AvatarAnimator;
 using VRVlog.Expressions;
 using Object = UnityEngine.Object;
@@ -295,6 +296,236 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(differs.Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, target) }));
                 Assert.That(AvatarAnimatorCrossCheck.Describe(root, changed, all, target), Does.Contain(shown));
             }
+        }
+
+        // Smile on also moves Body 0.5 m along x, turns it 30 degrees about y
+        // (an Euler curve), doubles its y scale and puts the material Swapped
+        // in its first slot; the write defaults put them back when it goes off.
+        [Test]
+        public void TransformAndMaterialSlotMatchUnity()
+        {
+            var (root, controller, data, bindings) = Build();
+            var renderer = bindings[1].Renderer;
+            var held = new Material(Shader.Find("Standard")) { name = "Held" };
+            var swapped = new Material(Shader.Find("Standard")) { name = "Swapped" };
+            owned.Add(held);
+            owned.Add(swapped);
+            renderer.sharedMaterial = held;
+            const int X = 2, Turn = 3, Tall = 4, Slot = 5;
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "translation", Channel = "x", Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "rotation", Channel = "y", Euler = true, Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "scale", Channel = "y", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "materialSlot", Slot = 0, Rest = 0 });
+            var on = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(controller)).OfType<AnimationClip>().Single(clip => clip.name == "Clip3");
+            foreach (var (target, property, value) in new[] { (X, "m_LocalPosition.x", .5f), (Turn, "localEulerAnglesRaw.y", 30f), (Tall, "m_LocalScale.y", 2f), (Slot, "", 1f) })
+            {
+                if (target == Slot)
+                    AnimationUtility.SetObjectReferenceCurve(on, EditorCurveBinding.PPtrCurve("Body", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[0]"),
+                        new[] { new ObjectReferenceKeyframe { time = 0, value = swapped }, new ObjectReferenceKeyframe { time = 1f / 60, value = swapped } });
+                else AnimationUtility.SetEditorCurve(on, EditorCurveBinding.FloatCurve("Body", typeof(Transform), property), AnimationCurve.Constant(0, 1f / 60, value));
+                var track = new AvatarAnimatorData.Track { Target = target };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = value, InTangent = 0, OutTangent = 0 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1.0 / 60, Value = value, InTangent = 0, OutTangent = 0 });
+                track.Curves.Add(curve);
+                data.Clips[3].Tracks.Add(track);
+            }
+            var body = renderer.gameObject;
+            var all = bindings.Concat(new[]
+            {
+                new AvatarAnimatorCrossCheck.Binding { Object = body, Path = "Body" },
+                new AvatarAnimatorCrossCheck.Binding { Object = body, Path = "Body" },
+                new AvatarAnimatorCrossCheck.Binding { Object = body, Path = "Body" },
+                new AvatarAnimatorCrossCheck.Binding { Component = renderer, Slot = 0, Slots = new Dictionary<Material, int> { [held] = 0, [swapped] = 1 }, Path = "Body" },
+            }).ToList();
+            data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, all, null);
+
+            Assert.That(result.Unsupported, Is.Null);
+            Assert.That((result.Inputs, result.Compared, result.Targets, result.Unbound), Is.EqualTo((9, 9, 6, 0)));
+            Assert.That(result.Mismatches.Select(m => $"{m.Input} {m.Frame} T{m.Target} {m.Unity} {m.Evaluator}"), Is.Empty);
+
+            // Data that holds another value differs on the fist, and names the channel or slot.
+            var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
+            foreach (var (target, value, shown) in new[] { (X, .25, "Body:translation.x"), (Turn, 10, "Body:rotationEuler.y"), (Tall, 3, "Body:scale.y"), (Slot, 0, "Body:slot0") })
+            {
+                var changed = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+                changed.Clips[3].Tracks.Single(t => t.Target == target).Curves[0].Keys.ForEach(key => key.Value = value);
+                var differs = AvatarAnimatorCrossCheck.Run(root, controller, changed, all, null);
+                Assert.That(differs.Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, target) }), shown);
+                Assert.That(AvatarAnimatorCrossCheck.Describe(root, changed, all, target), Does.Contain(shown));
+            }
+        }
+
+        // Smile on also turns the object Head 90 degrees about y with the
+        // four quaternion curves; over the 0.25 s transition the evaluator's
+        // blend, normalized, follows Unity's.
+        [Test]
+        public void AQuaternionRotationMatchesUnityThroughTheTransition()
+        {
+            var (root, controller, data, bindings) = Build();
+            var head = new GameObject("Head");
+            head.transform.SetParent(root.transform, false);
+            var on = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(controller)).OfType<AnimationClip>().Single(clip => clip.name == "Clip3");
+            var turned = Quaternion.Euler(0, 90, 0);
+            var all = bindings.ToList();
+            for (var c = 0; c < 4; c++)
+            {
+                var channel = AvatarAnimatorData.QuaternionChannels[c];
+                data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "rotation", Channel = channel, Rest = c == 3 ? 1 : 0 });
+                AnimationUtility.SetEditorCurve(on, EditorCurveBinding.FloatCurve("Head", typeof(Transform), "m_LocalRotation." + channel), AnimationCurve.Constant(0, 1f / 60, turned[c]));
+                var track = new AvatarAnimatorData.Track { Target = data.Targets.Count - 1 };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = turned[c], InTangent = 0, OutTangent = 0 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1.0 / 60, Value = turned[c], InTangent = 0, OutTangent = 0 });
+                track.Curves.Add(curve);
+                data.Clips[3].Tracks.Add(track);
+                all.Add(new AvatarAnimatorCrossCheck.Binding { Object = head, Path = "Head" });
+            }
+            data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, all, null);
+
+            Assert.That(result.Unsupported, Is.Null);
+            Assert.That((result.Compared, result.Targets, result.Unbound), Is.EqualTo((9, 6, 0)));
+            Assert.That(result.Mismatches.Select(m => $"{m.Input} {m.Frame} T{m.Target} {m.Unity} {m.Evaluator}"), Is.Empty);
+
+            // The turn the other way about y differs on the fist.
+            var changed = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+            changed.Clips[3].Tracks.Single(t => t.Target == 3).Curves[0].Keys.ForEach(key => key.Value = -key.Value);
+            var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
+            Assert.That(AvatarAnimatorCrossCheck.Run(root, controller, changed, all, null).Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, 3) }));
+        }
+
+        // The face Smile is the fist's state: the evaluator shows its weight
+        // of 100 with the values the shared solver picks, and no other weight.
+        [Test]
+        public void FaceMismatchTellsWhetherTheEvaluatorShowsTheFace()
+        {
+            var (_, _, data, _) = Build();
+            AddFace(data, "Smile", 3);
+
+            Assert.That(AvatarAnimatorCrossCheck.FaceMismatch(data, "Smile", new[] { (1, 100d) }), Is.Null);
+            Assert.That(AvatarAnimatorCrossCheck.FaceMismatch(data, "Smile", new[] { (1, 99.6) }), Is.Null, "within half a weight");
+            Assert.That(AvatarAnimatorCrossCheck.FaceMismatch(data, "Smile", new[] { (1, 50d) }), Does.StartWith("T1 face 50 evaluator 100"));
+            Assert.That(AvatarAnimatorCrossCheck.FaceMismatch(data, "Frown", new[] { (1, 100d) }), Is.EqualTo("no way in"));
+        }
+
+        // A face's values come from its morph binds (Baked + weight x
+        // (End - Baked)) and the tracks it holds still, from glTF's space to
+        // Unity's; a material bind, a track that moves in time, a BlendShape
+        // animation or a bind with no target leaves it out.
+        [Test]
+        public void FaceValuesFollowTheBindsAndTheHeldTracks()
+        {
+            var (_, _, data, _) = Build();
+            data.Targets[1].Baked = 10;
+            foreach (var channel in AvatarAnimatorData.VectorChannels)
+                data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "translation", Channel = channel, Rest = 0 });
+            var document = GlbDocument.Read(Glb(new Dictionary<string, object>
+            {
+                ["Half"] = Face((2, 0, .5)),
+                ["Moved"] = Face(),
+                ["HatOn"] = Face(),
+                ["Waving"] = Face(),
+                ["Blinking"] = Face(),
+                ["Colored"] = new Dictionary<string, object> { ["materialColorBinds"] = new List<object> { new Dictionary<string, object>() } },
+                ["Elsewhere"] = Face((1, 0, 1)),
+            }, Animations()));
+
+            string Values(string name) => AvatarAnimatorCapture.FaceValues(document, data, name, out var reason) is { } values
+                ? string.Join(" ", values.Select(v => $"T{v.Target}={v.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")) : reason;
+            Assert.That(Values("Half"), Is.EqualTo("T1=55"));
+            Assert.That(Values("Moved"), Is.EqualTo("T2=-0.25 T3=0.5 T4=0"));
+            Assert.That(Values("HatOn"), Is.EqualTo("T0=1"));
+            Assert.That(Values("Waving"), Is.EqualTo("transform animation"));
+            Assert.That(Values("Blinking"), Is.EqualTo("blendShape animation"));
+            Assert.That(Values("Colored"), Is.EqualTo("materialColorBinds"));
+            Assert.That(Values("Elsewhere"), Is.EqualTo("morph 1:0 is no target"));
+            Assert.That(Values("Missing"), Is.EqualTo("no expression"));
+        }
+
+        // Inject writes the faces the evaluator shows and leaves out the one
+        // whose bind it cannot show (a weight of 50 where the fist plays 100).
+        [Test]
+        public void InjectWritesOnlyTheFacesTheEvaluatorShows()
+        {
+            var (_, _, data, _) = Build();
+            var bytes = Glb(new Dictionary<string, object> { ["Smile"] = Face((2, 0, 1)), ["Half smile"] = Face((2, 0, .5)), ["Hat"] = Face() }, null);
+            var faces = new (string, IReadOnlyCollection<int>)[] { ("Smile", new[] { 3 }), ("Half smile", new[] { 3 }), ("Hat", new[] { 1 }) };
+
+            LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("face \"Half smile\" left out: T1 face 50 evaluator 100"));
+            var written = AvatarAnimatorData.Read(GlbDocument.Read(AvatarAnimatorCapture.Inject(bytes, data, faces)).Find("extensions", AvatarAnimatorData.Extension));
+
+            Assert.That(written.Expressions.Select(e => e.Name), Is.EqualTo(new[] { "Smile", "Hat" }));
+        }
+
+        static void AddFace(AvatarAnimatorData data, string name, int clip)
+        {
+            var expression = new AvatarAnimatorData.Expression { Name = name };
+            expression.Clips.Add(clip);
+            expression.When.AddRange(AvatarAnimatorCapture.Entrances(data, new[] { clip }));
+            data.Expressions.Add(expression);
+        }
+
+        static Dictionary<string, object> Face(params (int Node, int Index, double Weight)[] binds) => new Dictionary<string, object>
+        {
+            ["morphTargetBinds"] = binds.Select(b => (object)new Dictionary<string, object> { ["node"] = (long)b.Node, ["index"] = (long)b.Index, ["weight"] = b.Weight }).ToList(),
+        };
+
+        // Moved holds a glTF translation of (0.25, 0.5, 0); HatOn holds the
+        // hat shown; Waving turns over a second; Blinking has a BlendShape animation.
+        static Dictionary<string, object> Animations()
+        {
+            var document = new ExpressionAnimationDocument();
+            foreach (var name in new[] { "Moved", "HatOn", "Waving", "Blinking" })
+                document.Expressions.Add(new ExpressionSource { Expression = name, Source = ExpressionSource.Menu });
+            ExpressionAnimationData.Curve Curve(params (double Time, double Value)[] keys)
+            {
+                var curve = new ExpressionAnimationData.Curve();
+                foreach (var (time, value) in keys) curve.Keys.Add(new ExpressionAnimationData.Key { Time = time, Value = value, InTangent = 0, OutTangent = 0 });
+                return curve;
+            }
+            var moved = new ExpressionTransformAnimation { Expression = "Moved" };
+            var position = new ExpressionTransformAnimation.Track { Node = 2, Property = ExpressionTransformAnimation.Translation };
+            position.Curves.AddRange(new[] { Curve((0, .25)), Curve((0, .5)), Curve((0, 0)) });
+            moved.Tracks.Add(position);
+            var hat = new ExpressionTransformAnimation { Expression = "HatOn" };
+            var shown = new ExpressionTransformAnimation.Track { Node = 1, Property = ExpressionTransformAnimation.Active };
+            shown.Curves.Add(Curve((0, 1)));
+            hat.Tracks.Add(shown);
+            var waving = new ExpressionTransformAnimation { Expression = "Waving", Duration = 1 };
+            var turn = new ExpressionTransformAnimation.Track { Node = 2, Property = ExpressionTransformAnimation.Translation };
+            turn.Curves.AddRange(new[] { Curve((0, 0), (1, .5)), Curve((0, 0)), Curve((0, 0)) });
+            waving.Tracks.Add(turn);
+            document.Transforms.AddRange(new[] { moved, hat, waving });
+            var blinking = new ExpressionAnimationData { Expression = "Blinking", Duration = 1 };
+            var channel = new ExpressionAnimationData.Channel { Curve = Curve((0, 0), (1, 1)) };
+            channel.Points.Add(new ExpressionAnimationData.Point { Value = 0 });
+            channel.Points.Add(new ExpressionAnimationData.Point { Value = 1, Morph = new ExpressionAnimationData.MorphReference { Node = 2, Index = 0 } });
+            blinking.Channels.Add(channel);
+            document.Animations.Add(blinking);
+            return ExpressionAnimationData.WriteDocument(document);
+        }
+
+        // A file with the custom expressions and, when given, the expression
+        // animations; nodes 0 to 2, node 2 drawing a mesh with one morph target.
+        static byte[] Glb(Dictionary<string, object> custom, Dictionary<string, object> animations)
+        {
+            var extensions = new Dictionary<string, object>
+            {
+                ["VRMC_vrm"] = new Dictionary<string, object> { ["expressions"] = new Dictionary<string, object> { ["custom"] = custom } },
+            };
+            if (animations != null) extensions[ExpressionAnimationData.Extension] = animations;
+            return GlbDocument.Create(new Dictionary<string, object>
+            {
+                ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
+                ["nodes"] = new List<object> { new Dictionary<string, object>(), new Dictionary<string, object>(), new Dictionary<string, object> { ["mesh"] = 0L } },
+                ["meshes"] = new List<object>
+                {
+                    new Dictionary<string, object> { ["primitives"] = new List<object> { new Dictionary<string, object> { ["targets"] = new List<object> { new Dictionary<string, object>() } } } },
+                },
+                ["extensions"] = extensions,
+            }, System.Array.Empty<byte>()).Write();
         }
 
         // The objects, the Unity controller and the data written for them.

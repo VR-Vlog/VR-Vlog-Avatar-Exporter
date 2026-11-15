@@ -1481,6 +1481,11 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(smile, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
             avatar.Fx.AddLayer("Face");
             var layerIndex = avatar.Fx.layers.Length - 1;
+            // A face the evaluator cannot show is not written, and a layer
+            // added by script has no weight.
+            var faceLayers = avatar.Fx.layers;
+            faceLayers[layerIndex].defaultWeight = 1;
+            avatar.Fx.layers = faceLayers;
             var machine = avatar.Fx.layers[layerIndex].stateMachine;
             var neutral = machine.AddState("Neutral");
             var smiling = machine.AddState("Smiling");

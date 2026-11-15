@@ -226,7 +226,9 @@ namespace VRVlog.AvatarAnimator
         // A materialSlot target is slot Slot of the renderer on Node, its
         // values glTF material indices (-1 an empty slot), Rest among them.
         // It is Stepped: an evaluator never blends it, but takes the value
-        // with the most weight, as Unity does with an object reference curve.
+        // with the most weight, as Unity does with an object reference curve;
+        // in a transition the rest of Write Defaults gets no weight, so the
+        // motion that writes it shows while it has any.
         // A translation, rotation or scale target is Channel of the local
         // position, rotation or scale of Node, in Unity's space as the curve
         // holds it (not glTF's), each one float. A rotation target is a
