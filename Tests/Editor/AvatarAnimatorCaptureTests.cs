@@ -2584,7 +2584,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (Dictionary<string, object>)json["extensions"];
                 Assert.That(extensions.ContainsKey(LilToonFullContract.ExtensionName), Is.True, string.Join("\n", warnings));
                 var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
-                Assert.That((record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("First", LilToonMobileProfile.MaximumMaterials - 1)));
+                Assert.That(((string)record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("First", LilToonMobileProfile.MaximumMaterials - 1)));
 
                 var data = Read(json);
                 var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
@@ -2634,7 +2634,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(((List<object>)json["materials"]).Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
                 var extensions = (Dictionary<string, object>)json["extensions"];
                 var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
-                Assert.That((record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("Loose", count)));
+                Assert.That(((string)record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("Loose", count)));
                 var data = Read(json);
                 var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
                 Assert.That(ClipOf(data, "Loud").Tracks.Any(t => t.Target == slot), Is.False);
