@@ -53,8 +53,9 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
         public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST", "materialSlot" };
-        // The components an enabled target turns on and off.
-        public static readonly string[] Components = { "renderer" };
+        // The components an enabled target turns on and off: a renderer of
+        // the node, or a constraint of VRVLOG_avatar_constraints by index.
+        public static readonly string[] Components = { "renderer", "constraint" };
         // The channels a materialColor and a materialTextureST target name.
         public static readonly string[] ColorChannels = { "r", "g", "b", "a" };
         public static readonly string[] TextureChannels = { "x", "y", "z", "w" };
@@ -210,7 +211,9 @@ namespace VRVlog.AvatarAnimator
         // (v - Baked) / (End - Baked). A parameter target is FX parameter
         // Parameter, which belongs to no node (Node is -1).
         // An enabled target is the enabled flag of Component on Node (a
-        // renderer, the one the node draws), Rest 0 or 1. A materialFloat
+        // renderer, the one the node draws), Rest 0 or 1. An enabled target
+        // of a constraint also names Index, the entry of the
+        // VRVLOG_avatar_constraints table, whose node is Node. A materialFloat
         // target is the float property Name of glTF material Material, which
         // belongs to no node (Node is -1). A materialColor target is Channel
         // (r, g, b or a) of its color property Name, and a materialTextureST
@@ -228,6 +231,8 @@ namespace VRVlog.AvatarAnimator
         // its Rest the "rest" key when that is a number and 0 otherwise, and
         // Fields its keys as read, which Write writes back unchanged (a
         // target made with no Fields is written as its property and rest).
+        // Write writes a known target made with Fields as those Fields too,
+        // and Read checks them as that kind.
         public sealed class Target
         {
             public int Node; public string Property = "active"; public double Rest;
@@ -235,6 +240,7 @@ namespace VRVlog.AvatarAnimator
             public int Parameter;
             public string Component, Name, Channel;
             public int Material;
+            public int Index;
             public int Slot;
             public Dictionary<string, object> Fields;
             public bool Stepped => Property == "materialSlot";
@@ -297,7 +303,9 @@ namespace VRVlog.AvatarAnimator
         }
 
         static Dictionary<string, object> WriteTarget(Target t) =>
-            !t.Known ? (t.Fields != null ? new Dictionary<string, object>(t.Fields) : new Dictionary<string, object> { ["property"] = t.Property, ["rest"] = t.Rest })
+            t.Fields != null ? new Dictionary<string, object>(t.Fields)
+            : !t.Known ? new Dictionary<string, object> { ["property"] = t.Property, ["rest"] = t.Rest }
+            : t.Property == "enabled" && t.Component == "constraint" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["component"] = t.Component, ["index"] = (long)t.Index, ["rest"] = (long)t.Rest }
             : t.Property == "morph" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
             : t.Property == "parameter" ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
             : t.Property == "enabled" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["component"] = t.Component, ["rest"] = (long)t.Rest }
@@ -694,20 +702,25 @@ namespace VRVlog.AvatarAnimator
                 }
                 else
                 {
-                    Json.Obj(t, target.Property == "enabled" ? new[] { "node", "property", "component", "rest" } : new[] { "node", "property", "rest" });
+                    var constraint = target.Property == "enabled" && target.Component == "constraint";
+                    Json.Obj(t, constraint ? new[] { "node", "property", "component", "index", "rest" }
+                        : target.Property == "enabled" ? new[] { "node", "property", "component", "rest" } : new[] { "node", "property", "rest" });
                     target.Node = Json.NonNegative(t["node"]);
+                    if (constraint) target.Index = Json.NonNegative(t["index"]);
                     target.Rest = Json.Integer(t["rest"]);
                     if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
                 // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for
-                // parameter, (node, component) for enabled, (material, name) for materialFloat,
+                // parameter, (node, component) for enabled, (component, index) for a
+                // constraint's enabled (an entry moves one node), (material, name) for materialFloat,
                 // (material, name, channel) for materialColor and materialTextureST,
                 // (node, slot) for materialSlot.
                 var material = target.Property == "materialFloat" || IsMaterialChannel(target.Property);
                 var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material :
-                    target.Property == "materialSlot" ? target.Slot : 0;
+                    target.Property == "materialSlot" ? target.Slot : target.Property == "enabled" ? target.Index : 0;
                 var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "") : null;
-                if (!seenTargets.Add((target.Node, target.Property, key, keyName))) throw Json.Bad();
+                var keyNode = target.Property == "enabled" && target.Component == "constraint" ? -1 : target.Node;
+                if (!seenTargets.Add((keyNode, target.Property, key, keyName))) throw Json.Bad();
                 data.Targets.Add(target);
             }
             // Unity animates a float parameter only; a curve on an int, bool or

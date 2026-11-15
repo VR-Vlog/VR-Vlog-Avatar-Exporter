@@ -978,7 +978,7 @@ namespace VRVlog.LilToonExporter.Tests
         // A constraint enabled curve is an enabled target of component
         // constraint on the node the constraint moves, with index its
         // VRVLOG_avatar_constraints entry, after the material targets in the
-        // clip. A reader that does not know the component keeps it unwritten.
+        // clip. The shared reader reads node and index.
         // A constraint the extension does not write keeps its curve counted.
         [Test]
         public void ConstraintEnabledCurvesBindToTheirExtensionEntry()
@@ -999,10 +999,9 @@ namespace VRVlog.LilToonExporter.Tests
             var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
                 .Resolve(Node, null, material => material.name == "Animator" ? 0 : -1, component => component == constraint ? 3 : -1)));
             var target = data.Targets.Single(t => t.Component == "constraint");
-            Assert.That(target.Known, Is.False);
-            Assert.That((target.Property, target.Node, target.Rest), Is.EqualTo(("enabled", -1, 1d)));
-            Assert.That(target.Fields["node"], Is.EqualTo((long)nodes[glasses]));
-            Assert.That(target.Fields["index"], Is.EqualTo(3L));
+            Assert.That(target.Known, Is.True);
+            Assert.That((target.Property, target.Node, target.Index, target.Rest), Is.EqualTo(("enabled", nodes[glasses], 3, 1d)));
+            Assert.That(target.Fields, Is.Null);
             var tracks = ClipOf(data, "Switch").Tracks;
             Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "enabled" }));
             Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 0d }));
