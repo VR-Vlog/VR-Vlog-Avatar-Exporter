@@ -69,6 +69,8 @@ public static class AvatarAnimatorSettledCheck
         for (var t = 0; t < a.Values.Count; t++)
             if (!Same(a.Values[t], b.Values[t]) || a.Written[t] != b.Written[t])
                 return "target " + t + " skipping " + a.Values[t] + " (" + a.Written[t] + ") every frame " + b.Values[t] + " (" + b.Written[t] + ")";
+        for (var t = 0; t < a.HostShare.Count; t++)
+            if (!Same(a.HostShare[t], b.HostShare[t])) return "target " + t + " host share skipping " + a.HostShare[t] + " every frame " + b.HostShare[t];
         for (var p = 0; p < a.Data.Parameters.Count; p++)
             if (!Same(a.Get(p), b.Get(p))) return "parameter " + p + " skipping " + a.Get(p) + " every frame " + b.Get(p);
         for (var l = 0; l < a.LayerCount; l++)

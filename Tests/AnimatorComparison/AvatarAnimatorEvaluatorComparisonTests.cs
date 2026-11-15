@@ -59,8 +59,29 @@ namespace VRVlog.AvatarAnimator.Comparison
             Assert.That(mismatch, Is.Null);
         }
 
-        // Unity's values and parameters after each frame.
-        static void Record(AvatarAnimatorComparison.Case c, string timing, out double[][] values, out double[][] parameters)
+        // The humanoid cases with more than one controller, played again over
+        // a host pose: one more input under the Gesture, at weight 1 without
+        // a mask, whose controller holds AvatarAnimatorComparison.HostPose,
+        // as VRChat's Base lies under them. The muscles Unity shows are what
+        // the evaluator's HostShare gives over that pose.
+        static IEnumerable<TestCaseData> HostSources() =>
+            from c in AvatarAnimatorComparison.Cases()
+            where c.Humanoid && c.Data.Controllers.Count(controller => controller.Layers.Count > 0) > 1
+            from timing in AvatarAnimatorComparison.Timings
+            select new TestCaseData(c.Name, timing).SetName("CompareOverHost_" + c.Name + "_" + timing);
+
+        [TestCaseSource(nameof(HostSources))]
+        public void CompareOverHost(string name, string timing)
+        {
+            var c = AvatarAnimatorComparison.Find(name);
+            var host = AvatarAnimatorComparison.HostPose(c);
+            Record(c, timing, out var values, out var parameters, host);
+            Assert.That(AvatarAnimatorComparison.Mismatch(c, timing, values, parameters, host), Is.Null);
+        }
+
+        // Unity's values and parameters after each frame; with a host pose,
+        // over a controller holding it under the others.
+        static void Record(AvatarAnimatorComparison.Case c, string timing, out double[][] values, out double[][] parameters, double[] host = null)
         {
             var data = c.Data;
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Folder.Substring("Assets/".Length));
@@ -117,12 +138,19 @@ namespace VRVlog.AvatarAnimator.Comparison
                     graph = PlayableGraph.Create("Comparison");
                     graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
                     var order = new[] { "gesture", "action", "fx" }.SelectMany(playable => played.Where(p => data.Controllers[p].Playable == playable)).ToList();
-                    var mixer = AnimationLayerMixerPlayable.Create(graph, order.Count);
+                    var under = host != null ? 1 : 0;
+                    var mixer = AnimationLayerMixerPlayable.Create(graph, order.Count + under);
+                    if (host != null)
+                    {
+                        graph.Connect(AnimatorControllerPlayable.Create(graph, HostController(c, host, Folder + "/" + c.Name + ".host.controller")), 0, mixer, 0);
+                        mixer.SetInputWeight(0, 1);
+                    }
                     var playables = new AnimatorControllerPlayable[data.Controllers.Count];
                     var inputs = new int[data.Controllers.Count];
-                    for (var i = 0; i < order.Count; i++)
+                    for (var k = 0; k < order.Count; k++)
                     {
-                        var ci = order[i];
+                        var ci = order[k];
+                        var i = k + under;
                         playables[ci] = AnimatorControllerPlayable.Create(graph, controllers[ci]);
                         inputs[ci] = i;
                         graph.Connect(playables[ci], 0, mixer, i);
@@ -394,6 +422,22 @@ namespace VRVlog.AvatarAnimator.Comparison
                 case "2dFreeformCartesian": return BlendTreeType.FreeformCartesian2D;
                 default: return BlendTreeType.Direct;
             }
+        }
+
+        // A controller of one state whose clip holds each muscle target at the host's value.
+        static AnimatorController HostController(AvatarAnimatorComparison.Case c, double[] host, string path)
+        {
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            var clip = new AnimationClip { name = "Host" };
+            for (var t = 0; t < host.Length; t++)
+                if (c.Data.Targets[t].Property == "muscle")
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), MuscleCurve(c.Data.Targets[t].Muscle)), AnimationCurve.Constant(0, 1, (float)host[t]));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            settings.loopTime = true;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            AssetDatabase.AddObjectToAsset(clip, controller);
+            controller.layers[0].stateMachine.AddState("Host").motion = clip;
+            return controller;
         }
 
         // The controller Unity plays for the data: what AvatarAnimatorCapture

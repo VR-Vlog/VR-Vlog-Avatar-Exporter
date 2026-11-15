@@ -336,6 +336,8 @@ namespace VRVlog.AvatarAnimator
         // the controllers below leave, over which the next one blends.
         readonly double[] below;
         readonly bool[] belowWritten;
+        // Per target, the share of what lies under every controller (HostShare).
+        readonly double[] hostShare;
         // Each value a layer set in values this frame and the last, in layer
         // order: the layer, the value and the same target's entry before it
         // (-1 none). Head holds each target's latest entry (-1 none).
@@ -401,6 +403,8 @@ namespace VRVlog.AvatarAnimator
             isParameter = new bool[targetCount];
             stepped = new bool[targetCount];
             isMuscle = new bool[targetCount];
+            hostShare = new double[targetCount];
+            for (var i = 0; i < targetCount; i++) hostShare[i] = 1;
             for (var i = 0; i < parameterTargets.Length; i++) parameterTargets[i] = -1;
             for (var i = 0; i < targetCount; i++)
             {
@@ -682,6 +686,12 @@ namespace VRVlog.AvatarAnimator
         public IReadOnlyList<double> Values => values;
         // Whether a layer wrote the target in the last Advance.
         public IReadOnlyList<bool> Written => written;
+        // Per target, how much of what lies under every controller (VRChat's
+        // Base, which is the host's own pose) is left in Values after the last
+        // Advance: the product of (1 - playable weight) over the controllers
+        // that wrote it, and 1 when none did. Values blend from the rest
+        // there, so a host whose value is h shows Values + (h - rest) * share.
+        public IReadOnlyList<double> HostShare => hostShare;
 
         // The first parameter of that name, or -1.
         public int ParameterIndex(string name)
@@ -793,6 +803,7 @@ namespace VRVlog.AvatarAnimator
                 playableWeight[c] = playableFrom[c] + (playableGoal[c] - playableFrom[c]) * t;
                 if (t >= 1) playableBlending[c] = false;
             }
+            for (var t = 0; t < hostShare.Length; t++) hostShare[t] = 1;
             foreach (var c in played) Play(c, deltaTime);
             for (var p = 0; p < spent.Length; p++)
                 if (spent[p])
@@ -1387,14 +1398,22 @@ namespace VRVlog.AvatarAnimator
                 for (var t = 0; t < written.Length; t++) written[t] |= isAnimated[t];
             }
             var weight = Math.Max(0, playableWeight[c]);
+            // What lies under the controller is left by 1 - weight where it writes.
+            var left = weight < 1 ? 1 - weight : 0;
+            var pose = controllerPose[c];
             if (!stacked)
             {
-                if (weight < 1)
-                    for (var t = 0; t < values.Length; t++)
-                        if (written[t]) values[t] = Blend(t, rest[t], values[t], weight);
+                for (var t = 0; t < values.Length; t++)
+                    if (written[t])
+                    {
+                        if (weight < 1) values[t] = Blend(t, rest[t], values[t], weight);
+                        hostShare[t] = left;
+                    }
+                    // Alone it plays over the rest as before, but over the host's pose its muscles
+                    // cover the host's even where no clip moves them (M16): the rest under its weight.
+                    else if (pose != null && pose[t]) hostShare[t] = left;
                 return;
             }
-            var pose = controllerPose[c];
             for (var t = 0; t < values.Length; t++)
             {
                 if (!written[t] && pose != null && pose[t])
@@ -1405,6 +1424,7 @@ namespace VRVlog.AvatarAnimator
                 if (written[t])
                 {
                     if (weight < 1) values[t] = Blend(t, belowWritten[t] ? below[t] : rest[t], values[t], weight);
+                    hostShare[t] *= left;
                 }
                 else
                 {
