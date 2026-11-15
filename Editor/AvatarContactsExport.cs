@@ -178,9 +178,10 @@ namespace VRVlog.LilToonExporter
                     if ((output = node(ancestor.gameObject)) >= 0) { at = i; break; }
                 }
                 var offset = entry.Offsets[at];
-                // The shape in the node's units, scaled as VRChat scales it: by the largest axis.
-                var lossy = offset.lossyScale;
-                var scale = Mathf.Max(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), Mathf.Abs(lossy.z));
+                // VRChat scales the shape by the largest axis of its world scale
+                // and the app by the node's: write the ratio of the two.
+                var nodeScale = Largest((entry.World * offset.inverse).lossyScale);
+                var scale = nodeScale > 1e-12f ? Largest(entry.World.lossyScale) / nodeScale : 0;
                 var position = offset.GetColumn(3);
                 var rotation = Normalized(offset.rotation);
                 var values = entry.Values;
@@ -223,6 +224,7 @@ namespace VRVlog.LilToonExporter
         static bool Finite(Vector3 v) => Finite(v.x) && Finite(v.y) && Finite(v.z);
         static bool Finite(Quaternion q) => Finite(q.x) && Finite(q.y) && Finite(q.z) && Finite(q.w);
         static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        static float Largest(Vector3 v) => Mathf.Max(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
         static float Dot(Quaternion q) => q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
         static Quaternion Normalized(Quaternion q)
         {
