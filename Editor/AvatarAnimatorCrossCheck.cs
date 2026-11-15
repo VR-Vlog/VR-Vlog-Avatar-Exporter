@@ -5,13 +5,15 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 using VRVlog.AvatarAnimator;
 using Debug = UnityEngine.Debug;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter
 {
-    // After the export: plays the copy's FX controller in Unity's Animator and
+    // After the export: plays the copy's controllers in Unity's Animator and
     // the written VRVLOG_avatar_animator in AvatarAnimatorEvaluator, the app's
     // player, from the same inputs for the same frames, and compares what they
     // show: the activeSelf of each active target, the BlendShape weight of
@@ -19,7 +21,9 @@ namespace VRVlog.LilToonExporter
     // names, the float of each material target (materialFloat,
     // materialColor, materialTextureST) as the renderer it was read from
     // shows it, the material of each materialSlot target's slot and the
-    // local channel of each translation, rotation and scale target. The inputs are the start alone, each menu control and
+    // local channel of each translation, rotation and scale target, and the
+    // muscle of each muscle target as HumanPoseHandler reads the copy's
+    // humanoid pose back. The inputs are the start alone, each menu control and
     // each hand gesture. Each input starts from the rest: SettleFrames without
     // input, then InputFrames with it.
     //
@@ -29,6 +33,16 @@ namespace VRVlog.LilToonExporter
     // Control on the FX blends that layer's weight from the next frame (M10).
     // An input that starts a Playable Layer Control on the FX is not compared:
     // plain Unity has no FX weight to blend.
+    //
+    // With only the FX, Unity's Animator plays it as the controller. With a
+    // Gesture or an Action the evaluator plays too, or a muscle target, a
+    // PlayableGraph plays them as VRChat stacks them (M15): an
+    // AnimationLayerMixerPlayable with the Gesture, the Action and the FX in
+    // that order, at the weights the evaluator starts them at (the Action at
+    // 0), each masked with its base layer's body parts, and the FX without
+    // the muscles when its base layer has no mask (M16). A Playable Layer Control on the Gesture or the Action blends that
+    // input's weight from the next frame, and the parameters go to every
+    // controller, as VRChat sets them on each.
     internal static class AvatarAnimatorCrossCheck
     {
         // Off skips the check; the file is the same either way.
@@ -49,6 +63,8 @@ namespace VRVlog.LilToonExporter
         // A face the evaluator shows (FaceMismatch): a BlendShape weight within
         // half a step of 0 to 100; the other kinds as above.
         internal const double FaceWeightTolerance = 0.5;
+        // Muscles, read back from the bones in single precision (the design's 1e-3).
+        internal const double MuscleTolerance = 1e-3;
         // The time the inputs may take together; the rest are not compared.
         internal static double BudgetSeconds = 60;
         // Off leaves VRChat's behaviours to plain Unity, which runs none (tests).
@@ -115,6 +131,8 @@ namespace VRVlog.LilToonExporter
             // Why the evaluator cannot play the data; nothing is compared then.
             internal string Unsupported;
             internal int Inputs, Compared, Targets, Unbound, Moved;
+            // Muscle targets compared through the humanoid pose.
+            internal int Muscles;
             // Animators under the root besides the one that plays, for the log.
             internal int OtherAnimators;
             // Inputs left out for a Playable Layer Control, and for time.
@@ -188,21 +206,29 @@ namespace VRVlog.LilToonExporter
         // a behaviour Unity runs into the data's form (null to ignore it).
         // Leaves root's objects and Animator as the last input left them.
         internal static Result Run(GameObject root, RuntimeAnimatorController controller, AvatarAnimatorData data,
+            IReadOnlyList<Binding> bindings, Func<StateMachineBehaviour, AvatarAnimatorData.Behaviour> readBehaviour) =>
+            Run(root, new[] { controller }, data, bindings, readBehaviour);
+
+        // controllers follow data.Controllers (the FX first): what each was
+        // read from, null for one Unity does not play. Muscle targets are
+        // compared when root's Animator has a humanoid Avatar.
+        internal static Result Run(GameObject root, IReadOnlyList<RuntimeAnimatorController> controllers, AvatarAnimatorData data,
             IReadOnlyList<Binding> bindings, Func<StateMachineBehaviour, AvatarAnimatorData.Behaviour> readBehaviour)
         {
             var result = new Result();
             if (!AvatarAnimatorEvaluator.Supports(data, out var reason)) { result.Unsupported = reason; return result; }
             var clock = Stopwatch.StartNew();
             var shown = new List<int>();
+            var muscles = new List<int>();
             var shapes = new int[data.Targets.Count];
             var quaternions = Quaternions(data);
             for (var t = 0; t < data.Targets.Count; t++)
             {
                 var target = data.Targets[t];
                 var binding = t < bindings.Count ? bindings[t] : null;
-                // A muscle is compared through the pose, which this check does not read yet.
-                if (target.Property == "parameter" || target.Property == "muscle") continue;
+                if (target.Property == "parameter") continue;
                 result.Targets++;
+                if (target.Property == "muscle") { muscles.Add(t); continue; }
                 shapes[t] = -1;
                 if (target.Property == "active" && binding?.Object != null) shown.Add(t);
                 else if (target.Property == "morph" && binding?.Renderer != null && binding.Renderer.sharedMesh != null &&
@@ -227,24 +253,41 @@ namespace VRVlog.LilToonExporter
             animator.enabled = true;
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-            var player = new UnityPlayer(animator, data, readBehaviour);
+            var human = animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
+            if (human) result.Muscles = muscles.Count;
+            else { result.Unbound += muscles.Count; muscles.Clear(); }
+            // The controllers the evaluator plays; one it skips is left out of Unity too.
+            var probe = new AvatarAnimatorEvaluator(data, () => 0);
+            var played = Enumerable.Range(0, data.Controllers.Count)
+                .Select(c => c < controllers.Count && probe.SkipReason(c) == null ? controllers[c] : null).ToList();
+            var graph = muscles.Count > 0 || played.Skip(1).Any(c => c != null);
+            var player = new UnityPlayer(animator, data, readBehaviour, graph ? played : null);
+            var poses = muscles.Count > 0 ? new HumanPoseHandler(animator.avatar, root.transform) : null;
             using (HookBehaviours ? new Hooks(player) : null)
             {
-                // Unity takes the values Write Defaults brings back when the
-                // controller binds, and Rebind restores those: the rest goes in
-                // first, as the export may have left the copy elsewhere.
-                animator.runtimeAnimatorController = null;
-                ToRest(data, bindings, shown, shapes);
-                animator.runtimeAnimatorController = controller;
-                player.Read();
-                foreach (var input in inputs)
+                try
                 {
-                    // The first input always runs, so a slow avatar still shows something.
-                    if (input != inputs[0] && clock.Elapsed.TotalSeconds > BudgetSeconds) { result.OutOfTime++; continue; }
-                    var mismatch = Play(input, data, bindings, shown, shapes, quaternions, animator, player, out var skipped);
-                    if (skipped) { result.Skipped.Add(input.Name); continue; }
-                    result.Compared++;
-                    if (mismatch != null) result.Mismatches.Add(mismatch);
+                    // Unity takes the values Write Defaults brings back when the
+                    // controller binds, and Rebind restores those: the rest goes in
+                    // first, as the export may have left the copy elsewhere.
+                    animator.runtimeAnimatorController = null;
+                    ToRest(data, bindings, shown, shapes);
+                    if (!graph) animator.runtimeAnimatorController = played.Count > 0 ? played[0] : null;
+                    player.Read();
+                    foreach (var input in inputs)
+                    {
+                        // The first input always runs, so a slow avatar still shows something.
+                        if (input != inputs[0] && clock.Elapsed.TotalSeconds > BudgetSeconds) { result.OutOfTime++; continue; }
+                        var mismatch = Play(input, data, bindings, shown, muscles, poses, shapes, quaternions, player, out var skipped);
+                        if (skipped) { result.Skipped.Add(input.Name); continue; }
+                        result.Compared++;
+                        if (mismatch != null) result.Mismatches.Add(mismatch);
+                    }
+                }
+                finally
+                {
+                    player.Dispose();
+                    poses?.Dispose();
                 }
             }
             result.Seconds = clock.Elapsed.TotalSeconds;
@@ -402,6 +445,7 @@ namespace VRVlog.LilToonExporter
             : target.Property == "translation" || target.Property == "scale" ? !(Math.Abs(evaluator - unity) <= PositionTolerance)
             : target.Property == "rotation" && target.Euler ? !(Math.Abs(evaluator - unity) <= AngleTolerance)
             : target.Property == "rotation" ? !(Math.Abs(evaluator - unity) <= QuaternionTolerance)
+            : target.Property == "muscle" ? !(Math.Abs(evaluator - unity) <= MuscleTolerance)
             : !(Math.Abs(evaluator - unity) <= weight);
 
         // The x, y, z and w targets of each quaternion rotation whose four
@@ -461,9 +505,10 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes,
-            Dictionary<int, int[]> quaternions, Animator animator, UnityPlayer player, out bool skipped)
+        static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, List<int> muscles,
+            HumanPoseHandler poses, int[] shapes, Dictionary<int, int[]> quaternions, UnityPlayer player, out bool skipped)
         {
+            var pose = new HumanPose();
             // Both draw the same sequence; a different order of behaviours shows as a difference.
             var seed = input.Name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c));
             var evaluatorRandom = new System.Random(seed);
@@ -491,7 +536,16 @@ namespace VRVlog.LilToonExporter
                             TransformChannels(bindings[t].Object.transform, "rotation", false))
                         : evaluator.Values[t];
                     if (!Differs(data.Targets[t], value, unity)) continue;
-                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value, Layers = Layers(data, animator, evaluator) };
+                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value, Layers = Layers(data, player, evaluator) };
+                    break;
+                }
+                if (first != null || muscles.Count == 0) continue;
+                poses.GetHumanPose(ref pose);
+                foreach (var t in muscles)
+                {
+                    var unity = (double)pose.muscles[data.Targets[t].Muscle];
+                    if (!Differs(data.Targets[t], evaluator.Values[t], unity)) continue;
+                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = evaluator.Values[t], Layers = Layers(data, player, evaluator) };
                     break;
                 }
             }
@@ -502,24 +556,30 @@ namespace VRVlog.LilToonExporter
         // Each layer where Unity and the evaluator are in a different state or
         // at a different weight: "index name: unity state weight / evaluator
         // state weight". A state in a transition reads "from>to".
-        static string Layers(AvatarAnimatorData data, Animator animator, AvatarAnimatorEvaluator evaluator)
+        // A layer of a controller other than the FX reads "playable index name".
+        static string Layers(AvatarAnimatorData data, UnityPlayer player, AvatarAnimatorEvaluator evaluator)
         {
-            if (data.Controllers.Count == 0) return "";
-            var layers = data.Controllers[0].Layers;
             var parts = new List<string>();
-            for (var l = 0; l < layers.Count && l < animator.layerCount && l < evaluator.LayerCount; l++)
+            for (var c = 0; c < data.Controllers.Count; c++)
             {
-                var states = layers[l].States;
-                if (states.Count == 0) continue;
-                string Named(int hash) => states.FirstOrDefault(s => Animator.StringToHash(s.Name) == hash)?.Name ?? "?";
-                string At(int index) => index >= 0 && index < states.Count ? states[index].Name : "-";
-                var unity = Named(animator.GetCurrentAnimatorStateInfo(l).shortNameHash);
-                if (animator.IsInTransition(l)) unity += ">" + Named(animator.GetNextAnimatorStateInfo(l).shortNameHash);
-                var app = At(evaluator.State(l));
-                if (evaluator.NextState(l) >= 0) app += ">" + At(evaluator.NextState(l));
-                var unityWeight = l == 0 ? 1 : animator.GetLayerWeight(l);
-                if (unity == app && Math.Abs(unityWeight - evaluator.LayerWeight(l)) < 0.001) continue;
-                parts.Add($"{l} {layers[l].Name}: unity {unity} {unityWeight:0.###} / evaluator {app} {evaluator.LayerWeight(l):0.###}");
+                if (evaluator.SkipReason(c) != null) continue;
+                var layers = data.Controllers[c].Layers;
+                for (var l = 0; l < layers.Count && l < player.LayerCount(c); l++)
+                {
+                    var states = layers[l].States;
+                    var e = evaluator.LayerIndex(c, l);
+                    if (states.Count == 0 || e < 0) continue;
+                    string Named(int hash) => states.FirstOrDefault(s => Animator.StringToHash(s.Name) == hash)?.Name ?? "?";
+                    string At(int index) => index >= 0 && index < states.Count ? states[index].Name : "-";
+                    var unity = Named(player.StateHash(c, l, false));
+                    if (player.InTransition(c, l)) unity += ">" + Named(player.StateHash(c, l, true));
+                    var app = At(evaluator.State(e));
+                    if (evaluator.NextState(e) >= 0) app += ">" + At(evaluator.NextState(e));
+                    var unityWeight = l == 0 ? 1 : player.LayerWeight(c, l);
+                    if (unity == app && Math.Abs(unityWeight - evaluator.LayerWeight(e)) < 0.001) continue;
+                    var name = c == 0 ? "" : data.Controllers[c].Playable + " ";
+                    parts.Add($"{name}{l} {layers[l].Name}: unity {unity} {unityWeight:0.###} / evaluator {app} {evaluator.LayerWeight(e):0.###}");
+                }
             }
             return string.Join("; ", parts);
         }
@@ -544,7 +604,7 @@ namespace VRVlog.LilToonExporter
             }
             yield return LogPrefix + $"inputs {result.Inputs} compared {result.Compared} mismatched {result.Mismatches.Count} " +
                          $"skipped {result.Skipped.Count} outOfTime {result.OutOfTime} targets {result.Targets} unbound {result.Unbound} moved {result.Moved} " +
-                         $"otherAnimators {result.OtherAnimators} " +
+                         $"otherAnimators {result.OtherAnimators} muscles {result.Muscles} " +
                          $"seconds {result.Seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}";
             foreach (var m in result.Mismatches)
                 yield return LogPrefix + $"mismatch \"{m.Input}\" frame {m.Frame} {describe(m.Target)} unity {m.Unity.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} " +
@@ -562,7 +622,7 @@ namespace VRVlog.LilToonExporter
             {
                 if (!clone.activeSelf) clone.SetActive(true);
                 var bindings = capture.Bindings(data);
-                var result = Run(clone, capture.Controller, data, bindings, capture.ReadRunningBehaviour);
+                var result = Run(clone, Controllers(clone, capture.Controller, data), data, bindings, capture.ReadRunningBehaviour);
                 foreach (var line in LogLines(result, t => Describe(clone, data, bindings, t))) Debug.Log(line);
                 if (ResultLine(result) is string line2) warnings?.Add(line2);
             }
@@ -572,10 +632,32 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The controller each of data.Controllers was read from: the FX the
+        // capture read, and the descriptor's Gesture and Action, as
+        // AvatarAnimatorCapture reads them (null when it keeps the SDK's default).
+        static List<RuntimeAnimatorController> Controllers(GameObject clone, RuntimeAnimatorController fx, AvatarAnimatorData data)
+        {
+            var descriptor = VrChatExpressionMenu.Descriptor(clone);
+            RuntimeAnimatorController Layer(string type)
+            {
+                RuntimeAnimatorController found = null;
+                if (descriptor != null && VrChatExpressionMenu.Member(descriptor, "customizeAnimationLayers") is bool custom && custom &&
+                    VrChatExpressionMenu.Member(descriptor, "baseAnimationLayers") is System.Collections.IEnumerable layers)
+                    foreach (var layer in layers)
+                    {
+                        if (VrChatExpressionMenu.Member(layer, "isDefault") is bool isDefault && isDefault) continue;
+                        if (VrChatExpressionMenu.Member(layer, "type")?.ToString() == type) found = VrChatExpressionMenu.Member(layer, "animatorController") as RuntimeAnimatorController;
+                    }
+                return found;
+            }
+            return data.Controllers.Select(c => c.Playable == "fx" ? fx : Layer(c.Playable == "gesture" ? "Gesture" : "Action")).ToList();
+        }
+
         internal static string Describe(GameObject root, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, int t)
         {
             var binding = bindings[t];
             var target = data.Targets[t];
+            if (target.Property == "muscle") return "muscle " + (target.Muscle < HumanTrait.MuscleCount ? HumanTrait.MuscleName[target.Muscle] : target.Muscle.ToString());
             var go = binding.Owner;
             var path = go == null ? "?" : Path(root.transform, go.transform);
             return target.Property == "morph" ? $"{path}:{binding.Shape}" : target.Property == "enabled" ? $"{path}:enabled"
@@ -594,36 +676,105 @@ namespace VRVlog.LilToonExporter
             return string.Join("/", parts);
         }
 
-        // Unity's side: the Animator with the parameters set by name, and the
-        // behaviours VRChat would run.
-        sealed class UnityPlayer
+        // Unity's side: the Animator, or the playables of each controller, with
+        // the parameters set by name, and the behaviours VRChat would run.
+        sealed class UnityPlayer : IDisposable
         {
+            // VRChat's order of the playable layers, from the bottom (M15).
+            static readonly string[] PlayOrder = { "gesture", "action", "fx" };
+
             readonly Animator animator;
             readonly AvatarAnimatorData data;
             readonly Func<StateMachineBehaviour, AvatarAnimatorData.Behaviour> readBehaviour;
-            // Unity's type of each data parameter the controller has, or null.
-            AnimatorControllerParameterType?[] types;
-            // The values of the parameters the controller does not have, which a copy may read.
+            // Null to play the FX as the Animator's controller; else the
+            // controller of each of data.Controllers on the graph (null for one
+            // that does not play).
+            readonly IReadOnlyList<RuntimeAnimatorController> controllers;
+            PlayableGraph graph;
+            AnimationLayerMixerPlayable mixer;
+            // Per data controller: its playable and its input of the mixer (-1 when it does not play).
+            AnimatorControllerPlayable[] playables;
+            int[] inputs;
+            readonly List<AvatarMask> masks = new List<AvatarMask>();
+            // Unity's type of each data parameter in each controller (the
+            // Animator's in [0] without the graph), or null.
+            AnimatorControllerParameterType?[][] types;
+            // The values of the parameters no controller has, which a copy may read.
             double[] others;
-            readonly List<(int Layer, double From, double Goal, double Duration, double Elapsed)> blends = new List<(int, double, double, double, double)>();
+            readonly List<(int Controller, int Layer, double From, double Goal, double Duration, double Elapsed)> blends =
+                new List<(int, int, double, double, double, double)>();
+            readonly List<(int Input, double From, double Goal, double Duration, double Elapsed)> playableBlends =
+                new List<(int, double, double, double, double)>();
             System.Random random;
             internal bool PlayableLayerControlled;
             internal Action<Animator> Rebound;
 
-            internal UnityPlayer(Animator animator, AvatarAnimatorData data, Func<StateMachineBehaviour, AvatarAnimatorData.Behaviour> readBehaviour)
+            internal UnityPlayer(Animator animator, AvatarAnimatorData data, Func<StateMachineBehaviour, AvatarAnimatorData.Behaviour> readBehaviour,
+                IReadOnlyList<RuntimeAnimatorController> controllers)
             {
-                this.animator = animator; this.data = data; this.readBehaviour = readBehaviour;
+                this.animator = animator; this.data = data; this.readBehaviour = readBehaviour; this.controllers = controllers;
             }
 
             internal bool Owns(Animator other) => other == animator;
 
+            bool Graph => controllers != null;
+
+            public void Dispose()
+            {
+                if (graph.IsValid()) graph.Destroy();
+                masks.ForEach(Object.DestroyImmediate);
+                masks.Clear();
+            }
+
             internal void Read()
             {
-                var unity = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
-                foreach (var parameter in animator.parameters)
-                    if (!unity.ContainsKey(parameter.name)) unity.Add(parameter.name, parameter.type);
-                types = data.Parameters.Select(p => unity.TryGetValue(p.Name, out var type) ? type : (AnimatorControllerParameterType?)null).ToArray();
                 others = new double[data.Parameters.Count];
+                if (!Graph) types = new[] { Types(animator.parameters) };
+            }
+
+            AnimatorControllerParameterType?[] Types(IEnumerable<AnimatorControllerParameter> parameters)
+            {
+                var unity = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
+                foreach (var parameter in parameters)
+                    if (!unity.ContainsKey(parameter.name)) unity.Add(parameter.name, parameter.type);
+                return data.Parameters.Select(p => unity.TryGetValue(p.Name, out var type) ? type : (AnimatorControllerParameterType?)null).ToArray();
+            }
+
+            // A new graph of the controllers that play, in VRChat's order.
+            void Build()
+            {
+                if (graph.IsValid()) graph.Destroy();
+                masks.ForEach(Object.DestroyImmediate);
+                masks.Clear();
+                graph = PlayableGraph.Create("VR Vlog animator check");
+                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+                var order = PlayOrder.SelectMany(playable => Enumerable.Range(0, data.Controllers.Count)
+                    .Where(c => data.Controllers[c].Playable == playable && c < controllers.Count && controllers[c] != null)).ToList();
+                mixer = AnimationLayerMixerPlayable.Create(graph, order.Count);
+                playables = new AnimatorControllerPlayable[data.Controllers.Count];
+                inputs = Enumerable.Repeat(-1, data.Controllers.Count).ToArray();
+                types = new AnimatorControllerParameterType?[data.Controllers.Count][];
+                for (var i = 0; i < order.Count; i++)
+                {
+                    var c = order[i];
+                    var playable = playables[c] = AnimatorControllerPlayable.Create(graph, controllers[c]);
+                    inputs[c] = i;
+                    graph.Connect(playable, 0, mixer, i);
+                    mixer.SetInputWeight(i, data.Controllers[c].Playable == "action" ? 0 : 1);
+                    // M16: VRChat masks each playable with its base layer's body
+                    // parts, and applies no muscle of an FX whose base layer has no mask.
+                    var baseMask = data.Controllers[c].Layers.Count > 0 ? data.Controllers[c].Layers[0].Mask : null;
+                    if (baseMask != null || data.Controllers[c].Playable == "fx")
+                    {
+                        var parts = new AvatarMask { name = "Playable " + i, hideFlags = HideFlags.HideAndDontSave };
+                        for (var part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+                            parts.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, baseMask != null && baseMask.Humanoid.Contains(part));
+                        masks.Add(parts);
+                        mixer.SetLayerMaskFromAvatarMask((uint)i, parts);
+                    }
+                    types[c] = Types(Enumerable.Range(0, playable.GetParameterCount()).Select(playable.GetParameter));
+                }
+                AnimationPlayableOutput.Create(graph, "Animator", animator).SetSourcePlayable(mixer);
             }
 
             // Back to the rest, with every parameter at its default.
@@ -631,41 +782,82 @@ namespace VRVlog.LilToonExporter
             {
                 this.random = random;
                 blends.Clear();
+                playableBlends.Clear();
+                entered = null;
                 PlayableLayerControlled = false;
                 animator.Rebind();
+                if (Graph) Build();
                 Rebound?.Invoke(animator);
-                var layers = data.Controllers.Count > 0 ? data.Controllers[0].Layers : new List<AvatarAnimatorData.Layer>();
-                for (var l = 1; l < layers.Count && l < animator.layerCount; l++) animator.SetLayerWeight(l, (float)layers[l].Weight);
+                for (var c = 0; c < data.Controllers.Count; c++)
+                {
+                    var layers = data.Controllers[c].Layers;
+                    for (var l = 1; l < layers.Count && l < LayerCount(c); l++) SetLayerWeight(c, l, layers[l].Weight);
+                }
                 for (var p = 0; p < data.Parameters.Count; p++) Set(p, data.Parameters[p].Default);
+            }
+
+            // The Animator's layers are the FX's (data controller 0).
+            internal int LayerCount(int c) => Graph ? (playables[c].IsValid() ? playables[c].GetLayerCount() : 0) : c == 0 ? animator.layerCount : 0;
+            internal double LayerWeight(int c, int l) => Graph ? playables[c].GetLayerWeight(l) : animator.GetLayerWeight(l);
+            void SetLayerWeight(int c, int l, double weight)
+            {
+                if (Graph) playables[c].SetLayerWeight(l, (float)weight);
+                else animator.SetLayerWeight(l, (float)weight);
+            }
+            internal bool InTransition(int c, int l) => Graph ? playables[c].IsInTransition(l) : animator.IsInTransition(l);
+            internal int StateHash(int c, int l, bool next) => Graph
+                ? (next ? playables[c].GetNextAnimatorStateInfo(l) : playables[c].GetCurrentAnimatorStateInfo(l)).shortNameHash
+                : (next ? animator.GetNextAnimatorStateInfo(l) : animator.GetCurrentAnimatorStateInfo(l)).shortNameHash;
+
+            // Each controller the parameter goes to: (index of types, playable or the Animator).
+            IEnumerable<int> Holders(int parameter)
+            {
+                for (var c = 0; c < types.Length; c++)
+                    if (types[c] != null && types[c][parameter] != null) yield return c;
             }
 
             internal double Get(int parameter)
             {
                 var name = data.Parameters[parameter].Name;
-                switch (types[parameter])
-                {
-                    case AnimatorControllerParameterType.Float: return animator.GetFloat(name);
-                    case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
-                    case AnimatorControllerParameterType.Bool:
-                    case AnimatorControllerParameterType.Trigger: return animator.GetBool(name) ? 1 : 0;
-                    default: return others[parameter];
-                }
+                foreach (var c in Holders(parameter))
+                    switch (types[c][parameter])
+                    {
+                        case AnimatorControllerParameterType.Float: return Graph ? playables[c].GetFloat(name) : animator.GetFloat(name);
+                        case AnimatorControllerParameterType.Int: return Graph ? playables[c].GetInteger(name) : animator.GetInteger(name);
+                        default: return (Graph ? playables[c].GetBool(name) : animator.GetBool(name)) ? 1 : 0;
+                    }
+                return others[parameter];
             }
 
             internal void Set(int parameter, double value)
             {
                 var name = data.Parameters[parameter].Name;
-                switch (types[parameter])
+                var held = false;
+                foreach (var c in Holders(parameter))
                 {
-                    case AnimatorControllerParameterType.Float: animator.SetFloat(name, (float)value); break;
-                    case AnimatorControllerParameterType.Int: animator.SetInteger(name, (int)Math.Truncate(Math.Max(int.MinValue, Math.Min(int.MaxValue, value)))); break;
-                    case AnimatorControllerParameterType.Bool: animator.SetBool(name, value != 0); break;
-                    case AnimatorControllerParameterType.Trigger: if (value != 0) animator.SetTrigger(name); else animator.ResetTrigger(name); break;
-                    default:
-                        var type = data.Parameters[parameter].Type;
-                        others[parameter] = type == "float" ? (float)value : type == "int" ? Math.Truncate(value) : value != 0 ? 1 : 0;
-                        break;
+                    held = true;
+                    var type = types[c][parameter];
+                    var i = (int)Math.Truncate(Math.Max(int.MinValue, Math.Min(int.MaxValue, value)));
+                    if (!Graph)
+                        switch (type)
+                        {
+                            case AnimatorControllerParameterType.Float: animator.SetFloat(name, (float)value); break;
+                            case AnimatorControllerParameterType.Int: animator.SetInteger(name, i); break;
+                            case AnimatorControllerParameterType.Bool: animator.SetBool(name, value != 0); break;
+                            default: if (value != 0) animator.SetTrigger(name); else animator.ResetTrigger(name); break;
+                        }
+                    else
+                        switch (type)
+                        {
+                            case AnimatorControllerParameterType.Float: playables[c].SetFloat(name, (float)value); break;
+                            case AnimatorControllerParameterType.Int: playables[c].SetInteger(name, i); break;
+                            case AnimatorControllerParameterType.Bool: playables[c].SetBool(name, value != 0); break;
+                            default: if (value != 0) playables[c].SetTrigger(name); else playables[c].ResetTrigger(name); break;
+                        }
                 }
+                if (held) return;
+                var declared = data.Parameters[parameter].Type;
+                others[parameter] = declared == "float" ? (float)value : declared == "int" ? Math.Truncate(value) : value != 0 ? 1 : 0;
             }
 
             // M10: a blend started by a behaviour moves from the next frame on.
@@ -673,33 +865,98 @@ namespace VRVlog.LilToonExporter
             {
                 for (var i = 0; i < blends.Count; i++)
                 {
-                    var (layer, from, goal, duration, elapsed) = blends[i];
+                    var (controller, layer, from, goal, duration, elapsed) = blends[i];
                     elapsed += seconds;
                     var t = duration > 0 ? Math.Min(1, elapsed / duration) : 1;
-                    animator.SetLayerWeight(layer, (float)(from + (goal - from) * t));
-                    blends[i] = (layer, from, goal, duration, elapsed);
+                    SetLayerWeight(controller, layer, from + (goal - from) * t);
+                    blends[i] = (controller, layer, from, goal, duration, elapsed);
                 }
                 blends.RemoveAll(blend => blend.Duration <= 0 || blend.Elapsed >= blend.Duration);
-                animator.Update((float)seconds);
+                for (var i = 0; i < playableBlends.Count; i++)
+                {
+                    var (input, from, goal, duration, elapsed) = playableBlends[i];
+                    elapsed += seconds;
+                    var t = duration > 0 ? Math.Min(1, elapsed / duration) : 1;
+                    mixer.SetInputWeight(input, (float)(from + (goal - from) * t));
+                    playableBlends[i] = (input, from, goal, duration, elapsed);
+                }
+                playableBlends.RemoveAll(blend => blend.Duration <= 0 || blend.Elapsed >= blend.Duration);
+                if (Graph) { graph.Evaluate((float)seconds); Enter(); }
+                else animator.Update((float)seconds);
+            }
+
+            // The data controller of the playable that plays, or -1.
+            int Controller(string playable)
+            {
+                for (var c = 0; c < data.Controllers.Count; c++)
+                    if (data.Controllers[c].Playable == playable && LayerCount(c) > 0) return c;
+                return -1;
+            }
+
+            // The states each layer of each played controller was in or going to.
+            HashSet<int>[][] entered;
+
+            // On the graph the SDK's Layer Controls are copies the playables
+            // hold, which Hooks cannot reach (Adopt reads the Animator's), so
+            // the data's Layer Controls of each state a layer enters this
+            // frame play here instead; the Parameter Drivers still come
+            // through Hooks. Only the state's own behaviours, not its
+            // machines'.
+            void Enter()
+            {
+                if (entered == null)
+                    entered = data.Controllers.Select((c, i) => playables[i].IsValid() ? c.Layers.Select(_ => new HashSet<int>()).ToArray() : null).ToArray();
+                for (var c = 0; c < entered.Length; c++)
+                {
+                    if (entered[c] == null) continue;
+                    for (var l = 0; l < entered[c].Length && l < LayerCount(c); l++)
+                    {
+                        var now = new HashSet<int> { StateHash(c, l, false) };
+                        if (InTransition(c, l)) now.Add(StateHash(c, l, true));
+                        var states = data.Controllers[c].Layers[l].States;
+                        foreach (var hash in now)
+                        {
+                            if (entered[c][l].Contains(hash)) continue;
+                            var state = states.FindIndex(s => Animator.StringToHash(s.Name) == hash);
+                            if (state < 0) continue;
+                            foreach (var behaviour in states[state].Behaviours)
+                                if (behaviour.Type != "parameterDriver") Apply(behaviour);
+                        }
+                        entered[c][l] = now;
+                    }
+                }
             }
 
             internal void Behaviour(StateMachineBehaviour behaviour)
             {
                 var read = behaviour == null ? null : readBehaviour?.Invoke(behaviour);
                 if (read == null) return;
+                // On the graph only the drivers come from the SDK (see Enter).
+                if (!Graph || read.Type == "parameterDriver") Apply(read);
+            }
+
+            void Apply(AvatarAnimatorData.Behaviour read)
+            {
                 switch (read.Type)
                 {
                     case "parameterDriver":
                         foreach (var operation in read.Operations) Drive(operation);
                         break;
                     case "layerControl":
-                        if (read.Playable != "fx" || read.Layer <= 0 || read.Layer >= animator.layerCount) break;
-                        blends.RemoveAll(blend => blend.Layer == read.Layer);
-                        if (read.BlendDuration > 0) blends.Add((read.Layer, animator.GetLayerWeight(read.Layer), read.GoalWeight, read.BlendDuration, 0));
-                        else animator.SetLayerWeight(read.Layer, (float)read.GoalWeight);
+                        var c = Controller(read.Playable);
+                        if (c < 0 || read.Layer <= 0 || read.Layer >= LayerCount(c)) break;
+                        blends.RemoveAll(blend => blend.Controller == c && blend.Layer == read.Layer);
+                        if (read.BlendDuration > 0) blends.Add((c, read.Layer, LayerWeight(c, read.Layer), read.GoalWeight, read.BlendDuration, 0));
+                        else SetLayerWeight(c, read.Layer, read.GoalWeight);
                         break;
                     case "playableLayerControl":
-                        if (read.Playable == "fx") PlayableLayerControlled = true;
+                        if (read.Playable == "fx") { PlayableLayerControlled = true; break; }
+                        var played = Graph ? Controller(read.Playable) : -1;
+                        if (played < 0) break;
+                        var input = inputs[played];
+                        playableBlends.RemoveAll(blend => blend.Input == input);
+                        if (read.BlendDuration > 0) playableBlends.Add((input, mixer.GetInputWeight(input), read.GoalWeight, read.BlendDuration, 0));
+                        else mixer.SetInputWeight(input, (float)read.GoalWeight);
                         break;
                 }
             }

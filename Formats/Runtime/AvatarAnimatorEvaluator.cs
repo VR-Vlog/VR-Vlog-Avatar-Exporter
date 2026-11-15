@@ -108,7 +108,14 @@ namespace VRVlog.AvatarAnimator
     // mask keeps it off the muscles of the body parts it leaves out and,
     // when it names transforms, off the translation, rotation and scale of
     // the nodes it leaves out (Unity's mask filters no other property), and
-    // the FX applies no muscle when its base layer has no mask.
+    // the FX applies no muscle when its base layer has no mask. The base
+    // layer's mask also keeps the whole controller off the muscles of the
+    // parts it leaves out, as VRChat is taken to mask the playable layer
+    // with it (an assumption like the FX's; plain Unity does not: its upper
+    // layers write there). Measured in Unity (the gestureAction and actionMask cases): a
+    // controller whose motions write a muscle writes every muscle it is not
+    // kept off, at the rest where none of its layers wrote one, over the
+    // controllers below.
     public sealed class AvatarAnimatorEvaluator
     {
         // M9.
@@ -302,6 +309,9 @@ namespace VRVlog.AvatarAnimator
         // Wrote reads both.
         bool[] isAnimated;
         readonly bool[][] controllerAnimated;
+        // Per controller: the muscle targets it writes over the controllers
+        // below, its layers' or not (M16), or null when it writes no muscle.
+        readonly bool[][] controllerPose;
         bool animatedWritten;
         // Per controller: the range of its layers in layers (an empty range
         // when it is skipped), why it is skipped (null when it plays) and its
@@ -465,7 +475,9 @@ namespace VRVlog.AvatarAnimator
                     return layer.Mask?.Nodes != null && AvatarAnimatorData.IsTransform(target.Property) && layer.Mask.Nodes.BinarySearch(target.Node) < 0;
                 var controller = data.Controllers[c];
                 if (controller.Playable == "fx" && controller.Layers[0].Mask == null) return true;
-                return layer.Mask != null && !layer.Mask.Humanoid.Contains(MuscleBodyPart(target.Muscle));
+                var part = MuscleBodyPart(target.Muscle);
+                if (controller.Layers[0].Mask != null && !controller.Layers[0].Mask.Humanoid.Contains(part)) return true;
+                return layer.Mask != null && !layer.Mask.Humanoid.Contains(part);
             }
 
             layers = new LayerRun[source.Count];
@@ -486,6 +498,17 @@ namespace VRVlog.AvatarAnimator
             }
             for (var c = 0; c < controllerCount; c++)
                 foreach (var t in controllerTargets[c]) controllerAnimated[c][t] = true;
+            controllerPose = new bool[controllerCount][];
+            for (var c = 0; c < controllerCount; c++)
+            {
+                var controller = data.Controllers[c];
+                var writesMuscle = false;
+                foreach (var t in controllerTargets[c]) writesMuscle |= data.Targets[t].Property == "muscle";
+                if (!writesMuscle) continue;
+                controllerPose[c] = new bool[targetCount];
+                for (var t = 0; t < targetCount; t++)
+                    controllerPose[c][t] = data.Targets[t].Property == "muscle" && !Masked(c, controller.Layers[0], t);
+            }
             // M11 holds for a parameter a playing controller animates. One only a
             // skipped controller animates stays a parameter the host and the
             // drivers set, with its declared default, as without that controller.
@@ -1356,8 +1379,14 @@ namespace VRVlog.AvatarAnimator
                         if (written[t]) values[t] = Blend(t, rest[t], values[t], weight);
                 return;
             }
+            var pose = controllerPose[c];
             for (var t = 0; t < values.Length; t++)
             {
+                if (!written[t] && pose != null && pose[t])
+                {
+                    values[t] = rest[t];
+                    written[t] = true;
+                }
                 if (written[t])
                 {
                     if (weight < 1) values[t] = Blend(t, belowWritten[t] ? below[t] : rest[t], values[t], weight);
