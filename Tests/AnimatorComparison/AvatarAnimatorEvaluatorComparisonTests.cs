@@ -65,6 +65,7 @@ namespace VRVlog.AvatarAnimator.Comparison
                 animator.Rebind();
                 var steps = AvatarAnimatorComparison.Steps(c, timing);
                 var inputs = AvatarAnimatorComparison.Inputs(c, steps);
+                var weights = AvatarAnimatorComparison.LayerWeights(c, steps);
                 values = new double[steps.Length][];
                 parameters = new double[steps.Length][];
                 for (var i = 0; i < steps.Length; i++)
@@ -80,6 +81,7 @@ namespace VRVlog.AvatarAnimator.Comparison
                             default: if (value != 0) animator.SetTrigger(p.Name); else animator.ResetTrigger(p.Name); break;
                         }
                     }
+                    foreach (var (layer, weight) in weights[i]) animator.SetLayerWeight(layer, (float)weight);
                     animator.Update((float)steps[i]);
                     values[i] = new double[targets.Length];
                     for (var t = 0; t < targets.Length; t++)
