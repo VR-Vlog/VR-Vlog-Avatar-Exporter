@@ -1199,7 +1199,8 @@ public static class AvatarAnimatorEvaluatorTests
         Check(Count(skipped, 0, 60) == 0 && Count(skipped, 70, 180) == 110, "a clip that does not loop is skipped once it has ended");
 
         // A transition on exit time waits for the state's time: the frames up to
-        // it play, those after it, in a state without one, are skipped.
+        // it are skipped, the frame that reaches it plays, and so do those
+        // of the transition; those after it, in a state without one, are skipped.
         b = new Builder();
         node = b.Target();
         layer = b.Layer("Wait");
@@ -1207,7 +1208,7 @@ public static class AvatarAnimatorEvaluatorTests
         var c = Builder.State(layer, "B", b.Clip(0, false, (node, 1)));
         layer.States[a].Transitions.Add(To(c, exitTime: true, at: 2));
         skipped = Lockstep(b, 240);
-        Check(Count(skipped, 0, 120) == 0 && Count(skipped, 125, 240) == 115, "a pending exit time plays every frame until it fires");
+        Check(Count(skipped, 2, 120) == 118 && !skipped[120] && !skipped[121] && Count(skipped, 122, 240) == 118, "a pending exit time is skipped up to the frame that reaches it");
         // An exit time below 1 fires on each loop, but not while its conditions fail.
         b = new Builder();
         var go = b.Parameter("Go", "bool");
@@ -1217,7 +1218,62 @@ public static class AvatarAnimatorEvaluatorTests
         c = Builder.State(layer, "B", b.Clip(0, false, (node, 1)));
         layer.States[a].Transitions.Add(To(c, exitTime: true, at: .5).When(go, "if"));
         skipped = Lockstep(b, 240, (e, frame) => { if (frame == 120) e.Set(go, 1); });
-        Check(Count(skipped, 5, 120) == 115 && Count(skipped, 120, 145) == 0 && Count(skipped, 160, 240) == 80, "an exit time below 1 is pending while its conditions hold, until it fires on the next loop");
+        Check(Count(skipped, 5, 120) == 115 && !skipped[120] && Count(skipped, 121, 150) == 29 && !skipped[150] && !skipped[151] && Count(skipped, 160, 240) == 80,
+            "an exit time below 1 is watched while its conditions hold, and the frame that reaches it on the next loop plays");
+
+        // A timer: states whose motions give the same values (or none), joined
+        // by transitions of a fixed length on exit time. Mid-transition only
+        // the progress moves, so the frames are skipped until the transition
+        // ends (#3664). Both sides empty, too, with and without Write Defaults.
+        foreach (var form in new[] { "same", "empty", "emptyNoWriteDefaults" })
+        {
+            b = new Builder();
+            node = b.Target();
+            layer = b.Layer("Timer");
+            var hold = form == "same" ? b.Clip(1, true, (node, 1)) : -1;
+            var wd = form != "emptyNoWriteDefaults";
+            a = Builder.State(layer, "Wait", hold, wd);
+            c = Builder.State(layer, "Again", hold, wd);
+            layer.States[a].Transitions.Add(To(c, duration: 1, exitTime: true, at: .5));
+            layer.States[c].Transitions.Add(To(a, duration: 2, exitTime: true, at: 0));
+            skipped = Lockstep(b, 600);
+            Check(Count(skipped, 0, 600) > 520, "a timer of " + form + " states is skipped mid-transition");
+            Check(!skipped[29] && !skipped[30] && Count(skipped, 31, 89) == 58, "a timer of " + form + " states plays the frame that reaches the exit time");
+        }
+
+        // The same timer whose two states differ plays every frame of each transition.
+        b = new Builder();
+        node = b.Target();
+        layer = b.Layer("Timer");
+        a = Builder.State(layer, "Off", b.Clip(1, true, (node, 0)));
+        c = Builder.State(layer, "On", b.Clip(1, true, (node, 1)));
+        layer.States[a].Transitions.Add(To(c, duration: 1, exitTime: true, at: .5));
+        layer.States[c].Transitions.Add(To(a, duration: 1, exitTime: true, at: .5));
+        skipped = Lockstep(b, 600);
+        Check(Count(skipped, 31, 90) == 0, "a transition between states of different values plays every frame");
+
+        // M5: mid-transition, the source's exit time interrupts the timer, and
+        // a parameter set mid-transition interrupts it from Any State: both
+        // frames play as in the evaluator that skips nothing.
+        foreach (var from in new[] { "source", "destination", "sourceThenDestination", "destinationThenSource", "none" })
+        {
+            b = new Builder();
+            go = b.Parameter("Go", "bool");
+            node = b.Target();
+            layer = b.Layer("Timer");
+            var hold = b.Clip(1, true, (node, 1));
+            a = Builder.State(layer, "Wait", hold);
+            c = Builder.State(layer, "Again", hold);
+            var d = Builder.State(layer, "Away", b.Clip(1, true, (node, 0)));
+            var timer = To(c, duration: 4, exitTime: true, at: .25);
+            timer.InterruptionSource = from;
+            layer.States[a].Transitions.Add(timer);
+            layer.States[a].Transitions.Add(To(d, duration: .5, exitTime: true, at: .75));
+            layer.States[c].Transitions.Add(To(d, duration: .5, exitTime: true, at: .5));
+            layer.Machines[0].AnyStateTransitions.Add(To(d, duration: .5).When(go, "if"));
+            skipped = Lockstep(b, 480, (e, frame) => { if (frame == 300) e.Set(go, 1); });
+            Check(Count(skipped, 17, 44) > 20, "a timer that may be interrupted from " + from + " is skipped until it is");
+        }
 
         // A material slot is stepped: it takes the value of the state with
         // more weight across a transition, and settles on a whole index.

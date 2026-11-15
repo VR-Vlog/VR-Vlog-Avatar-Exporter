@@ -192,8 +192,18 @@ namespace VRVlog.AvatarAnimator
             // The state in which the layer passed the other targets through in
             // the last frame (see Output), or -1. Out does not hold those targets then.
             internal int Passed = -1;
-            // The state's length while the evaluator is settled (see Advance).
-            internal double SettledLength;
+            // The state's and the transition's destination's lengths while the
+            // evaluator is settled (see Advance).
+            internal double SettledLength, SettledNextLength;
+            // Mid-transition: whether a value of the last Output depended on
+            // the progress (the two sides gave a target different values).
+            internal bool Mixed;
+            // While settled: the transitions with an exit time that may be
+            // taken once the state's time (WatchTime) or the destination's
+            // (WatchNext) crosses it, and the times and progress the frame
+            // being skipped reaches.
+            internal List<AvatarAnimatorData.Transition> WatchTime, WatchNext;
+            internal double PendingTime, PendingNext, PendingProgress;
             // The transition of no length without an exit time by which the
             // layer, resting in a state, entered that state again this frame (or null).
             internal AvatarAnimatorData.Transition Repeated;
@@ -363,6 +373,11 @@ namespace VRVlog.AvatarAnimator
                     OutWritten = new bool[list.Count], SnapshotWritten = new bool[list.Count],
                     Weight = l == 0 ? 1 : layer.Weight, StateKeys = keys
                 };
+                // Sized for every transition of the layer, so Settles never grows them.
+                var transitions = layer.Machines.Count > 0 ? layer.Machines[0].AnyStateTransitions.Count : 0;
+                foreach (var state in layer.States) transitions += state.Transitions.Count;
+                layers[l].WatchTime = new List<AvatarAnimatorData.Transition>(transitions);
+                layers[l].WatchNext = new List<AvatarAnimatorData.Transition>(transitions);
             }
             // A layer sets each target it keeps at most once a frame.
             logLayer = new int[entries]; logEarlier = new int[entries]; logValue = new double[entries];
@@ -518,20 +533,20 @@ namespace VRVlog.AvatarAnimator
         // every layer's default state, then advances.
         //
         // Settled (#3664): when a frame changed no layer's state or weight, no
-        // value and no parameter, no layer is in a transition or a weight
-        // blend, every state's motion gives the same values at every time to
-        // come, and no transition can start while the parameters stay, the
-        // next frame would repeat it. Until Set or SetLayerWeight changes
-        // something, Advance then only moves the layers' normalized times and
-        // leaves Values, Written and the parameters as they are (Changed false).
+        // value and no parameter, no layer is in a weight blend or in a
+        // transition whose two sides give different values, every state's
+        // motion gives the same values at every time to come, and no
+        // transition can start while the parameters stay but at a watched exit
+        // time, the next frame would repeat it. Until Set or SetLayerWeight
+        // changes something, or a transition ends or a watched exit time comes,
+        // Advance then only moves the layers' normalized times and the
+        // transitions' progress and leaves Values, Written and the parameters
+        // as they are (Changed false).
         public void Advance(double deltaTime)
         {
             if (!(deltaTime >= 0) || double.IsInfinity(deltaTime)) throw new ArgumentOutOfRangeException(nameof(deltaTime));
-            if (settled)
-            {
-                AdvanceSettled(deltaTime);
-                return;
-            }
+            if (settled && AdvanceSettled(deltaTime)) return;
+            settled = false;
             Changed = true;
             moved = false;
             Array.Copy(parameters, startParameters, parameters.Length);
@@ -589,20 +604,53 @@ namespace VRVlog.AvatarAnimator
             settled = skips && Settles();
         }
 
-        // A settled frame: only the normalized times move, as Step and Sync move them.
-        void AdvanceSettled(double dt)
+        // A settled frame: only the normalized times and the transitions'
+        // progress move, as Step and Sync move them. False, moving nothing,
+        // when in this frame a transition would end or a watched exit time
+        // would be crossed: then the frame is evaluated. The check takes the
+        // times and progress Step would reach, by the same arithmetic, so it
+        // finds the frame in which the evaluator that skips nothing gets there.
+        bool AdvanceSettled(double dt)
         {
+            foreach (var layer in layers)
+            {
+                // A layer that enters its state again each frame stays at the transition's offset.
+                if (layer.Source >= 0 || layer.State < 0 || layer.Repeated != null) continue;
+                var states = layer.Layer.States;
+                layer.PendingTime = AdvanceTime(states[layer.State], layer.Time, dt, layer.SettledLength);
+                if (Crosses(layer.WatchTime, layer.Time, layer.PendingTime)) return false;
+                if (!layer.Transitioning) continue;
+                layer.PendingNext = AdvanceTime(states[layer.Next], layer.NextTime, dt, layer.SettledNextLength);
+                layer.PendingProgress = layer.Progress + (layer.Duration > 0 ? dt / layer.Duration : 1);
+                if (layer.PendingProgress >= 1 || Crosses(layer.WatchNext, layer.NextTime, layer.PendingNext)) return false;
+            }
             Changed = false;
             foreach (var layer in layers)
             {
                 if (layer.Source >= 0)
                 {
-                    layer.Time = layers[layer.Source].Time;
-                    layer.NextTime = layers[layer.Source].NextTime;
+                    var source = layers[layer.Source];
+                    layer.Time = source.Time;
+                    layer.NextTime = source.NextTime;
+                    layer.Progress = source.Progress;
+                    continue;
                 }
-                // A layer that enters its state again each frame stays at the transition's offset.
-                else if (layer.State >= 0 && layer.Repeated == null) layer.Time = AdvanceTime(layer.Layer.States[layer.State], layer.Time, dt, layer.SettledLength);
+                if (layer.State < 0 || layer.Repeated != null) continue;
+                layer.Time = layer.PendingTime;
+                if (!layer.Transitioning) continue;
+                layer.NextTime = layer.PendingNext;
+                layer.Progress = layer.PendingProgress;
             }
+            return true;
+        }
+
+        // Whether TryFire would find one of the transitions' exit times
+        // crossed from n0 to n1 (their conditions hold while settled).
+        static bool Crosses(List<AvatarAnimatorData.Transition> watched, double n0, double n1)
+        {
+            foreach (var transition in watched)
+                if (Crossing(transition.ExitTime, n0, n1) <= n1) return true;
+            return false;
         }
 
         // Whether the next frame would repeat this one (see Advance).
@@ -613,8 +661,11 @@ namespace VRVlog.AvatarAnimator
                 if (parameters[p] != startParameters[p]) return false;
             for (var t = 0; t < values.Length; t++)
                 if (values[t] != previous[t]) return false;
+            // A transition whose two sides give every target one value moves
+            // only its progress, until it ends; not one interrupted (M5), and
+            // not in its first frame, where it may have had no progress yet.
             foreach (var layer in layers)
-                if (layer.Transitioning || layer.WeightBlending) return false;
+                if (layer.WeightBlending || (layer.Transitioning && (layer.Frozen || !(layer.Progress > 0) || layer.Mixed))) return false;
             foreach (var layer in layers)
             {
                 if (layer.State < 0) continue;
@@ -622,20 +673,69 @@ namespace VRVlog.AvatarAnimator
                 var clock = layer.Source >= 0 ? layers[layer.Source] : layer;
                 if (clock.State < 0) return false;
                 var timing = clock.Layer.States[clock.State];
-                var rate = timing.TimeParameter.HasValue ? 0 : timing.Speed * ParameterOr(timing.SpeedParameter, 1);
+                var rate = Rate(timing);
                 if (timing.TimeParameter.HasValue && clock.Time != parameters[timing.TimeParameter.Value]) return false;
                 var state = layer.Layer.States[layer.State];
                 // A layer entering its state again each frame plays it at the same time each frame.
                 var repeated = clock.Repeated != null;
                 if (repeated && (layer.Source >= 0 || Random(layer.Layer, layer.State))) return false;
-                if (!repeated && state.Motion >= 0 && rate != 0 && !still[state.Motion]
-                    && !Clamped(state.Motion, layer.Time + ParameterOr(state.CycleOffsetParameter, state.CycleOffset), rate > 0))
-                    return false;
+                if (!repeated && !Holds(state, layer.Time, rate)) return false;
+                double nextRate = 0;
+                if (layer.Transitioning)
+                {
+                    if (!clock.Transitioning) return false;
+                    var nextTiming = clock.Layer.States[clock.Next];
+                    nextRate = Rate(nextTiming);
+                    if (nextTiming.TimeParameter.HasValue && clock.NextTime != parameters[nextTiming.TimeParameter.Value]) return false;
+                    if (!Holds(layer.Layer.States[layer.Next], layer.NextTime, nextRate)) return false;
+                }
                 if (layer.Source >= 0) continue;
-                if (!Dormant(layer, layer.Layer.Machines[0].AnyStateTransitions, rate) || !Dormant(layer, state.Transitions, rate)) return false;
+                var any = layer.Layer.Machines[0].AnyStateTransitions;
+                layer.WatchTime.Clear();
+                layer.WatchNext.Clear();
+                if (repeated)
+                {
+                    if (!Dormant(layer, any, rate) || !Dormant(layer, state.Transitions, rate)) return false;
+                }
+                else if (!layer.Transitioning)
+                {
+                    Watch(layer.WatchTime, any, layer.Time, rate);
+                    Watch(layer.WatchTime, state.Transitions, layer.Time, rate);
+                }
+                else
+                {
+                    // The transitions Step tries mid-transition (M5); more is only an extra evaluated frame.
+                    var source = layer.Active.InterruptionSource;
+                    if (source != "none")
+                    {
+                        Watch(layer.WatchTime, any, layer.Time, rate);
+                        if (source != "destination") Watch(layer.WatchTime, state.Transitions, layer.Time, rate);
+                        if (source != "source") Watch(layer.WatchNext, layer.Layer.States[layer.Next].Transitions, layer.NextTime, nextRate);
+                    }
+                    layer.SettledNextLength = StateLength(layer.Layer.States[layer.Next]);
+                }
                 layer.SettledLength = StateLength(state);
             }
             return true;
+        }
+
+        double Rate(AvatarAnimatorData.State timing) => timing.TimeParameter.HasValue ? 0 : timing.Speed * ParameterOr(timing.SpeedParameter, 1);
+
+        // Whether the state's motion gives the same values at every time to come.
+        bool Holds(AvatarAnimatorData.State state, double time, double rate) =>
+            state.Motion < 0 || rate == 0 || still[state.Motion]
+            || Clamped(state.Motion, time + ParameterOr(state.CycleOffsetParameter, state.CycleOffset), rate > 0);
+
+        // The transitions with an exit time Dormant would not let rest: their
+        // conditions hold and their time moves toward an exit time not passed.
+        void Watch(List<AvatarAnimatorData.Transition> watched, List<AvatarAnimatorData.Transition> transitions, double time, double rate)
+        {
+            foreach (var transition in transitions)
+            {
+                if (!transition.HasExitTime || rate <= 0 || !Pass(transition.Conditions)) continue;
+                if (transition.ExitTime >= 1 && time >= transition.ExitTime) continue;
+                watched.Add(transition);
+            }
         }
 
         // Whether entering the state runs a Parameter Driver that draws a
@@ -1366,6 +1466,7 @@ namespace VRVlog.AvatarAnimator
         void Output(LayerRun layer)
         {
             var animated = layer.Animated;
+            layer.Mixed = false;
             if (layer.State < 0)
             {
                 Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
@@ -1456,6 +1557,9 @@ namespace VRVlog.AvatarAnimator
                 // values from when the transition started.
                 if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
                 has |= hasB;
+                // M11: a parameter's own value nears the rest by the progress, below.
+                if (value != b || (isParameter[t] && b != rest[t] && states[layer.Next].Motion < 0 && !states[layer.Next].WriteDefaults))
+                    layer.Mixed = true;
                 var progress = Math.Min(1, layer.Progress);
                 // Unity takes an object reference only from the motions that
                 // write it, the rest of Write Defaults not counting: when one
