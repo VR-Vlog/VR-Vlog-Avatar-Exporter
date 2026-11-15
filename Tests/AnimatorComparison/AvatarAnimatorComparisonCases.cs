@@ -198,6 +198,13 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return AnyState();
             yield return Interruption();
             yield return AnyStateInterruption();
+            yield return AnyStateInterruption("source");
+            yield return AnyStateInterruption("source", ordered: true);
+            yield return AnyStateInterruption("destination");
+            yield return AnyStateRunning("anyStateRestart");
+            yield return AnyStateRunning("anyStateOrdered");
+            yield return AnyStateRunning("anyStateUnordered");
+            yield return AnyStateRunning("anyStateBeforeDestination");
             yield return WriteDefaultsOff();
             yield return Layers();
             yield return Trees();
@@ -349,10 +356,13 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
-        // Any State taking a layer that is in a transition.
-        static Case AnyStateInterruption()
+        // Any State and a layer that is in a transition from a state: with an
+        // interruption source other than none, Any State interrupts it, and
+        // unordered, the running transition starts again while Go holds.
+        static Case AnyStateInterruption(string source = "none", bool ordered = false)
         {
-            var c = new Builder("anyStateInterruption", 2);
+            var name = "anyStateInterruption" + (source == "none" ? "" : char.ToUpperInvariant(source[0]) + source.Substring(1)) + (ordered ? "Ordered" : "");
+            var c = new Builder(name, 2);
             var go = c.Parameter("Go", "bool");
             var stop = c.Parameter("Stop", "bool");
             var node = c.Target(0);
@@ -360,9 +370,59 @@ namespace VRVlog.AvatarAnimator.Comparison
             var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
             var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
             var d = c.State(layer, "C", c.Ramp(1, true, node, 20, 21));
-            layer.States[a].Transitions.Add(To(b, duration: 1).When(go, "if"));
+            var slow = To(b, duration: 1).When(go, "if");
+            slow.InterruptionSource = source;
+            slow.OrderedInterruption = ordered;
+            layer.States[a].Transitions.Add(slow);
             layer.Machines[0].AnyStateTransitions.Add(To(d, duration: .5).When(stop, "if"));
             c.Input(.2, go, 1).Input(.6, stop, 1).Input(.7, stop, 0);
+            return c.Case;
+        }
+
+        // A transition interrupted by Any State: anyStateRestart, one from
+        // Any State that starts again while Go holds, although it may not
+        // transition to itself (the layer is still in A); anyStateOrdered and
+        // anyStateUnordered, one from Any State that only the earlier ones
+        // interrupt, or every one; anyStateBeforeDestination, Any State before
+        // the destination's transition.
+        static Case AnyStateRunning(string name)
+        {
+            var c = new Builder(name, 2.5);
+            var go = c.Parameter("Go", "bool");
+            var stop = c.Parameter("Stop", "bool");
+            var stop2 = c.Parameter("Stop2", "bool");
+            var node = c.Target(0);
+            var layer = c.Layer("Any");
+            var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
+            var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
+            var d = c.State(layer, "C", c.Ramp(1, true, node, 20, 21));
+            var e = c.State(layer, "D", c.Ramp(1, true, node, 30, 31));
+            var anys = layer.Machines[0].AnyStateTransitions;
+            if (name == "anyStateBeforeDestination")
+            {
+                var slow = To(b, duration: 1).When(go, "if");
+                slow.InterruptionSource = "destination";
+                layer.States[a].Transitions.Add(slow);
+                layer.States[a].Transitions.Add(To(e, duration: .5).When(stop, "if"));
+                layer.States[b].Transitions.Add(To(e, duration: .5).When(stop, "if"));
+                anys.Add(To(d, duration: .5).When(stop, "if"));
+                c.Input(.2, go, 1).Input(.3, go, 0).Input(.6, stop, 1).Input(.7, stop, 0);
+                return c.Case;
+            }
+            var fromAny = To(b, duration: 1).When(go, "if");
+            fromAny.InterruptionSource = "source";
+            fromAny.OrderedInterruption = name == "anyStateOrdered";
+            if (name == "anyStateRestart")
+            {
+                anys.Add(fromAny);
+                c.Input(.2, go, 1).Input(.5, go, 0);
+                return c.Case;
+            }
+            anys.Add(To(d, duration: .5).When(stop, "if"));
+            anys.Add(fromAny);
+            anys.Add(To(e, duration: .5).When(stop2, "if"));
+            c.Input(.2, go, 1).Input(.3, go, 0).Input(.5, stop2, 1).Input(.6, stop2, 0)
+             .Input(1.6, go, 1).Input(1.7, go, 0).Input(1.9, stop, 1).Input(2, stop, 0);
             return c.Case;
         }
 
