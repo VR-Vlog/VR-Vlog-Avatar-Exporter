@@ -48,8 +48,11 @@ namespace VRVlog.AvatarAnimator.Comparison
         {
             var data = c.Data;
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Folder.Substring("Assets/".Length));
-            var controller = Controller(c, Folder + "/" + c.Name + ".controller");
+            var played = Played(c, out var layerOffset);
+            var controller = Controller(c, played, Folder + "/" + c.Name + ".controller");
             var root = new GameObject("Comparison");
+            Avatar avatar = null;
+            HumanPoseHandler poses = null;
             try
             {
                 var targets = new GameObject[data.Targets.Count];
@@ -58,11 +61,19 @@ namespace VRVlog.AvatarAnimator.Comparison
                     targets[t] = new GameObject(Path(t));
                     targets[t].transform.SetParent(root.transform, false);
                     if (c.ActiveTargets.Contains(t)) targets[t].SetActive(data.Targets[t].Rest != 0);
+                    else if (data.Targets[t].Property == "morph") Morph(targets[t]).SetBlendShapeWeight(0, (float)data.Targets[t].Rest);
                     else targets[t].transform.localPosition = new Vector3((float)data.Targets[t].Rest, 0, 0);
                 }
                 var animator = root.AddComponent<Animator>();
+                if (c.Humanoid)
+                {
+                    avatar = Humanoid(root);
+                    animator.avatar = avatar;
+                    poses = new HumanPoseHandler(avatar, root.transform);
+                }
                 animator.runtimeAnimatorController = controller;
                 animator.Rebind();
+                var pose = new HumanPose();
                 var steps = AvatarAnimatorComparison.Steps(c, timing);
                 var inputs = AvatarAnimatorComparison.Inputs(c, steps);
                 var weights = AvatarAnimatorComparison.LayerWeights(c, steps);
@@ -81,11 +92,14 @@ namespace VRVlog.AvatarAnimator.Comparison
                             default: if (value != 0) animator.SetTrigger(p.Name); else animator.ResetTrigger(p.Name); break;
                         }
                     }
-                    foreach (var (layer, weight) in weights[i]) animator.SetLayerWeight(layer, (float)weight);
+                    foreach (var (layer, weight) in weights[i]) animator.SetLayerWeight(layer - layerOffset, (float)weight);
                     animator.Update((float)steps[i]);
+                    poses?.GetHumanPose(ref pose);
                     values[i] = new double[targets.Length];
                     for (var t = 0; t < targets.Length; t++)
                         values[i][t] = data.Targets[t].Property == "parameter" ? Get(animator, data.Parameters[data.Targets[t].Parameter])
+                            : data.Targets[t].Property == "muscle" ? pose.muscles[data.Targets[t].Muscle]
+                            : data.Targets[t].Property == "morph" ? targets[t].GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0)
                             : c.ActiveTargets.Contains(t) ? (targets[t].activeSelf ? 1 : 0) : targets[t].transform.localPosition.x;
                     parameters[i] = new double[data.Parameters.Count];
                     for (var p = 0; p < parameters[i].Length; p++) parameters[i][p] = Get(animator, data.Parameters[p]);
@@ -93,8 +107,136 @@ namespace VRVlog.AvatarAnimator.Comparison
             }
             finally
             {
+                poses?.Dispose();
+                foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(renderer.sharedMesh);
                 Object.DestroyImmediate(root);
+                if (avatar != null) Object.DestroyImmediate(avatar);
             }
+        }
+
+        // A SkinnedMeshRenderer with a mesh of one triangle and one blend shape.
+        static SkinnedMeshRenderer Morph(GameObject target)
+        {
+            var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };
+            mesh.AddBlendShapeFrame("Shape", 100, new[] { Vector3.forward, Vector3.forward, Vector3.forward }, null, null);
+            var renderer = target.AddComponent<SkinnedMeshRenderer>();
+            renderer.sharedMesh = mesh;
+            return renderer;
+        }
+
+        // The controller Unity plays: one Animator plays one controller, so a
+        // case puts its layers in one (the FX, or a gesture or action
+        // controller after an FX without layers). layerOffset is the
+        // evaluator's index of its first layer.
+        static int Played(AvatarAnimatorComparison.Case c, out int layerOffset)
+        {
+            var controllers = c.Data.Controllers;
+            var played = Enumerable.Range(0, controllers.Count).Where(i => controllers[i].Layers.Count > 0).ToList();
+            Assert.That(played.Count, Is.EqualTo(1), c.Name + " has layers in more than one controller");
+            layerOffset = controllers.Take(played[0]).Sum(controller => controller.Layers.Count);
+            return played[0];
+        }
+
+        // A humanoid rig in a T-pose with every bone of HumanTrait, Hips
+        // under root, and its Avatar.
+        static Avatar Humanoid(GameObject root)
+        {
+            var bones = new Transform[HumanTrait.BoneCount];
+            Transform Bone(int i)
+            {
+                if (bones[i] != null) return bones[i];
+                var parent = HumanTrait.GetParentBone(i);
+                var bone = new GameObject("Bone " + i).transform;
+                bone.SetParent(parent < 0 ? root.transform : Bone(parent), false);
+                bone.localPosition = Offset(HumanTrait.BoneName[i]);
+                return bones[i] = bone;
+            }
+            var description = new HumanDescription
+            {
+                // Without twist distribution Unity reads the twist muscles back
+                // within 1e-3 when every muscle of a limb moves.
+                upperArmTwist = 0, lowerArmTwist = 0, upperLegTwist = 0, lowerLegTwist = 0,
+                armStretch = .05f, legStretch = .05f, feetSpacing = 0, hasTranslationDoF = false,
+            };
+            var skeleton = new List<SkeletonBone> { new SkeletonBone { name = root.name, rotation = Quaternion.identity, scale = Vector3.one } };
+            var human = new List<HumanBone>();
+            for (var i = 0; i < bones.Length; i++)
+            {
+                var bone = Bone(i);
+                human.Add(new HumanBone { humanName = HumanTrait.BoneName[i], boneName = bone.name, limit = new HumanLimit { useDefaultValues = true } });
+            }
+            foreach (var bone in bones)
+                skeleton.Add(new SkeletonBone { name = bone.name, position = bone.localPosition, rotation = bone.localRotation, scale = bone.localScale });
+            description.human = human.ToArray();
+            description.skeleton = skeleton.ToArray();
+            var avatar = AvatarBuilder.BuildHumanAvatar(root, description);
+            Assert.That(avatar.isValid && avatar.isHuman, "the comparison rig's Avatar");
+            return avatar;
+        }
+
+        // A bone's place from its parent, facing +z with the left side at -x.
+        static Vector3 Offset(string bone)
+        {
+            var side = bone.StartsWith("Left", StringComparison.Ordinal) ? -1f : bone.StartsWith("Right", StringComparison.Ordinal) ? 1f : 0f;
+            var name = bone.Replace("Left", "").Replace("Right", "").Replace(" ", "");
+            switch (name)
+            {
+                case "Hips": return new Vector3(0, 1, 0);
+                case "Spine": case "Chest": case "UpperChest": return new Vector3(0, .12f, 0);
+                case "Neck": return new Vector3(0, .1f, 0);
+                case "Head": return new Vector3(0, .08f, 0);
+                case "Eye": return new Vector3(side * .03f, .06f, .08f);
+                case "Jaw": return new Vector3(0, -.01f, .03f);
+                case "UpperLeg": return new Vector3(side * .1f, -.05f, 0);
+                case "LowerLeg": case "Foot": return new Vector3(0, -.42f, 0);
+                case "Toes": return new Vector3(0, -.06f, .12f);
+                case "Shoulder": return new Vector3(side * .04f, .1f, 0);
+                case "UpperArm": return new Vector3(side * .1f, 0, 0);
+                case "LowerArm": case "Hand": return new Vector3(side * .26f, 0, 0);
+                case "ThumbProximal": return new Vector3(side * .02f, -.01f, .03f);
+                case "IndexProximal": return new Vector3(side * .08f, 0, .025f);
+                case "MiddleProximal": return new Vector3(side * .085f, 0, .008f);
+                case "RingProximal": return new Vector3(side * .08f, 0, -.01f);
+                case "LittleProximal": return new Vector3(side * .07f, 0, -.028f);
+                default: return new Vector3(side * .025f, 0, 0);
+            }
+        }
+
+        // The curve name of a muscle in a clip (an Animator curve on the
+        // root): a finger muscle Left Thumb 1 Stretched as LeftHand.Thumb.1 Stretched.
+        static string MuscleCurve(int muscle)
+        {
+            var name = HumanTrait.MuscleName[muscle];
+            foreach (var side in new[] { "Left", "Right" })
+                foreach (var finger in new[] { "Thumb", "Index", "Middle", "Ring", "Little" })
+                    if (name.StartsWith(side + " " + finger + " ", StringComparison.Ordinal))
+                        return side + "Hand." + finger + "." + name.Substring(side.Length + finger.Length + 2);
+            return name;
+        }
+
+        // A layer's AvatarMask: the body parts and, when the data names
+        // transforms, the root, inactive, and every target's transform,
+        // active when the data's Nodes has it. A mask that lets none move
+        // names only the root, so a transform it does not name is checked
+        // to be kept off as well.
+        static AvatarMask Mask(AvatarAnimatorComparison.Case c, AvatarAnimatorData.Mask mask, string name)
+        {
+            var unity = new AvatarMask { name = name };
+            for (var part = 0; part < AvatarAnimatorData.BodyPartCount; part++)
+                unity.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, mask.Humanoid.Contains(part));
+            if (mask.Nodes != null)
+            {
+                var targets = Enumerable.Range(0, c.Data.Targets.Count).Where(t => c.Data.Targets[t].Node >= 0 && mask.Nodes.Count > 0).ToList();
+                unity.transformCount = targets.Count + 1;
+                unity.SetTransformPath(0, "");
+                unity.SetTransformActive(0, false);
+                for (var k = 0; k < targets.Count; k++)
+                {
+                    unity.SetTransformPath(k + 1, Path(targets[k]));
+                    unity.SetTransformActive(k + 1, mask.Nodes.Contains(c.Data.Targets[targets[k]].Node));
+                }
+            }
+            return unity;
         }
 
         static double Get(Animator animator, AvatarAnimatorData.Parameter parameter) =>
@@ -118,7 +260,7 @@ namespace VRVlog.AvatarAnimator.Comparison
 
         // The controller Unity plays for the data: what AvatarAnimatorCapture
         // reads back into the same data.
-        static AnimatorController Controller(AvatarAnimatorComparison.Case c, string path)
+        static AnimatorController Controller(AvatarAnimatorComparison.Case c, int played, string path)
         {
             var data = c.Data;
             var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
@@ -141,8 +283,10 @@ namespace VRVlog.AvatarAnimator.Comparison
                     var target = data.Targets[track.Target];
                     var binding = target.Property == "parameter"
                         ? EditorCurveBinding.FloatCurve("", typeof(Animator), data.Parameters[target.Parameter].Name)
+                        : target.Property == "muscle" ? EditorCurveBinding.FloatCurve("", typeof(Animator), MuscleCurve(target.Muscle))
                         : c.ActiveTargets.Contains(track.Target)
                         ? EditorCurveBinding.FloatCurve(Path(track.Target), typeof(GameObject), "m_IsActive")
+                        : target.Property == "morph" ? EditorCurveBinding.FloatCurve(Path(track.Target), typeof(SkinnedMeshRenderer), "blendShape.Shape")
                         : EditorCurveBinding.FloatCurve(Path(track.Target), typeof(Transform), "m_LocalPosition.x");
                     AnimationUtility.SetEditorCurve(unity, binding, Curve(track.Curves[0]));
                 }
@@ -191,7 +335,7 @@ namespace VRVlog.AvatarAnimator.Comparison
             }
 
             var layerStates = new List<AnimatorState[]>();
-            foreach (var layer in data.Controllers[0].Layers)
+            foreach (var layer in data.Controllers[played].Layers)
             {
                 var machines = new AnimatorStateMachine[layer.Machines.Count];
                 machines[0] = new AnimatorStateMachine { name = layer.Machines[0].Name, hideFlags = HideFlags.HideInHierarchy };
@@ -277,16 +421,22 @@ namespace VRVlog.AvatarAnimator.Comparison
                             : parent.AddStateMachineExitTransition(machines[m]), t);
                 }
 
+                AvatarMask mask = null;
+                if (layer.Mask != null)
+                {
+                    mask = Mask(c, layer.Mask, layer.Name);
+                    AssetDatabase.AddObjectToAsset(mask, controller);
+                }
                 controller.AddLayer(new AnimatorControllerLayer
                 {
-                    name = layer.Name, defaultWeight = (float)layer.Weight, stateMachine = machines[0],
+                    name = layer.Name, defaultWeight = (float)layer.Weight, stateMachine = machines[0], avatarMask = mask,
                     blendingMode = layer.Blending == "additive" ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override,
                 });
             }
 
             // Synced layers take the source's machines and their own motions.
             var layers = controller.layers.ToList();
-            var dataLayers = data.Controllers[0].Layers;
+            var dataLayers = data.Controllers[played].Layers;
             for (var l = 0; l < dataLayers.Count; l++)
             {
                 if (dataLayers[l].SyncedLayer < 0) continue;

@@ -14,7 +14,7 @@
 - 曲線の省略など、ほかの種類は今までどおり全体の `omitted` に置く。書き出しは曲線の一部（コマを超えた分・ノードの無い分など）を読み終えた後に全クリップまとめて数えるので、コントローラーごとに分けると読み取り時の分と後段の分が割れる。評価器が見るのは遷移を変える種類だけなので、そこだけを分ける
 - FX のものと拡張の全体のものも全体の `omitted` に置く。FX のコントローラーに `omitted` があれば読まない（スキーマも `if`/`then` で断る）
 - 評価器は、全体の `omitted` に遷移を変える種類があれば今までどおり断る。Gesture や Action の `omitted` にあれば、そのコントローラーだけを飛ばし（`SkipReason` に理由が出る）、FX は回す
-- 書き出し（`AvatarAnimatorCapture`）を、Gesture・Action を読む間の遷移の省略をそのコントローラーの `omitted` に入れるように変えるのは、同じファイルを触る段6-2 のマージを待って別の PR で行う。そのときは、全体の `omitted` から数を読むユーザーへの注意書き（`OmittedCurvesLine`。`parameter` を数える）と `Tools/compare-exports.py` の集計も合わせて見直す。それまでは今までどおり全体に入るので、書き出しの結果は変わらない
+- 書き出し（`AvatarAnimatorCapture`）を、Gesture・Action を読む間の遷移の省略をそのコントローラーの `omitted` に入れるように変えるのは、同じファイルを触る段6-2 のマージを待って別の PR で行う。そのときは、全体の `omitted` から数を読むユーザーへの注意書き（`OmittedCurvesLine`。`parameter` を数える）と `Tools/compare-exports.py` の集計も合わせて見直す。この PR の時点では書き出しは今までどおり全体に入れていたので、書き出しの結果は変わらなかった（書き出しの変更は段5-2c の `2026-11-16-avatar-animator-capture-controller-omitted.md` で行った）
 
 ## 古いアプリとの関係
 

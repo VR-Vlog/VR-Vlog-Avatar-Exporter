@@ -105,9 +105,10 @@ namespace VRVlog.AvatarAnimator
     // it does not know, or something that drives its transitions the export
     // left out of it) is skipped, and the others play as if it were not
     // there; the FX is not skipped but refused (Supports). M16 a layer's
-    // mask keeps it off the muscles of the body parts it leaves out, and
-    // the FX applies no muscle when its base layer has no mask; the mask's
-    // transforms are not applied.
+    // mask keeps it off the muscles of the body parts it leaves out and,
+    // when it names transforms, off the translation, rotation and scale of
+    // the nodes it leaves out (Unity's mask filters no other property), and
+    // the FX applies no muscle when its base layer has no mask.
     public sealed class AvatarAnimatorEvaluator
     {
         // M9.
@@ -454,13 +455,14 @@ namespace VRVlog.AvatarAnimator
             isAnimated = controllerCount > 0 ? controllerAnimated[0] : new bool[targetCount];
 
             // M16: whether the layer's mask keeps it off the target. A mask moves
-            // only the muscles of its body parts (its transforms are not read
-            // yet), and VRChat applies no muscle of an FX whose base layer
-            // has no mask.
+            // only the muscles of its body parts and, when it names transforms
+            // (Nodes), only the translation, rotation and scale of its nodes;
+            // VRChat applies no muscle of an FX whose base layer has no mask.
             bool Masked(int c, AvatarAnimatorData.Layer layer, int t)
             {
                 var target = data.Targets[t];
-                if (target.Property != "muscle") return false;
+                if (target.Property != "muscle")
+                    return layer.Mask?.Nodes != null && AvatarAnimatorData.IsTransform(target.Property) && layer.Mask.Nodes.BinarySearch(target.Node) < 0;
                 var controller = data.Controllers[c];
                 if (controller.Playable == "fx" && controller.Layers[0].Mask == null) return true;
                 return layer.Mask != null && !layer.Mask.Humanoid.Contains(MuscleBodyPart(target.Muscle));

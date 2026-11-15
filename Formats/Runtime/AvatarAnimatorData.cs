@@ -111,9 +111,9 @@ namespace VRVlog.AvatarAnimator
         }
 
         // Omitted of a gesture or action controller holds what the exporter
-        // left out while reading it (its states, behaviours, motions and
-        // clips), so a reader can tell whose timing it changes; the FX's go
-        // to the data's Omitted, with those of the extension as a whole.
+        // left out while reading it that changes its transitions
+        // (TransitionOmittedKinds), so a reader can tell whose timing it
+        // changes; the FX's, and the other kinds, go to the data's Omitted.
         public sealed class Controller
         {
             public string Playable = "fx";
