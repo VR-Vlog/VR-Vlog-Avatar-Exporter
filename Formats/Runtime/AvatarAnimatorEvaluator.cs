@@ -53,8 +53,11 @@ namespace VRVlog.AvatarAnimator
     // and two children at one position do not limit each other.
     // M8-M10 stay assumptions: M8 and M10 are VRChat behaviours that plain
     // Unity cannot record, and no recording covers M9. M8 the behaviours of a state run when the transition into
-    // it starts, the machines' (outer first) before the state's, and their
-    // parameter changes are seen by later layers in the same frame; M9 a
+    // it starts, the machines' (outer first) before the state's; a Parameter
+    // Driver's operations wait until every layer has stepped and then apply
+    // in that order, reading the values of that moment (a copy too), so no
+    // transition sees them before the next frame, in its own layer or a
+    // later one, as Unity does when the SDK drives from OnStateEnter; M9 a
     // state without a motion, or with a clip of length 0, is 1 second long;
     // M10 a layer or FX weight blend moves from the frame after the behaviour
     // that starts it, and a blend of 0 seconds applies at once.
@@ -163,6 +166,8 @@ namespace VRVlog.AvatarAnimator
         readonly bool[] isParameter;
         // M4: triggers a transition used, reset once every layer has stepped.
         readonly bool[] spent;
+        // M8: the Parameter Drivers that ran this frame, applied once every layer has stepped.
+        readonly List<AvatarAnimatorData.Behaviour> drivers;
         readonly LayerRun[] layers;
         // Per motion: the targets it writes, the order of a 1D tree's children
         // by threshold and the children's weights while it is evaluated.
@@ -269,6 +274,18 @@ namespace VRVlog.AvatarAnimator
             }
             // A resolution passes each machine at most twice (in through Entry, out through Exit).
             chain = new AvatarAnimatorData.Transition[2 * machines + 2];
+            // Room for every driver once, so a frame does not grow the list.
+            var driverCount = 0;
+            foreach (var layer in source)
+            {
+                foreach (var machine in layer.Machines)
+                    foreach (var behaviour in machine.Behaviours)
+                        if (behaviour.Type == "parameterDriver") driverCount++;
+                foreach (var state in layer.States)
+                    foreach (var behaviour in state.Behaviours)
+                        if (behaviour.Type == "parameterDriver") driverCount++;
+            }
+            drivers = new List<AvatarAnimatorData.Behaviour>(driverCount);
         }
 
         static Side NewSide(int count) => new Side
@@ -379,6 +396,10 @@ namespace VRVlog.AvatarAnimator
                 values[t] = types[p] == FloatType && written[t] ? Convert(FloatType, values[t]) : rest[t];
                 parameters[p] = values[t];
             }
+            // M8: after every layer, so the transitions see the drivers' values from the next frame on.
+            foreach (var driver in drivers)
+                foreach (var operation in driver.Operations) Drive(operation);
+            drivers.Clear();
         }
 
         void Step(LayerRun layer, double dt)
@@ -635,7 +656,7 @@ namespace VRVlog.AvatarAnimator
             switch (behaviour.Type)
             {
                 case "parameterDriver":
-                    foreach (var operation in behaviour.Operations) Drive(operation);
+                    drivers.Add(behaviour);
                     break;
                 case "layerControl":
                     if (behaviour.Playable == "fx" && behaviour.Layer < layers.Length)
