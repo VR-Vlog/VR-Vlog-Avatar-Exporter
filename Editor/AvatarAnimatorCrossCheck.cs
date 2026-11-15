@@ -14,8 +14,10 @@ namespace VRVlog.LilToonExporter
     // After the export: plays the copy's FX controller in Unity's Animator and
     // the written VRVLOG_avatar_animator in AvatarAnimatorEvaluator, the app's
     // player, from the same inputs for the same frames, and compares what they
-    // show: the activeSelf of each active target and the BlendShape weight of
-    // each morph target. The inputs are the start alone, each menu control and
+    // show: the activeSelf of each active target, the BlendShape weight of
+    // each morph target, the enabled flag of each renderer an enabled target
+    // names and the float of each materialFloat target, as the renderer it
+    // was read from shows it. The inputs are the start alone, each menu control and
     // each hand gesture. Each input starts from the rest: SettleFrames without
     // input, then InputFrames with it.
     //
@@ -33,6 +35,8 @@ namespace VRVlog.LilToonExporter
         internal const double FrameSeconds = (float)(1.0 / 60);
         // Unity blends BlendShape weights (0 to 100) in single precision.
         internal const double WeightTolerance = 0.05;
+        // Material floats, also blended in single precision, per unit of size.
+        internal const double FloatTolerance = 1e-4;
         // The time the inputs may take together; the rest are not compared.
         internal static double BudgetSeconds = 60;
         // Off leaves VRChat's behaviours to plain Unity, which runs none (tests).
@@ -53,13 +57,20 @@ namespace VRVlog.LilToonExporter
         static readonly string[] Gestures = { "Neutral", "Fist", "HandOpen", "FingerPoint", "Victory", "RockNRoll", "HandGun", "ThumbsUp" };
 
         // What shows a target in Unity: the object for an active target, the
-        // renderer and shape for a morph target. Null for a target that is not
-        // compared (a parameter, or what the copy no longer has).
+        // renderer and shape for a morph target, the renderer (Component) for
+        // an enabled target, and a renderer that draws with the material
+        // (Component, Material) and the property Name for a materialFloat
+        // target. Null for a target that is not compared (a parameter, or
+        // what the copy no longer has).
         internal sealed class Binding
         {
             internal GameObject Object;
             internal SkinnedMeshRenderer Renderer;
             internal string Shape;
+            internal Renderer Component;
+            internal Material Material;
+            internal string Name;
+            internal GameObject Owner => Object != null ? Object : Renderer != null ? Renderer.gameObject : Component != null ? Component.gameObject : null;
             // The object's path under the root when the clips were read (null
             // when unknown). Unity binds curves by path, so an object the
             // export renamed or moved no longer moves with the controller.
@@ -177,8 +188,10 @@ namespace VRVlog.LilToonExporter
                 if (target.Property == "active" && binding?.Object != null) shown.Add(t);
                 else if (target.Property == "morph" && binding?.Renderer != null && binding.Renderer.sharedMesh != null &&
                          (shapes[t] = binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape)) >= 0) shown.Add(t);
+                else if (target.Property == "enabled" && binding?.Component != null) shown.Add(t);
+                else if (target.Property == "materialFloat" && binding?.Component != null && binding.Material != null && binding.Name != null) shown.Add(t);
                 else { result.Unbound++; continue; }
-                if (binding.Path != null && Find(root, binding.Path) != (binding.Object != null ? binding.Object : binding.Renderer.gameObject))
+                if (binding.Path != null && Find(root, binding.Path) != binding.Owner)
                 {
                     shown.RemoveAt(shown.Count - 1);
                     result.Moved++;
@@ -228,10 +241,41 @@ namespace VRVlog.LilToonExporter
             foreach (var t in shown)
             {
                 var rest = data.Targets[t].Rest;
-                if (data.Targets[t].Property == "active") bindings[t].Object.SetActive(AvatarAnimatorEvaluator.Active(rest));
-                else bindings[t].Renderer.SetBlendShapeWeight(shapes[t], (float)rest);
+                switch (data.Targets[t].Property)
+                {
+                    case "active": bindings[t].Object.SetActive(AvatarAnimatorEvaluator.Active(rest)); break;
+                    case "morph": bindings[t].Renderer.SetBlendShapeWeight(shapes[t], (float)rest); break;
+                    case "enabled": bindings[t].Component.enabled = AvatarAnimatorEvaluator.Active(rest); break;
+                    case "materialFloat":
+                        // The animated value lives in the renderer's property block.
+                        var block = new MaterialPropertyBlock();
+                        bindings[t].Component.GetPropertyBlock(block);
+                        block.SetFloat(bindings[t].Name, (float)rest);
+                        bindings[t].Component.SetPropertyBlock(block);
+                        break;
+                }
             }
         }
+
+        // What Unity shows of a target, in the evaluator's units.
+        static double Shown(AvatarAnimatorData.Target target, Binding binding, int shape)
+        {
+            switch (target.Property)
+            {
+                case "active": return binding.Object.activeSelf ? 1 : 0;
+                case "enabled": return binding.Component.enabled ? 1 : 0;
+                case "materialFloat":
+                    var block = new MaterialPropertyBlock();
+                    binding.Component.GetPropertyBlock(block);
+                    return block.HasFloat(binding.Name) ? block.GetFloat(binding.Name) : binding.Material.GetFloat(binding.Name);
+                default: return binding.Renderer.GetBlendShapeWeight(shape);
+            }
+        }
+
+        static bool Differs(AvatarAnimatorData.Target target, double evaluator, double unity) =>
+            target.Property == "active" || target.Property == "enabled" ? AvatarAnimatorEvaluator.Active(evaluator) != (unity != 0)
+            : target.Property == "materialFloat" ? !(Math.Abs(evaluator - unity) <= FloatTolerance * Math.Max(1, Math.Abs(unity)))
+            : !(Math.Abs(evaluator - unity) <= WeightTolerance);
 
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes,
             Animator animator, UnityPlayer player, out bool skipped)
@@ -257,11 +301,9 @@ namespace VRVlog.LilToonExporter
                 if (first != null) continue;
                 foreach (var t in shown)
                 {
-                    var active = data.Targets[t].Property == "active";
-                    var unity = active ? (bindings[t].Object.activeSelf ? 1 : 0) : bindings[t].Renderer.GetBlendShapeWeight(shapes[t]);
+                    var unity = Shown(data.Targets[t], bindings[t], shapes[t]);
                     var value = evaluator.Values[t];
-                    var differs = active ? AvatarAnimatorEvaluator.Active(value) != (unity != 0) : !(Math.Abs(value - unity) <= WeightTolerance);
-                    if (!differs) continue;
+                    if (!Differs(data.Targets[t], value, unity)) continue;
                     first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value, Layers = Layers(data, animator, evaluator) };
                     break;
                 }
@@ -347,9 +389,10 @@ namespace VRVlog.LilToonExporter
         {
             var binding = bindings[t];
             var target = data.Targets[t];
-            var go = binding.Object != null ? binding.Object : binding.Renderer != null ? binding.Renderer.gameObject : null;
+            var go = binding.Owner;
             var path = go == null ? "?" : Path(root.transform, go.transform);
-            return target.Property == "morph" ? $"{path}:{binding.Shape}" : path;
+            return target.Property == "morph" ? $"{path}:{binding.Shape}" : target.Property == "enabled" ? $"{path}:enabled"
+                : target.Property == "materialFloat" ? $"{path}:{binding.Name}" : path;
         }
 
         static string Path(Transform root, Transform transform)

@@ -679,20 +679,20 @@ namespace VRVlog.LilToonExporter.Tests
             return json;
         }
 
-        static Dictionary<string, object> MaterialFloat(object rest) => new Dictionary<string, object>
+        static Dictionary<string, object> MaterialColor(object rest) => new Dictionary<string, object>
         {
-            ["node"] = 3L, ["property"] = "materialFloat", ["material"] = 1L, ["name"] = "_Cutoff", ["rest"] = rest,
+            ["node"] = 3L, ["property"] = "materialColor", ["material"] = 1L, ["name"] = "_Color", ["rest"] = rest,
             ["range"] = new List<object> { 0L, 1L }
         };
 
         [Test]
         public void AnUnknownTargetIsReadAsOneNothingWrites()
         {
-            var json = WithUnknown(MaterialFloat(.5));
+            var json = WithUnknown(MaterialColor(.5));
             var text = JsonDom.Serialize(json);
             var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
             var unknown = read.Targets[3];
-            Assert.That((unknown.Known, unknown.Property, unknown.Node, unknown.Rest), Is.EqualTo((false, "materialFloat", -1, .5)));
+            Assert.That((unknown.Known, unknown.Property, unknown.Node, unknown.Rest), Is.EqualTo((false, "materialColor", -1, .5)));
             Assert.That(read.Targets.Take(3).All(t => t.Known), Is.True);
             Assert.That(read.Clips[0].Tracks.Select(t => t.Target), Is.EqualTo(new[] { 0, 1, 3 }), "A clip may move it.");
             // Write keeps every key as read, so Write -> Read -> Write is the same text.
@@ -702,21 +702,110 @@ namespace VRVlog.LilToonExporter.Tests
 
             // Its keys are not looked at: a rest that is not a number reads as 0,
             // no rest at all too, and two alike are both kept.
-            Assert.That(AvatarAnimatorData.Read(WithUnknown(MaterialFloat("half"))).Targets[3].Rest, Is.EqualTo(0));
-            Assert.That(AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["property"] = "enabled" })).Targets[3].Rest, Is.EqualTo(0));
-            var twice = WithUnknown(MaterialFloat(1L));
-            ((List<object>)twice["targets"]).Add(MaterialFloat(1L));
+            Assert.That(AvatarAnimatorData.Read(WithUnknown(MaterialColor("half"))).Targets[3].Rest, Is.EqualTo(0));
+            Assert.That(AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["property"] = "translation" })).Targets[3].Rest, Is.EqualTo(0));
+            var twice = WithUnknown(MaterialColor(1L));
+            ((List<object>)twice["targets"]).Add(MaterialColor(1L));
             Assert.That(AvatarAnimatorData.Read(twice).Targets.Count(t => !t.Known), Is.EqualTo(2));
 
             // One made in code, with no keys read, is written as its property and rest.
             var data = Sample();
-            data.Targets.Add(new AvatarAnimatorData.Target { Property = "enabled", Node = -1, Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "translation", Node = -1, Rest = 1 });
             var made = Json(data);
             Assert.That(At(made, "targets", 3).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "property", "rest" }));
             Assert.That(AvatarAnimatorData.Read(made).Targets[3].Rest, Is.EqualTo(1));
 
             // A known kind still has to carry its own keys.
             Rejects(changed => At(changed, "targets", 0)["material"] = 1L);
+        }
+
+        // A renderer enabled target and two materialFloat targets follow the
+        // sample's active and parameter targets, each with a track of clip 0.
+        const int EnabledTarget = 3;
+
+        static AvatarAnimatorData WithRendererAndMaterial()
+        {
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "enabled", Component = "renderer", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 0, Name = "_Cutoff", Rest = .5 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 2, Name = "_Cutoff", Rest = .25 });
+            for (var t = EnabledTarget; t < EnabledTarget + 3; t++)
+            {
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 0, InTangent = 0, OutTangent = 0 });
+                var track = new AvatarAnimatorData.Track { Target = t };
+                track.Curves.Add(curve);
+                data.Clips[0].Tracks.Add(track);
+            }
+            return data;
+        }
+
+        static void RejectsRendererAndMaterial(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithRendererAndMaterial());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void EnabledAndMaterialFloatTargetsRoundTrip()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithRendererAndMaterial()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            Assert.That(read.Targets.Skip(EnabledTarget).All(t => t.Known), Is.True);
+            var enabled = read.Targets[EnabledTarget];
+            Assert.That((enabled.Node, enabled.Property, enabled.Component, enabled.Rest), Is.EqualTo((3, "enabled", "renderer", 1d)));
+            var material = read.Targets[EnabledTarget + 2];
+            Assert.That((material.Node, material.Property, material.Material, material.Name, material.Rest), Is.EqualTo((-1, "materialFloat", 2, "_Cutoff", .25)));
+            var json = Json(WithRendererAndMaterial());
+            Assert.That(At(json, "targets", EnabledTarget).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "component", "node", "property", "rest" }));
+            Assert.That(At(json, "targets", EnabledTarget + 1).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "material", "name", "property", "rest" }));
+            // Another property of the same material, and the renderer of
+            // another node, are their own targets.
+            var data = WithRendererAndMaterial();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 0, Name = "_Alpha", Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "enabled", Component = "renderer", Rest = 0 });
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
+        }
+
+        [Test]
+        public void ReadRejectsABrokenEnabledOrMaterialFloatTarget()
+        {
+            const int Material = EnabledTarget + 1;
+            // An enabled target is a flag of a node's component.
+            RejectsRendererAndMaterial(json => At(json, "targets", EnabledTarget)["rest"] = 2L);
+            RejectsRendererAndMaterial(json => At(json, "targets", EnabledTarget)["rest"] = .5);
+            RejectsRendererAndMaterial(json => At(json, "targets", EnabledTarget).Remove("node"));
+            RejectsRendererAndMaterial(json => At(json, "targets", EnabledTarget).Remove("component"));
+            RejectsRendererAndMaterial(json => At(json, "targets", EnabledTarget)["component"] = 1L);
+            RejectsRendererAndMaterial(json => At(json, "targets", EnabledTarget)["material"] = 0L);
+            RejectsRendererAndMaterial(json => ((List<object>)json["targets"]).Add(At(json, "targets", EnabledTarget)));
+            // A materialFloat target names a glTF material and a property, and no node.
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["node"] = 3L);
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["material"] = -1L);
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["material"] = 1.5);
+            RejectsRendererAndMaterial(json => At(json, "targets", Material).Remove("name"));
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["name"] = "");
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["name"] = 1L);
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["rest"] = "0.5");
+            RejectsRendererAndMaterial(json => At(json, "targets", Material)["extra"] = 1L);
+            RejectsRendererAndMaterial(json => ((List<object>)json["targets"]).Add(At(json, "targets", Material)));
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithRendererAndMaterial())));
+        }
+
+        // An enabled target of a component the reader does not know is read
+        // as an unknown target and written back as read.
+        [Test]
+        public void AnEnabledTargetOfAnUnknownComponentIsReadAsUnknown()
+        {
+            var json = WithUnknown(new Dictionary<string, object> { ["node"] = 3L, ["property"] = "enabled", ["component"] = "light", ["index"] = 0L, ["rest"] = 1L });
+            var text = JsonDom.Serialize(json);
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That((read.Targets[3].Known, read.Targets[3].Property, read.Targets[3].Rest), Is.EqualTo((false, "enabled", 1d)));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            // With no component at all it is a broken renderer target.
+            Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["node"] = 3L, ["property"] = "enabled", ["rest"] = 1L })));
         }
 
         // An evaluator gives an unknown target values like any other: rest
@@ -739,7 +828,7 @@ namespace VRVlog.LilToonExporter.Tests
             track.Curves.Add(curve);
             clip.Tracks.Add(track);
             data.Clips.Add(clip);
-            data.Targets.Add(new AvatarAnimatorData.Target { Property = "materialFloat", Node = -1, Rest = .5 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "materialColor", Node = -1, Rest = .5 });
             var read = AvatarAnimatorData.Read(Json(data));
             Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
             var evaluator = new AvatarAnimatorEvaluator(read, () => 0);

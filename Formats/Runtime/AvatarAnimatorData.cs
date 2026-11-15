@@ -12,7 +12,8 @@ namespace VRVlog.AvatarAnimator
     // Menu and Expression Parameters as the build left them, for the app to
     // play. Sub-state machines are flat tables per layer; every reference is
     // an index into a table of the same extension. Curves are written only
-    // for what the app can play (activeSelf); the rest are counted by kind.
+    // for what the app can play (activeSelf, BlendShape weights, renderer
+    // enabled and material floats); the rest are counted by kind.
     public sealed class AvatarAnimatorData
     {
         public const string Extension = "VRVLOG_avatar_animator";
@@ -49,7 +50,9 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "morph", "parameter" };
+        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat" };
+        // The components an enabled target turns on and off.
+        public static readonly string[] Components = { "renderer" };
         // The order the omitted kinds are written in.
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
@@ -200,7 +203,12 @@ namespace VRVlog.AvatarAnimator
         // target reaches at 1, so a weight v shows the glTF weight
         // (v - Baked) / (End - Baked). A parameter target is FX parameter
         // Parameter, which belongs to no node (Node is -1).
-        // A target of a property this reader does not know (Known is false)
+        // An enabled target is the enabled flag of Component on Node (a
+        // renderer, the one the node draws), Rest 0 or 1. A materialFloat
+        // target is the float property Name of glTF material Material, which
+        // belongs to no node (Node is -1).
+        // A target of a property this reader does not know (Known is false),
+        // or an enabled target of a component it does not know,
         // is read without looking at its keys: a newer exporter may write
         // kinds a reader takes later. Clips may move it and an evaluator
         // gives it values, but a player writes it nowhere. Its Node is -1,
@@ -212,8 +220,10 @@ namespace VRVlog.AvatarAnimator
             public int Node; public string Property = "active"; public double Rest;
             public int Morph; public double Baked, End;
             public int Parameter;
+            public string Component, Name;
+            public int Material;
             public Dictionary<string, object> Fields;
-            public bool Known => Array.IndexOf(Properties, Property) >= 0;
+            public bool Known => Array.IndexOf(Properties, Property) >= 0 && (Property != "enabled" || Array.IndexOf(Components, Component) >= 0);
         }
 
         public sealed class Omission { public string Kind; public int Count; }
@@ -275,6 +285,8 @@ namespace VRVlog.AvatarAnimator
             !t.Known ? (t.Fields != null ? new Dictionary<string, object>(t.Fields) : new Dictionary<string, object> { ["property"] = t.Property, ["rest"] = t.Rest })
             : t.Property == "morph" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["morph"] = (long)t.Morph, ["rest"] = t.Rest, ["baked"] = t.Baked, ["end"] = t.End }
             : t.Property == "parameter" ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
+            : t.Property == "enabled" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["component"] = t.Component, ["rest"] = (long)t.Rest }
+            : t.Property == "materialFloat" ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["rest"] = t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
@@ -603,11 +615,13 @@ namespace VRVlog.AvatarAnimator
                 data.Clips.Add(clip);
             }
 
-            var seenTargets = new HashSet<(int, string, int)>();
+            var seenTargets = new HashSet<(int, string, int, string)>();
             foreach (var raw in targets)
             {
                 var t = Json.Obj(raw);
                 var target = new Target { Property = Name(Get(t, "property")) };
+                // An enabled target always names its component, known or not.
+                if (target.Property == "enabled" && (target.Component = Get(t, "component") as string) == null) throw Json.Bad();
                 if (!target.Known)
                 {
                     // Another kind, kept for a reader that knows it.
@@ -637,16 +651,26 @@ namespace VRVlog.AvatarAnimator
                     var type = data.Parameters[target.Parameter].Type;
                     if (type == "int" ? target.Rest != Math.Floor(target.Rest) || target.Rest < int.MinValue || target.Rest > int.MaxValue : type != "float" && target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
+                else if (target.Property == "materialFloat")
+                {
+                    Json.Obj(t, "property", "material", "name", "rest");
+                    target.Node = -1;
+                    target.Material = Json.NonNegative(t["material"]);
+                    target.Name = Json.Text(t["name"]);
+                    target.Rest = Json.Number(t["rest"]);
+                }
                 else
                 {
-                    Json.Obj(t, "node", "property", "rest");
+                    Json.Obj(t, target.Property == "enabled" ? new[] { "node", "property", "component", "rest" } : new[] { "node", "property", "rest" });
                     target.Node = Json.NonNegative(t["node"]);
                     target.Rest = Json.Integer(t["rest"]);
                     if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
-                // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for parameter.
-                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : 0;
-                if (!seenTargets.Add((target.Node, target.Property, key))) throw Json.Bad();
+                // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for
+                // parameter, (node, component) for enabled, (material, name) for materialFloat.
+                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : target.Property == "materialFloat" ? target.Material : 0;
+                var keyName = target.Property == "enabled" ? target.Component : target.Property == "materialFloat" ? target.Name : null;
+                if (!seenTargets.Add((target.Node, target.Property, key, keyName))) throw Json.Bad();
                 data.Targets.Add(target);
             }
             // Unity animates a float parameter only; a curve on an int, bool or

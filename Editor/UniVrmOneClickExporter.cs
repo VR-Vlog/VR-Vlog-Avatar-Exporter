@@ -922,7 +922,7 @@ namespace VRVlog.LilToonExporter
                 // references. Disable external audio on the final owned copy too.
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
-                DropEmptySubmeshes(clone, temporaryMeshes, warnings);
+                DropEmptySubmeshes(clone, temporaryMeshes, warnings, (renderer, kept) => avatarAnimator?.KeepSlots(renderer, kept));
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
@@ -1046,7 +1046,7 @@ namespace VRVlog.LilToonExporter
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
                             AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
-                                animatorMorphReverses)), () => null);
+                                animatorMorphReverses), material => model.Materials.IndexOf(material)), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
@@ -1319,7 +1319,8 @@ namespace VRVlog.LilToonExporter
         // for it, so the export copy drops it with its material slot. Runs
         // after PreserveExtraMaterialSlots, so slots and submeshes line up.
         // A mesh whose submeshes are all empty is left to DisableEmptyMeshRenderers.
-        internal static void DropEmptySubmeshes(GameObject clone, ICollection<Mesh> owned, ICollection<string> warnings)
+        // slotsKept gets, for each slot a renderer keeps, the slot it had.
+        internal static void DropEmptySubmeshes(GameObject clone, ICollection<Mesh> owned, ICollection<string> warnings, Action<Renderer, int[]> slotsKept = null)
         {
             foreach (var renderer in ExportRendererSelection.Enumerate(clone))
             {
@@ -1333,8 +1334,9 @@ namespace VRVlog.LilToonExporter
                 var slots = renderer.sharedMaterials;
                 // Slots past the submeshes draw the last submesh again, which
                 // draws nothing when that one is empty.
-                var extra = original.GetIndexCount(count - 1) > 0 ? slots.Skip(count) : Enumerable.Empty<Material>();
-                var materials = kept.Where(sub => sub < slots.Length).Select(sub => slots[sub]).Concat(extra).ToArray();
+                var extra = original.GetIndexCount(count - 1) > 0 ? Enumerable.Range(count, Math.Max(0, slots.Length - count)) : Enumerable.Empty<int>();
+                var keptSlots = kept.Where(sub => sub < slots.Length).Concat(extra).ToArray();
+                var materials = keptSlots.Select(slot => slots[slot]).ToArray();
                 var mesh = UnityEngine.Object.Instantiate(original);
                 mesh.name = original.name;
                 owned.Add(mesh);
@@ -1343,6 +1345,7 @@ namespace VRVlog.LilToonExporter
                     mesh.SetIndices(original.GetIndices(kept[sub]), original.GetTopology(kept[sub]), sub, false);
                 ReplaceMesh(skin, filter, mesh);
                 renderer.sharedMaterials = materials;
+                slotsKept?.Invoke(renderer, keptSlots);
                 warnings?.Add(ExporterLocalization.T(EmptySubmeshesOmitted) +
                     (renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform)));
             }
