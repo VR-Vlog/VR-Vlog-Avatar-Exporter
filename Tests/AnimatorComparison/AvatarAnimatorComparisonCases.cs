@@ -17,6 +17,8 @@ namespace VRVlog.AvatarAnimator.Comparison
     public static class AvatarAnimatorComparison
     {
         public const double ValueTolerance = 1e-4;
+        // Unity's muscles are read back from the bones (HumanPoseHandler) in floats.
+        public const double MuscleTolerance = 1e-3;
 
         public sealed class Case
         {
@@ -28,8 +30,12 @@ namespace VRVlog.AvatarAnimator.Comparison
             // Layer weights set (Animator.SetLayerWeight) before the first frame that starts at or after Time.
             public readonly List<(double Time, int Layer, double Weight)> LayerWeights = new List<(double, int, double)>();
             // Targets Unity plays as GameObject.activeSelf; the others are a
-            // float (Transform.localPosition.x) so blends compare exactly.
+            // float (Transform.localPosition.x) so blends compare exactly. A
+            // morph target is a SkinnedMeshRenderer's blend shape, and a
+            // muscle target a muscle of a humanoid rig, which Unity reads
+            // back with HumanPoseHandler.
             public readonly HashSet<int> ActiveTargets = new HashSet<int>();
+            public bool Humanoid => Data.Targets.Any(t => t.Property == "muscle");
         }
 
         public static readonly string[] Timings = { "60", "30", "jitter" };
@@ -121,7 +127,7 @@ namespace VRVlog.AvatarAnimator.Comparison
             {
                 time += steps[i];
                 for (var t = 0; t < values[i].Length; t++)
-                    if (!(Math.Abs(values[i][t] - unityValues[i][t]) <= ValueTolerance))
+                    if (!(Math.Abs(values[i][t] - unityValues[i][t]) <= (c.Data.Targets[t].Property == "muscle" ? MuscleTolerance : ValueTolerance)))
                     {
                         differences++;
                         first = first ?? string.Format(CultureInfo.InvariantCulture, "frame {0} (t={1:0.####}) target {2}: evaluator {3:R}, Unity {4:R}", i, time, t, values[i][t], unityValues[i][t]);
@@ -234,6 +240,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return ParameterHold();
             yield return ParameterPass();
             yield return LayerZero();
+            yield return Hands();
+            yield return MaskParts();
+            yield return NodeMask();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -965,6 +974,104 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
+        // VRChat's hand gestures in the gesture controller (the FX has no
+        // layer): a base layer without a mask moving the spine and an arm, a
+        // left hand layer whose mask lets only the left fingers move, and a
+        // right hand layer without Write Defaults whose mask lets only the
+        // right fingers move. Each hand's gesture also writes an arm muscle
+        // its mask keeps off. Muscles are HumanTrait.MuscleName's indexes.
+        static Case Hands()
+        {
+            var c = new Builder("hands", 2.4);
+            var left = c.Parameter("GestureLeft", "int");
+            var right = c.Parameter("GestureRight", "int");
+            var sway = c.Parameter("Sway", "float");
+            var spine = c.Muscle(0);
+            var leftArm = c.Muscle(39);
+            var rightArm = c.Muscle(48);
+            var leftThumb = c.Muscle(55);
+            var leftIndex = c.Muscle(59);
+            var rightIndex = c.Muscle(79);
+            c.Controller("fx");
+            c.Controller("gesture");
+            var body = c.Layer("AllParts");
+            var swing = c.Ramp(1.5, true, leftArm, -.5, .5);
+            var still = c.Constant(1, true, (spine, .3), (leftArm, .2));
+            c.State(body, "Idle", c.Tree("1d", sway, (swing, 0, 1), (still, 1, 1)));
+            var leftHand = c.Layer("Left Hand", mask: Mask(new[] { 7 }));
+            var open = c.State(leftHand, "Open", c.Constant(1, true, (leftThumb, 0), (leftIndex, 0)));
+            var fist = c.State(leftHand, "Fist", c.Constant(1, true, (leftThumb, .8), (leftIndex, -.6), (leftArm, 1)));
+            leftHand.States[open].Transitions.Add(To(fist, duration: .2).When(left, "equals", 1));
+            leftHand.States[fist].Transitions.Add(To(open, duration: .15).When(left, "notEqual", 1));
+            var rightHand = c.Layer("Right Hand", mask: Mask(new[] { 8 }));
+            var idle = c.State(rightHand, "Idle", c.Constant(1, true, (rightIndex, 0)), writeDefaults: false);
+            var point = c.State(rightHand, "Point", c.Constant(1, true, (rightIndex, .7), (rightArm, -1)), writeDefaults: false);
+            rightHand.States[idle].Transitions.Add(To(point, duration: .25).When(right, "equals", 2));
+            rightHand.States[point].Transitions.Add(To(idle, duration: .1).When(right, "notEqual", 2));
+            c.Input(.3, left, 1).Input(.7, right, 2).Input(1, sway, .5).Input(1.2, left, 0).Input(1.6, right, 0).Input(1.9, left, 1);
+            return c.Case;
+        }
+
+        // Which body part each muscle belongs to: a base layer sets every
+        // muscle, and then a layer for each body part with muscles (Body to
+        // RightFingers), whose mask lets only that part move, sets every
+        // muscle again to a value of its own.
+        static Case MaskParts()
+        {
+            var c = new Builder("maskParts", .1);
+            var muscles = Enumerable.Range(0, AvatarAnimatorData.MuscleCount).Select(c.Muscle).ToArray();
+            c.Controller("fx");
+            c.Controller("gesture");
+            // Small values: with every muscle moved, Unity reads the limbs
+            // back up to 2e-3 off at .5.
+            c.State(c.Layer("Base"), "All", c.Constant(1, true, muscles.Select(m => (m, -.01)).ToArray()));
+            for (var part = 1; part <= 8; part++)
+            {
+                var value = .02 * part;
+                c.State(c.Layer("Part " + part, mask: Mask(new[] { part })), "All", c.Constant(1, true, muscles.Select(m => (m, value)).ToArray()));
+            }
+            return c.Case;
+        }
+
+        // Transform masks: an upper layer whose mask names only the first
+        // position's transform, and one whose mask names none. A mask keeps
+        // a layer off the positions of the transforms it leaves out, but
+        // not off a GameObject, a blend shape or a parameter a clip animates
+        // there. Unity's masks also name the root, left out.
+        static Case NodeMask()
+        {
+            var c = new Builder("nodeMask", 1.6);
+            var go = c.Parameter("Go", "bool");
+            var blend = c.Parameter("Blend", "float");
+            var first = c.Position(0);
+            var second = c.Position(0);
+            var shown = c.Target(1, active: true);
+            var face = c.Morph(0);
+            var value = c.ParameterTarget(blend);
+            var allParts = Enumerable.Range(0, AvatarAnimatorData.BodyPartCount).ToArray();
+            var bottom = c.Layer("Bottom");
+            c.State(bottom, "A", c.Constant(1, true, (first, 1), (second, 1), (shown, 1), (face, 10), (value, .25)));
+            var top = c.Layer("Top", mask: Mask(allParts, new[] { c.Case.Data.Targets[first].Node }));
+            var a = c.State(top, "A", c.Constant(1, true, (first, 3), (second, 4), (shown, 0), (face, 30), (value, .5)));
+            var b = c.State(top, "B", c.Constant(1, true, (first, 5), (second, 6), (shown, 1), (face, 60), (value, .75)));
+            top.States[a].Transitions.Add(To(b, duration: .3).When(go, "if"));
+            top.States[b].Transitions.Add(To(a, duration: .2).When(go, "ifNot"));
+            var none = c.Layer("None", mask: Mask(allParts, new int[0]));
+            c.State(none, "C", c.Constant(1, true, (second, 9), (value, .1)), writeDefaults: false);
+            c.Input(.4, go, 1).Input(1, go, 0);
+            return c.Case;
+        }
+
+        // The body parts a mask lets move and, unless null, the nodes of the
+        // transforms it lets move (it names the others too).
+        static AvatarAnimatorData.Mask Mask(int[] humanoid, int[] nodes = null)
+        {
+            var mask = new AvatarAnimatorData.Mask();
+            mask.Humanoid.AddRange(humanoid);
+            if (nodes != null) mask.Nodes = new List<int>(nodes);
+            return mask;
+        }
+
         static AvatarAnimatorData.Transition To(int state, double duration = 0, bool exitTime = false, double at = 0, bool fixedDuration = true) =>
             new AvatarAnimatorData.Transition { ToState = state, Timed = true, Duration = duration, HasFixedDuration = fixedDuration, HasExitTime = exitTime, ExitTime = at };
 
@@ -997,6 +1104,35 @@ namespace VRVlog.AvatarAnimator.Comparison
                 Data.Targets.Add(new AvatarAnimatorData.Target { Node = Data.Targets.Count, Rest = rest });
                 if (active) Case.ActiveTargets.Add(Data.Targets.Count - 1);
                 return Data.Targets.Count - 1;
+            }
+
+            // The x of a node's position, which a transform mask filters.
+            internal int Position(int rest)
+            {
+                Data.Targets.Add(new AvatarAnimatorData.Target { Node = Data.Targets.Count, Property = "translation", Channel = "x", Rest = rest });
+                return Data.Targets.Count - 1;
+            }
+
+            // A node's first blend shape, which Unity plays on a SkinnedMeshRenderer.
+            internal int Morph(int rest)
+            {
+                Data.Targets.Add(new AvatarAnimatorData.Target { Node = Data.Targets.Count, Property = "morph", Rest = rest, End = 100 });
+                return Data.Targets.Count - 1;
+            }
+
+            // A Humanoid muscle (HumanTrait.MuscleName's index) at the T-pose's 0.
+            internal int Muscle(int muscle)
+            {
+                Data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "muscle", Muscle = muscle, Rest = 0 });
+                return Data.Targets.Count - 1;
+            }
+
+            // The layers after this go to a new controller of the playable.
+            internal Builder Controller(string playable)
+            {
+                controller = new AvatarAnimatorData.Controller { Playable = playable };
+                Data.Controllers.Add(controller);
+                return this;
             }
 
             // A parameter a clip animates, at the controller's default.
@@ -1089,10 +1225,10 @@ namespace VRVlog.AvatarAnimator.Comparison
                     (Constant(1, true, targets.Select((target, t) => (target, t == i ? 1.0 : 0.0)).ToArray()), position.X, position.Y, 1.0)).ToArray());
             }
 
-            internal AvatarAnimatorData.Layer Layer(string name, double weight = 1)
+            internal AvatarAnimatorData.Layer Layer(string name, double weight = 1, AvatarAnimatorData.Mask mask = null)
             {
                 if (controller == null) { controller = new AvatarAnimatorData.Controller(); Data.Controllers.Add(controller); }
-                var layer = new AvatarAnimatorData.Layer { Name = name, Weight = controller.Layers.Count == 0 ? 1 : weight };
+                var layer = new AvatarAnimatorData.Layer { Name = name, Weight = controller.Layers.Count == 0 ? 1 : weight, Mask = mask };
                 layer.Machines.Add(new AvatarAnimatorData.Machine { Name = name });
                 controller.Layers.Add(layer);
                 return layer;
