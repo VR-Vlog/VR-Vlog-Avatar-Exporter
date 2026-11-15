@@ -134,7 +134,14 @@ namespace VRVlog.LilToonExporter
         HashSet<Motion> drivenWalked = new HashSet<Motion>();
         // The value the FX controller gives each parameter it declares.
         readonly Dictionary<int, double> controllerDefaults = new Dictionary<int, double>();
-        readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
+        // What the controller being read leaves out, by kind: a gesture or
+        // action controller's own while that one is read (see Capture), the
+        // FX's before and after.
+        Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
+        // What each gesture or action controller left out, by kind. Resolve
+        // keeps the transition kinds there and adds the others to the data's.
+        readonly Dictionary<AvatarAnimatorData.Controller, Dictionary<string, int>> controllerOmitted =
+            new Dictionary<AvatarAnimatorData.Controller, Dictionary<string, int>>();
 
         readonly GameObject root;
         readonly IReadOnlyDictionary<GameObject, bool> rest;
@@ -308,7 +315,7 @@ namespace VRVlog.LilToonExporter
             capture.data.Controllers.Add(capture.ReadController(controller, "fx"));
             // Then the Gesture and the Action, each with its own parameters,
             // overrides, motions and clips; the FX's are kept for the faces.
-            var fxReads = (capture.controllerParameters, capture.overrides, capture.motionIndex, capture.unreadTrees, capture.drivenWalked, capture.clipIndex);
+            var fxReads = (capture.controllerParameters, capture.overrides, capture.motionIndex, capture.unreadTrees, capture.drivenWalked, capture.clipIndex, capture.omitted);
             foreach (var (type, playable) in new[] { ("Gesture", "gesture"), ("Action", "action") })
             {
                 var runtime = Playable(descriptor, type);
@@ -319,10 +326,13 @@ namespace VRVlog.LilToonExporter
                 capture.unreadTrees = new Dictionary<Motion, bool>();
                 capture.drivenWalked = new HashSet<Motion>();
                 capture.clipIndex = new Dictionary<AnimationClip, int>();
+                capture.omitted = new Dictionary<string, int>(StringComparer.Ordinal);
                 capture.ReadControllerParameters(other);
-                capture.data.Controllers.Add(capture.ReadController(other, playable));
+                var read = capture.ReadController(other, playable);
+                capture.data.Controllers.Add(read);
+                capture.controllerOmitted[read] = capture.omitted;
             }
-            (capture.controllerParameters, capture.overrides, capture.motionIndex, capture.unreadTrees, capture.drivenWalked, capture.clipIndex) = fxReads;
+            (capture.controllerParameters, capture.overrides, capture.motionIndex, capture.unreadTrees, capture.drivenWalked, capture.clipIndex, capture.omitted) = fxReads;
             // Menus name only parameters that Expression Parameters declare.
             if (expressions) capture.ReadMenus(Member(descriptor, "expressionsMenu"));
             return capture;
@@ -730,10 +740,26 @@ namespace VRVlog.LilToonExporter
                     data.Clips[i].Tracks.Add(track);
                 }
             }
+            // A gesture or action controller keeps what changes its own
+            // transitions, which skips only it (M15); what it leaves out of
+            // the clips counts with the FX's, as the clips are shared.
+            var shared = new Dictionary<string, int>(omitted, StringComparer.Ordinal);
+            foreach (var controller in data.Controllers)
+            {
+                if (!controllerOmitted.TryGetValue(controller, out var own)) continue;
+                controller.Omitted.Clear();
+                foreach (var kind in AvatarAnimatorData.OmittedKinds)
+                {
+                    if (!own.TryGetValue(kind, out var times) || times == 0) continue;
+                    if (Array.IndexOf(AvatarAnimatorData.TransitionOmittedKinds, kind) >= 0)
+                        controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = times });
+                    else shared[kind] = (shared.TryGetValue(kind, out var count) ? count : 0) + times;
+                }
+            }
             data.Omitted.Clear();
             foreach (var kind in AvatarAnimatorData.OmittedKinds)
             {
-                var count = (omitted.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0) +
+                var count = (shared.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0) +
                             (kind == "material" ? materialLost + slotLost : 0) + (kind == "enabled" ? off : 0) + (kind == "materialSlotShader" ? slotShader : 0) +
                             (kind == "transform" ? transformLost : 0) + (kind == "rotationMixed" ? mixed : 0) + (kind == "muscle" ? muscleLost : 0);
                 if (count > 0) data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = count });
@@ -1268,10 +1294,13 @@ namespace VRVlog.LilToonExporter
 
         // The curves the written extension left out, by kind, for the result;
         // null when it left none out. The other kinds stay in omitted only.
+        // A gesture or action controller's own omitted counts too: the
+        // parameter curves of its clips are there.
         internal static string OmittedCurvesLine(AvatarAnimatorData data)
         {
             if (data == null) return null;
-            var parts = CurveKinds.Select(kind => (kind.Label, Count: data.Omitted.FirstOrDefault(omission => omission.Kind == kind.Kind)?.Count ?? 0))
+            var all = data.Omitted.Concat(data.Controllers.SelectMany(controller => controller.Omitted)).ToList();
+            var parts = CurveKinds.Select(kind => (kind.Label, Count: all.Where(omission => omission.Kind == kind.Kind).Sum(omission => omission.Count)))
                 .Where(part => part.Count > 0)
                 .Select(part => ExporterLocalization.Format(OmittedCurveCount, ExporterLocalization.T(part.Label), part.Count)).ToList();
             return parts.Count == 0 ? null : ExporterLocalization.Format(OmittedCurvesNote, string.Join(ExporterLocalization.T("、"), parts));
