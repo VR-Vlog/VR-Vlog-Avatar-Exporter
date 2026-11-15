@@ -2363,6 +2363,134 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A lilToon material that slot curves set and no written slot holds is
+        // an unbound swap, named once however many curves set it; with the
+        // copy the export added, every curve's key is the copy's glTF index.
+        // A material a slot holds, another shader's material and a curve on a
+        // renderer the file does not write add nothing.
+        [Test]
+        public void UnboundSwapsResolveToTheAddedCopies()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var loose = new Material(animator.shader) { name = "Loose" };
+            var hidden = new Material(animator.shader) { name = "Hidden" };
+            var plain = new Material(Shader.Find("Hidden/InternalErrorShader")) { name = "Plain" };
+            var copy = new Material(animator.shader) { name = "Loose copy" };
+            try
+            {
+                void Add(string name, string path, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot(path, 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Loose", "Glasses", loose, animator);
+                Add("Loose again", "Glasses", null, loose);
+                Add("Held", "Glasses", animator);
+                Add("Plain", "Glasses", loose, plain);
+                // Hat is off, so the file has no mesh for it here.
+                Add("Hidden", "Hat", hidden);
+                var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+                var shown = avatar.Source.GetComponentsInChildren<Renderer>();
+                Assert.That(capture.UnboundSwaps(shown), Is.EqualTo(new[] { loose }));
+
+                capture.AddedMaterials = new Dictionary<Material, Material> { [loose] = copy };
+                var materials = new List<Material> { animator, copy };
+                var nodes = new Dictionary<GameObject, int>();
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(
+                    gameObject => gameObject.activeInHierarchy ? nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count : -1,
+                    null, materials.IndexOf)));
+                var target = data.Targets.Single(t => t.Property == "materialSlot");
+                Assert.That((target.Node, target.Slot, target.Rest), Is.EqualTo((nodes[glasses], 0, 0d)));
+                double[] Keys(string layer) => ClipOf(data, layer).Tracks.Single(t => data.Targets[t.Target].Stepped).Curves.Single().Keys.Select(k => k.Value).ToArray();
+                Assert.That(Keys("Loose"), Is.EqualTo(new[] { 1d, 0d }));
+                Assert.That(Keys("Loose again"), Is.EqualTo(new[] { -1d, 1d }));
+                Assert.That(Keys("Held"), Is.EqualTo(new[] { 0d }));
+                Assert.That(ClipOf(data, "Plain").Tracks.Any(t => data.Targets[t.Target].Stepped), Is.False);
+                Assert.That(Omitted(data, "materialSlotShader"), Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(loose);
+                Object.DestroyImmediate(hidden);
+                Object.DestroyImmediate(plain);
+                Object.DestroyImmediate(copy);
+            }
+        }
+
+        // In a real export, a swap to a material a mesh already draws with adds
+        // nothing. A swap to a lilToon material no mesh draws with, set by two
+        // layers, adds one material at the end of the glTF materials, which no
+        // primitive uses and the materialSlot keys name, with its lilToon
+        // record in VRVLOG_materials_liltoon_unbound only: the app's reader of
+        // VRVLOG_materials_liltoon (LilToonFullContract.Validate), which
+        // rejects an unbound record, still accepts the file.
+        [Test]
+        public void AnUnboundSwapIsAddedAtTheEndWithItsRecordApart()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var loose = new Material(animator) { name = "Loose" };
+            loose.SetColor("_Color", Color.red);
+            try
+            {
+                void Add(string name, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Held", animator);
+                var warnings = new List<string>();
+                var before = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                Assert.That(((Dictionary<string, object>)before["extensions"]).ContainsKey(LilToonFullContract.UnboundExtensionName), Is.False, string.Join("\n", warnings));
+                var count = ((List<object>)before["materials"]).Count;
+
+                Add("Loose", loose, animator);
+                Add("Loose again", animator, loose);
+                warnings.Clear();
+                var bytes = Export(avatar.Source, warnings, null);
+                var glb = GlbDocument.Read(bytes);
+                var json = glb.Json;
+                var materials = (List<object>)json["materials"];
+                Assert.That(materials.Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
+                var added = count;
+                var primitives = ((List<object>)json["meshes"]).Cast<Dictionary<string, object>>()
+                    .SelectMany(mesh => ((List<object>)mesh["primitives"]).Cast<Dictionary<string, object>>());
+                Assert.That(primitives.Select(p => Convert.ToInt32(p["material"])), Has.No.Member(added));
+                Assert.That(((Dictionary<string, object>)((Dictionary<string, object>)materials[added])["extensions"]).ContainsKey("VRMC_materials_mtoon"), Is.True);
+
+                var data = Read(json);
+                var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
+                double[] Keys(string layer) => ClipOf(data, layer).Tracks.Single(t => t.Target == slot).Curves.Single().Keys.Select(k => k.Value).ToArray();
+                var rest = data.Targets[slot].Rest;
+                Assert.That(Keys("Loose"), Is.EqualTo(new[] { (double)added, rest }));
+                Assert.That(Keys("Loose again"), Is.EqualTo(new[] { rest, (double)added }));
+
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                var unbound = (Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName];
+                Assert.That(Convert.ToInt32(unbound["schemaVersion"]), Is.EqualTo(LilToonFullContract.UnboundSchemaVersion));
+                var record = (Dictionary<string, object>)((List<object>)unbound["materials"]).Single();
+                Assert.That(Convert.ToInt32(record["materialIndex"]), Is.EqualTo(added));
+                Assert.That(record["name"], Is.EqualTo("Loose"));
+                var full = (Dictionary<string, object>)extensions[LilToonFullContract.ExtensionName];
+                Assert.That(((List<object>)full["materials"]).Cast<Dictionary<string, object>>().Select(m => Convert.ToInt32(m["materialIndex"])), Has.No.Member(added));
+                Assert.That((List<object>)json["extensionsUsed"], Has.Member(LilToonFullContract.UnboundExtensionName));
+                var required = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"])[AvatarFormatVersions.RequiredAppVersionsKey];
+                Assert.That(required[LilToonFullContract.UnboundExtensionName], Is.EqualTo("1.2.8"));
+                Assert.DoesNotThrow(() => LilToonFullContract.Validate(json, bytes.LongLength, glb.Binary.Length));
+            }
+            finally
+            {
+                Object.DestroyImmediate(loose);
+            }
+        }
+
         [Test]
         public void AMaterialSlotCurveIsAMeshRenderersMaterialsElement()
         {

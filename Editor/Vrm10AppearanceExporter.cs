@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter
             IMaterialExporter materialExporter, ITextureSerializer textureSerializer, VRM10ObjectMeta vrmMeta,
             IDictionary<Material, int> materialIndices = null,
             Action<ModelExporter, Model, ExportingGltfData> afterExport = null,
-            ICollection<string> warnings = null)
+            ICollection<string> warnings = null, IReadOnlyList<Material> addedMaterials = null)
         {
             using var arrays = new NativeArrayManager();
             using var meshPreparation = VrmMeshAttributePreparation.Prepare(avatar, warnings);
@@ -24,6 +24,11 @@ namespace VRVlog.LilToonExporter
             // afterExport see the same node TRS as ModelExporter did.
             using var rootScale = RootScaleBake.Apply(avatar);
             var model = converter.Export(settings, arrays, avatar);
+            // Materials no mesh draws with (a slot curve sets them) come after
+            // the meshes' own, so the indices of those stay as they were.
+            if (addedMaterials != null)
+                foreach (var material in addedMaterials)
+                    if (material != null && !model.Materials.Contains(material)) model.Materials.Add(material);
             PreserveMorphNormals(converter, arrays, settings);
             meshPreparation.RestoreSourceMeshKeys(converter);
             // ModelExporter accepts meshes without UV0, but the pinned

@@ -974,6 +974,17 @@ namespace VRVlog.LilToonExporter
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight), () => null) : null;
+                // The lilToon materials only slot curves set, which no mesh draws
+                // with: the file adds them at the end of the glTF materials. A
+                // failure here adds none; their curves are then counted as material.
+                IReadOnlyList<Material> unboundSwaps = Array.Empty<Material>();
+                if (avatarAnimator != null)
+                    try
+                    {
+                        unboundSwaps = avatarAnimator.UnboundSwaps(ExportRendererSelection.ExportedMeshRenderers(clone));
+                        fullSnapshot?.AddUnbound(unboundSwaps);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); unboundSwaps = Array.Empty<Material>(); }
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // Another lilToon version may lack a 2.3.4 property a material
                 // needs. Such a material keeps the MToon approximation written
@@ -1036,8 +1047,12 @@ namespace VRVlog.LilToonExporter
                 try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
                 catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var matcapBakes = new MatcapApproximation.Bakes(bakeMatcaps);
-                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
-                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes);
+                var replaced = ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
+                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes, unbound: unboundSwaps);
+                // The copies of the materials only slot curves set, added after
+                // the meshes' materials in the order the curves name them.
+                var addedMaterials = unboundSwaps.Where(replaced.ContainsKey).ToDictionary(material => material, material => replaced[material]);
+                if (avatarAnimator != null) avatarAnimator.AddedMaterials = addedMaterials.Count > 0 ? addedMaterials : null;
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -1067,7 +1082,7 @@ namespace VRVlog.LilToonExporter
                     vrmMeta: CreateMeta(avatarName.Trim(), author.Trim(), licenseOptions),
                     afterExport: (converter, model, storage) =>
                     {
-                        if (fullSnapshot != null) guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));
+                        if (fullSnapshot != null) guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage, addedMaterials));
                         guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));
                         guard.Watch(ExportStage.PoseCapture, () => poses.Bind(converter, model, storage));
                         optimizerBindings.Bind(converter, model, storage);
@@ -1094,7 +1109,7 @@ namespace VRVlog.LilToonExporter
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
-                    }, warnings: warnings);
+                    }, warnings: warnings, addedMaterials: unboundSwaps.Where(addedMaterials.ContainsKey).Select(material => addedMaterials[material]).ToList());
                 guard.Watch(optimizerStage, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
                 // or its save: over the app's image limit, export without them.
@@ -1503,7 +1518,8 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
-            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null, MatcapApproximation.Bakes matcapBakes = null)
+            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null, MatcapApproximation.Bakes matcapBakes = null,
+            IReadOnlyList<Material> unbound = null)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
@@ -1569,6 +1585,21 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(MissingMaterialsError + string.Join(", ", unassigned.Take(5)) +
                     (unassigned.Count > 5 ? ", …" : ""));
             if (converted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
+            // Materials no slot holds, which a slot curve sets, get a copy each
+            // too; one that cannot be converted gets the MToon defaults rather
+            // than cost the file.
+            foreach (var source in unbound ?? Array.Empty<Material>())
+            {
+                if (source == null || converted.ContainsKey(source) || !LilToonMaterialReader.IsLilToon(source)) continue;
+                Material fallback;
+                try { fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, 1f, matcapBakes); }
+                catch (Exception error) when (!(error is OperationCanceledException))
+                {
+                    fallback = CreateMToonDefault(source, created);
+                    warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + source.name + " — " + error.Message);
+                }
+                converted.Add(source, fallback);
+            }
             return converted;
         }
 

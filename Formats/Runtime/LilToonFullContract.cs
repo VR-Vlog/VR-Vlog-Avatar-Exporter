@@ -10,6 +10,13 @@ namespace VRVlog.LilToon
     public static class LilToonFullContract
     {
         public const string ExtensionName = "VRVLOG_materials_liltoon";
+        // The records of materials no primitive draws with, which a
+        // materialSlot target of VRVLOG_avatar_animator sets: { schemaVersion,
+        // materials } with each material in the shape of ExtensionName's, its
+        // textures indexing ExtensionName's. Validate does not read it, so an
+        // app that predates it keeps ExtensionName.
+        public const string UnboundExtensionName = "VRVLOG_materials_liltoon_unbound";
+        public const int UnboundSchemaVersion = 1;
         public const string SourceColorSpaceKey = "VRVLOG_lilToonColorSpace";
 
         // glTF asset extras preserve compatibility with schema 2.0 consumers.
