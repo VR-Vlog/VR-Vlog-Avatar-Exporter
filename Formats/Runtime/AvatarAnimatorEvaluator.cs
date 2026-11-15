@@ -1501,11 +1501,14 @@ namespace VRVlog.AvatarAnimator
                 layer.HeldSerial = serial;
                 for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
-            for (var k = 0; k < animated.Length; k++) OutputTarget(layer, k, weight);
             // M7: a layer resting at weight 0 forgets its own values, as one that never
             // wrote. Mid-transition they stay, as an interruption copies them (not measured
-            // in Unity).
-            if (weight <= 0 && !layer.Transitioning) Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
+            // in Unity). Forgetting values kept from an earlier frame changes what the next
+            // frame writes, so that frame is evaluated (#3664).
+            var forgets = weight <= 0 && !layer.Transitioning;
+            if (forgets && Array.IndexOf(layer.OutWritten, true) >= 0) moved = true;
+            for (var k = 0; k < animated.Length; k++) OutputTarget(layer, k, weight);
+            if (forgets) Array.Clear(layer.OutWritten, 0, layer.OutWritten.Length);
         }
 
         bool Wrote(int t) => written[t] || (animatedWritten && isAnimated[t]);

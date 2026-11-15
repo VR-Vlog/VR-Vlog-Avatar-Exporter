@@ -1361,6 +1361,21 @@ public static class AvatarAnimatorEvaluatorTests
         skipped = Lockstep(b, 30, (e, frame) => { if (frame == 5) e.SetLayerWeight(1, 0); if (frame == 10) e.Set(go, 1); });
         Check(!skipped[11] && Count(skipped, 13, 30) == 17, "a Layer Control that changes the weight of an earlier layer plays the next frame");
 
+        // A layer at weight 0 forgets what it wrote (M7) after the frame that
+        // still wrote it, so the frame after no longer counts its targets
+        // written. Its empty state without Write Defaults holds what its clip
+        // wrote, the rest value, so the values do not change.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        node = b.Target();
+        Builder.State(b.Layer("Base"), "A", -1);
+        layer = b.Layer("Over");
+        a = Builder.State(layer, "C", b.Clip(0, false, (node, 0)), writeDefaults: false);
+        var held = Builder.State(layer, "E", -1, writeDefaults: false);
+        layer.States[a].Transitions.Add(To(held).When(go, "if"));
+        skipped = Lockstep(b, 60, (e, frame) => { if (frame == 10) e.Set(go, 1); if (frame == 30) e.SetLayerWeight(1, 0); });
+        Check(!skipped[30] && !skipped[31] && Count(skipped, 33, 60) == 27, "a layer at weight 0 plays the frame in which it forgets what it wrote");
+
         // A layer weight set from outside plays the frame.
         b = new Builder();
         node = b.Target();
