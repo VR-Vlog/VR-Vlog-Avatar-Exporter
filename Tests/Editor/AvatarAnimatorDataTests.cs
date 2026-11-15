@@ -1008,10 +1008,10 @@ namespace VRVlog.LilToonExporter.Tests
             RejectsMaterialSlot(json => At(json, "targets", SlotTarget)["extra"] = 1L);
             RejectsMaterialSlot(json => ((List<object>)json["targets"]).Add(At(json, "targets", SlotTarget)));
             // Its keys are material indices or -1 too.
-            static Dictionary<string, object> Key(Dictionary<string, object> json, int key) =>
-                (Dictionary<string, object>)((List<object>)At(json, "clips", 0, "tracks", 2, "curves", 0)["keys"])[key];
-            RejectsMaterialSlot(json => Key(json, 0)["value"] = .5);
-            RejectsMaterialSlot(json => Key(json, 1)["value"] = -2L);
+            static List<object> Key(Dictionary<string, object> json, int key) =>
+                (List<object>)((List<object>)At(json, "clips", 0, "tracks", 2, "curves", 0)["keys"])[key];
+            RejectsMaterialSlot(json => Key(json, 0)[1] = .5);
+            RejectsMaterialSlot(json => Key(json, 1)[1] = -2L);
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithMaterialSlot())));
         }
 
