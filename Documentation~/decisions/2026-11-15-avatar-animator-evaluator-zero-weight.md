@@ -39,7 +39,7 @@ M7を重み0まで延ばす。
 - Unity 2022.3（VRChat SDK入りのプロジェクト）のEditModeテスト: `AvatarAnimatorEvaluatorComparisonTests`・`AvatarAnimatorCrossCheckTests`・`AvatarAnimatorCaptureTests`・`AvatarAnimatorDataTests`の208件が通る
 - 12体の突き合わせ（書き出しの`animator_check`）: 前の記録でA6に残った1項目が0になり、12体すべて不一致0（拡張の無い1体を除く）。書き出したVRMは、前の書き出しの後にマージされたマテリアルの曲線の変更による差のほかに変わらない（この変更は`Editor/`を触っていない）
 - 変更前と変更後の評価器のハッシュの比較（#801・#807と同じ方法）: 書き出した11体と合成のFX 6種類×3通りの乱数で、トグルを乱数で切り替えながら3000フレーム進め、毎フレームの全ターゲットの値と`Written`を比べた。差が出たのは、重みが0のレイヤーが出たフレームより後だけ。重みが0のレイヤーが一度も出ない7体と、Layer Controlの無い合成のFXは全フレーム一致した。初めから重み0のレイヤーを持つ1体も一致した
-- 負荷（Windowsの.NET、PowerShell 7の`Add-Type`、`Advance`の1フレームの平均、変更前と変更後を交互に5回）: トグル100・Write Defaultsオフ 0.030→0.027 ms、トグル150・Write Defaultsオフ 0.094→0.101 ms、トグル150・Write Defaultsオン 0.024→0.023 ms。重み0のレイヤーが値を書くようになった分のほかは処理が変わらず、差は測るたびのゆらぎの範囲
+- 負荷（Windowsの.NET、PowerShell 7の`Add-Type`、`Advance`の1フレームの平均、変更前と変更後を交互に5回、2回測った）: トグル100・Write Defaultsオフ 0.030〜0.031→0.027 ms、トグル150・Write Defaultsオフ 0.094〜0.096→0.101〜0.104 ms、トグル150・Write Defaultsオン 0.024→0.023〜0.024 ms。トグル150・Write Defaultsオフは2回とも7〜8%（0.007〜0.008 ms）遅くなった。重み0のレイヤーが書くための分岐のほかは処理を変えていない
 
 ## 残っていること
 
