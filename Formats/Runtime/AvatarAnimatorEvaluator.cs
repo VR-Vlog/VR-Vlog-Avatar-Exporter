@@ -1456,7 +1456,19 @@ namespace VRVlog.AvatarAnimator
                 // values from when the transition started.
                 if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
                 has |= hasB;
-                value = Blend(t, value, b, Math.Min(1, layer.Progress));
+                var progress = Math.Min(1, layer.Progress);
+                // Unity takes an object reference only from the motions that
+                // write it, the rest of Write Defaults not counting: when one
+                // side's motion alone writes a stepped target and the other
+                // side is a Write Defaults motion, the writing side shows while
+                // it has any weight (measured in
+                // AvatarAnimatorCrossCheckTests.TransformAndMaterialSlotMatchUnity;
+                // an empty state or one without Write Defaults is not measured).
+                var writesA = Writes(sideA, layer, layer.State, t);
+                var writesB = Writes(sideB, layer, layer.Next, t);
+                if (stepped[t] && !layer.Frozen && writesA != writesB && RestsByDefault(layer, writesA ? layer.Next : layer.State))
+                    value = writesB ? (progress > 0 ? b : value) : (progress < 1 ? value : b);
+                else value = Blend(t, value, b, progress);
             }
             if (has || layer.Transitioning)
             {
@@ -1480,9 +1492,13 @@ namespace VRVlog.AvatarAnimator
             logHead[t] = logCount++;
         }
 
+        static bool Writes(Side side, LayerRun layer, int state, int t) => layer.Layer.States[state].Motion >= 0 && side.Stamp[t] == side.Current;
+
+        static bool RestsByDefault(LayerRun layer, int state) => layer.Layer.States[state].Motion >= 0 && layer.Layer.States[state].WriteDefaults;
+
         // From a toward b by weight w; a stepped target takes b only past
-        // half, where b has more weight than a (not measured in Unity for a
-        // transition or a layer weight).
+        // half, where b has more weight than a (measured in Unity for a
+        // transition whose two sides both write it, not for a layer weight).
         double Blend(int t, double a, double b, double w) => stepped[t] ? (w > 0.5 ? b : a) : a + (b - a) * w;
 
         // M6: one side's value of a target its motion does not write. With

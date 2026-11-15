@@ -865,6 +865,11 @@ namespace VRVlog.LilToonExporter
             var result = new List<List<(int, ExpressionAnimationData.Curve)>>();
             var found = new List<(int Clip, (int Node, int Slot) Key, ExpressionAnimationData.Curve Curve)>();
             var rests = new Dictionary<(int, int), (Renderer Renderer, int Material)>();
+            // The glTF index of each material a slot holds or a curve sets, for the check.
+            var held = new Dictionary<(int, int), Dictionary<Material, int>>();
+            // A slot that moved down with a dropped empty submesh: the copy's
+            // Animator writes the curve's own slot, so the check leaves it out.
+            var renumbered = new HashSet<(int, int)>();
             for (var i = 0; i < clipSlotTracks.Count; i++)
             {
                 result.Add(new List<(int, ExpressionAnimationData.Curve)>());
@@ -883,12 +888,17 @@ namespace VRVlog.LilToonExporter
                     foreach (var frame in frames)
                         curve.Keys.Add(new ExpressionAnimationData.Key { Time = frame.time, Value = SlotMaterial(frame.value as Material, node, material) });
                     if (additiveClips.Contains(i) || curve.Keys.Any(key => key.Value < -1) || !Valid(curve)) { lost++; continue; }
-                    var held = renderer.sharedMaterials[now];
-                    var rest = held == null || material == null ? -1 : material(held);
+                    var holds = renderer.sharedMaterials[now];
+                    var rest = holds == null || material == null ? -1 : material(holds);
                     // -1 is an empty slot: a held material the file does not write is no rest.
-                    if (held != null && rest < 0) { lost++; continue; }
+                    if (holds != null && rest < 0) { lost++; continue; }
                     rests[(nodeIndex, now)] = (renderer, rest);
                     found.Add((i, (nodeIndex, now), curve));
+                    if (slot != now) renumbered.Add((nodeIndex, now));
+                    if (!held.TryGetValue((nodeIndex, now), out var materials)) held[(nodeIndex, now)] = materials = new Dictionary<Material, int>();
+                    if (holds != null) materials[holds] = rest;
+                    for (var k = 0; k < frames.Length; k++)
+                        if (frames[k].value is Material set) materials[set] = (int)curve.Keys[k].Value;
                 }
             }
             var targetOf = new Dictionary<(int, int), int>();
@@ -897,6 +907,9 @@ namespace VRVlog.LilToonExporter
                 var target = new AvatarAnimatorData.Target { Node = key.Item1, Property = "materialSlot", Slot = key.Item2, Rest = rests[key].Material };
                 targetOf[key] = data.Targets.Count;
                 data.Targets.Add(target);
+                var renderer = rests[key].Renderer;
+                if (!renumbered.Contains(key))
+                    shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Slot = key.Item2, Slots = held[key], Path = PathAtRead(renderer.gameObject) };
             }
             foreach (var (clip, key, curve) in found) result[clip].Add((targetOf[key], curve));
             foreach (var tracks in result) tracks.Sort((a, b) => a.Item1.CompareTo(b.Item1));
@@ -1038,7 +1051,10 @@ namespace VRVlog.LilToonExporter
         // stage out and lists it with this reason.
         // faces (FaceClips) lists the faces by name; those of the file's
         // custom expressions are written in the file's order, each with the
-        // ways into the states that play its clips.
+        // ways into the states that play its clips, when the evaluator can
+        // show the face as its VRM expression does (FaceValues and
+        // AvatarAnimatorCrossCheck.FaceMismatch). The others stay out, and
+        // the app shows them with their VRM expression; each is logged.
         internal static byte[] Inject(byte[] bytes, AvatarAnimatorData data, IReadOnlyList<(string Name, IReadOnlyCollection<int> Clips)> faces = null)
         {
             if (data == null) return bytes;
@@ -1054,6 +1070,17 @@ namespace VRVlog.LilToonExporter
                     expression.Clips.AddRange(clips.OrderBy(clip => clip));
                     expression.When.AddRange(Entrances(data, new HashSet<int>(clips)));
                     data.Expressions.Add(expression);
+                    string reason;
+                    try
+                    {
+                        var values = FaceValues(document, data, name, out reason);
+                        if (values != null) reason = AvatarAnimatorCrossCheck.FaceMismatch(data, name, values);
+                    }
+                    // A face the check cannot read stays out; the others are still written.
+                    catch (Exception error) when (!(error is OutOfMemoryException)) { reason = error.GetType().Name + " " + error.Message; }
+                    if (reason == null) continue;
+                    data.Expressions.RemoveAt(data.Expressions.Count - 1);
+                    Debug.Log(AvatarAnimatorCrossCheck.LogPrefix + $"face \"{name}\" left out: {reason}");
                 }
             var extension = AvatarAnimatorData.Write(data);
             if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > MaximumBytes)
@@ -1077,6 +1104,100 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("Avatar animator material slot is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
+        }
+
+        // The value each target of the extension takes when the VRM custom
+        // expression name shows (conditions A and C of the design for moving a
+        // face to the evaluator), or null with the reason when it cannot be
+        // told from the targets. Each of its morphTargetBinds is the morph
+        // target on the same node and morph (the glTF weight as a Unity weight
+        // with Baked and End, binds of one morph added up). A material color
+        // or texture bind is not one: the menu's faces have none. In
+        // VRVLOG_expression_animations, a BlendShape animation, or a bone or
+        // visibility track that moves in time, is not one either (C); a track
+        // held still is the value of the active target of its node, or each
+        // channel the translation, rotation or scale target of its node and
+        // channel, from glTF's space to Unity's (position -x, rotation -y and
+        // -z), the rotation as Euler or quaternion as the target is.
+        internal static List<(int Target, double Value)> FaceValues(GlbDocument document, AvatarAnimatorData data, string name, out string reason)
+        {
+            reason = null;
+            var result = new Dictionary<int, double>();
+            var custom = document.Find("extensions", "VRMC_vrm", "expressions", "custom", name);
+            if (custom == null) { reason = "no expression"; return null; }
+            foreach (var key in new[] { "materialColorBinds", "textureTransformBinds" })
+                if (custom.TryGetValue(key, out var binds) && binds is List<object> list && list.Count > 0) { reason = key; return null; }
+            if (custom.TryGetValue("morphTargetBinds", out var rawMorphs) && rawMorphs is List<object> morphs)
+                foreach (var raw in morphs)
+                {
+                    if (!(raw is Dictionary<string, object> bind)) { reason = "morphTargetBinds"; return null; }
+                    if (!bind.TryGetValue("node", out var rawNode) || !bind.TryGetValue("index", out var rawIndex)) { reason = "morphTargetBinds"; return null; }
+                    var node = (int)Number(rawNode);
+                    var index = (int)Number(rawIndex);
+                    var weight = Number(bind.TryGetValue("weight", out var rawWeight) ? rawWeight : null);
+                    var t = data.Targets.FindIndex(target => target.Property == "morph" && target.Node == node && target.Morph == index);
+                    if (t < 0) { reason = $"morph {node}:{index} is no target"; return null; }
+                    var target = data.Targets[t];
+                    result[t] = (result.TryGetValue(t, out var sum) ? sum : target.Baked) + weight * (target.End - target.Baked);
+                }
+            var animations = document.Find("extensions", ExpressionAnimationData.Extension);
+            if (animations != null)
+            {
+                ExpressionAnimationDocument read;
+                List<ExpressionTransformAnimation> transforms;
+                try
+                {
+                    read = ExpressionAnimationData.ReadDocument(animations);
+                    transforms = ExpressionAnimationData.ReadTransforms(animations, read);
+                }
+                catch (Exception error) when (!(error is OutOfMemoryException))
+                {
+                    reason = ExpressionAnimationData.Extension + " unreadable";
+                    return null;
+                }
+                if (read.Animations.Any(animation => animation.Expression == name)) { reason = "blendShape animation"; return null; }
+                foreach (var animation in transforms.Where(animation => animation.Expression == name))
+                    foreach (var track in animation.Tracks)
+                    {
+                        if (animation.Duration > 0 && track.Curves.Any(curve => curve.Keys.Any(key => key.Value != curve.Keys[0].Value))) { reason = "transform animation"; return null; }
+                        if (!TrackValues(data, track, result, out reason)) return null;
+                    }
+            }
+            return result.OrderBy(pair => pair.Key).Select(pair => (pair.Key, pair.Value)).ToList();
+        }
+
+        // The values of a track held still, by target; false with the reason
+        // when a target is missing.
+        static bool TrackValues(AvatarAnimatorData data, ExpressionTransformAnimation.Track track, Dictionary<int, double> result, out string reason)
+        {
+            reason = null;
+            double Held(int component) => track.Curves[component].Keys.Count == 0 ? 0 : track.Curves[component].Keys[0].Value;
+            int Find(string property, string channel, bool? euler) => data.Targets.FindIndex(target => target.Node == track.Node && target.Property == property &&
+                                                                                         target.Channel == channel && (euler == null || target.Euler == euler));
+            if (track.Property == ExpressionTransformAnimation.Active)
+            {
+                var t = data.Targets.FindIndex(target => target.Property == "active" && target.Node == track.Node);
+                if (t < 0) { reason = $"active {track.Node} is no target"; return false; }
+                result[t] = Held(0) >= 0.5 ? 1 : 0;
+                return true;
+            }
+            string property; bool? isEuler = null; string[] channels; double[] sign;
+            switch (track.Property)
+            {
+                case ExpressionTransformAnimation.Translation: property = "translation"; channels = AvatarAnimatorData.VectorChannels; sign = new[] { -1d, 1, 1 }; break;
+                case ExpressionTransformAnimation.Scale: property = "scale"; channels = AvatarAnimatorData.VectorChannels; sign = new[] { 1d, 1, 1 }; break;
+                case ExpressionTransformAnimation.Euler: property = "rotation"; isEuler = true; channels = AvatarAnimatorData.VectorChannels; sign = new[] { 1d, -1, -1 }; break;
+                case ExpressionTransformAnimation.Rotation: property = "rotation"; isEuler = false; channels = AvatarAnimatorData.QuaternionChannels; sign = new[] { 1d, -1, -1, 1 }; break;
+                default: reason = "transform " + track.Property; return false;
+            }
+            if (track.Curves.Count != channels.Length) { reason = "transform " + track.Property; return false; }
+            for (var c = 0; c < channels.Length; c++)
+            {
+                var t = Find(property, channels[c], isEuler);
+                if (t < 0) { reason = $"{track.Property} {track.Node}.{channels[c]} is no target"; return false; }
+                result[t] = sign[c] * Held(c);
+            }
+            return true;
         }
 
         // The curves the written extension left out, by kind, for the result;

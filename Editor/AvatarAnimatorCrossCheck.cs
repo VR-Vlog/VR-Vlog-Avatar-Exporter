@@ -16,9 +16,10 @@ namespace VRVlog.LilToonExporter
     // player, from the same inputs for the same frames, and compares what they
     // show: the activeSelf of each active target, the BlendShape weight of
     // each morph target, the enabled flag of each renderer an enabled target
-    // names and the float of each material target (materialFloat,
-    // materialColor, materialTextureST), as the renderer it was read from
-    // shows it. The inputs are the start alone, each menu control and
+    // names, the float of each material target (materialFloat,
+    // materialColor, materialTextureST) as the renderer it was read from
+    // shows it, the material of each materialSlot target's slot and the
+    // local channel of each translation, rotation and scale target. The inputs are the start alone, each menu control and
     // each hand gesture. Each input starts from the rest: SettleFrames without
     // input, then InputFrames with it.
     //
@@ -41,6 +42,13 @@ namespace VRVlog.LilToonExporter
         internal const double FloatTolerance = 1e-4;
         // Material color channels: one step of an 8-bit channel.
         internal const double ColorTolerance = 1.0 / 255;
+        // Transform channels: 1 mm of a position or scale, 0.1 degree of an
+        // angle, and the quaternion channel of a turn of 0.1 degree.
+        internal const double PositionTolerance = 0.001, AngleTolerance = 0.1;
+        internal static readonly double QuaternionTolerance = Math.Sin(AngleTolerance / 2 * Math.PI / 180);
+        // A face the evaluator shows (FaceMismatch): a BlendShape weight within
+        // half a step of 0 to 100; the other kinds as above.
+        internal const double FaceWeightTolerance = 0.5;
         // The time the inputs may take together; the rest are not compared.
         internal static double BudgetSeconds = 60;
         // Off leaves VRChat's behaviours to plain Unity, which runs none (tests).
@@ -62,9 +70,13 @@ namespace VRVlog.LilToonExporter
 
         // What shows a target in Unity: the object for an active target, the
         // renderer and shape for a morph target, the renderer (Component) for
-        // an enabled target, and a renderer that draws with the material
-        // (Component, Material) and the property Name for a material target. Null for a target that is not compared (a parameter, or
-        // what the copy no longer has).
+        // an enabled target, a renderer that draws with the material
+        // (Component, Material) and the property Name for a material target,
+        // the renderer (Component), its Slot and the glTF index of each
+        // material the slot may hold (Slots) for a materialSlot target, and
+        // the object for a translation, rotation or scale target. Null for a
+        // target that is not compared (a parameter, or what the copy no
+        // longer has).
         internal sealed class Binding
         {
             internal GameObject Object;
@@ -73,6 +85,8 @@ namespace VRVlog.LilToonExporter
             internal Renderer Component;
             internal Material Material;
             internal string Name;
+            internal int Slot = -1;
+            internal Dictionary<Material, int> Slots;
             internal GameObject Owner => Object != null ? Object : Renderer != null ? Renderer.gameObject : Component != null ? Component.gameObject : null;
             // The object's path under the root when the clips were read (null
             // when unknown). Unity binds curves by path, so an object the
@@ -181,6 +195,7 @@ namespace VRVlog.LilToonExporter
             var clock = Stopwatch.StartNew();
             var shown = new List<int>();
             var shapes = new int[data.Targets.Count];
+            var quaternions = Quaternions(data);
             for (var t = 0; t < data.Targets.Count; t++)
             {
                 var target = data.Targets[t];
@@ -193,6 +208,9 @@ namespace VRVlog.LilToonExporter
                          (shapes[t] = binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape)) >= 0) shown.Add(t);
                 else if (target.Property == "enabled" && binding?.Component != null) shown.Add(t);
                 else if (IsMaterial(target.Property) && binding?.Component != null && binding.Material != null && binding.Name != null) shown.Add(t);
+                else if (target.Property == "materialSlot" && binding?.Component != null && binding.Slots != null &&
+                         binding.Slot >= 0 && binding.Slot < binding.Component.sharedMaterials.Length) shown.Add(t);
+                else if (IsTransform(target.Property) && binding?.Object != null) shown.Add(t);
                 else { result.Unbound++; continue; }
                 if (binding.Path != null && Find(root, binding.Path) != binding.Owner)
                 {
@@ -222,7 +240,7 @@ namespace VRVlog.LilToonExporter
                 {
                     // The first input always runs, so a slow avatar still shows something.
                     if (input != inputs[0] && clock.Elapsed.TotalSeconds > BudgetSeconds) { result.OutOfTime++; continue; }
-                    var mismatch = Play(input, data, bindings, shown, shapes, animator, player, out var skipped);
+                    var mismatch = Play(input, data, bindings, shown, shapes, quaternions, animator, player, out var skipped);
                     if (skipped) { result.Skipped.Add(input.Name); continue; }
                     result.Compared++;
                     if (mismatch != null) result.Mismatches.Add(mismatch);
@@ -241,11 +259,27 @@ namespace VRVlog.LilToonExporter
 
         static void ToRest(AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes)
         {
+            // The channels of one Transform go in together, so a rotation is
+            // never set from a half-changed quaternion.
+            var poses = new Dictionary<(Transform, string, bool), double[]>();
             foreach (var t in shown)
             {
                 var rest = data.Targets[t].Rest;
                 switch (data.Targets[t].Property)
                 {
+                    case "translation":
+                    case "rotation":
+                    case "scale":
+                        var target = data.Targets[t];
+                        var key = (bindings[t].Object.transform, target.Property, target.Euler);
+                        if (!poses.TryGetValue(key, out var channels)) poses[key] = channels = TransformChannels(key.Item1, target.Property, target.Euler);
+                        channels[Array.IndexOf(Channels(target), target.Channel)] = rest;
+                        break;
+                    case "materialSlot":
+                        var materials = bindings[t].Component.sharedMaterials;
+                        materials[bindings[t].Slot] = bindings[t].Slots.FirstOrDefault(pair => pair.Value == (int)rest).Key;
+                        bindings[t].Component.sharedMaterials = materials;
+                        break;
                     case "active": bindings[t].Object.SetActive(AvatarAnimatorEvaluator.Active(rest)); break;
                     case "morph": bindings[t].Renderer.SetBlendShapeWeight(shapes[t], (float)rest); break;
                     case "enabled": bindings[t].Component.enabled = AvatarAnimatorEvaluator.Active(rest); break;
@@ -260,6 +294,34 @@ namespace VRVlog.LilToonExporter
                         break;
                 }
             }
+            foreach (var pair in poses)
+            {
+                var (transform, property, euler) = pair.Key;
+                var c = pair.Value;
+                if (property == "translation") transform.localPosition = new Vector3((float)c[0], (float)c[1], (float)c[2]);
+                else if (property == "scale") transform.localScale = new Vector3((float)c[0], (float)c[1], (float)c[2]);
+                else if (euler) UnityEditor.TransformUtils.SetInspectorRotation(transform, new Vector3((float)c[0], (float)c[1], (float)c[2]));
+                else transform.localRotation = new Quaternion((float)c[0], (float)c[1], (float)c[2], (float)c[3]);
+            }
+        }
+
+        static bool IsTransform(string property) => property == "translation" || property == "rotation" || property == "scale";
+
+        static string[] Channels(AvatarAnimatorData.Target target) =>
+            target.Property == "rotation" && !target.Euler ? AvatarAnimatorData.QuaternionChannels : AvatarAnimatorData.VectorChannels;
+
+        // The local channels of a Transform in Unity's space, as the capture
+        // reads a rest: x, y, z, or x, y, z, w of a quaternion.
+        static double[] TransformChannels(Transform transform, string property, bool euler)
+        {
+            if (property == "rotation" && !euler)
+            {
+                var q = transform.localRotation;
+                return new double[] { q.x, q.y, q.z, q.w };
+            }
+            var v = property == "translation" ? transform.localPosition : property == "scale" ? transform.localScale
+                : UnityEditor.TransformUtils.GetInspectorRotation(transform);
+            return new double[] { v.x, v.y, v.z };
         }
 
         static bool IsMaterial(string property) => property == "materialFloat" || property == "materialColor" || property == "materialTextureST";
@@ -316,18 +378,90 @@ namespace VRVlog.LilToonExporter
                     var transforms = new MaterialPropertyBlock();
                     binding.Component.GetPropertyBlock(transforms);
                     return BlockTextureST(transforms, binding)[Array.IndexOf(AvatarAnimatorData.TextureChannels, target.Channel)];
+                case "materialSlot":
+                    // A material the slot may not hold reads -2, which no value is.
+                    var held = binding.Component.sharedMaterials[binding.Slot];
+                    return held == null ? -1 : binding.Slots.TryGetValue(held, out var index) ? index : -2;
+                case "translation":
+                case "rotation":
+                case "scale":
+                    return TransformChannels(binding.Object.transform, target.Property, target.Euler)[Array.IndexOf(Channels(target), target.Channel)];
                 default: return binding.Renderer.GetBlendShapeWeight(shape);
             }
         }
 
-        static bool Differs(AvatarAnimatorData.Target target, double evaluator, double unity) =>
+        static bool Differs(AvatarAnimatorData.Target target, double evaluator, double unity) => Differs(target, evaluator, unity, WeightTolerance);
+
+        // weight is the tolerance of a BlendShape weight.
+        static bool Differs(AvatarAnimatorData.Target target, double evaluator, double unity, double weight) =>
             target.Property == "active" || target.Property == "enabled" ? AvatarAnimatorEvaluator.Active(evaluator) != (unity != 0)
             : target.Property == "materialColor" ? !(Math.Abs(evaluator - unity) <= ColorTolerance)
             : target.Property == "materialFloat" || target.Property == "materialTextureST" ? !(Math.Abs(evaluator - unity) <= FloatTolerance * Math.Max(1, Math.Abs(unity)))
-            : !(Math.Abs(evaluator - unity) <= WeightTolerance);
+            : target.Property == "materialSlot" ? evaluator != unity
+            : target.Property == "translation" || target.Property == "scale" ? !(Math.Abs(evaluator - unity) <= PositionTolerance)
+            : target.Property == "rotation" && target.Euler ? !(Math.Abs(evaluator - unity) <= AngleTolerance)
+            : target.Property == "rotation" ? !(Math.Abs(evaluator - unity) <= QuaternionTolerance)
+            : !(Math.Abs(evaluator - unity) <= weight);
+
+        // The x, y, z and w targets of each quaternion rotation whose four
+        // channels are all targets, by each of the four.
+        static Dictionary<int, int[]> Quaternions(AvatarAnimatorData data)
+        {
+            var result = new Dictionary<int, int[]>();
+            for (var t = 0; t < data.Targets.Count; t++)
+            {
+                var target = data.Targets[t];
+                if (target.Property != "rotation" || target.Euler || target.Channel != AvatarAnimatorData.QuaternionChannels[0]) continue;
+                var four = AvatarAnimatorData.QuaternionChannels.Select(channel => data.Targets.FindIndex(other =>
+                    other.Node == target.Node && other.Property == "rotation" && !other.Euler && other.Channel == channel)).ToArray();
+                if (four.Any(index => index < 0)) continue;
+                foreach (var index in four) result[index] = four;
+            }
+            return result;
+        }
+
+        // A quaternion channel of the evaluator as a Transform takes it:
+        // normalized (a blend of two rotations is shorter than 1), on the side
+        // of Unity's quaternion, as q and -q are one rotation.
+        static double Normalized(IReadOnlyList<double> values, int[] four, int channel, double[] unity)
+        {
+            double length = 0, dot = 0;
+            for (var c = 0; c < 4; c++)
+            {
+                length += values[four[c]] * values[four[c]];
+                dot += values[four[c]] * unity[c];
+            }
+            return length == 0 ? values[four[channel]] : (dot < 0 ? -1 : 1) * values[four[channel]] / Math.Sqrt(length);
+        }
+
+        // Whether the evaluator shows a face of data.Expressions as its VRM
+        // expression does (B of the design's conditions for moving a face to
+        // the evaluator): from every parameter at its default, SettleFrames,
+        // then the values AvatarAnimatorFaces picks for the face (as the app
+        // does) and InputFrames, after which each of face, a target and the
+        // value the VRM expression gives it, must match within the
+        // tolerances (a BlendShape weight within FaceWeightTolerance). Null
+        // when it matches, else why not, for the log.
+        internal static string FaceMismatch(AvatarAnimatorData data, string name, IReadOnlyList<(int Target, double Value)> face)
+        {
+            if (!AvatarAnimatorEvaluator.Supports(data, out var reason)) return "unsupported " + reason;
+            var random = new System.Random(name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c)));
+            var evaluator = new AvatarAnimatorEvaluator(data, () => random.NextDouble());
+            for (var frame = 0; frame < SettleFrames; frame++) evaluator.Advance(FrameSeconds);
+            var values = AvatarAnimatorFaces.Solve(data, name, evaluator.Get);
+            if (values == null) return "no way in";
+            foreach (var pair in values) evaluator.Set(pair.Key, pair.Value);
+            for (var frame = 0; frame < InputFrames; frame++) evaluator.Advance(FrameSeconds);
+            foreach (var (target, value) in face)
+                if (Differs(data.Targets[target], evaluator.Values[target], value, FaceWeightTolerance))
+                    return "T" + target + " face " + value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) +
+                           " evaluator " + evaluator.Values[target].ToString("R", System.Globalization.CultureInfo.InvariantCulture) +
+                           " with " + string.Join(", ", values.Select(pair => data.Parameters[pair.Key].Name + " " + pair.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+            return null;
+        }
 
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes,
-            Animator animator, UnityPlayer player, out bool skipped)
+            Dictionary<int, int[]> quaternions, Animator animator, UnityPlayer player, out bool skipped)
         {
             // Both draw the same sequence; a different order of behaviours shows as a difference.
             var seed = input.Name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c));
@@ -351,7 +485,10 @@ namespace VRVlog.LilToonExporter
                 foreach (var t in shown)
                 {
                     var unity = Shown(data.Targets[t], bindings[t], shapes[t]);
-                    var value = evaluator.Values[t];
+                    var value = quaternions.TryGetValue(t, out var four)
+                        ? Normalized(evaluator.Values, four, Array.IndexOf(AvatarAnimatorData.QuaternionChannels, data.Targets[t].Channel),
+                            TransformChannels(bindings[t].Object.transform, "rotation", false))
+                        : evaluator.Values[t];
                     if (!Differs(data.Targets[t], value, unity)) continue;
                     first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value, Layers = Layers(data, animator, evaluator) };
                     break;
@@ -443,7 +580,9 @@ namespace VRVlog.LilToonExporter
             return target.Property == "morph" ? $"{path}:{binding.Shape}" : target.Property == "enabled" ? $"{path}:enabled"
                 : target.Property == "materialFloat" ? $"{path}:{binding.Name}"
                 : target.Property == "materialColor" ? $"{path}:{binding.Name}.{target.Channel}"
-                : target.Property == "materialTextureST" ? $"{path}:{binding.Name}_ST.{target.Channel}" : path;
+                : target.Property == "materialTextureST" ? $"{path}:{binding.Name}_ST.{target.Channel}"
+                : target.Property == "materialSlot" ? $"{path}:slot{binding.Slot}"
+                : IsTransform(target.Property) ? $"{path}:{target.Property}{(target.Euler ? "Euler" : "")}.{target.Channel}" : path;
         }
 
         static string Path(Transform root, Transform transform)

@@ -1353,6 +1353,8 @@ namespace VRVlog.LilToonExporter.Tests
             glasses.sharedMaterials = new[] { first, second };
             var clip = avatar.Clip("Fade");
             AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 1),
+                new[] { new ObjectReferenceKeyframe { time = 0, value = second }, new ObjectReferenceKeyframe { time = 1f / 60, value = second } });
             AddLayer(avatar, "Fade", clip);
             var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
             var owned = new List<Mesh>();
@@ -1363,9 +1365,13 @@ namespace VRVlog.LilToonExporter.Tests
                 Assume.That(glasses.sharedMaterials, Is.EqualTo(new[] { second }));
                 glasses.sharedMaterials = fallbacks;
                 var nodes = new Dictionary<GameObject, int>();
-                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count,
-                    null, material => Array.IndexOf(fallbacks, material))));
+                var resolved = capture.Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count,
+                    null, material => Array.IndexOf(fallbacks, material));
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(resolved));
                 Assert.That(data.Targets.Where(t => t.Property == "materialFloat").Select(t => (t.Material, t.Name, t.Rest)), Is.EqualTo(new[] { (0, "_Cutoff", .625) }));
+                var slot = resolved.Targets.FindIndex(t => t.Property == "materialSlot");
+                Assert.That(data.Targets[slot].Slot, Is.EqualTo(0));
+                Assert.That(capture.Bindings(resolved)[slot], Is.Null);
             }
             finally
             {
@@ -1481,6 +1487,11 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(smile, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
             avatar.Fx.AddLayer("Face");
             var layerIndex = avatar.Fx.layers.Length - 1;
+            // A face the evaluator cannot show is not written, and a layer
+            // added by script has no weight.
+            var faceLayers = avatar.Fx.layers;
+            faceLayers[layerIndex].defaultWeight = 1;
+            avatar.Fx.layers = faceLayers;
             var machine = avatar.Fx.layers[layerIndex].stateMachine;
             var neutral = machine.AddState("Neutral");
             var smiling = machine.AddState("Smiling");
