@@ -128,6 +128,7 @@ public static class AvatarAnimatorEvaluatorTests
         AnyState();
         SubMachines();
         WriteDefaults();
+        PassThroughThenHold();
         LayerWeights();
         ParameterDrivers();
         ParameterCurves();
@@ -402,6 +403,37 @@ public static class AvatarAnimatorEvaluatorTests
         e.Set(on, 0);
         e.Advance(Frame);
         Check(e.Values[node] == 0 && e.Written[node], "WD on writes the rest");
+    }
+
+    // A layer that passes the layers below through (WD off, a motion, weight 1) keeps no
+    // value of its own while it does; the first frame it stops, its own value is rebuilt
+    // as the layers below it left the target in the frame before, not the layers above.
+    static void PassThroughThenHold()
+    {
+        var b = new Builder();
+        var hold = b.Parameter("Hold", "bool");
+        var node = b.Target();
+        var own = b.Target();
+        var bottom = b.Layer("Bottom");
+        Builder.State(bottom, "Ramp", b.Ramp(1, true, node, 1));
+        var middle = b.Layer("Middle");
+        var pass = Builder.State(middle, "Pass", b.Clip(0, false, (own, 1)), writeDefaults: false);
+        var held = Builder.State(middle, "Held", -1, writeDefaults: false);
+        middle.States[pass].Transitions.Add(To(held).When(hold, "if"));
+        var top = b.Layer("Top", weight: .5);
+        Builder.State(top, "Seven", b.Clip(0, false, (node, 7)));
+        var e = b.Build();
+        Run(e, .3);
+        var before = e.Values[node];
+        e.Advance(Frame);
+        Check(e.Values[node] != before, "the bottom layer moves the node every frame");
+        before = e.Values[node];
+        e.Set(hold, 1);
+        e.Advance(Frame);
+        Check(e.State(1) == held, "the middle layer left the passing state");
+        Near(e.Values[node], before, "M6: the empty state applies what the layers below left in the last frame");
+        Run(e, .2);
+        Near(e.Values[node], before, "M6: and keeps applying it while the bottom layer moves");
     }
 
     static void LayerWeights()
