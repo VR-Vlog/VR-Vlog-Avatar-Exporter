@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vrvlog.app/schema/VRVLOG_avatar_effects/1/schema.json",
   "title": "VRVLOG_avatar_effects 1",
-  "description": "Effects of the avatar that the VRM itself cannot carry, for the app to build under the output nodes. Schema 1 holds ParticleSystems; trails, lines and lights follow under the same version before its first release. The exporter writes the extension only when at least one system is written, lists it in extensionsUsed and never in extensionsRequired, so readers that do not know it read the file as before. A system hangs from the nearest node written for its own object or an ancestor, with its pose relative to that node in Unity's coordinates as the app sees the node after loading (position in meters, rotation as a quaternion, scale). Module values keep Unity's serialized names and values: integers and enums as numbers, colors as [r, g, b, a], vectors as arrays, curves as keys, gradients as keys, structs as objects; object references (meshes, textures) are left out. At most 16 systems and 2000 particles (the sum of maxParticles) per avatar; the exporter leaves the rest out in hierarchy order and counts them as effectLimit.",
+  "description": "Effects of the avatar that the VRM itself cannot carry, for the app to build under the output nodes. Schema 1 holds ParticleSystems; trails, lines and lights follow under the same version before its first release. The exporter writes the extension only when at least one system is written, lists it in extensionsUsed and never in extensionsRequired, so readers that do not know it read the file as before. A system hangs from the nearest node written for its own object or an ancestor, with its pose relative to that node in Unity's coordinates as the app sees the node after loading (position in meters, rotation as a quaternion, scale); with no such node it hangs from the avatar root (node -1), its pose in the VRM model space. The pose is taken after the export build has moved and removed objects. Module values keep Unity's serialized names and values: integers and enums as numbers, colors as [r, g, b, a], vectors as arrays, curves as keys, gradients as keys, structs as objects; object references (meshes, textures) are left out. At most 16 systems and 2000 particles (the sum of maxParticles) per avatar; the exporter leaves the rest out in hierarchy order and counts them as effectLimit.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -32,7 +32,7 @@
       }
     },
     "omitted": {
-      "description": "What the exporter left out, in this order of kinds, each kind at most once. particleModule: modules a written system has enabled other than those written (Noise, Collision, Sub Emitters, Trails, Texture Sheet Animation and the rest), one per module. effectLimit: systems over the limits. effectTexture: written materials whose main texture is not written. missingNode: systems with no written node above them.",
+      "description": "What the exporter left out, in this order of kinds, each kind at most once. particleModule: modules a written system has enabled other than those written (Noise, Collision, Sub Emitters, Trails, Texture Sheet Animation and the rest), one per module. effectLimit: systems over the limits. effectTexture: written materials whose main texture is not written. missingNode: systems whose objects and ancestors the export build removed all the way up.",
       "type": "array",
       "maxItems": 4,
       "items": {
@@ -80,6 +80,7 @@
         "position",
         "rotation",
         "scale",
+        "active",
         "material",
         "system",
         "InitialModule",
@@ -91,9 +92,9 @@
       ],
       "properties": {
         "node": {
-          "description": "The glTF node the system hangs from.",
+          "description": "The glTF node the system hangs from; -1 for the avatar root, the VRM model space.",
           "type": "integer",
-          "minimum": 0
+          "minimum": -1
         },
         "position": {
           "$ref": "#/$defs/vector3"
@@ -108,6 +109,10 @@
         },
         "scale": {
           "$ref": "#/$defs/vector3"
+        },
+        "active": {
+          "description": "Whether the system's object is active in the avatar as exported. An inactive system does not play until something turns it on.",
+          "type": "boolean"
         },
         "material": {
           "description": "Index into materials; -1 when the renderer has none.",

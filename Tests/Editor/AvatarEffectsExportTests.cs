@@ -115,6 +115,10 @@ namespace VRVlog.LilToonExporter.Tests
         public void ASystemHangsFromTheNearestWrittenNodeWithItsPose()
         {
             var root = Root();
+            // The avatar is written at the origin with its scale in the model space.
+            root.transform.localPosition = new Vector3(5, 0, 0);
+            root.transform.localRotation = Quaternion.Euler(0, 30, 0);
+            root.transform.localScale = new Vector3(.5f, .5f, .5f);
             var head = new GameObject("Head").transform;
             head.SetParent(root.transform, false);
             head.localPosition = new Vector3(0, 1.7f, 0);
@@ -124,46 +128,81 @@ namespace VRVlog.LilToonExporter.Tests
             system.transform.localScale = new Vector3(2, 2, 2);
 
             // The object holding the system is removed: it hangs from Head.
-            var particle = Single(Resolve(root, go => go == root ? 0 : go.transform == head ? 1 : -1));
+            var particle = Single(Resolve(root, go => go.transform == head ? 1 : -1));
             Assert.That(particle["node"], Is.EqualTo(1));
             AssertNumbers(particle["position"], 0, .1, .2);
             var rotation = Quaternion.Euler(0, 90, 0);
             AssertNumbers(particle["rotation"], rotation.x, rotation.y, rotation.z, rotation.w);
             AssertNumbers(particle["scale"], 2, 2, 2);
+            Assert.That(particle["active"], Is.EqualTo(true));
 
-            // Only the root is written: the pose adds Head's.
-            particle = Single(Resolve(root, go => go == root ? 0 : -1));
-            Assert.That(particle["node"], Is.EqualTo(0));
-            AssertNumbers(particle["position"], 0, 1.8, .2);
+            // Nothing above it is written: it hangs from the root in the model space.
+            particle = Single(Resolve(root, _ => -1));
+            Assert.That(particle["node"], Is.EqualTo(-1));
+            AssertNumbers(particle["position"], 0, .9, .1);
+            AssertNumbers(particle["rotation"], rotation.x, rotation.y, rotation.z, rotation.w);
+            AssertNumbers(particle["scale"], 1, 1, 1);
 
             // The object itself is written: no offset.
             particle = Single(Resolve(root, go => go.transform == system.transform ? 4 : -1));
             Assert.That(particle["node"], Is.EqualTo(4));
             AssertNumbers(particle["position"], 0, 0, 0);
             AssertNumbers(particle["scale"], 1, 1, 1);
+
+            // A default-off system is written as off.
+            system.gameObject.SetActive(false);
+            Assert.That(Single(Resolve(root, _ => -1))["active"], Is.EqualTo(false));
         }
 
         [Test]
-        public void SystemsWithNoWrittenNodeAreCountedAndTheirMaterialsDropped()
+        public void RebindTakesThePoseAgainstTheObjectsTheBuildLeft()
         {
             var root = Root();
-            var left = new GameObject("Left").transform; left.SetParent(root.transform, false);
-            var right = new GameObject("Right").transform; right.SetParent(root.transform, false);
-            var lost = System(right, "Lost", 10);
-            var kept = System(left, "Kept", 10);
-            Renderer(lost).sharedMaterial = Material("Sprites/Default", Color.red);
-            Renderer(kept).sharedMaterial = Material("Sprites/Default", Color.green);
+            var head = new GameObject("Head").transform;
+            head.SetParent(root.transform, false);
+            head.localPosition = new Vector3(0, 1.7f, 0);
+            var holder = new GameObject("Holder").transform;
+            holder.SetParent(root.transform, false);
+            holder.localPosition = new Vector3(0, 1.8f, 0);
+            var system = System(holder, "Sparkles", 10);
+            system.transform.localPosition = new Vector3(0, 0, .2f);
 
             var capture = AvatarEffectsExport.Capture(root);
-            Assert.That(capture.Resolve(_ => -1), Is.Null, "Nothing is left to write.");
-            var extension = capture.Resolve(go => go.transform == left ? 0 : -1);
-            var particle = Single(extension);
-            Assert.That(particle["material"], Is.EqualTo(0));
-            var materials = ((List<object>)extension["materials"]).Cast<Dictionary<string, object>>().ToArray();
-            Assert.That(materials.Length, Is.EqualTo(1));
-            AssertNumbers(materials[0]["color"], 0, 1, 0, 1);
-            Assert.That(Omitted(extension), Is.EqualTo(new[] { ("missingNode", 1) }));
-            Assert.That(AvatarEffectsExport.ResultLine(extension), Is.EqualTo(ExporterLocalization.Format(AvatarEffectsExport.ResultNote,
+            // The build moves Holder under Head, keeping where it is, and removes the system's object.
+            holder.SetParent(head, true);
+            Object.DestroyImmediate(system.gameObject);
+            capture.Rebind();
+            var particle = Single(capture.Resolve(go => go.transform == head ? 1 : -1));
+            Assert.That(particle["node"], Is.EqualTo(1));
+            AssertNumbers(particle["position"], 0, .1, .2);
+
+            // Holder itself is written.
+            particle = Single(capture.Resolve(go => go.transform == holder ? 2 : go.transform == head ? 1 : -1));
+            Assert.That(particle["node"], Is.EqualTo(2));
+            AssertNumbers(particle["position"], 0, 0, .2);
+        }
+
+        [Test]
+        public void WhenNothingIsWrittenTheResultLineStillCountsWhatWasLeftOut()
+        {
+            var root = Root();
+            System(root.transform, "Huge", AvatarEffectsExport.MaximumParticles + 1);
+            var capture = AvatarEffectsExport.Capture(root);
+            Assert.That(capture.Resolve(_ => 0), Is.Null);
+            Assert.That(capture.LeftOut, Is.EqualTo(ExporterLocalization.Format(AvatarEffectsExport.ResultNote,
+                ExporterLocalization.Format(AvatarEffectsExport.LimitCount, 1))));
+
+            // The whole copy is gone: the systems have nowhere to hang.
+            var other = Root();
+            var lost = System(other.transform, "Lost", 10);
+            Renderer(lost).sharedMaterial = Material("Sprites/Default", Color.red);
+            var noise = lost.noise; noise.enabled = true;
+            capture = AvatarEffectsExport.Capture(other);
+            owned.Remove(other);
+            Object.DestroyImmediate(other);
+            Assert.That(capture.Resolve(_ => 0), Is.Null);
+            // Its module is not counted: only written systems count theirs.
+            Assert.That(capture.LeftOut, Is.EqualTo(ExporterLocalization.Format(AvatarEffectsExport.ResultNote,
                 ExporterLocalization.Format(AvatarEffectsExport.LimitCount, 1))));
         }
 
@@ -229,13 +268,15 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Convert.ToInt32(extension["schemaVersion"]), Is.EqualTo(1));
 
             Assert.Throws<InvalidOperationException>(() => AvatarEffectsExport.Inject(bytes, Resolve(root, _ => 2)));
+            Assert.DoesNotThrow(() => AvatarEffectsExport.Inject(bytes, Resolve(root, _ => -1)), "-1 is the avatar root.");
             var wrong = Resolve(root, _ => 0);
             ((Dictionary<string, object>)((List<object>)wrong["particles"])[0])["material"] = 3;
             Assert.Throws<InvalidOperationException>(() => AvatarEffectsExport.Inject(bytes, wrong));
         }
 
-        [Test]
-        public void ExportWritesTheParticlesUnderTheOutputNodes()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ExportWritesTheParticlesUnderTheOutputNodes(bool autoExclude)
         {
             using var avatar = new AttachmentConnectionTests.Fixture();
             var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
@@ -250,7 +291,7 @@ namespace VRVlog.LilToonExporter.Tests
             var warnings = new List<string>();
             var json = GlbDocument.Read(UniVrmOneClickExporter.Export(avatar.Source, "Avatar effects", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
-                gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
+                gimmickOptions: new ExportGimmickOptions { AutoExclude = autoExclude },
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None })).Json;
 
             Assert.That((List<object>)json["extensionsUsed"], Has.Member(AvatarEffectsExport.Extension), string.Join("\n", warnings));

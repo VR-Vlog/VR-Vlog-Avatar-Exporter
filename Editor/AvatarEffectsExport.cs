@@ -16,8 +16,11 @@ namespace VRVlog.LilToonExporter
     // The export removes the objects that hold particles before the build
     // (ExportGimmickDetection) or prunes them as empty, so a system hangs
     // from the nearest ancestor that is written, with its pose relative to
-    // that node. Capture reads the copy before those objects go; Resolve
-    // binds them to output nodes once they are known.
+    // that node, or from the avatar root (node -1) in the model space.
+    // Capture reads the copy before those objects go; Rebind measures the
+    // pose again against the ancestors the build left, before the empty
+    // objects are pruned; Resolve binds them to output nodes once they are
+    // known.
     internal sealed class AvatarEffectsExport
     {
         internal const string Extension = "VRVLOG_avatar_effects";
@@ -57,24 +60,35 @@ namespace VRVlog.LilToonExporter
 
         sealed class Particle
         {
-            internal readonly List<(Transform Ancestor, Matrix4x4 Offset)> Anchors = new List<(Transform, Matrix4x4)>();
+            // The system's own object, then each ancestor up to the root.
+            internal Transform[] Ancestors;
+            // Its pose against each of them (Rebind); against the root in the model space.
+            internal Matrix4x4[] Offsets;
+            internal Matrix4x4 World;
+            internal bool Active;
+            // Modules in use that are not written.
+            internal int Modules;
             internal Dictionary<string, object> Values;
             internal int Material = -1;
         }
 
+        Transform root;
         readonly List<Particle> particles = new List<Particle>();
         readonly List<Dictionary<string, object>> materials = new List<Dictionary<string, object>>();
+        readonly List<bool> materialTextures = new List<bool>();
         readonly Dictionary<Material, int> materialIndex = new Dictionary<Material, int>();
         readonly Dictionary<string, int> omitted = new Dictionary<string, int>(StringComparer.Ordinal);
 
         internal int Count => particles.Count;
+        // The result line of the last Resolve, also when it wrote nothing; null when nothing was left out.
+        internal string LeftOut { get; private set; }
 
         // Reads the ParticleSystems under root (the export copy), skipping those
         // excluded (objects the user left out of the export). Null when there are none.
         internal static AvatarEffectsExport Capture(GameObject root, Func<Transform, bool> excluded = null)
         {
             if (root == null) throw new ArgumentNullException(nameof(root));
-            var capture = new AvatarEffectsExport();
+            var capture = new AvatarEffectsExport { root = root.transform };
             var total = 0;
             foreach (var system in root.GetComponentsInChildren<ParticleSystem>(true))
             {
@@ -88,22 +102,27 @@ namespace VRVlog.LilToonExporter
                 total += max;
                 capture.particles.Add(capture.Read(system, root.transform));
             }
+            capture.Rebind();
             return capture.particles.Count == 0 && capture.omitted.Count == 0 ? null : capture;
         }
 
         Particle Read(ParticleSystem system, Transform root)
         {
-            var particle = new Particle();
-            // The system's pose against its own object and each ancestor up to
-            // the root: the build may remove any of them, and Resolve takes the
-            // nearest one written.
-            var world = system.transform.localToWorldMatrix;
-            particle.Anchors.Add((system.transform, Matrix4x4.identity));
-            for (var ancestor = system.transform.parent; ancestor != null; ancestor = ancestor.parent)
+            // The build may remove the system's object or any ancestor, and
+            // Resolve takes the nearest one written. Whether it plays is its
+            // object's state in the copy; the FX that turns it on is not read yet.
+            var ancestors = new List<Transform>();
+            for (var ancestor = system.transform; ancestor != null; ancestor = ancestor.parent)
             {
-                particle.Anchors.Add((ancestor, ancestor.worldToLocalMatrix * world));
+                ancestors.Add(ancestor);
                 if (ancestor == root) break;
             }
+            var particle = new Particle
+            {
+                Ancestors = ancestors.ToArray(),
+                World = system.transform.localToWorldMatrix,
+                Active = system.gameObject.activeInHierarchy
+            };
             using var serialized = new SerializedObject(system);
             var values = new Dictionary<string, object>();
             var main = new Dictionary<string, object>();
@@ -127,7 +146,7 @@ namespace VRVlog.LilToonExporter
                 {
                     if (!other.name.EndsWith("Module", StringComparison.Ordinal) || WrittenModules.Contains(other.name)) continue;
                     var enabled = other.FindPropertyRelative("enabled");
-                    if (enabled != null && enabled.propertyType == SerializedPropertyType.Boolean && enabled.boolValue) Omit("particleModule");
+                    if (enabled != null && enabled.propertyType == SerializedPropertyType.Boolean && enabled.boolValue) particle.Modules++;
                 } while (other.Next(false));
             var renderer = system.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
@@ -162,10 +181,10 @@ namespace VRVlog.LilToonExporter
                 { "blend", Blend(material) },
                 { "softParticles", false }
             };
-            // The texture is not written yet: see Documentation~/decisions/2026-11-15-avatar-effects-particles.md.
-            if (HasMainTexture(material)) Omit("effectTexture");
             index = materials.Count;
             materials.Add(record);
+            // The texture is not written yet: see Documentation~/decisions/2026-11-15-avatar-effects-particles.md.
+            materialTextures.Add(HasMainTexture(material));
             materialIndex.Add(material, index);
             return index;
         }
@@ -209,51 +228,98 @@ namespace VRVlog.LilToonExporter
 
         void Omit(string kind) => omitted[kind] = (omitted.TryGetValue(kind, out var count) ? count : 0) + 1;
 
+        // Measures each system's pose, as captured, against the ancestors that
+        // are still there. The export calls it again once the build has moved
+        // and removed objects, before the empty ones are pruned and before
+        // RootScaleBake moves the root scale into the root's children; the
+        // pose against the root takes that scale, as the model space does
+        // (the avatar is written at the origin).
+        internal void Rebind()
+        {
+            if (root == null) return;
+            foreach (var particle in particles)
+            {
+                // The build may move an object under another parent (a bone it
+                // merges into): from the nearest object still there, walk the
+                // parents as they are now.
+                var chain = new List<Transform>();
+                for (var ancestor = particle.Ancestors.FirstOrDefault(a => a != null); ancestor != null; ancestor = ancestor.parent)
+                {
+                    chain.Add(ancestor);
+                    if (ancestor == root) break;
+                }
+                if (chain.Count == 0 || chain[chain.Count - 1] != root) chain.Add(root);
+                particle.Ancestors = chain.ToArray();
+                particle.Offsets = new Matrix4x4[particle.Ancestors.Length];
+                for (var i = 0; i < particle.Ancestors.Length; i++)
+                {
+                    var ancestor = particle.Ancestors[i];
+                    if (ancestor == null) continue;
+                    particle.Offsets[i] = ancestor == root
+                        ? Matrix4x4.Scale(root.localScale) * root.worldToLocalMatrix * particle.World
+                        : ancestor.worldToLocalMatrix * particle.World;
+                }
+            }
+        }
+
         // The extension once the output nodes are known: node gives the output
         // node of an object of the copy, -1 when it is not written. A system
-        // with no written ancestor is counted as missingNode. Null when no
-        // system is left.
+        // with no written ancestor hangs from the root (node -1); one whose
+        // ancestors are all gone is counted as missingNode. Only the written
+        // systems count their modules and textures. Null when no system is
+        // written; LeftOut still tells what was left out.
         internal Dictionary<string, object> Resolve(Func<GameObject, int> node)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
             var written = new List<object>();
-            var missing = 0;
+            var counts = new Dictionary<string, int>(omitted, StringComparer.Ordinal);
+            void Add(string kind, int count) { if (count > 0) counts[kind] = (counts.TryGetValue(kind, out var c) ? c : 0) + count; }
             var used = new HashSet<int>();
             foreach (var particle in particles)
             {
-                var anchor = particle.Anchors.FirstOrDefault(a => a.Ancestor != null && node(a.Ancestor.gameObject) >= 0);
-                if (anchor.Ancestor == null) { missing++; continue; }
-                var offset = anchor.Offset;
+                var at = -1;
+                var output = -1;
+                for (var i = 0; i < particle.Ancestors.Length && at < 0; i++)
+                {
+                    var ancestor = particle.Ancestors[i];
+                    if (ancestor == null) continue;
+                    if (ancestor == root) { at = i; output = -1; }
+                    else if ((output = node(ancestor.gameObject)) >= 0) at = i;
+                }
+                if (at < 0) { Add("missingNode", 1); continue; }
+                var offset = particle.Offsets[at];
                 var entry = new Dictionary<string, object>
                 {
-                    { "node", node(anchor.Ancestor.gameObject) },
+                    { "node", output },
                     { "position", Vector(offset.GetColumn(3)) },
                     { "rotation", Quaternion(offset.rotation) },
                     { "scale", Vector(offset.lossyScale) },
+                    { "active", particle.Active },
                     { "material", particle.Material }
                 };
                 foreach (var pair in particle.Values) entry[pair.Key] = pair.Value;
+                Add("particleModule", particle.Modules);
                 if (particle.Material >= 0) used.Add(particle.Material);
                 written.Add(entry);
             }
-            if (written.Count == 0) return null;
             // Materials only the left-out systems used are dropped and the rest renumbered.
             var renumber = new Dictionary<int, int>();
             var kept = new List<object>();
             foreach (var index in used.OrderBy(i => i)) { renumber[index] = kept.Count; kept.Add(materials[index]); }
             foreach (Dictionary<string, object> entry in written)
                 if ((int)entry["material"] >= 0) entry["material"] = renumber[(int)entry["material"]];
-            var counts = new Dictionary<string, int>(omitted, StringComparer.Ordinal);
-            if (missing > 0) counts["missingNode"] = (counts.TryGetValue("missingNode", out var m) ? m : 0) + missing;
+            Add("effectTexture", used.Count(i => materialTextures[i]));
             var omissions = OmittedKinds.Where(kind => counts.ContainsKey(kind))
                 .Select(kind => (object)new Dictionary<string, object> { { "kind", kind }, { "count", counts[kind] } }).ToList();
-            return new Dictionary<string, object>
+            var extension = new Dictionary<string, object>
             {
                 { "schemaVersion", SchemaVersion },
                 { "particles", written },
                 { "materials", kept },
                 { "omitted", omissions }
             };
+            LeftOut = ResultLine(extension);
+            return written.Count == 0 ? null : extension;
         }
 
         // Adds the extension to the root of the finished GLB. Null keeps the bytes.
@@ -265,7 +331,7 @@ namespace VRVlog.LilToonExporter
             var count = ((List<object>)extension["materials"]).Count;
             foreach (Dictionary<string, object> particle in (List<object>)extension["particles"])
             {
-                if ((int)particle["node"] < 0 || (int)particle["node"] >= nodes) throw new InvalidOperationException("Avatar effects node is out of range.");
+                if ((int)particle["node"] < -1 || (int)particle["node"] >= nodes) throw new InvalidOperationException("Avatar effects node is out of range.");
                 if ((int)particle["material"] >= count) throw new InvalidOperationException("Avatar effects material is out of range.");
             }
             document.PlaceExtension(Extension, extension);

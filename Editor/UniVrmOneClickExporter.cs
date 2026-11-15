@@ -1025,6 +1025,9 @@ namespace VRVlog.LilToonExporter
                 DropOutsideBones(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
                 var rootScale = clone.transform.localScale;
+                // The particles hang from what the build left, as it stands now.
+                try { effects?.Rebind(); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); effects = null; }
                 // Every capture above is taken; objects with nothing to write
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)
@@ -1218,9 +1221,11 @@ namespace VRVlog.LilToonExporter
                     try
                     {
                         exported = AvatarEffectsExport.Inject(exported, effectsData);
-                        if (AvatarEffectsExport.ResultLine(effectsData) is string effectsLeftOut) warnings?.Add(effectsLeftOut);
+                        if (effects.LeftOut is string effectsLeftOut) warnings?.Add(effectsLeftOut);
                     }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                // Nothing written: still say what was left out.
+                if (effectsData == null && effects?.LeftOut is string effectsNoneWritten) warnings?.Add(effectsNoneWritten);
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);
