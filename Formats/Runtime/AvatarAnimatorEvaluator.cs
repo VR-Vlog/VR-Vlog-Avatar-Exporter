@@ -339,7 +339,8 @@ namespace VRVlog.AvatarAnimator
         // Per target, the share of what lies under every controller (HostShare).
         readonly double[] hostShare;
         // The body parts a trackingControl last set to animation (Animated).
-        readonly HashSet<string> animatedParts = new HashSet<string>();
+        // Sized for VRChat's ten parts up front, so Advance allocates nothing when it adds one.
+        readonly HashSet<string> animatedParts = new HashSet<string>(16);
         // Each value a layer set in values this frame and the last, in layer
         // order: the layer, the value and the same target's entry before it
         // (-1 none). Head holds each target's latest entry (-1 none).

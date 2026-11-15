@@ -17,6 +17,11 @@ VRChat の VRC Animator Tracking Control は、ステートに入ったときに
 - どの `trackingControl` も触っていない部位は false（VRChat の既定のトラッキング）
 - `Values`・`Written`・`HostShare` は変えない。書き出しの内容も変えない
 
+## 決めなかったこと
+
+- 同じフレームに複数のレイヤー・コントローラーが `trackingControl` を走らせたときは、評価器が回す順（gesture→action→fx、その中はレイヤーの番号順、ステートマシンの振る舞いはステートの前）で後のものが勝つ。VRChat の中の順は実測していない
+- 評価器が再生しないコントローラー（gesture・action・fx 以外と、`SkipReason` で飛ばしたもの）の `trackingControl` は効かない。そのコントローラーの動きも出ないので、部位だけ止めることはしない
+
 ## 確かめたこと
 
 - 評価器だけのテスト `TrackingControl`: 最初はどの部位も false、`animation` を持つステートに入ると true、`noChange` で残り、`tracking` で false に戻る
