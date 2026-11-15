@@ -453,7 +453,38 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e.Get(flag) == 1, "set, any value but 0 is true");
         Near(e.Get(copied), 15, "copy with a range");
         Check(e.Get(rolled) == 4, "random int includes the maximum");
-        Check(e.State(1) == reacted, "M8: a later layer sees the driver's change in the same frame");
+        Check(e.State(1) == waiting && e.NextState(1) == -1, "M8: a later layer does not see the driver's change in the same frame");
+        e.Advance(Frame);
+        Check(e.State(1) == reacted, "but in the next");
+
+        // M8: a copy reads its source when the drivers apply, here a trigger
+        // the transition into its state used, and the driver's own layer also
+        // sees its change from the next frame on.
+        var d = new Builder();
+        var pull = d.Parameter("Pull", "trigger");
+        var pulled = d.Parameter("Pulled", "bool");
+        var mark = d.Parameter("Mark", "bool");
+        var dn = d.Target();
+        var only = d.Layer("Only");
+        var idle = Builder.State(only, "Idle", -1);
+        var entered = Builder.State(only, "Entered", -1);
+        var done = Builder.State(only, "Done", d.Clip(0, false, (dn, 1)));
+        only.States[idle].Transitions.Add(To(entered).When(pull, "if"));
+        only.States[entered].Transitions.Add(To(done).When(mark, "if"));
+        var copy = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        copy.Operations.Add(new AvatarAnimatorData.Operation { Type = "copy", Parameter = pulled, Source = pull });
+        copy.Operations.Add(new AvatarAnimatorData.Operation { Type = "set", Parameter = mark, Value = 1 });
+        only.States[entered].Behaviours.Add(copy);
+        var e2 = d.Build();
+        e2.Advance(Frame);
+        e2.Set(pull, 1);
+        e2.Advance(Frame);
+        Check(e2.State(0) == entered, "the trigger takes the transition");
+        Check(e2.Get(pulled) == 0, "the copy reads the trigger after the transition used it");
+        Check(e2.Get(mark) == 1, "the set applied after the frame");
+        Check(e2.NextState(0) == -1, "its own layer did not start a transition on it");
+        e2.Advance(Frame);
+        Check(e2.State(0) == done, "its own layer moves on it in the next frame");
     }
 
     // M11: Unity owns a parameter a clip animates.
