@@ -16,7 +16,8 @@
 - ベクトルはUnityの座標のまま`[x, y, z]`、角度は度。アプリはUniVRMで同じ座標に読み戻す
 - FXの`m_Enabled`の曲線は、`VRVLOG_avatar_animator`の`enabled`の対象（`component`が`constraint`、`node`がConstraintの動かすノード、`index`がこの拡張の表の番号）にする。今の読み手は知らない`component`として受け（`Target.Known`が偽）、書かない
 - 表にしないもの（VRMのConstraintに変えたもの、ターゲット・ソース・Up Objectのどれかにノードが無いもの、自動除外で消えたもの）に向いた`m_Enabled`の曲線は、今までどおり`enabled`として数える
-- `ConstraintExport`がソースの下に付け替えたターゲットのConstraintは書かない。設定値が付け替え前の座標のものだから
+- `ConstraintExport`がソースの下に付け替えたターゲットのConstraintは書かない。設定値が付け替え前の座標のものだから。VRMのConstraintが動かすターゲット（元からあるものと、このパスで変えたもの）のConstraintも書かない。アプリで同じノードを二重に解くことになるから
+- Up Objectにノードが無いときは、設定がUp Objectを読むとき（AimのWorld Up TypeがObject UpかObject Rotation Up、LookAtのUse Up Objectがオン）だけ表に入れない。読まないときは`worldUpNode`を-1にして書く
 - 拡張を読む最初のアプリの版は仮に1.2.8とする（`AvatarFormatVersions`）。`VRVLOG_avatar_animator`と同じ扱い
 
 設計書の段6は、この拡張のキーを`node`・`type`・`sources`・`weight`・`locked`・`offsets`・`freeze`と略して書いている。「UnityのConstraintとVRC Constraintの設定値のまま書く」を満たすため、`offsets`を種類ごとのRest・Offsetとソースごとのオフセットに分け、`origin`・`enabled`・`active`・`localSpace`・軸・Aimの設定を足した。
@@ -25,7 +26,7 @@
 
 - VRMのConstraintに変えたものと付け替えは変えない。拡張に書いたConstraintも、VRMの中では今までどおり今の姿勢のまま残る。古いアプリは知らない拡張を読まないので、今と同じに出る
 - FXの曲線は、クリップの容量（キー16384・トラック4096）を今ある種類のあとに使う。読むときは曲線をマテリアルの値の曲線より後に回し、トラックもマテリアルの対象より後に置く。今ある種類が押し出されることはない
-- 拡張の組み立てや書き込みで例外が出たときは、ログに出して拡張を書かない。そのときのファイルは今までと同じになるので、結果の一覧には何も足さない
+- 拡張の組み立てや書き込みで例外が出たときは、ログに出して拡張を書かない。FXの拡張はConstraintの表より後に書き、表を書けなかったときは`constraint`の対象なしで組み直す。そのときのファイルは今までと同じになるので、結果の一覧には何も足さない
 
 ## 採らなかった案
 
@@ -36,7 +37,9 @@
 
 ## 確かめたこと
 
-（テストの結果を書く）
+- EditModeテスト（Unity 2022.3、batchmode、GPUあり）: `AvatarConstraintsExportTests`（新規7件）、`AvatarAnimatorCaptureTests`、`ConstraintExportTests`、`ExportStageGuardTests`をすべて通した。`-nographics`ではテストのアバターを丸ごと書き出すテストが画像の読み戻しで落ちるため、GPUありで回した
+- 回帰の比較: 手元のテストのアバター4体を、この変更の前と後で書き出して`Tools/compare-exports.py`で比べた。`VRVLOG_avatar_constraints`が足された以外の違いは0件だった。4体ともFXに`m_Enabled`の曲線を向けたConstraintは無く、FXの拡張も変わらなかった。曲線を番号で結ぶところはEditModeテストだけで確かめている
+- 敵対的レビュー: P0は無し。P1の2件（表を書けなかったときにFXの対象が表を指したまま残る、使わないUp Objectにノードが無いだけで表から外れる）とP2（VRMのConstraintと同じターゲットの二重解決、World Up Typeの範囲、FXのスキーマの説明、書き込み前のノードの範囲）を直した
 
 ## 残したこと
 

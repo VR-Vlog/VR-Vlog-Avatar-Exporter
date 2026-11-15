@@ -136,6 +136,42 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Extension.IndexOf(scale), Is.EqualTo(-1));
         }
 
+        // An up object without a node leaves the constraint out only when its
+        // settings read it; otherwise worldUpNode is -1.
+        [Test]
+        public void AnUpObjectWithoutANodeMattersOnlyWhenTheSettingsReadIt()
+        {
+            using var f = new Fixture();
+            var aim = f.Constraint<AimConstraint>(f.Parent, .5f, f.A, f.Other);
+            aim.worldUpType = AimConstraint.WorldUpType.Vector;
+            aim.worldUpObject = f.B;
+            f.Convert();
+            Assume.That(f.Extension.Components, Is.EqualTo(new Component[] { aim }), "Two sources keep the pose.");
+            f.Unwritten.Add(f.B.gameObject);
+            var c = f.Resolve().Constraints.Single();
+            Assert.That((c.Type, c.WorldUp, c.WorldUpNode), Is.EqualTo(("aim", "vector", -1)));
+
+            aim.worldUpType = AimConstraint.WorldUpType.ObjectUp;
+            Assert.That(f.Resolve(), Is.Null);
+            Assert.That(f.Extension.IndexOf(aim), Is.EqualTo(-1));
+            f.Unwritten.Clear();
+            Assert.That(f.Resolve().Constraints.Single().WorldUpNode, Is.EqualTo(f.Nodes[f.B.gameObject]));
+        }
+
+        // A second constraint on a target a VRM constraint already moves stays
+        // out, so the app does not solve the target twice.
+        [Test]
+        public void AConstraintBesideAVrmConstraintIsLeftOut()
+        {
+            using var f = new Fixture();
+            f.Constraint<RotationConstraint>(f.B, 1, f.A);
+            f.Constraint<AimConstraint>(f.B, .5f, f.A, f.Other);
+            f.A.localRotation = f.B.localRotation = Quaternion.Euler(0, 0, 20);
+            f.Convert();
+            Assume.That(f.B.GetComponent<Vrm10RotationConstraint>(), Is.Not.Null);
+            Assert.That(f.Extension.Components, Is.Empty);
+        }
+
         // The shared reader takes each type's keys and no others, and no VRChat
         // setting on a Unity constraint.
         [Test]

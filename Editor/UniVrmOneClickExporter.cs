@@ -620,6 +620,8 @@ namespace VRVlog.LilToonExporter
             // with their settings as VRVLOG_avatar_constraints.
             var avatarConstraints = new AvatarConstraintsExport();
             VRVlog.AvatarConstraints.AvatarConstraintsData avatarConstraintsData = null;
+            // Builds the FX extension again with or without the constraint entries.
+            Func<Func<Component, int>, VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -1063,11 +1065,16 @@ namespace VRVlog.LilToonExporter
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         // Before the FX, whose constraint enabled curves name the entries.
-                        avatarConstraintsData = OptionalConstraints(() => avatarConstraints.Resolve(OutputNode), null);
-                        if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
-                            AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
-                                animatorMorphReverses), material => model.Materials.IndexOf(material),
-                            avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null), () => null);
+                        // Checked against the nodes here, so Inject has little left to fail on.
+                        avatarConstraintsData = OptionalConstraints(() => AvatarConstraintsExport.Checked(avatarConstraints.Resolve(OutputNode), model.Nodes.Count), null);
+                        if (avatarAnimator != null)
+                        {
+                            resolveAnimator = constraint => avatarAnimator.Resolve(OutputNode,
+                                AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
+                                    animatorMorphReverses), material => model.Materials.IndexOf(material), constraint);
+                            avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator,
+                                () => resolveAnimator(avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null), () => null);
+                        }
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
@@ -1224,8 +1231,17 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
+                // The constraints before the FX: when they cannot be written, the
+                // FX is built again without the targets that name their entries,
+                // which is the file written before the extension.
+                if (avatarConstraintsData != null)
+                {
+                    var withConstraints = OptionalConstraints(() => AvatarConstraintsExport.Inject(exported, avatarConstraintsData), null);
+                    if (withConstraints != null) exported = withConstraints;
+                    else if (avatarAnimatorData != null && resolveAnimator != null)
+                        avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => resolveAnimator(null), () => null);
+                }
                 if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, avatarAnimator.FaceClips), () => exported);
-                if (avatarConstraintsData != null) exported = OptionalConstraints(() => AvatarConstraintsExport.Inject(exported, avatarConstraintsData), exported);
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);

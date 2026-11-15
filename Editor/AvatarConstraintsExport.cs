@@ -84,13 +84,22 @@ namespace VRVlog.LilToonExporter
         internal static byte[] Inject(byte[] bytes, AvatarConstraintsData data)
         {
             if (data == null || data.Constraints.Count == 0) return bytes;
-            var extension = AvatarConstraintsData.Write(data);
             var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list.Count : 0;
+            Checked(data, nodes);
+            document.PlaceExtension(AvatarConstraintsData.Extension, AvatarConstraintsData.Write(data));
+            return document.Write();
+        }
+
+        // The data when it fits the contract and every node is below nodes;
+        // throws otherwise. Null stays null.
+        internal static AvatarConstraintsData Checked(AvatarConstraintsData data, int nodes)
+        {
+            if (data == null) return null;
+            AvatarConstraintsData.Write(data);
             if (data.Constraints.Any(c => c.Node >= nodes || c.WorldUpNode >= nodes || c.Sources.Any(s => s.Node >= nodes)))
                 throw new InvalidOperationException("Avatar constraint node is out of range.");
-            document.PlaceExtension(AvatarConstraintsData.Extension, extension);
-            return document.Write();
+            return data;
         }
 
         static AvatarConstraintsData.Constraint ReadUnity(Component component, Func<GameObject, int> node)
@@ -129,14 +138,16 @@ namespace VRVlog.LilToonExporter
                     entry.RotationAxes = Axes(aim.rotationAxis);
                     entry.RotationAtRest = Vector(aim.rotationAtRest); entry.RotationOffset = Vector(aim.rotationOffset);
                     entry.AimAxis = Vector(aim.aimVector); entry.UpAxis = Vector(aim.upVector);
-                    entry.WorldUp = AvatarConstraintsData.WorldUpTypes[(int)aim.worldUpType]; entry.WorldUpVector = Vector(aim.worldUpVector);
-                    if (!UpNode(aim.worldUpObject, node, out entry.WorldUpNode)) return null;
+                    var worldUp = (int)aim.worldUpType;
+                    if (worldUp < 0 || worldUp >= AvatarConstraintsData.WorldUpTypes.Length) return null;
+                    entry.WorldUp = AvatarConstraintsData.WorldUpTypes[worldUp]; entry.WorldUpVector = Vector(aim.worldUpVector);
+                    if (!UpNode(aim.worldUpObject, UsesUpObject(entry), node, out entry.WorldUpNode)) return null;
                     break;
                 case LookAtConstraint lookAt:
                     entry.Type = "lookAt";
                     entry.RotationAtRest = Vector(lookAt.rotationAtRest); entry.RotationOffset = Vector(lookAt.rotationOffset);
                     entry.Roll = lookAt.roll; entry.UseUpNode = lookAt.useUpObject;
-                    if (!UpNode(lookAt.worldUpObject, node, out entry.WorldUpNode)) return null;
+                    if (!UpNode(lookAt.worldUpObject, UsesUpObject(entry), node, out entry.WorldUpNode)) return null;
                     break;
                 default: return null;
             }
@@ -183,10 +194,6 @@ namespace VRVlog.LilToonExporter
                 entry.ScaleAxes = Affects("Scale");
                 entry.ScaleAtRest = Read("ScaleAtRest", Vector3.one); entry.ScaleOffset = Read("ScaleOffset", Vector3.one);
             }
-            if (type == "aim" || type == "lookAt")
-            {
-                if (!UpNode(settings.FindProperty("WorldUpTransform")?.objectReferenceValue as Transform, node, out entry.WorldUpNode)) return null;
-            }
             if (type == "aim")
             {
                 entry.AimAxis = Read("AimAxis", Vector3.forward); entry.UpAxis = Read("UpAxis", Vector3.up);
@@ -195,6 +202,11 @@ namespace VRVlog.LilToonExporter
                 entry.WorldUp = AvatarConstraintsData.WorldUpTypes[worldUp]; entry.WorldUpVector = Read("WorldUpVector", Vector3.up);
             }
             if (type == "lookAt") { entry.Roll = settings.FindProperty("Roll")?.floatValue ?? 0; entry.UseUpNode = True("UseUpTransform"); }
+            if (type == "aim" || type == "lookAt")
+            {
+                var up = settings.FindProperty("WorldUpTransform")?.objectReferenceValue as Transform;
+                if (!UpNode(up, UsesUpObject(entry), node, out entry.WorldUpNode)) return null;
+            }
             // Sixteen inline entries followed by an overflow list; entries
             // beyond totalLength are stale.
             var count = settings.FindProperty("Sources.totalLength")?.intValue ?? 0;
@@ -221,12 +233,20 @@ namespace VRVlog.LilToonExporter
             return value >= 0;
         }
 
-        // No up object is -1; one the file has no node for leaves the constraint out.
-        static bool UpNode(Transform transform, Func<GameObject, int> node, out int value)
+        // No up object is -1. One the file has no node for leaves the
+        // constraint out when its settings read it, and is -1 otherwise.
+        static bool UpNode(Transform transform, bool used, Func<GameObject, int> node, out int value)
         {
             if (transform == null) { value = -1; return true; }
-            return Node(transform, node, out value);
+            if (Node(transform, node, out value)) return true;
+            value = -1;
+            return !used;
         }
+
+        // Aim reads the up object for Object Up and Object Rotation Up only,
+        // Look At when Use Up Object is on.
+        static bool UsesUpObject(AvatarConstraintsData.Constraint entry) =>
+            entry.Type == "aim" ? entry.WorldUp == "objectUp" || entry.WorldUp == "objectRotationUp" : entry.UseUpNode;
 
         static double[] Vector(Vector3 value) => new double[] { value.x, value.y, value.z };
         static bool[] Axes(Axis axis) => new[] { (axis & Axis.X) != 0, (axis & Axis.Y) != 0, (axis & Axis.Z) != 0 };
