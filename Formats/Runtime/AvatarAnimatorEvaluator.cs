@@ -909,9 +909,25 @@ namespace VRVlog.AvatarAnimator
                 layer.HeldSerial = serial;
                 for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
+            // A layer resting in a motion state without Write Defaults at full weight passes
+            // every target its motion does not write through unchanged: the loop below would
+            // give the same, but a controller of many such layers (one per menu toggle) would
+            // pay layers × targets every frame (#3664).
+            var passes = !layer.Transitioning && !layer.Frozen && weight >= 1
+                && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults;
             for (var k = 0; k < animated.Length; k++)
             {
                 var t = animated[k];
+                if (passes && sideA.Stamp[t] != sideA.Current)
+                {
+                    var kept = written[t] ? values[t] : previous[t];
+                    layer.Out[k] = kept;
+                    layer.OutWritten[k] = true;
+                    if (isParameter[t]) layer.Own[k] = kept;
+                    values[t] = kept;
+                    written[t] = true;
+                    continue;
+                }
                 // What the layers below leave: this frame's value, else the last frame's.
                 var through = written[t] ? values[t] : previous[t];
                 // Mid-transition the layer holds a target either side's motion writes.
