@@ -1709,6 +1709,23 @@ public static class AvatarAnimatorEvaluatorTests
         source.States[a].TimeParameter = time;
         skipped = Lockstep(b, 90, (e, frame) => { if (frame == 30) e.Set(time, .75); });
         Check(!skipped[30] && !skipped[31] && Count(skipped, 33, 90) == 57, "a synced layer before a source timed by a parameter moves in the frame after the change");
+        // The same mid-transition into a state timed by a parameter: the next
+        // state's time is compared with the source's next time.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        time = b.Parameter("Time", "float");
+        node = b.Target();
+        early = b.Layer("Synced");
+        source = b.Layer("Source");
+        early.SyncedLayer = 1;
+        Builder.State(early, "A", b.Clip(1, false, (node, 0)));
+        Builder.State(early, "B", b.Ramp(1, false, node, 1));
+        a = Builder.State(source, "A", -1);
+        var timed = Builder.State(source, "B", -1);
+        source.States[timed].TimeParameter = time;
+        source.States[a].Transitions.Add(To(timed, 2).When(go, "if"));
+        skipped = Lockstep(b, 80, (e, frame) => { if (frame == 10) e.Set(go, 1); if (frame == 40) e.Set(time, .5); });
+        Check(!skipped[41], "a synced layer before its source moves its next state in the frame after the change");
 
         // Random synced layers on either side of their source, with states
         // timed by a parameter: seeds the settled check failed before.
