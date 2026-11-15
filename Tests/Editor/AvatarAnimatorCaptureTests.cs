@@ -2288,5 +2288,89 @@ namespace VRVlog.LilToonExporter.Tests
                 owned.Clear();
             }
         }
+
+        static EditorCurveBinding Slot(string path, int slot) => EditorCurveBinding.PPtrCurve(path, typeof(MeshRenderer), $"m_Materials.Array.data[{slot}]");
+
+        // A curve that swaps a renderer's material slot is a materialSlot
+        // target of its node and slot, last in the target table and in the
+        // clip, each key the glTF index of the material it sets, which the
+        // file writes for another renderer, and rest the slot's material. One
+        // that sets a material of another shader is counted as
+        // materialSlotShader, one that sets a material the file does not
+        // write as material, and one on an object the avatar does not have
+        // as missingNode.
+        [Test]
+        public void MaterialSlotCurvesAreWrittenAndTheOthersCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var hat = avatar.Source.transform.Find("Hat").GetComponent<MeshRenderer>();
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var swap = new Material(animator.shader) { name = "Swap" };
+            var loose = new Material(animator.shader) { name = "Loose" };
+            var plain = new Material(Shader.Find("Hidden/InternalErrorShader")) { name = "Plain" };
+            try
+            {
+                hat.sharedMaterial = swap;
+                void Add(string name, string path, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot(path, 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Swap", "Glasses", swap, null);
+                var materials = new List<Material> { animator, swap };
+                AvatarAnimatorData Captured(Dictionary<GameObject, int> nodes) =>
+                    AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                        .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, null, materials.IndexOf)));
+
+                var found = new Dictionary<GameObject, int>();
+                var data = Captured(found);
+                var kinds = data.Targets.Select(t => t.Property).ToList();
+                Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+                var target = data.Targets.Single(t => t.Property == "materialSlot");
+                Assert.That((target.Node, target.Slot, target.Rest), Is.EqualTo((found[glasses], 0, 0d)));
+                var tracks = ClipOf(data, "Swap").Tracks;
+                Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "materialSlot" }));
+                Assert.That(tracks.Last().Curves.Single().Keys.Select(k => (k.Value, k.InTangent)), Is.EqualTo(new[] { (1d, (double?)null), (-1d, (double?)null) }));
+                Assert.That(Omitted(data, "materialSlotShader"), Is.Zero);
+
+                var material = Omitted(data, "material");
+                var missingNode = Omitted(data, "missingNode");
+                Add("Plain", "Glasses", plain);
+                Add("Loose", "Glasses", loose);
+                Add("Nowhere", "Nowhere", swap);
+                data = Captured(new Dictionary<GameObject, int>());
+                Assert.That(data.Targets.Count(t => t.Property == "materialSlot"), Is.EqualTo(1));
+                Assert.That(new[] { "Plain", "Loose", "Nowhere" }.Select(name => ClipOf(data, name).Tracks.Count(t => data.Targets[t.Target].Stepped)), Is.All.Zero);
+                Assert.That(Omitted(data, "materialSlotShader"), Is.EqualTo(1));
+                Assert.That(Omitted(data, "material"), Is.EqualTo(material + 1));
+                Assert.That(Omitted(data, "missingNode"), Is.EqualTo(missingNode + 1));
+                Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(data.Omitted.Select(o => o.Kind).OrderBy(kind => Array.IndexOf(AvatarAnimatorData.OmittedKinds, kind))));
+
+                // Without the file's materials the swap reaches no material and
+                // is counted as material.
+                var before = CapturedWithNodes(avatar);
+                Assert.That(before.Targets.Any(t => t.Property == "materialSlot"), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(swap);
+                Object.DestroyImmediate(loose);
+                Object.DestroyImmediate(plain);
+            }
+        }
+
+        [Test]
+        public void AMaterialSlotCurveIsAMeshRenderersMaterialsElement()
+        {
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.data[2]")), Is.EqualTo(2));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("Body", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[0]")), Is.EqualTo(0));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(ParticleSystemRenderer), "m_Materials.Array.data[0]")), Is.EqualTo(-1));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.size")), Is.EqualTo(-1));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.data[x]")), Is.EqualTo(-1));
+        }
     }
 }
