@@ -24,6 +24,16 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       expressions and the BIN chunk are never relaxed. Each row lists the removed names with
       the length of their JSON as information only, and the summary counts the pairs where an
       extension was removed.
+  --allow-added-materials-from VRVLOG_avatar_animator (with two directories only)
+      For a change that makes the extension's materialSlot targets set materials that no mesh
+      uses, which the exporter adds at the end of the glTF materials. The materials at the end of
+      B's list past A's count are removed from B when B's extension names each of them (the rest
+      or a key of a materialSlot target, or the material of another target) and no primitive of
+      B uses it, with the VRVLOG_liltoon_full material record that names it. Removing stops at
+      the first material from the end that does not qualify, which stays a difference; textures
+      and images are never relaxed, and the extension itself is compared as before (add
+      --allow-added-extension when A does not have it). Each row lists the number of removed
+      materials as information only, and the summary counts the pairs where one was removed.
   --allow-kept-morphs (with two directories only)
       For a change that makes VRVLOG_avatar_animator write the BlendShapes that the FX moves, which
       keeps their morph targets in the file. A morph target that a "morph" target of B's extension
@@ -317,6 +327,71 @@ def remove_added_extensions(json_a, json_b, names):
 
 
 ANIMATOR = "VRVLOG_avatar_animator"
+LILTOON_FULL = "VRVLOG_liltoon_full"
+
+
+def _extension_materials(document, name):
+    """The glTF material indices that the root extension name of document names: for
+    VRVLOG_avatar_animator, the rest and keys of its materialSlot targets and the material of
+    its other targets."""
+    extension = _member(_member(document, "extensions"), name)
+    targets = _member(extension, "targets")
+    if not isinstance(targets, list):
+        return set()
+    named, slots = set(), set()
+    for index, target in enumerate(targets):
+        if not isinstance(target, dict):
+            continue
+        if target.get("property") == "materialSlot":
+            slots.add(index)
+            named.add(_index(target.get("rest")))
+        elif "material" in target:
+            named.add(_index(target.get("material")))
+    for clip in _member(extension, "clips") or []:
+        for track in _member(clip, "tracks") or []:
+            if _index(_member(track, "target")) not in slots:
+                continue
+            for curve in _member(track, "curves") or []:
+                for key in _member(curve, "keys") or []:
+                    named.add(_index(_member(key, "value")))
+    named.discard(None)
+    return named
+
+
+def _used_materials(document):
+    used = set()
+    for mesh in _member(document, "meshes") or []:
+        for primitive in _member(mesh, "primitives") or []:
+            used.add(_index(_member(primitive, "material")))
+    return used
+
+
+def remove_added_materials(json_a, json_b, name):
+    """Return (copy of json_b, count) without the materials at the end of B past A's count that
+    B's extension name names and no primitive of B uses, and without B's VRVLOG_liltoon_full
+    records of them. It stops at the first material from the end that does not qualify."""
+    materials_a = _member(json_a, "materials")
+    materials_b = _member(json_b, "materials")
+    if not isinstance(materials_b, list):
+        return json_b, 0
+    floor = len(materials_a) if isinstance(materials_a, list) else 0
+    named, used = _extension_materials(json_b, name), _used_materials(json_b)
+    count = 0
+    for index in range(len(materials_b) - 1, floor - 1, -1):
+        if index not in named or index in used:
+            break
+        count += 1
+    if not count:
+        return json_b, 0
+    json_b = copy.deepcopy(json_b)
+    kept = len(materials_b) - count
+    del json_b["materials"][kept:]
+    if not json_b["materials"] and "materials" not in json_a:
+        del json_b["materials"]
+    records = _member(_member(_member(json_b, "extensions"), LILTOON_FULL), "materials")
+    if isinstance(records, list):
+        records[:] = [record for record in records if not (_index(_member(record, "materialIndex")) or 0) >= kept]
+    return json_b, count
 
 
 def _member(container, key):
@@ -660,7 +735,8 @@ def _without_unused_note(wa, wb, removed, added=0):
     return drop(wa, na), drop(wb, nb)
 
 
-def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed_extensions=(), kept_morphs=False):
+def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed_extensions=(), kept_morphs=False,
+                 added_materials_from=()):
     if patterns is None:
         patterns = volatile_patterns()
     if subs is None:
@@ -705,6 +781,11 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None, allowed
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
+    # Before the extensions, which name the materials.
+    for name in added_materials_from:
+        json_b, count = remove_added_materials(json_a, json_b, name)
+        if count:
+            row["allowed_materials"] = row.get("allowed_materials", 0) + count
     if allowed_extensions:
         json_b, removed = remove_added_extensions(json_a, json_b, allowed_extensions)
         if removed:
@@ -768,6 +849,8 @@ def print_rows(rows):
             print("     - " + issue)
         for extension in row.get("allowed_extensions", []):
             print("     i added extension allowed: %s (%d bytes of JSON)" % (extension["name"], extension["bytes"]))
+        if row.get("allowed_materials"):
+            print("     i added materials allowed: %d at the end of B, named only by the extension" % row["allowed_materials"])
         if "kept_morphs" in row:
             kept = row["kept_morphs"]
             print("     i morph targets: %d removed from B, %d vs %d in the extension (%d reverse), omitted blendShape %d vs %d" % (
@@ -787,6 +870,8 @@ def main(argv=None):
     parser.add_argument("--allow-added-extension", action="append", default=[], metavar="NAME",
                         help="remove the root extension NAME from B before hashing when A does not have it"
                              " (repeatable; not used by --diff-paths)")
+    parser.add_argument("--allow-added-materials-from", action="append", default=[], choices=[ANIMATOR], metavar="NAME",
+                        help="remove from B the materials added at the end that only the extension NAME names")
     parser.add_argument("--allow-kept-morphs", action="store_true",
                         help="remove from B the morph targets kept only for VRVLOG_avatar_animator, and the"
                              " extension's morph targets and tracks from both, before comparing")
@@ -801,6 +886,9 @@ def main(argv=None):
         return 2
     if args.runs and args.allow_kept_morphs:
         print("ERROR --allow-kept-morphs cannot be used with --runs", file=sys.stderr)
+        return 2
+    if args.runs and args.allow_added_materials_from:
+        print("ERROR --allow-added-materials-from cannot be used with --runs", file=sys.stderr)
         return 2
     if args.runs and args.allow_added_extension:
         print("ERROR --allow-added-extension cannot be used with --runs", file=sys.stderr)
@@ -820,7 +908,7 @@ def main(argv=None):
         patterns = volatile_patterns()
         subs = volatile_subs(VOLATILE_SUB if args.runs else VOLATILE_SUB + VOLATILE_SUB_BETWEEN_LAUNCHES)
         rows = [compare_pair(*pair, patterns=patterns, subs=subs, allowed_extensions=args.allow_added_extension,
-                             kept_morphs=args.allow_kept_morphs)
+                             kept_morphs=args.allow_kept_morphs, added_materials_from=args.allow_added_materials_from)
                 for pair in plan_pairs(args)]
     except (OSError, ValueError) as error:
         print("ERROR " + str(error), file=sys.stderr)
@@ -841,6 +929,9 @@ def main(argv=None):
         if args.allow_added_extension:
             allowed = sum(1 for row in rows if row.get("allowed_extensions"))
             print("allowed extension removed in %d of %d pairs" % (allowed, len(rows)))
+        if args.allow_added_materials_from:
+            added = sum(1 for row in rows if row.get("allowed_materials"))
+            print("added materials removed in %d of %d pairs" % (added, len(rows)))
         if args.allow_kept_morphs:
             kept = sum(1 for row in rows if row.get("kept_morphs"))
             print("morph targets in the extension in %d of %d pairs" % (kept, len(rows)))

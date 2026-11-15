@@ -993,6 +993,87 @@ def animator(morphs=(), value=1.0, blend=2):
             'omitted': omitted + [{'kind': 'material', 'count': 1}]}
 
 
+def with_materials(doc, used=1, added=0, slot_keys=None, records=True):
+    """used materials on the primitives of mesh 0 and added more at the end, each named by the
+    animator extension as the key of a materialSlot track, with their liltoon_full records."""
+    total = used + added
+    doc['materials'] = [{'name': 'M%d' % i} for i in range(total)]
+    doc['meshes'][0]['primitives'] = [{'attributes': {}, 'material': i} for i in range(used)]
+    keys = list(range(used, total)) if slot_keys is None else slot_keys
+    doc['extensions']['VRVLOG_avatar_animator'] = {
+        'schemaVersion': 1,
+        'targets': [{'node': 0, 'property': 'materialSlot', 'slot': 0, 'rest': 0}],
+        'clips': [{'tracks': [{'target': 0, 'curves': [{'keys': [{'time': 0, 'value': v} for v in keys]}]}]}],
+    }
+    if records:
+        doc['extensions']['VRVLOG_liltoon_full'] = {'materials': [{'materialIndex': i} for i in range(total)]}
+    return doc
+
+
+class AllowAddedMaterialsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.a, self.b = self.root / 'a', self.root / 'b'
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def pair(self, b, a=None):
+        write(self.a, 'A001_1', result('A001', 1), a or with_materials(document(), slot_keys=[0]))
+        write(self.b, 'A001_1', result('A001', 1), b)
+
+    def run_allowed(self, *extra):
+        return run_main([self.a, self.b, '--allow-added-materials-from', 'VRVLOG_avatar_animator'] + list(extra))
+
+    def test_added_materials_named_by_slot_keys_match(self):
+        self.pair(with_materials(document(), added=2, slot_keys=[1, 2]), with_materials(document(), slot_keys=[1, 2]))
+        code, out, _ = run_main([self.a, self.b])
+        self.assertEqual(1, code, out)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(0, code, out)
+        self.assertEqual(['1 pairs, 0 mismatched', 'added materials removed in 1 of 1 pairs'], out.splitlines()[-2:])
+        self.assertIn('added materials allowed: 2', out)
+        code, out, _ = self.run_allowed('--json')
+        self.assertEqual(2, json.loads(out)['rows'][0]['allowed_materials'])
+
+    def test_material_used_by_a_primitive_stays_a_difference(self):
+        doc = with_materials(document(), added=1)
+        doc['meshes'][0]['primitives'].append({'attributes': {}, 'material': 1})
+        self.pair(doc)
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/materials', out)
+
+    def test_material_not_named_by_the_extension_stays_a_difference(self):
+        self.pair(with_materials(document(), added=1, slot_keys=[0]))
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+
+    def test_stops_at_the_first_material_from_the_end_that_does_not_qualify(self):
+        # M1 is named, M2 is not: neither is removed.
+        self.pair(with_materials(document(), added=2, slot_keys=[1]))
+        code, out, _ = self.run_allowed('--json')
+        self.assertEqual(1, code, out)
+        self.assertNotIn('allowed_materials', json.loads(out)['rows'][0])
+
+    def test_changed_existing_material_still_mismatches(self):
+        doc = with_materials(document(), added=1)
+        doc['materials'][0]['name'] = 'Other'
+        self.pair(doc, with_materials(document(), slot_keys=[1]))
+        code, out, _ = self.run_allowed()
+        self.assertEqual(1, code, out)
+        self.assertIn('/materials/0/name', out)
+
+    def test_other_extension_name_and_runs_exit_2(self):
+        self.pair(with_materials(document()))
+        code, _, err = run_main([self.a, self.b, '--allow-added-materials-from', 'VRVLOG_added'])
+        self.assertEqual(2, code)
+        code, _, err = run_main(['--runs', str(self.a), '1', '2', '--allow-added-materials-from', 'VRVLOG_avatar_animator'])
+        self.assertEqual(2, code)
+        self.assertIn('--runs', err)
+
+
 class AllowKeptMorphsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -159,6 +159,9 @@ namespace VRVlog.AvatarAnimator
         sealed class Side
         {
             internal double[] Accumulated, AccumulatedWeight, Value;
+            // A stepped target's Accumulated is the value of the motion of
+            // the most weight, Best that weight.
+            internal double[] Best;
             internal int[] Stamp;
             internal int Current;
             internal double Total;
@@ -212,6 +215,9 @@ namespace VRVlog.AvatarAnimator
         readonly int[] parameterTargets;
         // M11: per target, whether it is a parameter.
         readonly bool[] isParameter;
+        // Per target, whether it is stepped (Target.Stepped): wherever two
+        // values meet, the one of more weight is taken whole.
+        readonly bool[] stepped;
         // M4: triggers a transition used, reset once every layer has stepped.
         readonly bool[] spent;
         // M8: the Parameter Drivers that ran this frame, applied once every layer has stepped.
@@ -254,10 +260,12 @@ namespace VRVlog.AvatarAnimator
             rest = new double[targetCount];
             parameterTargets = new int[data.Parameters.Count];
             isParameter = new bool[targetCount];
+            stepped = new bool[targetCount];
             for (var i = 0; i < parameterTargets.Length; i++) parameterTargets[i] = -1;
             for (var i = 0; i < targetCount; i++)
             {
                 rest[i] = data.Targets[i].Rest;
+                stepped[i] = data.Targets[i].Stepped;
                 if (data.Targets[i].Property != "parameter") continue;
                 // M11: the controller's default, also when Expression Parameters declares another.
                 var parameter = data.Targets[i].Parameter;
@@ -364,7 +372,7 @@ namespace VRVlog.AvatarAnimator
 
         static Side NewSide(int count) => new Side
         {
-            Accumulated = new double[count], AccumulatedWeight = new double[count], Value = new double[count], Stamp = new int[count]
+            Accumulated = new double[count], AccumulatedWeight = new double[count], Value = new double[count], Best = new double[count], Stamp = new int[count]
         };
 
         int[] MotionTargets(int motion)
@@ -478,7 +486,7 @@ namespace VRVlog.AvatarAnimator
             }
             if (fxWeight < 1)
                 for (var t = 0; t < values.Length; t++)
-                    if (written[t]) values[t] = rest[t] + (values[t] - rest[t]) * Math.Max(0, fxWeight);
+                    if (written[t]) values[t] = Blend(t, rest[t], values[t], Math.Max(0, fxWeight));
             for (var p = 0; p < spent.Length; p++)
                 if (spent[p])
                 {
@@ -1091,6 +1099,7 @@ namespace VRVlog.AvatarAnimator
             {
                 side.Accumulated[t] = 0;
                 side.AccumulatedWeight[t] = 0;
+                side.Best[t] = 0;
                 side.Stamp[t] = side.Current;
             }
             if (s.Motion < 0) return;
@@ -1105,7 +1114,10 @@ namespace VRVlog.AvatarAnimator
             foreach (var t in targets)
             {
                 var fallback = s.WriteDefaults ? rest[t] : previous[t];
-                side.Value[t] = side.Accumulated[t] + (side.Total - side.AccumulatedWeight[t]) * fallback;
+                // The motions that do not write a stepped target give the
+                // fallback with their weight together.
+                side.Value[t] = stepped[t] ? (side.Best[t] >= side.Total - side.AccumulatedWeight[t] ? side.Accumulated[t] : fallback)
+                    : side.Accumulated[t] + (side.Total - side.AccumulatedWeight[t]) * fallback;
             }
         }
 
@@ -1120,8 +1132,15 @@ namespace VRVlog.AvatarAnimator
                 var time = clip.Duration <= 0 ? 0 : (clip.Loop ? local - Math.Floor(local) : Math.Max(0, Math.Min(1, local))) * clip.Duration;
                 foreach (var track in clip.Tracks)
                 {
-                    side.Accumulated[track.Target] += weight * track.Curves[0].Evaluate(time);
-                    side.AccumulatedWeight[track.Target] += weight;
+                    var t = track.Target;
+                    side.AccumulatedWeight[t] += weight;
+                    if (!stepped[t]) side.Accumulated[t] += weight * track.Curves[0].Evaluate(time);
+                    // The first of equal weights stays.
+                    else if (weight > side.Best[t])
+                    {
+                        side.Best[t] = weight;
+                        side.Accumulated[t] = track.Curves[0].Evaluate(time);
+                    }
                 }
                 return;
             }
@@ -1231,7 +1250,7 @@ namespace VRVlog.AvatarAnimator
                 // values from when the transition started.
                 if (!layer.Frozen && states[layer.State].Motion < 0 && !states[layer.State].WriteDefaults) value = layer.Held[k];
                 has |= hasB;
-                value += (b - value) * Math.Min(1, layer.Progress);
+                value = Blend(t, value, b, Math.Min(1, layer.Progress));
             }
             if (has || layer.Transitioning)
             {
@@ -1247,13 +1266,18 @@ namespace VRVlog.AvatarAnimator
             if (!has) return;
             // M7: over the layers below, or over the rest when none of them wrote it.
             var below = Wrote(t) ? values[t] : rest[t];
-            values[t] = weight >= 1 ? value : below + (value - below) * Math.Max(0, weight);
+            values[t] = weight >= 1 ? value : Blend(t, below, value, Math.Max(0, weight));
             written[t] = true;
             logLayer[logCount] = layer.Index;
             logValue[logCount] = values[t];
             logEarlier[logCount] = logHead[t];
             logHead[t] = logCount++;
         }
+
+        // From a toward b by weight w; a stepped target takes b only past
+        // half, where b has more weight than a (not measured in Unity for a
+        // transition or a layer weight).
+        double Blend(int t, double a, double b, double w) => stepped[t] ? (w > 0.5 ? b : a) : a + (b - a) * w;
 
         // M6: one side's value of a target its motion does not write. With
         // Write Defaults: what the layers below leave, or the rest when none
