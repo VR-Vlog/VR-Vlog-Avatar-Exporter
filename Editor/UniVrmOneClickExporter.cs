@@ -623,6 +623,9 @@ namespace VRVlog.LilToonExporter
             // with their settings as VRVLOG_avatar_constraints.
             var avatarConstraints = new AvatarConstraintsExport();
             VRVlog.AvatarConstraints.AvatarConstraintsData avatarConstraintsData = null;
+            // The PhysBones' settings for their parameters, VRVLOG_avatar_physbones.
+            AvatarPhysBonesExport physBones = null;
+            VRVlog.AvatarPhysBones.AvatarPhysBonesData physBonesData = null;
             // Builds the FX extension again with or without the constraint entries.
             Func<Func<Component, int>, VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
             // Set once the build passes have changed the copy; see the catch below.
@@ -1035,6 +1038,9 @@ namespace VRVlog.LilToonExporter
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
                 recoveryReport.Phase = ExportPhase.Springs;
+                // Read before the conversion; a failure writes the file without the extension.
+                try { physBones = AvatarPhysBonesExport.Capture(clone); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
@@ -1107,6 +1113,8 @@ namespace VRVlog.LilToonExporter
                                 () => resolveAnimator(avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null), () => null);
                         }
                         try { effectsData = effects?.Resolve(OutputNode); }
+                        catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                        try { physBonesData = physBones?.Resolve(OutputNode); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
@@ -1284,6 +1292,9 @@ namespace VRVlog.LilToonExporter
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 // Nothing written: still say what was left out.
                 if (effectsData == null && effects?.LeftOut is string effectsNoneWritten) warnings?.Add(effectsNoneWritten);
+                if (physBonesData != null)
+                    try { exported = AvatarPhysBonesExport.Inject(exported, physBonesData); }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);

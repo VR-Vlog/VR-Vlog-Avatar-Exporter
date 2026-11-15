@@ -147,6 +147,9 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<int> controllerTyped = new HashSet<int>();
         // The names Expression Parameters or a controller declare.
         readonly HashSet<string> declared = new HashSet<string>(StringComparer.Ordinal);
+        // The parameters VRChat writes for the avatar's PhysBones
+        // (<parameter>_Angle and the like), builtin like GestureLeft.
+        HashSet<string> physBoneParameters = new HashSet<string>(StringComparer.Ordinal);
         // The clips the controller read now overrides.
         Dictionary<AnimationClip, AnimationClip> overrides;
         // The motions and clips of the controller read now, and its blend
@@ -302,7 +305,7 @@ namespace VRVlog.LilToonExporter
             if (fx == null) return null;
             var controller = ExpressionDependencies.Controller(fx);
             var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), enabledRest ?? new Dictionary<Renderer, bool>(),
-                ExpressionDependencies.Overrides(fx)) { Controller = fx };
+                ExpressionDependencies.Overrides(fx)) { Controller = fx, physBoneParameters = AvatarPhysBonesExport.ParameterNames(clone) };
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller, "fx"));
@@ -1329,7 +1332,7 @@ namespace VRVlog.LilToonExporter
                 controllerDefaults[data.Parameters.Count] = value;
                 data.Parameters.Add(new AvatarAnimatorData.Parameter
                 {
-                    Name = parameter.name, Type = type, Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.name) ? "builtin" : "animator",
+                    Name = parameter.name, Type = type, Origin = VrChatParameterDriver.BuiltIn.Contains(parameter.name) || physBoneParameters.Contains(parameter.name) ? "builtin" : "animator",
                     Default = value
                 });
             }

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_avatar_physbones/1/schema.json",
+  "title": "VRVLOG_avatar_physbones 1",
+  "description": "The avatar's VRChat PhysBones with the settings the app needs to feed the parameters VRChat writes for them. The swing itself stays the VRM SpringBone the exporter writes; this table adds nothing to it. Each entry is one PhysBone component, in hierarchy order, whose root the file has a node for. node is the glTF node of the PhysBone's root (its Root Transform, or its own object when none is set). parameter is the prefix VRChat adds _IsGrabbed, _IsPosed, _Angle, _Stretch and _Squish to, empty when the PhysBone has none; FX parameters of those names are VRVLOG_avatar_animator parameters with origin builtin. maxStretch and maxSquish are the base values of Max Stretch and Max Squish without their curves (maxSquish is 0 on PhysBone 1.0). allowGrabbing and allowPosing are true when anyone may grab or pose it (VRChat's True or Other). limitAngle is the angle in degrees between the root's child and its rest direction at which _Angle reads 1; VRChat normalizes _Angle to 180 degrees whatever the PhysBone's limit, so the exporter writes 180. Node indices must be less than the glTF node count.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "physBones"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "physBones": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": { "$ref": "#/$defs/physBone" }
+    }
+  },
+  "$defs": {
+    "physBone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "parameter", "maxStretch", "maxSquish", "allowGrabbing", "allowPosing", "limitAngle"],
+      "properties": {
+        "node": { "type": "integer", "minimum": 0 },
+        "parameter": { "type": "string" },
+        "maxStretch": { "type": "number", "minimum": 0 },
+        "maxSquish": { "type": "number", "minimum": 0 },
+        "allowGrabbing": { "type": "boolean" },
+        "allowPosing": { "type": "boolean" },
+        "limitAngle": { "type": "number", "exclusiveMinimum": 0, "maximum": 180 }
+      }
+    }
+  }
+}

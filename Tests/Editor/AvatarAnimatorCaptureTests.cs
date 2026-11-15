@@ -9,6 +9,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 using VRVlog.AvatarAnimator;
 using VRVlog.AvatarFormats;
+using VRVlog.AvatarPhysBones;
 using VRVlog.LilToon;
 using Object = UnityEngine.Object;
 
@@ -74,6 +75,42 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(radial.SubParameters.Select(index => data.Parameters[index].Name), Is.EqualTo(new[] { "Blend" }));
 
             Assert.That(avatar.Source.transform.Find("Hat").gameObject.activeSelf, Is.False, "The source is left as it was.");
+        }
+
+        // The FX parameters VRChat writes for a PhysBone are builtin, and the
+        // PhysBone's settings go to VRVLOG_avatar_physbones under its root's node.
+        [Test]
+        public void ExportMarksPhysBoneParametersBuiltinAndWritesTheirTable()
+        {
+            using var avatar = new AnimatorAvatar();
+            var physBoneType = OptionalTools.Require(PhysBoneSpringExport.PhysBoneType, "Install the real VRChat SDK for PhysBones.");
+            var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var tail = new GameObject("Tail").transform;
+            tail.SetParent(head, false); tail.position = new Vector3(0, 1.75f, -.1f);
+            var tip = new GameObject("Tail tip").transform;
+            tip.SetParent(tail, false); tip.position = new Vector3(0, 1.6f, -.15f);
+            var physBone = tail.gameObject.AddComponent(physBoneType);
+            AvatarPhysBonesExportTests.Set(physBone, "parameter", "Tail");
+            AvatarPhysBonesExportTests.Set(physBone, "maxStretch", .25f);
+            avatar.Fx.AddParameter("Tail_Angle", AnimatorControllerParameterType.Float);
+            avatar.Fx.AddParameter("Tail_IsGrabbed", AnimatorControllerParameterType.Bool);
+            avatar.Fx.AddParameter("Lone_Angle", AnimatorControllerParameterType.Float);
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+
+            var parameters = Read(json).Parameters.ToDictionary(p => p.Name);
+            Assert.That(parameters["Tail_Angle"].Origin, Is.EqualTo("builtin"), string.Join("\n", warnings));
+            Assert.That(parameters["Tail_IsGrabbed"].Origin, Is.EqualTo("builtin"));
+            Assert.That(parameters["Lone_Angle"].Origin, Is.EqualTo("animator"), "No PhysBone has the prefix Lone.");
+            Assert.That(parameters["BlendX"].Origin, Is.EqualTo("animator"));
+
+            Assert.That((List<object>)json["extensionsUsed"], Has.Member(AvatarPhysBonesData.Extension));
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey])[AvatarPhysBonesData.Extension], Is.EqualTo("1.2.8"));
+            var table = AvatarPhysBonesData.Read(((Dictionary<string, object>)json["extensions"])[AvatarPhysBonesData.Extension]);
+            var entry = table.PhysBones.Single();
+            Assert.That(Nodes(json)[entry.Node], Is.EqualTo("Tail"));
+            Assert.That((entry.Parameter, entry.MaxStretch, entry.LimitAngle), Is.EqualTo(("Tail", (double).25f, 180d)));
         }
 
         // AvatarAnimatorCrossCheck after the export: Unity's Animator on the
