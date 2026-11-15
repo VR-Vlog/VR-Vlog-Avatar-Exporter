@@ -65,6 +65,18 @@ namespace VRVlog.LilToonExporter
         // which the output indices are taken from, but which may lack the
         // property or hold another value.
         readonly Dictionary<(Renderer, string), (Material Material, bool Has, float Value)[]> slotsAtRead = new Dictionary<(Renderer, string), (Material, bool, float)[]>();
+
+        // The export drops empty submeshes with their slots after the curves
+        // were read (UniVrmOneClickExporter.DropEmptySubmeshes): kept holds,
+        // for each slot the renderer has now, the slot it had before.
+        internal void KeepSlots(Renderer renderer, IReadOnlyList<int> kept)
+        {
+            foreach (var key in slotsAtRead.Keys.Where(key => key.Item1 == renderer).ToList())
+            {
+                var read = slotsAtRead[key];
+                slotsAtRead[key] = kept.Select(slot => slot < read.Length ? read[slot] : ((Material)null, false, 0f)).ToArray();
+            }
+        }
         // The morph targets the last Resolve wrote, each with the
         // {node, index} that UnusedMorphTargets keeps and renumbers.
         readonly List<(AvatarAnimatorData.Target Target, Dictionary<string, object> Bind, bool Soft)> morphBinds = new List<(AvatarAnimatorData.Target, Dictionary<string, object>, bool)>();

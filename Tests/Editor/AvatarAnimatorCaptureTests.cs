@@ -1093,6 +1093,49 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The export drops an empty submesh with its slot after the curves
+        // were read; each slot left keeps the property and rest it had.
+        [Test]
+        public void ASlotDroppedWithItsEmptySubmeshShiftsTheSlotsAfterIt()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").GetComponent<MeshRenderer>();
+            var filter = glasses.GetComponent<MeshFilter>();
+            var mesh = Object.Instantiate(filter.sharedMesh);
+            var indices = mesh.GetIndices(0);
+            mesh.subMeshCount = 2;
+            mesh.SetIndices(Array.Empty<int>(), MeshTopology.Triangles, 0);
+            mesh.SetIndices(indices, MeshTopology.Triangles, 1);
+            filter.sharedMesh = mesh;
+            var fixture = glasses.sharedMaterial;
+            var first = new Material(fixture) { name = "First" };
+            var second = new Material(fixture) { name = "Second" };
+            first.SetFloat("_Cutoff", .125f);
+            second.SetFloat("_Cutoff", .625f);
+            glasses.sharedMaterials = new[] { first, second };
+            var clip = avatar.Clip("Fade");
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Fade", clip);
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var owned = new List<Mesh>();
+            var fallbacks = new[] { new Material(Shader.Find("Unlit/Color")) { name = "Fallback" } };
+            try
+            {
+                UniVrmOneClickExporter.DropEmptySubmeshes(avatar.Source, owned, null, capture.KeepSlots);
+                Assume.That(glasses.sharedMaterials, Is.EqualTo(new[] { second }));
+                glasses.sharedMaterials = fallbacks;
+                var nodes = new Dictionary<GameObject, int>();
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count,
+                    null, material => Array.IndexOf(fallbacks, material))));
+                Assert.That(data.Targets.Where(t => t.Property == "materialFloat").Select(t => (t.Material, t.Name, t.Rest)), Is.EqualTo(new[] { (0, "_Cutoff", .625) }));
+            }
+            finally
+            {
+                foreach (var material in fallbacks.Concat(new[] { first, second })) Object.DestroyImmediate(material);
+                foreach (var copy in owned.Append(mesh)) Object.DestroyImmediate(copy);
+            }
+        }
+
         // Unity never reads the first key's in-tangent or the last key's
         // out-tangent: a curve with not a number there is still written.
         [Test]
