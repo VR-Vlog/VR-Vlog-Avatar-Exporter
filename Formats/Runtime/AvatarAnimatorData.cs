@@ -30,6 +30,8 @@ namespace VRVlog.AvatarAnimator
         // The custom expressions listed, and the ways into states one lists.
         public const int MaximumExpressions = 4096;
         public const int MaximumEntrances = 16384;
+        // The omitted kinds a reader takes, those it does not know included.
+        public const int MaximumOmittedKinds = 64;
 
         public static readonly string[] ParameterTypes = { "bool", "int", "float", "trigger" };
         public static readonly string[] ParameterOrigins = { "expression", "animator", "builtin" };
@@ -50,11 +52,15 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat" };
+        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST" };
         // The components an enabled target turns on and off.
         public static readonly string[] Components = { "renderer" };
-        // The order the omitted kinds are written in.
-        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter" };
+        // The channels a materialColor and a materialTextureST target name.
+        public static readonly string[] ColorChannels = { "r", "g", "b", "a" };
+        public static readonly string[] TextureChannels = { "x", "y", "z", "w" };
+        // The order the omitted kinds are written in. A newer exporter adds
+        // kinds at the end; a reader keeps those it does not know (see Read).
+        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
@@ -206,7 +212,10 @@ namespace VRVlog.AvatarAnimator
         // An enabled target is the enabled flag of Component on Node (a
         // renderer, the one the node draws), Rest 0 or 1. A materialFloat
         // target is the float property Name of glTF material Material, which
-        // belongs to no node (Node is -1).
+        // belongs to no node (Node is -1). A materialColor target is Channel
+        // (r, g, b or a) of its color property Name, and a materialTextureST
+        // target Channel (x, y: scale, z, w: offset) of the scale and offset
+        // of its texture property Name (Unity's Name_ST), each one float.
         // A target of a property this reader does not know (Known is false),
         // or an enabled target of a component it does not know,
         // is read without looking at its keys: a newer exporter may write
@@ -220,7 +229,7 @@ namespace VRVlog.AvatarAnimator
             public int Node; public string Property = "active"; public double Rest;
             public int Morph; public double Baked, End;
             public int Parameter;
-            public string Component, Name;
+            public string Component, Name, Channel;
             public int Material;
             public Dictionary<string, object> Fields;
             public bool Known => Array.IndexOf(Properties, Property) >= 0 && (Property != "enabled" || Array.IndexOf(Components, Component) >= 0);
@@ -287,6 +296,7 @@ namespace VRVlog.AvatarAnimator
             : t.Property == "parameter" ? new Dictionary<string, object> { ["property"] = t.Property, ["parameter"] = (long)t.Parameter, ["rest"] = t.Rest }
             : t.Property == "enabled" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["component"] = t.Component, ["rest"] = (long)t.Rest }
             : t.Property == "materialFloat" ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["rest"] = t.Rest }
+            : IsMaterialChannel(t.Property) ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["channel"] = t.Channel, ["rest"] = t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
@@ -659,6 +669,15 @@ namespace VRVlog.AvatarAnimator
                     target.Name = Json.Text(t["name"]);
                     target.Rest = Json.Number(t["rest"]);
                 }
+                else if (IsMaterialChannel(target.Property))
+                {
+                    Json.Obj(t, "property", "material", "name", "channel", "rest");
+                    target.Node = -1;
+                    target.Material = Json.NonNegative(t["material"]);
+                    target.Name = Json.Text(t["name"]);
+                    target.Channel = Choice(t["channel"], target.Property == "materialColor" ? ColorChannels : TextureChannels);
+                    target.Rest = Json.Number(t["rest"]);
+                }
                 else
                 {
                     Json.Obj(t, target.Property == "enabled" ? new[] { "node", "property", "component", "rest" } : new[] { "node", "property", "rest" });
@@ -667,9 +686,11 @@ namespace VRVlog.AvatarAnimator
                     if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
                 // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for
-                // parameter, (node, component) for enabled, (material, name) for materialFloat.
-                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : target.Property == "materialFloat" ? target.Material : 0;
-                var keyName = target.Property == "enabled" ? target.Component : target.Property == "materialFloat" ? target.Name : null;
+                // parameter, (node, component) for enabled, (material, name) for materialFloat,
+                // (material, name, channel) for materialColor and materialTextureST.
+                var material = target.Property == "materialFloat" || IsMaterialChannel(target.Property);
+                var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material : 0;
+                var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "") : null;
                 if (!seenTargets.Add((target.Node, target.Property, key, keyName))) throw Json.Bad();
                 data.Targets.Add(target);
             }
@@ -721,14 +742,18 @@ namespace VRVlog.AvatarAnimator
                 data.Expressions.Add(expression);
             }
 
+            // Known kinds in OmittedKinds order, then the kinds a newer
+            // exporter added, each once.
             var kind = -1;
-            foreach (var raw in Json.Arr(root["omitted"], 0, OmittedKinds.Length))
+            var newer = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var raw in Json.Arr(root["omitted"], 0, MaximumOmittedKinds))
             {
                 var o = Json.Obj(raw, "kind", "count");
-                var omission = new Omission { Kind = Choice(o["kind"], OmittedKinds), Count = Json.NonNegative(o["count"]) };
+                var omission = new Omission { Kind = Name(o["kind"]), Count = Json.NonNegative(o["count"]) };
                 var next = Array.IndexOf(OmittedKinds, omission.Kind);
-                if (next <= kind || omission.Count == 0) throw Json.Bad();
-                kind = next;
+                if (omission.Kind.Length == 0 || omission.Count == 0) throw Json.Bad();
+                if (next < 0 ? !newer.Add(omission.Kind) : next <= kind || newer.Count > 0) throw Json.Bad();
+                kind = Math.Max(kind, next);
                 data.Omitted.Add(omission);
             }
             return data;
@@ -926,6 +951,7 @@ namespace VRVlog.AvatarAnimator
         static bool IsNumber(object value) => (value is double || value is float || value is long || value is int) && !double.IsNaN(Convert.ToDouble(value)) && !double.IsInfinity(Convert.ToDouble(value));
         static bool Flag(object value) => value is bool b ? b : throw Json.Bad();
 
+        static bool IsMaterialChannel(string property) => property == "materialColor" || property == "materialTextureST";
         static string Choice(object value, params string[] allowed) => value is string s && Array.IndexOf(allowed, s) >= 0 ? s : throw Json.Bad();
 
         // An index into a table of count entries; -1 too when none is allowed.

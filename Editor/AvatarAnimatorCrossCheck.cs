@@ -16,8 +16,9 @@ namespace VRVlog.LilToonExporter
     // player, from the same inputs for the same frames, and compares what they
     // show: the activeSelf of each active target, the BlendShape weight of
     // each morph target, the enabled flag of each renderer an enabled target
-    // names and the float of each materialFloat target, as the renderer it
-    // was read from shows it. The inputs are the start alone, each menu control and
+    // names and the float of each material target (materialFloat,
+    // materialColor, materialTextureST), as the renderer it was read from
+    // shows it. The inputs are the start alone, each menu control and
     // each hand gesture. Each input starts from the rest: SettleFrames without
     // input, then InputFrames with it.
     //
@@ -35,8 +36,11 @@ namespace VRVlog.LilToonExporter
         internal const double FrameSeconds = (float)(1.0 / 60);
         // Unity blends BlendShape weights (0 to 100) in single precision.
         internal const double WeightTolerance = 0.05;
-        // Material floats, also blended in single precision, per unit of size.
+        // Material floats and texture scales and offsets, also blended in
+        // single precision, per unit of size.
         internal const double FloatTolerance = 1e-4;
+        // Material color channels: one step of an 8-bit channel.
+        internal const double ColorTolerance = 1.0 / 255;
         // The time the inputs may take together; the rest are not compared.
         internal static double BudgetSeconds = 60;
         // Off leaves VRChat's behaviours to plain Unity, which runs none (tests).
@@ -59,8 +63,7 @@ namespace VRVlog.LilToonExporter
         // What shows a target in Unity: the object for an active target, the
         // renderer and shape for a morph target, the renderer (Component) for
         // an enabled target, and a renderer that draws with the material
-        // (Component, Material) and the property Name for a materialFloat
-        // target. Null for a target that is not compared (a parameter, or
+        // (Component, Material) and the property Name for a material target. Null for a target that is not compared (a parameter, or
         // what the copy no longer has).
         internal sealed class Binding
         {
@@ -189,7 +192,7 @@ namespace VRVlog.LilToonExporter
                 else if (target.Property == "morph" && binding?.Renderer != null && binding.Renderer.sharedMesh != null &&
                          (shapes[t] = binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape)) >= 0) shown.Add(t);
                 else if (target.Property == "enabled" && binding?.Component != null) shown.Add(t);
-                else if (target.Property == "materialFloat" && binding?.Component != null && binding.Material != null && binding.Name != null) shown.Add(t);
+                else if (IsMaterial(target.Property) && binding?.Component != null && binding.Material != null && binding.Name != null) shown.Add(t);
                 else { result.Unbound++; continue; }
                 if (binding.Path != null && Find(root, binding.Path) != binding.Owner)
                 {
@@ -247,14 +250,51 @@ namespace VRVlog.LilToonExporter
                     case "morph": bindings[t].Renderer.SetBlendShapeWeight(shapes[t], (float)rest); break;
                     case "enabled": bindings[t].Component.enabled = AvatarAnimatorEvaluator.Active(rest); break;
                     case "materialFloat":
+                    case "materialColor":
+                    case "materialTextureST":
                         // The animated value lives in the renderer's property block.
                         var block = new MaterialPropertyBlock();
                         bindings[t].Component.GetPropertyBlock(block);
-                        block.SetFloat(bindings[t].Name, (float)rest);
+                        SetChannel(block, data.Targets[t], bindings[t], (float)rest);
                         bindings[t].Component.SetPropertyBlock(block);
                         break;
                 }
             }
+        }
+
+        static bool IsMaterial(string property) => property == "materialFloat" || property == "materialColor" || property == "materialTextureST";
+
+        // Unity animates a color channel as the whole color and a texture's
+        // scale and offset as the vector Name_ST (scale in x, y, offset in z,
+        // w) in the property block; the other channels come from the block, or
+        // from the material when the block has none.
+        static void SetChannel(MaterialPropertyBlock block, AvatarAnimatorData.Target target, Binding binding, float value)
+        {
+            switch (target.Property)
+            {
+                case "materialFloat": block.SetFloat(binding.Name, value); break;
+                case "materialColor":
+                    var color = BlockColor(block, binding);
+                    color[Array.IndexOf(AvatarAnimatorData.ColorChannels, target.Channel)] = value;
+                    block.SetColor(binding.Name, color);
+                    break;
+                default:
+                    var st = BlockTextureST(block, binding);
+                    st[Array.IndexOf(AvatarAnimatorData.TextureChannels, target.Channel)] = value;
+                    block.SetVector(binding.Name + "_ST", st);
+                    break;
+            }
+        }
+
+        static Color BlockColor(MaterialPropertyBlock block, Binding binding) =>
+            block.HasColor(binding.Name) ? block.GetColor(binding.Name) : binding.Material.GetColor(binding.Name);
+
+        static Vector4 BlockTextureST(MaterialPropertyBlock block, Binding binding)
+        {
+            if (block.HasVector(binding.Name + "_ST")) return block.GetVector(binding.Name + "_ST");
+            var scale = binding.Material.GetTextureScale(binding.Name);
+            var offset = binding.Material.GetTextureOffset(binding.Name);
+            return new Vector4(scale.x, scale.y, offset.x, offset.y);
         }
 
         // What Unity shows of a target, in the evaluator's units.
@@ -268,13 +308,22 @@ namespace VRVlog.LilToonExporter
                     var block = new MaterialPropertyBlock();
                     binding.Component.GetPropertyBlock(block);
                     return block.HasFloat(binding.Name) ? block.GetFloat(binding.Name) : binding.Material.GetFloat(binding.Name);
+                case "materialColor":
+                    var colors = new MaterialPropertyBlock();
+                    binding.Component.GetPropertyBlock(colors);
+                    return BlockColor(colors, binding)[Array.IndexOf(AvatarAnimatorData.ColorChannels, target.Channel)];
+                case "materialTextureST":
+                    var transforms = new MaterialPropertyBlock();
+                    binding.Component.GetPropertyBlock(transforms);
+                    return BlockTextureST(transforms, binding)[Array.IndexOf(AvatarAnimatorData.TextureChannels, target.Channel)];
                 default: return binding.Renderer.GetBlendShapeWeight(shape);
             }
         }
 
         static bool Differs(AvatarAnimatorData.Target target, double evaluator, double unity) =>
             target.Property == "active" || target.Property == "enabled" ? AvatarAnimatorEvaluator.Active(evaluator) != (unity != 0)
-            : target.Property == "materialFloat" ? !(Math.Abs(evaluator - unity) <= FloatTolerance * Math.Max(1, Math.Abs(unity)))
+            : target.Property == "materialColor" ? !(Math.Abs(evaluator - unity) <= ColorTolerance)
+            : target.Property == "materialFloat" || target.Property == "materialTextureST" ? !(Math.Abs(evaluator - unity) <= FloatTolerance * Math.Max(1, Math.Abs(unity)))
             : !(Math.Abs(evaluator - unity) <= WeightTolerance);
 
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, int[] shapes,
@@ -385,14 +434,16 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static string Describe(GameObject root, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, int t)
+        internal static string Describe(GameObject root, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, int t)
         {
             var binding = bindings[t];
             var target = data.Targets[t];
             var go = binding.Owner;
             var path = go == null ? "?" : Path(root.transform, go.transform);
             return target.Property == "morph" ? $"{path}:{binding.Shape}" : target.Property == "enabled" ? $"{path}:enabled"
-                : target.Property == "materialFloat" ? $"{path}:{binding.Name}" : path;
+                : target.Property == "materialFloat" ? $"{path}:{binding.Name}"
+                : target.Property == "materialColor" ? $"{path}:{binding.Name}.{target.Channel}"
+                : target.Property == "materialTextureST" ? $"{path}:{binding.Name}_ST.{target.Channel}" : path;
         }
 
         static string Path(Transform root, Transform transform)

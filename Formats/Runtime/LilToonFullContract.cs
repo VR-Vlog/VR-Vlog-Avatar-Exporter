@@ -42,6 +42,28 @@ namespace VRVlog.LilToon
             if (!gltf.TryGetValue("extensions", out var raw) || !(raw is Dictionary<string, object> ext) || !ext.TryGetValue(ExtensionName, out raw)) return null;
             return Object(raw);
         }
+        // The feature switches the app fixes when it loads a material: it turns
+        // off the shader code of a group whose switches are all 0
+        // (LilToonFeatureSpecialization), so an animation that moves one shows
+        // nothing there. The exporter leaves curves on them out (materialSwitch).
+        // The 2nd layer's dissolve mode, the x of the vector
+        // _Main2ndDissolveParams, is one too; vector curves are not carried.
+        public static readonly string[] Switches =
+        {
+            "_UseMain2ndTex", "_UseMain3rdTex", "_UseEmission", "_UseEmission2nd",
+            "_UseReflection", "_UseMatCap", "_UseMatCap2nd", "_UseRim", "_UseGlitter", "_UseBacklight", "_UseRimShade",
+            "_UseBumpMap", "_UseBump2ndMap", "_UseAnisotropy", "_UseParallax",
+        };
+        public static bool IsSwitch(string name) => Array.IndexOf(Switches, name) >= 0;
+        // The type (float, color, vector or texture) of a property the app's
+        // runtime material keeps under the same name, or null for a name the
+        // contract does not carry (another shader's, or one only the editor or
+        // an outside system reads).
+        public static string RuntimeType(string name)
+        {
+            if (name == null || !LilToon234Catalogue.Properties.TryGetValue(name, out var declaration) || !declaration.EndsWith(":runtime", StringComparison.Ordinal)) return null;
+            return declaration.Substring(0, declaration.IndexOf(':'));
+        }
         public static bool IsFull(Dictionary<string, object> gltf)
         {
             var root = Root(gltf);
