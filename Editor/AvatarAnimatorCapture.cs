@@ -867,6 +867,9 @@ namespace VRVlog.LilToonExporter
             var rests = new Dictionary<(int, int), (Renderer Renderer, int Material)>();
             // The glTF index of each material a slot holds or a curve sets, for the check.
             var held = new Dictionary<(int, int), Dictionary<Material, int>>();
+            // A slot that moved down with a dropped empty submesh: the copy's
+            // Animator writes the curve's own slot, so the check leaves it out.
+            var renumbered = new HashSet<(int, int)>();
             for (var i = 0; i < clipSlotTracks.Count; i++)
             {
                 result.Add(new List<(int, ExpressionAnimationData.Curve)>());
@@ -891,6 +894,7 @@ namespace VRVlog.LilToonExporter
                     if (holds != null && rest < 0) { lost++; continue; }
                     rests[(nodeIndex, now)] = (renderer, rest);
                     found.Add((i, (nodeIndex, now), curve));
+                    if (slot != now) renumbered.Add((nodeIndex, now));
                     if (!held.TryGetValue((nodeIndex, now), out var materials)) held[(nodeIndex, now)] = materials = new Dictionary<Material, int>();
                     if (holds != null) materials[holds] = rest;
                     for (var k = 0; k < frames.Length; k++)
@@ -904,7 +908,8 @@ namespace VRVlog.LilToonExporter
                 targetOf[key] = data.Targets.Count;
                 data.Targets.Add(target);
                 var renderer = rests[key].Renderer;
-                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Slot = key.Item2, Slots = held[key], Path = PathAtRead(renderer.gameObject) };
+                if (!renumbered.Contains(key))
+                    shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Slot = key.Item2, Slots = held[key], Path = PathAtRead(renderer.gameObject) };
             }
             foreach (var (clip, key, curve) in found) result[clip].Add((targetOf[key], curve));
             foreach (var tracks in result) tracks.Sort((a, b) => a.Item1.CompareTo(b.Item1));
