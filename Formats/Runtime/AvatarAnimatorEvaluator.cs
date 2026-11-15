@@ -52,7 +52,10 @@ namespace VRVlog.AvatarAnimator
     // then divides by the sum; a child without a motion is not in the tree,
     // and two children at one position do not limit each other.
     // M8-M10 stay assumptions: M8 and M10 are VRChat behaviours that plain
-    // Unity cannot record, and no recording covers M9. M8 the behaviours of a state run when the transition into
+    // Unity cannot record, and no recording covers M9. The frame in which
+    // transitions see a driver's change is the one the export's check
+    // against Unity with the SDK (AvatarAnimatorCrossCheck) measured; whether
+    // VRChat itself agrees is not. M8 the behaviours of a state run when the transition into
     // it starts, the machines' (outer first) before the state's; a Parameter
     // Driver's operations wait until every layer has stepped and then apply
     // in that order, reading the values of that moment (a copy too), so no
@@ -274,7 +277,9 @@ namespace VRVlog.AvatarAnimator
             }
             // A resolution passes each machine at most twice (in through Entry, out through Exit).
             chain = new AvatarAnimatorData.Transition[2 * machines + 2];
-            // Room for every driver once, so a frame does not grow the list.
+            // A layer enters at most two states in a frame (its default state and
+            // a transition of 0 seconds on the first one), each running a driver
+            // at most once, so a frame does not grow the list.
             var driverCount = 0;
             foreach (var layer in source)
             {
@@ -285,7 +290,7 @@ namespace VRVlog.AvatarAnimator
                     foreach (var behaviour in state.Behaviours)
                         if (behaviour.Type == "parameterDriver") driverCount++;
             }
-            drivers = new List<AvatarAnimatorData.Behaviour>(driverCount);
+            drivers = new List<AvatarAnimatorData.Behaviour>(2 * driverCount);
         }
 
         static Side NewSide(int count) => new Side

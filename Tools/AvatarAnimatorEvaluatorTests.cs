@@ -453,7 +453,7 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e.Get(flag) == 1, "set, any value but 0 is true");
         Near(e.Get(copied), 15, "copy with a range");
         Check(e.Get(rolled) == 4, "random int includes the maximum");
-        Check(e.State(1) == waiting, "M8: a later layer does not see the driver's change in the same frame");
+        Check(e.State(1) == waiting && e.NextState(1) == -1, "M8: a later layer does not see the driver's change in the same frame");
         e.Advance(Frame);
         Check(e.State(1) == reacted, "but in the next");
 
@@ -482,6 +482,7 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e2.State(0) == entered, "the trigger takes the transition");
         Check(e2.Get(pulled) == 0, "the copy reads the trigger after the transition used it");
         Check(e2.Get(mark) == 1, "the set applied after the frame");
+        Check(e2.NextState(0) == -1, "its own layer did not start a transition on it");
         e2.Advance(Frame);
         Check(e2.State(0) == done, "its own layer moves on it in the next frame");
     }
