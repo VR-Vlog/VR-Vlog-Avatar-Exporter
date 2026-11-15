@@ -470,15 +470,25 @@ namespace VRVlog.LilToonExporter
         // in the order given, before fallback baking as Capture does. One
         // already read for a slot, approximated, or of another shader is not
         // added; the app then shows its MToon copy.
-        internal void AddUnbound(IEnumerable<Material> materials)
+        // Gives back the materials the export may add: one whose record could
+        // not be read (AudioLink, a value the app cannot take) is left out
+        // alone, and its curves are counted as material.
+        internal IReadOnlyList<Material> AddUnbound(IEnumerable<Material> materials)
         {
+            var added = new List<Material>();
             foreach (var material in materials ?? Array.Empty<Material>())
             {
                 if (material == null || material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)) continue;
-                if (records.ContainsKey(material) || approximated.Contains(material) || unbound.Any(each => each.Source == material)) continue;
-                var record = ReadMaterial(material);
-                if (record != null) unbound.Add((material, record));
+                if (!records.ContainsKey(material) && !approximated.Contains(material) && !unbound.Any(each => each.Source == material))
+                {
+                    Dictionary<string, object> record;
+                    try { record = ReadMaterial(material); }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); continue; }
+                    if (record != null) unbound.Add((material, record));
+                }
+                added.Add(material);
             }
+            return added;
         }
 
         // Called while UniVRM's exact Unity-object/node/mesh mapping is alive.

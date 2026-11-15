@@ -829,7 +829,7 @@ namespace VRVlog.LilToonExporter
                 var now = renderer.sharedMaterials;
                 for (var s = 0; s < pair.Value.Length && s < now.Length; s++)
                 {
-                    if (pair.Value[s].Material != swapped || now[s] == null) continue;
+                    if (!Holds(pair.Value[s].Material, swapped) || now[s] == null) continue;
                     var index = material(now[s]);
                     if (index >= 0) return index;
                 }
@@ -858,7 +858,8 @@ namespace VRVlog.LilToonExporter
             if (rendererSlotsAtRead == null || shown == null) return result;
             var written = new HashSet<Renderer>(shown.Where(renderer => renderer != null));
             var held = new HashSet<Material>(rendererSlotsAtRead.Where(pair => written.Contains(pair.Key))
-                .SelectMany(pair => pair.Value.Select(each => each.Material)).Where(each => each != null));
+                .SelectMany(pair => pair.Value.Select(each => each.Material)).Where(each => each != null)
+                .SelectMany(each => new[] { each, SourceOf?.Invoke(each) }).Where(each => each != null));
             for (var i = 0; i < clipSlotTracks.Count; i++)
             {
                 if (additiveClips.Contains(i)) continue;
@@ -872,6 +873,14 @@ namespace VRVlog.LilToonExporter
             }
             return result;
         }
+
+        // The export copies materials before the curves are read (AudioLink
+        // off, recovery); the curves still name the original. SourceOf gives
+        // the original of such a copy; null leaves each material as it is.
+        internal Func<Material, Material> SourceOf { get; set; }
+
+        bool Holds(Material held, Material swapped) =>
+            held == swapped || held != null && SourceOf != null && SourceOf(held) == swapped;
 
         static bool IsOfficialLilToon(Material material) => material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name);
 

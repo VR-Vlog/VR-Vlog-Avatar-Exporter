@@ -981,8 +981,10 @@ namespace VRVlog.LilToonExporter
                 if (avatarAnimator != null)
                     try
                     {
+                        // A slot holding the export's own copy of a material holds that material.
+                        avatarAnimator.SourceOf = recoveryReport.SourceMaterial;
                         unboundSwaps = avatarAnimator.UnboundSwaps(ExportRendererSelection.ExportedMeshRenderers(clone));
-                        fullSnapshot?.AddUnbound(unboundSwaps);
+                        if (fullSnapshot != null) unboundSwaps = fullSnapshot.AddUnbound(unboundSwaps);
                     }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); unboundSwaps = Array.Empty<Material>(); }
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();

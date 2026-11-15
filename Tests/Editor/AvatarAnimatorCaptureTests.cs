@@ -2421,6 +2421,53 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The export copies a slot's material before the curves are read
+        // (AudioLink off, recovery) while the curves name the original: with
+        // SourceOf the original is held by that slot, so it is not added and
+        // its keys are the copy's glTF index.
+        [Test]
+        public void ASwapToTheOriginalOfAHeldCopyIsNotUnbound()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var renderer = glasses.GetComponent<MeshRenderer>();
+            var original = renderer.sharedMaterial;
+            var copy = new Material(original) { name = "Copy" };
+            var other = new Material(original.shader) { name = "Other" };
+            try
+            {
+                var clip = avatar.Clip("Toggle");
+                AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0), new[]
+                {
+                    new ObjectReferenceKeyframe { time = 0, value = other },
+                    new ObjectReferenceKeyframe { time = 1 / 60f, value = original },
+                });
+                AddLayer(avatar, "Toggle", clip);
+                foreach (var each in avatar.Source.GetComponentsInChildren<MeshRenderer>(true))
+                    each.sharedMaterials = each.sharedMaterials.Select(m => m == original ? copy : m).ToArray();
+                var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+                capture.SourceOf = material => material == copy ? original : material;
+                Assert.That(capture.UnboundSwaps(avatar.Source.GetComponentsInChildren<Renderer>()), Is.EqualTo(new[] { other }));
+
+                var added = new Material(original.shader) { name = "Other copy" };
+                try
+                {
+                    capture.AddedMaterials = new Dictionary<Material, Material> { [other] = added };
+                    var materials = new List<Material> { copy, added };
+                    var nodes = new Dictionary<GameObject, int>();
+                    var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(
+                        gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, null, materials.IndexOf)));
+                    Assert.That(ClipOf(data, "Toggle").Tracks.Single(t => data.Targets[t.Target].Stepped).Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 1d, 0d }));
+                }
+                finally { Object.DestroyImmediate(added); }
+            }
+            finally
+            {
+                Object.DestroyImmediate(copy);
+                Object.DestroyImmediate(other);
+            }
+        }
+
         // In a real export, a swap to a material a mesh already draws with adds
         // nothing. A swap to a lilToon material no mesh draws with, set by two
         // layers, adds one material at the end of the glTF materials, which no
