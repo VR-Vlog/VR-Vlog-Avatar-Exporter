@@ -910,9 +910,9 @@ namespace VRVlog.AvatarAnimator
                 for (var k = 0; k < animated.Length; k++) layer.Held[k] = layer.OutWritten[k] ? layer.Out[k] : previous[animated[k]];
             }
             // A layer resting in a motion state without Write Defaults at full weight passes
-            // every target its motion does not write through unchanged: the loop below would
-            // give the same, but a controller of many such layers (one per menu toggle) would
-            // pay layers × targets every frame (#3664).
+            // every target its motion does not write through unchanged. The loop below gives the
+            // same through SideValue; this writes it directly, as a controller of many such layers
+            // (one per menu toggle) visits layers × targets every frame (#3664).
             var passes = !layer.Transitioning && !layer.Frozen && weight >= 1
                 && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults;
             for (var k = 0; k < animated.Length; k++)
