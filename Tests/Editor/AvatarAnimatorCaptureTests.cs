@@ -907,6 +907,141 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
         }
 
+        static int Omitted(AvatarAnimatorData data, string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
+
+        static EditorCurveBinding Enabled(string path) => EditorCurveBinding.FloatCurve(path, typeof(MeshRenderer), "m_Enabled");
+
+        static EditorCurveBinding Cutoff(string path) => EditorCurveBinding.FloatCurve(path, typeof(MeshRenderer), "material._Cutoff");
+
+        // Every object is a node and the fixture's one material is glTF material 0.
+        static AvatarAnimatorData CapturedWithMaterials(AnimatorAvatar avatar, Dictionary<GameObject, int> nodes) =>
+            AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, null,
+                    material => material.name == "Animator" ? 0 : -1)));
+
+        // A layer of its own name that plays the clip in its one state.
+        static void AddLayer(AnimatorAvatar avatar, string name, AnimationClip clip, AnimatorLayerBlendingMode blending = AnimatorLayerBlendingMode.Override)
+        {
+            avatar.Fx.AddLayer(name);
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = blending;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState(name).motion = clip;
+            avatar.Fx.layers = layers;
+        }
+
+        // The clip the one state of the layer plays.
+        static AvatarAnimatorData.Clip ClipOf(AvatarAnimatorData data, string layer) =>
+            data.Clips[data.Motions[data.Controllers.Single().Layers.Single(l => l.Name == layer).States.Single().Motion].Clip];
+
+        // A mesh renderer's enabled curve is an enabled target of its node
+        // and a material float curve a materialFloat target of each glTF
+        // material the renderer draws with, after the kinds written before,
+        // in the target table and in the clip. Rest is what the avatar holds.
+        [Test]
+        public void RendererEnabledAndMaterialFloatCurvesAreWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Switch", ("Hat", true));
+            AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Switch", clip);
+            var before = CapturedWithNodes(avatar);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var enabled = data.Targets.Single(t => t.Property == "enabled");
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            Assert.That((enabled.Node, enabled.Component, enabled.Rest), Is.EqualTo((nodes[glasses], "renderer", 1d)));
+            var material = data.Targets.Single(t => t.Property == "materialFloat");
+            var shared = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            Assert.That((material.Node, material.Material, material.Name, material.Rest), Is.EqualTo((-1, 0, "_Cutoff", (double)shared.GetFloat("_Cutoff"))));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "enabled", "materialFloat" }));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 0d }));
+            Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .25, .25 }));
+            // The color channel curve the fixture has is still counted, and so is
+            // the material float curve when the file's materials are not given.
+            Assert.That(Omitted(data, "material"), Is.EqualTo(1));
+            Assert.That(Omitted(before, "material"), Is.EqualTo(2));
+            Assert.That(before.Targets.Any(t => t.Property == "materialFloat"), Is.False);
+            Assert.That(before.Targets.Count(t => t.Property == "enabled"), Is.EqualTo(1));
+        }
+
+        // Renderers that share a material share its target: clips on either
+        // move it, and a second curve of the same clip on it is counted.
+        [Test]
+        public void RenderersThatShareAMaterialShareItsTarget()
+        {
+            using var avatar = new AnimatorAvatar();
+            var both = avatar.Clip("Both");
+            AnimationUtility.SetEditorCurve(both, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(both, Cutoff("Hat"), AnimationCurve.Constant(0, 1f / 60, .75f));
+            AddLayer(avatar, "Both", both);
+            var one = avatar.Clip("One");
+            AnimationUtility.SetEditorCurve(one, Cutoff("Hat"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AddLayer(avatar, "One", one);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            var target = data.Targets.FindIndex(t => t.Property == "materialFloat");
+            Assert.That(data.Targets.Count(t => t.Property == "materialFloat"), Is.EqualTo(1));
+            Assert.That(ClipOf(data, "Both").Tracks.Single().Target, Is.EqualTo(target));
+            Assert.That(ClipOf(data, "One").Tracks.Single().Target, Is.EqualTo(target));
+            Assert.That(Omitted(data, "material"), Is.EqualTo(2), "The fixture's color channel and the second curve of Both.");
+        }
+
+        // An additive layer adds a material float less its reference pose,
+        // which the extension does not carry: a target such a clip moves is
+        // left out with every track on it, and the curves are counted.
+        // Renderers the file does not write as meshes (particles) keep their
+        // enabled curves counted as enabled.
+        [Test]
+        public void AMaterialFloatAnAdditiveLayerMovesAndAParticleSwitchAreCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var added = avatar.Clip("Added");
+            AnimationUtility.SetEditorCurve(added, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Added", added, AnimatorLayerBlendingMode.Additive);
+            var plain = avatar.Clip("Plain");
+            AnimationUtility.SetEditorCurve(plain, Cutoff("Hat"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(plain, EditorCurveBinding.FloatCurve("Sparks", typeof(ParticleSystemRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Plain", plain);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(data.Targets.Any(t => t.Property == "materialFloat"), Is.False);
+            Assert.That(ClipOf(data, "Plain").Tracks, Is.Empty);
+            Assert.That(Omitted(data, "material"), Is.EqualTo(3), "The fixture's color channel and both curves on the left-out target.");
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(1));
+            Assert.That(data.Targets.Any(t => t.Property == "enabled"), Is.False);
+        }
+
+        // In a real export a materialFloat target names a material of the
+        // file's glTF materials table, and Inject takes no other.
+        [Test]
+        public void AnExportedMaterialFloatTargetNamesAGltfMaterial()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Glasses fade");
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Glasses fade", clip);
+            var exported = avatar.Export(new List<string>(), null);
+            var json = GlbDocument.Read(exported).Json;
+            var data = Read(json);
+            var materials = (List<object>)json["materials"];
+            var target = data.Targets.Single(t => t.Property == "materialFloat");
+            Assert.That(target.Material, Is.LessThan(materials.Count));
+            var glasses = data.Targets.Single(t => t.Property == "enabled");
+            var meshIndex = (long)((Dictionary<string, object>)((List<object>)json["nodes"])[glasses.Node])["mesh"];
+            var primitives = (List<object>)((Dictionary<string, object>)((List<object>)json["meshes"])[(int)meshIndex])["primitives"];
+            Assert.That(primitives.Select(p => (long)((Dictionary<string, object>)p)["material"]), Does.Contain((long)target.Material), "The material the Glasses mesh draws with.");
+
+            target.Material = materials.Count;
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("material"));
+        }
+
         // Unity never reads the first key's in-tangent or the last key's
         // out-tangent: a curve with not a number there is still written.
         [Test]

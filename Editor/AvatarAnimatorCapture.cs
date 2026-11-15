@@ -51,12 +51,22 @@ namespace VRVlog.LilToonExporter
         readonly List<(SkinnedMeshRenderer Renderer, string Shape)> morphs = new List<(SkinnedMeshRenderer, string)>();
         readonly Dictionary<(SkinnedMeshRenderer, string), int> morphIndex = new Dictionary<(SkinnedMeshRenderer, string), int>();
         readonly List<List<(int Morph, ExpressionAnimationData.Curve Curve)>> clipMorphTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // Renderer enabled curves stay renderers until the output nodes are
+        // known, each renderer with its enabled flag when its first curve was read.
+        readonly List<(Renderer Renderer, int Default)> renderers = new List<(Renderer, int)>();
+        readonly Dictionary<Renderer, int> rendererIndex = new Dictionary<Renderer, int>();
+        readonly List<List<(int Renderer, ExpressionAnimationData.Curve Curve)>> clipEnabledTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
+        // Material float curves stay a renderer and a property name until the
+        // output materials are known.
+        readonly List<List<(Renderer Renderer, string Name, ExpressionAnimationData.Curve Curve)>> clipMaterialTracks = new List<List<(Renderer, string, ExpressionAnimationData.Curve)>>();
         // The morph targets the last Resolve wrote, each with the
         // {node, index} that UnusedMorphTargets keeps and renumbers.
         readonly List<(AvatarAnimatorData.Target Target, Dictionary<string, object> Bind, bool Soft)> morphBinds = new List<(AvatarAnimatorData.Target, Dictionary<string, object>, bool)>();
         // What shows each target the last Resolve wrote in the copy, for
         // AvatarAnimatorCrossCheck: the object of an active target, the
-        // renderer and shape a morph target was read from (not its reverse).
+        // renderer and shape a morph target was read from (not its reverse),
+        // the renderer of an enabled target, and the first renderer and the
+        // material a materialFloat target was read from.
         readonly Dictionary<AvatarAnimatorData.Target, AvatarAnimatorCrossCheck.Binding> shownBy = new Dictionary<AvatarAnimatorData.Target, AvatarAnimatorCrossCheck.Binding>();
         // The path under the root each curve's object had when the clips were
         // read; the export may rename or move it before the cross-check.
@@ -417,17 +427,20 @@ namespace VRVlog.LilToonExporter
         // sources gives the shapes an output shape was made from; without one,
         // or when they disagree, its curves are counted as blendShape. When the
         // shapes would take the extension past MaximumBytes, all of them are.
-        internal AvatarAnimatorData Resolve(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources = null)
+        // material gives the glTF index of a material the file writes, or -1;
+        // without it, material float curves are counted as material.
+        internal AvatarAnimatorData Resolve(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources = null,
+            Func<Material, int> material = null)
         {
-            Build(node, sources, true);
+            Build(node, sources, material, true);
             if (morphBinds.Count > 0 && Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data))) > MaximumBytes)
-                Build(node, sources, false);
+                Build(node, sources, material, false);
             return data;
         }
 
         const int MissingMorph = -1, OmittedMorph = -2;
 
-        void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, bool writeMorphs)
+        void Build(Func<GameObject, int> node, Func<SkinnedMeshRenderer, string, IReadOnlyList<MorphSource>> sources, Func<Material, int> material, bool writeMorphs)
         {
             data.Targets.Clear();
             morphBinds.Clear();
@@ -454,7 +467,20 @@ namespace VRVlog.LilToonExporter
                 parameterTarget[parameter] = data.Targets.Count;
                 data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = parameter, Rest = controllerDefaults[parameter] });
             }
-            var missing = 0;
+            // Then the renderer enabled targets, then the material float targets.
+            var rendererMap = new int[renderers.Count];
+            for (var i = 0; i < renderers.Count; i++)
+            {
+                var renderer = renderers[i].Renderer;
+                var index = renderer == null ? -1 : node(renderer.gameObject);
+                rendererMap[i] = index < 0 ? -1 : data.Targets.Count;
+                if (index < 0) continue;
+                var target = new AvatarAnimatorData.Target { Node = index, Property = "enabled", Component = "renderer", Rest = renderers[i].Default };
+                data.Targets.Add(target);
+                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Path = PathAtRead(renderer.gameObject) };
+            }
+            var materialMap = MaterialTargets(node, material, out var materialMissing, out var materialLost);
+            var missing = materialMissing;
             var lost = 0;
             for (var i = 0; i < data.Clips.Count; i++)
             {
@@ -481,13 +507,96 @@ namespace VRVlog.LilToonExporter
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
+                foreach (var (renderer, curve) in clipEnabledTracks[i])
+                {
+                    if (rendererMap[renderer] < 0) { missing++; continue; }
+                    var track = new AvatarAnimatorData.Track { Target = rendererMap[renderer] };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
+                foreach (var (target, curve) in materialMap[i])
+                {
+                    var track = new AvatarAnimatorData.Track { Target = target };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
             }
             data.Omitted.Clear();
             foreach (var kind in AvatarAnimatorData.OmittedKinds)
             {
-                var count = (omitted.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0);
+                var count = (omitted.TryGetValue(kind, out var value) ? value : 0) + (kind == "missingNode" ? missing : 0) + (kind == "blendShape" ? lost : 0) +
+                            (kind == "material" ? materialLost : 0);
                 if (count > 0) data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = count });
             }
+        }
+
+        // Adds the materialFloat targets, ordered by material and name, and
+        // returns each clip's tracks on them. Unity moves a renderer's
+        // material property on every material of the renderer, so a curve
+        // becomes a track of each material the renderer draws with that the
+        // file writes and that has the float property; renderers that share
+        // a material share its target. A curve on a renderer the file has no
+        // node for is counted as missingNode (missing). One that reaches no
+        // target is counted as material (lost): no material has the
+        // property, the file writes none of them, a clip of an additive layer
+        // moves the target (its reference pose is not carried), or another
+        // curve of the same clip moved each of its targets first.
+        List<List<(int Target, ExpressionAnimationData.Curve Curve)>> MaterialTargets(Func<GameObject, int> node, Func<Material, int> material,
+            out int missing, out int lost)
+        {
+            missing = 0; lost = 0;
+            var found = new List<List<((int Material, string Name) Key, ExpressionAnimationData.Curve Curve)>>();
+            var first = new Dictionary<(int, string), (Renderer Renderer, Material Material)>();
+            var additive = new HashSet<(int, string)>();
+            for (var i = 0; i < clipMaterialTracks.Count; i++)
+            {
+                var tracks = new List<((int, string), ExpressionAnimationData.Curve)>();
+                found.Add(tracks);
+                var taken = new HashSet<(int, string)>();
+                foreach (var (renderer, name, curve) in clipMaterialTracks[i])
+                {
+                    if (renderer == null || node(renderer.gameObject) < 0) { missing++; continue; }
+                    var written = false;
+                    foreach (var slot in renderer.sharedMaterials)
+                    {
+                        var index = slot == null || material == null || !slot.HasFloat(name) ? -1 : material(slot);
+                        if (index < 0 || !taken.Add((index, name))) continue;
+                        written = true;
+                        tracks.Add(((index, name), curve));
+                        if (!first.ContainsKey((index, name))) first[(index, name)] = (renderer, slot);
+                        if (additiveClips.Contains(i)) additive.Add((index, name));
+                    }
+                    if (!written) lost++;
+                }
+            }
+            var targetOf = new Dictionary<(int, string), int>();
+            foreach (var key in first.Keys.Where(key => !additive.Contains(key)).OrderBy(key => key.Item1).ThenBy(key => key.Item2, StringComparer.Ordinal))
+            {
+                var (renderer, slot) = first[key];
+                var target = new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = key.Item1, Name = key.Item2, Rest = slot.GetFloat(key.Item2) };
+                targetOf[key] = data.Targets.Count;
+                data.Targets.Add(target);
+                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Material = slot, Name = key.Item2, Path = PathAtRead(renderer.gameObject) };
+            }
+            var result = new List<List<(int, ExpressionAnimationData.Curve)>>();
+            for (var i = 0; i < found.Count; i++)
+            {
+                var tracks = new List<(int, ExpressionAnimationData.Curve)>();
+                result.Add(tracks);
+                // A curve whose every track went is counted once.
+                var curves = new HashSet<ExpressionAnimationData.Curve>();
+                var kept = new HashSet<ExpressionAnimationData.Curve>();
+                foreach (var (key, curve) in found[i])
+                {
+                    curves.Add(curve);
+                    if (!targetOf.TryGetValue(key, out var target)) continue;
+                    kept.Add(curve);
+                    tracks.Add((target, curve));
+                }
+                lost += curves.Count(curve => !kept.Contains(curve));
+                tracks.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+            }
+            return result;
         }
 
         // The target index of a moved shape, or why its tracks are not written.
@@ -566,6 +675,10 @@ namespace VRVlog.LilToonExporter
             // A morph target names one of its node's mesh's targets.
             if (data.Targets.Any(target => target.Property == "morph" && !Fits(target, nodes, meshes)))
                 throw new InvalidOperationException("Avatar animator morph target is out of range.");
+            // A materialFloat target names one of the file's materials.
+            var materials = document.Json.TryGetValue("materials", out var rawMaterials) && rawMaterials is List<object> materialList ? materialList.Count : 0;
+            if (data.Targets.Any(target => target.Property == "materialFloat" && target.Material >= materials))
+                throw new InvalidOperationException("Avatar animator material is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
         }
@@ -1130,21 +1243,32 @@ namespace VRVlog.LilToonExporter
             clipParameterTracks.Add(parameterTracks);
             var morphTracks = new List<(int, ExpressionAnimationData.Curve)>();
             clipMorphTracks.Add(morphTracks);
+            var enabledTracks = new List<(int, ExpressionAnimationData.Curve)>();
+            clipEnabledTracks.Add(enabledTracks);
+            var materialTracks = new List<(Renderer, string, ExpressionAnimationData.Curve)>();
+            clipMaterialTracks.Add(materialTracks);
             var keys = 0;
             var bindings = AnimationUtility.GetCurveBindings(clip);
             var shapes = new List<EditorCurveBinding>();
+            var switches = new List<EditorCurveBinding>();
+            var floats = new List<EditorCurveBinding>();
             // The clip's key and track room goes to activeSelf curves first, then
-            // to parameter curves, then to BlendShape curves, so a kind written
+            // to parameter curves, then to BlendShape curves, then to renderer
+            // enabled curves, then to material float curves, so a kind written
             // later never leaves out one written before. A curve past the room
-            // is left out alone (see Curve).
-            bool Full() => tracks.Count + parameterTracks.Count + morphTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip;
+            // is left out alone (see Curve). A material float curve counts as
+            // one track here, however many materials it becomes.
+            bool Full() => tracks.Count + parameterTracks.Count + morphTracks.Count + enabledTracks.Count + materialTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip;
             foreach (var binding in bindings)
             {
                 if (AnimatedParameter(binding) >= 0) continue;
                 if (!(binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive"))
                 {
-                    // BlendShape curves take what activeSelf and parameters leave of the room.
+                    // BlendShape, enabled and material float curves take what
+                    // activeSelf and parameters leave of the room.
                     if (Kind(binding) == "blendShape") shapes.Add(binding);
+                    else if (RendererSwitch(binding)) switches.Add(binding);
+                    else if (MaterialFloat(binding) != null) floats.Add(binding);
                     else Omit(Kind(binding));
                     continue;
                 }
@@ -1177,6 +1301,25 @@ namespace VRVlog.LilToonExporter
                 var converted = Full() ? null : Curve(clip, binding, ref keys);
                 if (converted == null) { Omit("blendShape"); continue; }
                 morphTracks.Add((Morph(renderer, binding.propertyName.Substring(ShapePrefix.Length)), converted));
+            }
+            foreach (var binding in switches)
+            {
+                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                var renderer = target == null ? null : target.GetComponent(binding.type) as Renderer;
+                if (renderer == null) { Omit("missingNode"); continue; }
+                var converted = Full() ? null : Curve(clip, binding, ref keys);
+                if (converted == null) { Omit("enabled"); continue; }
+                enabledTracks.Add((RendererTarget(renderer), converted));
+            }
+            foreach (var binding in floats)
+            {
+                var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
+                var renderer = target == null ? null : target.GetComponent(binding.type) as Renderer;
+                if (renderer == null) { Omit("missingNode"); continue; }
+                var converted = Full() ? null : Curve(clip, binding, ref keys);
+                if (converted == null) { Omit("material"); continue; }
+                pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
+                materialTracks.Add((renderer, MaterialFloat(binding), converted));
             }
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 Omit(typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith("m_Materials", StringComparison.Ordinal) ? "material" : "other");
@@ -1214,6 +1357,34 @@ namespace VRVlog.LilToonExporter
             pathAtRead[gameObject] = AnimationUtility.CalculateTransformPath(gameObject.transform, root.transform);
             targets.Add((gameObject, (rest.TryGetValue(gameObject, out var active) ? active : gameObject.activeSelf) ? 1 : 0));
             return targets.Count - 1;
+        }
+
+        int RendererTarget(Renderer renderer)
+        {
+            if (rendererIndex.TryGetValue(renderer, out var index)) return index;
+            rendererIndex[renderer] = renderers.Count;
+            pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
+            renderers.Add((renderer, renderer.enabled ? 1 : 0));
+            return renderers.Count - 1;
+        }
+
+        // The renderers an enabled target turns on and off: those the export
+        // writes as glTF meshes. Particle, trail and line renderers are not.
+        static bool RendererSwitch(EditorCurveBinding binding) =>
+            binding.propertyName == "m_Enabled" && (binding.type == typeof(SkinnedMeshRenderer) || binding.type == typeof(MeshRenderer));
+
+        const string MaterialPrefix = "material.";
+
+        // The shader property a mesh renderer's material float curve moves,
+        // or null for another curve. A color or vector curve moves one
+        // channel (material._Color.r) and is counted as material.
+        static string MaterialFloat(EditorCurveBinding binding)
+        {
+            var property = binding.propertyName ?? "";
+            if (!(binding.type == typeof(SkinnedMeshRenderer) || binding.type == typeof(MeshRenderer)) ||
+                !property.StartsWith(MaterialPrefix, StringComparison.Ordinal)) return null;
+            var name = property.Substring(MaterialPrefix.Length);
+            return name.Length == 0 || name.IndexOf('.') >= 0 ? null : name;
         }
 
         string PathAtRead(GameObject gameObject) => gameObject != null && pathAtRead.TryGetValue(gameObject, out var path) ? path : null;

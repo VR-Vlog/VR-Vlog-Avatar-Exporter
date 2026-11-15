@@ -1046,7 +1046,7 @@ namespace VRVlog.LilToonExporter
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
                             AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
-                                animatorMorphReverses)), () => null);
+                                animatorMorphReverses), material => model.Materials.IndexOf(material)), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);

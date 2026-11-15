@@ -196,6 +196,55 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(inputs[6].Values, Is.EqualTo(new[] { (right, 1d), (rightWeight, 1d) }));
         }
 
+        // Smile on also turns the Body renderer off and fades the float
+        // _Cutoff of its material from 0.5 to 0.25 over the transition; Unity
+        // keeps the animated float in the renderer's property block.
+        [Test]
+        public void RendererEnabledAndMaterialFloatMatchUnity()
+        {
+            var (root, controller, data, bindings) = Build();
+            var renderer = bindings[1].Renderer;
+            var material = new Material(Shader.Find("Standard")) { name = "Body" };
+            owned.Add(material);
+            material.SetFloat("_Cutoff", .5f);
+            renderer.sharedMaterial = material;
+            const int Enabled = 2, Cutoff = 3;
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 2, Property = "enabled", Component = "renderer", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 0, Name = "_Cutoff", Rest = .5 });
+            var on = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(controller)).OfType<AnimationClip>().Single(clip => clip.name == "Clip3");
+            foreach (var (target, property, value) in new[] { (Enabled, "m_Enabled", 0f), (Cutoff, "material._Cutoff", .25f) })
+            {
+                AnimationUtility.SetEditorCurve(on, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, value));
+                var track = new AvatarAnimatorData.Track { Target = target };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = value, InTangent = 0, OutTangent = 0 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1.0 / 60, Value = value, InTangent = 0, OutTangent = 0 });
+                track.Curves.Add(curve);
+                data.Clips[3].Tracks.Add(track);
+            }
+            var all = bindings.Concat(new[]
+            {
+                new AvatarAnimatorCrossCheck.Binding { Component = renderer, Path = "Body" },
+                new AvatarAnimatorCrossCheck.Binding { Component = renderer, Material = material, Name = "_Cutoff", Path = "Body" },
+            }).ToList();
+            data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, all, null);
+
+            Assert.That(result.Unsupported, Is.Null);
+            Assert.That((result.Inputs, result.Compared, result.Targets, result.Unbound), Is.EqualTo((9, 9, 4, 0)));
+            Assert.That(result.Mismatches.Select(m => $"{m.Input} {m.Frame} T{m.Target} {m.Unity} {m.Evaluator}"), Is.Empty);
+
+            // Data that keeps the renderer on, or holds another float, differs on the fist.
+            var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
+            foreach (var (target, value) in new[] { (Enabled, 1d), (Cutoff, .9) })
+            {
+                var changed = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+                changed.Clips[3].Tracks.Single(t => t.Target == target).Curves[0].Keys.ForEach(key => key.Value = value);
+                var differs = AvatarAnimatorCrossCheck.Run(root, controller, changed, all, null);
+                Assert.That(differs.Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, target) }));
+            }
+        }
+
         // The objects, the Unity controller and the data written for them.
         (GameObject Root, AnimatorController Controller, AvatarAnimatorData Data, IReadOnlyList<AvatarAnimatorCrossCheck.Binding> Bindings) Build()
         {
