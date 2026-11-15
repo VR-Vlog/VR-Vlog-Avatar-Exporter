@@ -246,6 +246,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return GestureAction();
             yield return ActionMask();
             yield return HumanoidNodeMask();
+            yield return HandsOverEmpty("handsOverEmpty", true);
+            yield return HandsOverEmpty("handsOverNoMotion", false);
+            yield return HandsUnderThumb();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -1156,6 +1159,66 @@ namespace VRVlog.AvatarAnimator.Comparison
             var b = c.State(top, "B", c.Constant(1, true, (first, 5), (second, 6), (shown, 1), (face, 60), (spine, -.2), (leftArm, -.5)));
             top.States[a].Transitions.Add(To(b, duration: .3).When(go, "if"));
             c.Input(.4, go, 1);
+            return c.Case;
+        }
+
+        // Hand muscles under a humanoid layer without Write Defaults whose
+        // resting state has an empty clip (clip) or no motion: the hand layers
+        // below move the fingers, and the top layer moves to a state writing
+        // them and back. Unity passes the hands through while the empty clip
+        // plays, but gives the rest on the empty side of each transition; the
+        // state without a motion gives the rest until the layer has written
+        // the hands, and then holds what it last wrote.
+        static Case HandsOverEmpty(string name, bool clip)
+        {
+            var c = new Builder(name, 1.6);
+            var left = c.Parameter("GestureLeft", "int");
+            var go = c.Parameter("Go", "bool");
+            var leftThumb = c.Muscle(55);
+            var leftIndex = c.Muscle(59);
+            var rightIndex = c.Muscle(79);
+            c.Controller("fx");
+            c.Controller("gesture");
+            c.Layer("AllParts", mask: Mask(new[] { 7, 8 }));
+            var hand = c.Layer("Left Hand", mask: Mask(new[] { 7 }));
+            var idle = c.State(hand, "Idle", c.Constant(1, true, (leftThumb, -1.5), (leftIndex, .4)), writeDefaults: false);
+            var fist = c.State(hand, "Fist", c.Constant(1, true, (leftThumb, .8), (leftIndex, -.6)), writeDefaults: false);
+            hand.States[idle].Transitions.Add(To(fist, duration: .2).When(left, "equals", 1));
+            hand.States[fist].Transitions.Add(To(idle, duration: .15).When(left, "notEqual", 1));
+            c.State(c.Layer("Right Hand", mask: Mask(new[] { 8 })), "Idle", c.Constant(1, true, (rightIndex, .5)), writeDefaults: false);
+            var top = c.Layer("Control", mask: Mask(new[] { 7, 8 }));
+            var empty = c.State(top, "Empty", clip ? c.Constant(1, true) : -1, writeDefaults: false);
+            var crouch = c.State(top, "Crouch", c.Constant(1, true, (leftThumb, .3), (leftIndex, -.9), (rightIndex, -.9)), writeDefaults: false);
+            top.States[empty].Transitions.Add(To(crouch, duration: .2).When(go, "if"));
+            // Not a whole number of frames: a transition ending exactly on a frame
+            // can stay just under its end in Unity's float time that frame.
+            top.States[crouch].Transitions.Add(To(empty, duration: .18).When(go, "ifNot"));
+            c.Input(.3, left, 1).Input(.7, go, 1).Input(1.1, go, 0);
+            return c.Case;
+        }
+
+        // A humanoid layer whose clips write one finger's muscle, over a hand
+        // layer moving two: Unity gives the other finger the rest while the
+        // upper clip plays, with or without Write Defaults, as it poses the
+        // layer whole, and the lower layer's again once the upper layer moves
+        // to an empty clip.
+        static Case HandsUnderThumb()
+        {
+            var c = new Builder("handsUnderThumb", 1.4);
+            var go = c.Parameter("Go", "bool");
+            var leftThumb = c.Muscle(55);
+            var leftIndex = c.Muscle(59);
+            c.Controller("fx");
+            c.Controller("gesture");
+            c.Layer("AllParts", mask: Mask(new[] { 7 }));
+            c.State(c.Layer("Left Hand", mask: Mask(new[] { 7 })), "Idle", c.Constant(1, true, (leftThumb, -1.5), (leftIndex, .4)), writeDefaults: false);
+            var top = c.Layer("Thumb", mask: Mask(new[] { 7 }));
+            var thumb = c.State(top, "Thumb", c.Constant(1, true, (leftThumb, .6)), writeDefaults: false);
+            var defaults = c.State(top, "Defaults", c.Constant(1, true, (leftThumb, -.3)));
+            var empty = c.State(top, "Empty", c.Constant(1, true), writeDefaults: false);
+            top.States[thumb].Transitions.Add(To(defaults, duration: .17).When(go, "if"));
+            top.States[defaults].Transitions.Add(To(empty, duration: .17).When(go, "ifNot"));
+            c.Input(.4, go, 1).Input(.85, go, 0);
             return c.Case;
         }
 

@@ -39,7 +39,12 @@ namespace VRVlog.AvatarAnimator
     // wrote it) and applies it with the layer's weight. A state without a motion gives, with Write Defaults,
     // the layers below (the rest when none wrote it); without, the layer's
     // own last value, held from the start of a transition out of it and
-    // approached frame by frame in a transition into it. A layer with a
+    // approached frame by frame in a transition into it. Unity poses a
+    // humanoid layer whole: a muscle is the rest where a motion writing
+    // other muscles does not write it (with or without Write Defaults), on
+    // the side of a transition whose motion does not write it while either
+    // side's writes a muscle, and as a layer's own last value of a muscle it never
+    // wrote; a motion writing no muscle passes them through. A layer with a
     // state without Write Defaults keeps a value of every target the
     // controller animates; M7 a layer under weight 1 blends over the
     // layers below it, or over the rest when none wrote the target; at
@@ -247,6 +252,9 @@ namespace VRVlog.AvatarAnimator
             internal int[] Stamp;
             internal int Current;
             internal double Total;
+            // M6: whether a clip with weight writes a muscle, which makes the
+            // side a humanoid pose: the muscles it does not write are the rest.
+            internal bool Muscles;
         }
 
         sealed class LayerRun
@@ -275,6 +283,8 @@ namespace VRVlog.AvatarAnimator
             internal int EnterSerial, EnteredState = -1, SeenEnterSerial, InterruptSerial, SeenInterruptSerial, HeldSerial;
             // Per state: the indexes in Animated of the targets its motion writes.
             internal int[][] StateKeys;
+            // Per state, whether its motion has a clip that writes a muscle.
+            internal bool[] StateMuscles;
             // The state in which the layer passed the other targets through in
             // the last frame (see Output), or -1. Out does not hold those targets then.
             internal int Passed = -1;
@@ -339,6 +349,8 @@ namespace VRVlog.AvatarAnimator
         // Per target, whether it is stepped (Target.Stepped): wherever two
         // values meet, the one of more weight is taken whole.
         readonly bool[] stepped;
+        // M6: per target, whether it is a muscle.
+        readonly bool[] isMuscle;
         // M4: triggers a transition used, reset once every layer has stepped.
         readonly bool[] spent;
         // M8: the Parameter Drivers that ran this frame, applied once every layer has stepped.
@@ -388,11 +400,13 @@ namespace VRVlog.AvatarAnimator
             parameterTargets = new int[data.Parameters.Count];
             isParameter = new bool[targetCount];
             stepped = new bool[targetCount];
+            isMuscle = new bool[targetCount];
             for (var i = 0; i < parameterTargets.Length; i++) parameterTargets[i] = -1;
             for (var i = 0; i < targetCount; i++)
             {
                 rest[i] = data.Targets[i].Rest;
                 stepped[i] = data.Targets[i].Stepped;
+                isMuscle[i] = data.Targets[i].Property == "muscle";
                 if (data.Targets[i].Property != "parameter") continue;
                 // M11: the controller's default, also when Expression Parameters declares another.
                 var parameter = data.Targets[i].Parameter;
@@ -567,7 +581,8 @@ namespace VRVlog.AvatarAnimator
                     Controller = c, First = first, AnimatesAll = list.Count == controllerTargets[c].Count, Animated = list.ToArray(),
                     Out = new double[list.Count], Snapshot = new double[list.Count], Held = new double[list.Count], Own = new double[list.Count],
                     OutWritten = new bool[list.Count], SnapshotWritten = new bool[list.Count],
-                    Weight = first ? 1 : layer.Weight, StateKeys = keys
+                    Weight = first ? 1 : layer.Weight, StateKeys = keys,
+                    StateMuscles = Array.ConvertAll(stateTargets[l], targets => Array.Exists(targets, t => isMuscle[t]))
                 };
                 // Sized for every transition of the layer, so Settles never grows them.
                 var transitions = layer.Machines.Count > 0 ? layer.Machines[0].AnyStateTransitions.Count : 0;
@@ -1679,6 +1694,7 @@ namespace VRVlog.AvatarAnimator
             var targets = stateTargets[layer.Index][state];
             side.Current++;
             side.Total = 0;
+            side.Muscles = false;
             foreach (var t in targets)
             {
                 side.Accumulated[t] = 0;
@@ -1693,11 +1709,12 @@ namespace VRVlog.AvatarAnimator
             if (side.Total <= 0)
             {
                 side.Current++;
+                side.Muscles = false;
                 return;
             }
             foreach (var t in targets)
             {
-                var fallback = s.WriteDefaults ? rest[t] : previous[t];
+                var fallback = s.WriteDefaults || (isMuscle[t] && side.Muscles) ? rest[t] : previous[t];
                 // The motions that do not write a stepped target give the
                 // fallback with their weight together.
                 side.Value[t] = stepped[t] ? (side.Best[t] >= side.Total - side.AccumulatedWeight[t] ? side.Accumulated[t] : fallback)
@@ -1718,6 +1735,7 @@ namespace VRVlog.AvatarAnimator
                 {
                     var t = track.Target;
                     side.AccumulatedWeight[t] += weight;
+                    side.Muscles |= isMuscle[t];
                     if (!stepped[t]) side.Accumulated[t] += weight * track.Curves[0].Evaluate(time);
                     // The first of equal weights stays.
                     else if (weight > side.Best[t])
@@ -1764,7 +1782,7 @@ namespace VRVlog.AvatarAnimator
             // motion's targets, marks the rest written at once, and rebuilds its own values
             // from the last frame's log in the first frame it stops passing.
             var passes = !layer.Transitioning && !layer.Frozen && weight >= 1 && layer.AnimatesAll
-                && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults;
+                && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults && !layer.StateMuscles[layer.State];
             if (layer.Passed >= 0 && !passes) Rebuild(layer);
             if (passes)
             {
@@ -1823,9 +1841,12 @@ namespace VRVlog.AvatarAnimator
             var t = layer.Animated[k];
             // What the layers below leave: this frame's value, else the last frame's.
             var through = Wrote(t) ? values[t] : previous[t];
-            // Mid-transition the layer holds a target either side's motion writes.
+            // Mid-transition the layer holds a target either side's motion writes,
+            // and every muscle when either side's motion writes a muscle (M6: the
+            // layer is then a pose; a frozen source's muscles are not looked at).
             var bound = layer.Transitioning && layer.Progress > 0 && (sideB.Stamp[t] == sideB.Current
-                || (layer.Frozen ? layer.SnapshotWritten[k] : sideA.Stamp[t] == sideA.Current));
+                || (layer.Frozen ? layer.SnapshotWritten[k] : sideA.Stamp[t] == sideA.Current)
+                || (isMuscle[t] && (sideB.Muscles || (!layer.Frozen && sideA.Muscles))));
             double value, b = 0;
             bool has;
             if (layer.Frozen)
@@ -1895,7 +1916,10 @@ namespace VRVlog.AvatarAnimator
         // wrote it. Without, a motion passes the layers below through, and a
         // state without a motion gives the layer's own last value: a layer
         // resting there keeps applying it, one moving there blends toward it
-        // frame by frame.
+        // frame by frame. A muscle differs (measured in the hands cases): a
+        // motion that writes other muscles gives the rest, one side of a
+        // transition where either side writes a muscle gives the rest, and a layer
+        // that never wrote it has the rest as its own last value.
         bool SideValue(Side side, LayerRun layer, int state, int t, int k, double through, bool bound, out double value)
         {
             var s = layer.Layer.States[state];
@@ -1907,10 +1931,13 @@ namespace VRVlog.AvatarAnimator
             if (s.Motion >= 0)
             {
                 // A Write Defaults motion with no weight at all, or one side of a
-                // transition whose other side writes the target, gives the rest;
-                // otherwise the layers below keep the target, and with Write
-                // Defaults it is the rest when none of them wrote it.
-                if (s.WriteDefaults && (side.Total <= 0 || bound))
+                // transition whose other side writes the target (a muscle with or
+                // without Write Defaults, and when either side writes any muscle),
+                // gives the rest, and so does a motion
+                // writing other muscles for a muscle; otherwise the layers
+                // below keep the target, and with Write Defaults it is the rest
+                // when none of them wrote it.
+                if ((s.WriteDefaults && side.Total <= 0) || (isMuscle[t] && side.Muscles) || ((s.WriteDefaults || isMuscle[t]) && bound))
                 {
                     value = rest[t];
                     return true;
@@ -1920,7 +1947,13 @@ namespace VRVlog.AvatarAnimator
             }
             if (!s.WriteDefaults)
             {
-                // A layer that never wrote the target has no value of its own.
+                // A layer that never wrote the target has no value of its own,
+                // except a muscle: its own value starts at the rest.
+                if (!layer.OutWritten[k] && isMuscle[t])
+                {
+                    value = rest[t];
+                    return true;
+                }
                 value = layer.OutWritten[k] ? (isParameter[t] ? layer.Own[k] : layer.Out[k]) : through;
                 return layer.OutWritten[k];
             }
