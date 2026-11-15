@@ -482,10 +482,14 @@ namespace VRVlog.LilToonExporter
         }
 
         // Called while UniVRM's exact Unity-object/node/mesh mapping is alive.
+        // The three-argument form stays usable as an afterExport method group.
+        internal void Bind(VRVlog.LilToonExporter.Vendor.UniVRM10.ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, VRVlog.LilToonExporter.Vendor.UniGLTF.ExportingGltfData storage) =>
+            Bind(converter, model, storage, null);
+
         // added maps each AddUnbound material to the copy the export added to
         // model.Materials.
         internal void Bind(VRVlog.LilToonExporter.Vendor.UniVRM10.ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, VRVlog.LilToonExporter.Vendor.UniGLTF.ExportingGltfData storage,
-            IReadOnlyDictionary<Material, Material> added = null)
+            IReadOnlyDictionary<Material, Material> added)
         {
             if (added != null)
                 foreach (var (source, record) in unbound)
