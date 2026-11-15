@@ -338,6 +338,9 @@ namespace VRVlog.AvatarAnimator
         readonly bool[] belowWritten;
         // Per target, the share of what lies under every controller (HostShare).
         readonly double[] hostShare;
+        // The body parts a trackingControl last set to animation (Animated).
+        // Sized for VRChat's ten parts up front, so Advance allocates nothing when it adds one.
+        readonly HashSet<string> animatedParts = new HashSet<string>(16);
         // Each value a layer set in values this frame and the last, in layer
         // order: the layer, the value and the same target's entry before it
         // (-1 none). Head holds each target's latest entry (-1 none).
@@ -692,6 +695,12 @@ namespace VRVlog.AvatarAnimator
         // that wrote it, and 1 when none did. Values blend from the rest
         // there, so a host whose value is h shows Values + (h - rest) * share.
         public IReadOnlyList<double> HostShare => hostShare;
+        // VRChat's VRC Animator Tracking Control: whether the last trackingControl
+        // a state or state machine entered set this body part (a trackingControl
+        // key: head, leftFingers, mouth, ...) to animation. False for tracking,
+        // for a part none set (VRChat's default) and for noChange, which keeps
+        // what was set before. The host stops its own tracking of an animated part.
+        public bool Animated(string part) => part != null && animatedParts.Contains(part);
 
         // The first parameter of that name, or -1.
         public int ParameterIndex(string name)
@@ -1351,7 +1360,12 @@ namespace VRVlog.AvatarAnimator
                         }
                     }
                     break;
-                // trackingControl moves nothing the targets show.
+                case "trackingControl":
+                    // Moves nothing the targets show; the host reads it (Animated).
+                    foreach (var pair in behaviour.Tracking)
+                        if (pair.Value == "animation") animatedParts.Add(pair.Key);
+                        else if (pair.Value == "tracking") animatedParts.Remove(pair.Key);
+                    break;
             }
         }
 

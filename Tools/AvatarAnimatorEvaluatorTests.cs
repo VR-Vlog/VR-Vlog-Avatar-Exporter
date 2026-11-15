@@ -133,6 +133,7 @@ public static class AvatarAnimatorEvaluatorTests
         ParameterDrivers();
         ParameterCurves();
         LayerControl();
+        TrackingControl();
         LayerAtZero();
         BlendTrees();
         FreeformCartesianTrees();
@@ -596,6 +597,38 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e.State(1) == low, "transitions see the value of the frame before");
         e.Advance(Frame);
         Check(e.State(1) == high, "and the new value a frame later");
+    }
+
+    // VRC Animator Tracking Control: what the last one entered set, part by part (5-5).
+    static void TrackingControl()
+    {
+        var b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        b.Target();
+        var top = b.Layer("Control");
+        var wait = Builder.State(top, "Wait", -1);
+        var take = Builder.State(top, "Take", -1);
+        var give = Builder.State(top, "Give", -1);
+        top.States[wait].Transitions.Add(To(take).When(go, "if"));
+        top.States[take].Transitions.Add(To(give).When(go, "ifNot"));
+        var taking = new AvatarAnimatorData.Behaviour { Type = "trackingControl" };
+        taking.Tracking.Add(new KeyValuePair<string, string>("leftFingers", "animation"));
+        taking.Tracking.Add(new KeyValuePair<string, string>("mouth", "animation"));
+        top.States[take].Behaviours.Add(taking);
+        var giving = new AvatarAnimatorData.Behaviour { Type = "trackingControl" };
+        giving.Tracking.Add(new KeyValuePair<string, string>("leftFingers", "noChange"));
+        giving.Tracking.Add(new KeyValuePair<string, string>("mouth", "tracking"));
+        top.States[give].Behaviours.Add(giving);
+        var e = b.Build();
+        e.Advance(Frame);
+        Check(!e.Animated("leftFingers") && !e.Animated("mouth") && !e.Animated(null), "a part no Tracking Control set is tracking");
+        e.Set(go, 1);
+        e.Advance(Frame);
+        Check(e.Animated("leftFingers") && e.Animated("mouth") && !e.Animated("rightFingers"), "a Tracking Control entered sets its parts to animation");
+        e.Set(go, 0);
+        e.Advance(Frame);
+        Check(e.Animated("leftFingers"), "noChange keeps what was set");
+        Check(!e.Animated("mouth"), "tracking gives the part back");
     }
 
     static void LayerControl()
