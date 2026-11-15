@@ -198,10 +198,21 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return AnyState();
             yield return Interruption();
             yield return AnyStateInterruption();
+            yield return AnyStateInterruption("source");
+            yield return AnyStateInterruption("source", ordered: true);
+            yield return AnyStateInterruption("destination");
+            yield return AnyStateRunning("anyStateRestart");
+            yield return AnyStateRunning("anyStateOrdered");
+            yield return AnyStateRunning("anyStateUnordered");
+            yield return AnyStateRunning("anyStateBeforeDestination");
+            yield return ExitTimeRestart(false);
+            yield return ExitTimeRestart(true);
             yield return WriteDefaultsOff();
             yield return Layers();
             yield return Trees();
             yield return FreeformCartesian();
+            yield return SimpleDirectional();
+            yield return FreeformDirectional();
             yield return Machines();
             yield return StateOptions();
             yield return Chain();
@@ -347,10 +358,13 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
-        // Any State taking a layer that is in a transition.
-        static Case AnyStateInterruption()
+        // Any State and a layer that is in a transition from a state: with an
+        // interruption source other than none, Any State interrupts it, and
+        // unordered, the running transition starts again while Go holds.
+        static Case AnyStateInterruption(string source = "none", bool ordered = false)
         {
-            var c = new Builder("anyStateInterruption", 2);
+            var name = "anyStateInterruption" + (source == "none" ? "" : char.ToUpperInvariant(source[0]) + source.Substring(1)) + (ordered ? "Ordered" : "");
+            var c = new Builder(name, 2);
             var go = c.Parameter("Go", "bool");
             var stop = c.Parameter("Stop", "bool");
             var node = c.Target(0);
@@ -358,9 +372,79 @@ namespace VRVlog.AvatarAnimator.Comparison
             var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
             var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
             var d = c.State(layer, "C", c.Ramp(1, true, node, 20, 21));
-            layer.States[a].Transitions.Add(To(b, duration: 1).When(go, "if"));
+            var slow = To(b, duration: 1).When(go, "if");
+            slow.InterruptionSource = source;
+            slow.OrderedInterruption = ordered;
+            layer.States[a].Transitions.Add(slow);
             layer.Machines[0].AnyStateTransitions.Add(To(d, duration: .5).When(stop, "if"));
             c.Input(.2, go, 1).Input(.6, stop, 1).Input(.7, stop, 0);
+            return c.Case;
+        }
+
+        // A transition interrupted by Any State: anyStateRestart, one from
+        // Any State that starts again while Go holds, although it may not
+        // transition to itself (the layer is still in A); anyStateOrdered and
+        // anyStateUnordered, one from Any State that only the earlier ones
+        // interrupt, or every one; anyStateBeforeDestination, Any State before
+        // the destination's transition.
+        static Case AnyStateRunning(string name)
+        {
+            var c = new Builder(name, 2.5);
+            var go = c.Parameter("Go", "bool");
+            var stop = c.Parameter("Stop", "bool");
+            var stop2 = c.Parameter("Stop2", "bool");
+            var node = c.Target(0);
+            var layer = c.Layer("Any");
+            var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
+            var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
+            var d = c.State(layer, "C", c.Ramp(1, true, node, 20, 21));
+            var e = c.State(layer, "D", c.Ramp(1, true, node, 30, 31));
+            var anys = layer.Machines[0].AnyStateTransitions;
+            if (name == "anyStateBeforeDestination")
+            {
+                var slow = To(b, duration: 1).When(go, "if");
+                slow.InterruptionSource = "destination";
+                layer.States[a].Transitions.Add(slow);
+                layer.States[a].Transitions.Add(To(e, duration: .5).When(stop, "if"));
+                layer.States[b].Transitions.Add(To(e, duration: .5).When(stop, "if"));
+                anys.Add(To(d, duration: .5).When(stop, "if"));
+                c.Input(.2, go, 1).Input(.3, go, 0).Input(.6, stop, 1).Input(.7, stop, 0);
+                return c.Case;
+            }
+            var fromAny = To(b, duration: 1).When(go, "if");
+            fromAny.InterruptionSource = "source";
+            fromAny.OrderedInterruption = name == "anyStateOrdered";
+            if (name == "anyStateRestart")
+            {
+                anys.Add(fromAny);
+                c.Input(.2, go, 1).Input(.5, go, 0);
+                return c.Case;
+            }
+            anys.Add(To(d, duration: .5).When(stop, "if"));
+            anys.Add(fromAny);
+            anys.Add(To(e, duration: .5).When(stop2, "if"));
+            c.Input(.2, go, 1).Input(.3, go, 0).Input(.5, stop2, 1).Input(.6, stop2, 0)
+             .Input(1.6, go, 1).Input(1.7, go, 0).Input(1.9, stop, 1).Input(2, stop, 0);
+            return c.Case;
+        }
+
+        // A transition with an exit time and no ordered interruption, longer
+        // than a loop of its source: it starts itself again when the source
+        // crosses the exit time once more, then the source holds still and
+        // it is not crossed again.
+        static Case ExitTimeRestart(bool condition)
+        {
+            var c = new Builder(condition ? "exitTimeRestartGo" : "exitTimeRestart", 5);
+            var go = c.Parameter("Go", "bool");
+            var node = c.Target(0);
+            var layer = c.Layer("Exit");
+            var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
+            var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
+            var slow = To(b, duration: 2, exitTime: true, at: .9);
+            if (condition) slow.When(go, "if");
+            slow.InterruptionSource = "source";
+            layer.States[a].Transitions.Add(slow);
+            if (condition) c.Input(.5, go, 1);
             return c.Case;
         }
 
@@ -480,6 +564,108 @@ namespace VRVlog.AvatarAnimator.Comparison
             }
             c.Input(1.2, w, .5).Input(2.2, w, 0).Input(2.6, w, 1);
             return c.Case;
+        }
+
+        // 2D Simple Directional trees, read as FreeformCartesian reads its trees.
+        static Case SimpleDirectional()
+        {
+            var c = new Builder("simpleDirectional", 7);
+            var x = c.Parameter("X", "float");
+            var y = c.Parameter("Y", "float");
+            var w = c.Parameter("W", "float", 1);
+            const string type = "2dSimpleDirectional";
+            // Four directions and the centre.
+            c.State(c.Layer("Four"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1), (-1, 0), (0, -1)));
+            // The same without the centre.
+            c.State(c.Layer("NoCentre"), "Tree", c.Weights(type, x, y, (1, 0), (0, 1), (-1, 0), (0, -1)));
+            // Uneven angles and distances, the children not in angle order.
+            c.State(c.Layer("Uneven"), "Tree", c.Weights(type, x, y, (0, 2), (.5, -.3), (0, 0), (-1.5, .4), (1.2, .9), (-.2, -1)));
+            // A gap of more than 180 degrees between two neighbours.
+            c.State(c.Layer("Gap"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1)));
+            c.State(c.Layer("GapNoCentre"), "Tree", c.Weights(type, x, y, (1, 0), (-.5, 1)));
+            // One direction, with and without the centre.
+            c.State(c.Layer("One"), "Tree", c.Weights(type, x, y, (0, 0), (.5, .5)));
+            c.State(c.Layer("OneNoCentre"), "Tree", c.Weights(type, x, y, (.5, .5)));
+            c.State(c.Layer("Centre"), "Tree", c.Weights(type, x, y, (0, 0)));
+            // Two children in one direction.
+            c.State(c.Layer("Same"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (2, 0), (0, 1), (-1, -1)));
+            // Two children at the centre.
+            c.State(c.Layer("Centres"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1), (0, 0), (-1, -1)));
+            Timing(c, type, x, y, w);
+            Sweep(c, x, y, (0, 0), (1, 0), (.5, 0), (2, 0), (0, 1), (-1, 0), (0, -1), (.5, .5), (-.75, -.75), (0, 2), (1.2, .9), (.25, 0), (0, .001));
+            return c.Case;
+        }
+
+        // 2D Freeform Directional trees, read as FreeformCartesian reads its trees.
+        static Case FreeformDirectional()
+        {
+            var c = new Builder("freeformDirectional", 7);
+            var x = c.Parameter("X", "float");
+            var y = c.Parameter("Y", "float");
+            var w = c.Parameter("W", "float", 1);
+            const string type = "2dFreeformDirectional";
+            // Eight directions around the centre.
+            c.State(c.Layer("Ring"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (.7, .7), (0, 1), (-.7, .7), (-1, 0), (-.7, -.7), (0, -1), (.7, -.7)));
+            // Two rings: several children in one direction.
+            c.State(c.Layer("Rings"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1), (-1, 0), (0, -1), (2, 0), (0, 2), (-2, 0), (0, -2)));
+            // No centre.
+            c.State(c.Layer("NoCentre"), "Tree", c.Weights(type, x, y, (1, 0), (0, 1), (-1, 0), (0, -1)));
+            // Uneven angles and distances.
+            c.State(c.Layer("Uneven"), "Tree", c.Weights(type, x, y, (0, 0), (.5, -.3), (0, 2), (-1.5, .4), (1.2, .9), (-.5, -1), (3, -2)));
+            // Directions of other lengths without the centre.
+            c.State(c.Layer("Radii"), "Tree", c.Weights(type, x, y, (1, 0), (0, 10), (-10, 0), (0, -1)));
+            // Gaps of 135 and 270 degrees between two neighbours.
+            c.State(c.Layer("Wide"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1), (-1, -1)));
+            c.State(c.Layer("Gap"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1)));
+            // One direction, with and without the centre.
+            c.State(c.Layer("One"), "Tree", c.Weights(type, x, y, (0, 0), (.5, .5)));
+            c.State(c.Layer("OneNoCentre"), "Tree", c.Weights(type, x, y, (.5, .5)));
+            // Two children at one position.
+            c.State(c.Layer("Same"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (1, 0), (0, 1), (-1, 0), (0, -1)));
+            // Two children at the centre.
+            c.State(c.Layer("Centres"), "Tree", c.Weights(type, x, y, (0, 0), (1, 0), (0, 1), (0, 0), (-1, 0), (0, -1)));
+            Timing(c, type, x, y, w);
+            Sweep(c, x, y, (0, 0), (-.7071, .7071), (1, 0), (.5, 0), (2, 0), (1.5, 0), (0, 1), (-1, 0), (0, -1), (.7, .7), (.35, .35), (-.75, -.75), (0, 2), (1.2, .9), (3, -2), (0, .001));
+            return c.Case;
+        }
+
+        // Children of other lengths and time scales, a 1D tree as a child, a
+        // child without a motion, and the tree inside a direct tree.
+        static void Timing(Builder c, string type, int x, int y, int w)
+        {
+            for (var kind = 0; kind < 5; kind++)
+            {
+                var length = c.Target(0);
+                var a = c.Ramp(1, true, length, 0, 1);
+                var b = c.Ramp(2, true, length, 10, 12);
+                var d = c.Ramp(.5, true, length, 20, 21);
+                var e = c.Ramp(1.5, true, length, 30, 33);
+                var f = c.Ramp(.75, true, length, 40, 41.5);
+                int tree;
+                if (kind == 1) tree = c.Tree2D(type, x, y, (a, 0, 0, 1), (b, 1, 0, 2), (d, 0, 1, .5), (e, -1, 0, 1), (f, 0, -1, 1.5));
+                else if (kind == 2) tree = c.Tree2D(type, x, y, (a, 0, 0, 1), (b, 1, 0, 1), (c.Tree("1d", x, (a, 0, 1), (d, 1, 1)), 0, 1, 1), (e, -1, 0, 1), (f, 0, -1, 1));
+                else if (kind == 3) tree = c.Tree2D(type, x, y, (a, 0, 0, 1), (b, 1, 0, 1), (d, 0, 1, 1), (-1, .5, .5, 1), (e, -1, 0, 1), (f, 0, -1, 1));
+                else tree = c.Tree2D(type, x, y, (a, 0, 0, 1), (b, 1, 0, 1), (d, 0, 1, 1), (e, -1, 0, 1), (f, 0, -1, 1));
+                c.State(c.Layer(new[] { "Lengths", "Scales", "Inner", "Missing", "Direct" }[kind]), "Tree", kind == 4 ? c.Tree("direct", -1, (tree, w, 1)) : tree);
+            }
+            c.Input(1.2, w, .5).Input(2.2, w, 0).Input(2.6, w, 1);
+        }
+
+        // The given points first, then points around the origin, inside and
+        // outside the children, each held for 0.05 seconds.
+        static void Sweep(Builder c, int x, int y, params (double X, double Y)[] points)
+        {
+            var time = 0.0;
+            foreach (var (px, py) in points)
+            {
+                c.Input(time, x, px).Input(time, y, py);
+                time += .05;
+            }
+            for (var i = 0; time < 7 - 1e-9; i++, time += .05)
+            {
+                double u = i * .137, v = i * .291;
+                c.Input(time, x, -2.5 + 5 * (u - Math.Floor(u))).Input(time, y, -2.5 + 5 * (v - Math.Floor(v)));
+            }
         }
 
         // A sub-state machine: Entry, Exit and the parent's transitions out
@@ -853,10 +1039,12 @@ namespace VRVlog.AvatarAnimator.Comparison
             }
 
             // A Freeform Cartesian tree with a child at each position, and a target for each child's weight.
-            internal int Weights(int x, int y, params (double X, double Y)[] positions)
+            internal int Weights(int x, int y, params (double X, double Y)[] positions) => Weights("2dFreeformCartesian", x, y, positions);
+
+            internal int Weights(string blendType, int x, int y, params (double X, double Y)[] positions)
             {
                 var targets = positions.Select(_ => Target(0)).ToArray();
-                return Tree2D("2dFreeformCartesian", x, y, positions.Select((position, i) =>
+                return Tree2D(blendType, x, y, positions.Select((position, i) =>
                     (Constant(1, true, targets.Select((target, t) => (target, t == i ? 1.0 : 0.0)).ToArray()), position.X, position.Y, 1.0)).ToArray());
             }
 

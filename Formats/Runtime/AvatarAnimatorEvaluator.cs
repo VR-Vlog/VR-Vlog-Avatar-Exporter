@@ -15,16 +15,19 @@ namespace VRVlog.AvatarAnimator
     // that is the Unity BlendShape weight, not the glTF weight.
     //
     // The marks name rules the README explains ("Avatar animator evaluator").
-    // M1-M7, M11 and M12 are measured: Tests/AnimatorComparison records Unity's Animator
+    // M1-M7 and M11-M14 are measured: Tests/AnimatorComparison records Unity's Animator
     // and Tools/Fixtures/AvatarAnimator replays the recordings here.
     // M1 an animated activeSelf is on at any value other than 0; M2 an exit
     // time e is crossed when the state's normalized time passes e (e >= 1
     // once, e < 1 at each loop after the start), and the rest of the frame
     // already advances the transition and its destination; M3 a layer whose
     // transition ended this frame starts none until the next; M4 a trigger
-    // used by a transition is reset once every layer has stepped; M5 Any
-    // State transitions are checked only while the layer is not
-    // transitioning, and an interrupted transition blends from a still copy;
+    // used by a transition is reset once every layer has stepped; M5 a
+    // running transition whose interruption source is not none is
+    // interrupted by Any State's transitions first, then by its source's or
+    // destination's; ordered, a list stops before the running transition,
+    // otherwise the running transition interrupts itself; an interrupted
+    // transition blends from a still copy, and its source's time stops;
     // M6 for a target a state's motion does not write: mid-transition, when
     // the other side's motion writes it, a Write Defaults side gives the
     // rest; otherwise a Write Defaults state leaves it to the layers below
@@ -51,6 +54,26 @@ namespace VRVlog.AvatarAnimator
     // to 0 at the other's along the line between the two, not below 0, and
     // then divides by the sum; a child without a motion is not in the tree,
     // and two children at one position do not limit each other.
+    // M13 a 2D Simple Directional tree takes the two neighbouring directions
+    // around the point (a child in the direction of an earlier one is left
+    // out) and gives them and the centre the point's barycentric weights in
+    // their triangle; past the line between the two it gives the two their
+    // weights divided by their sum. At (0, 0), between neighbours 180 degrees
+    // or more apart, or with one direction, the centre takes all. Without a
+    // child at (0, 0) the centre's weight is shared equally by the
+    // directions; with more than one, the first takes all at (0, 0) and no
+    // child has weight anywhere else.
+    // M14 a 2D Freeform Directional tree is M12 in polar terms, each child
+    // away from (0, 0) starting from 1 minus its angle to the point divided
+    // by 180 degrees instead of 1: the line
+    // from child i to child j runs over the difference of their lengths
+    // divided by the mean of the two, and over the signed angle from i to j;
+    // the point's offset from i is its length minus i's, divided by the same
+    // mean, and the signed angle from i to it. Against a child at (0, 0) the
+    // angle is the other child's to the point, and the point's angle from the
+    // centre is 0; at (0, 0) the point's angle from any child is 0. With no
+    // weight left, or at (0, 0) without a child there, the children with a
+    // motion share equally.
     // M8-M10 stay assumptions: M8 and M10 are VRChat behaviours that plain
     // Unity cannot record, and no recording covers M9. The frame in which
     // transitions see a driver's change is the one the export's check
@@ -79,8 +102,10 @@ namespace VRVlog.AvatarAnimator
         // Whether this evaluator plays the controller as Unity would. False
         // when the exporter left out something that drives transitions, or the
         // controller uses what is not implemented yet (additive layers, synced
-        // layers that affect timing, 2D blend trees other than Freeform
-        // Cartesian, a random that prevents repeats). reason is null when true.
+        // layers that affect timing, a blend tree of another kind, a random
+        // that prevents repeats). reason is null when true.
+        static readonly string[] BlendTypes = { "1d", "direct", "2dSimpleDirectional", "2dFreeformCartesian", "2dFreeformDirectional" };
+
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -118,9 +143,9 @@ namespace VRVlog.AvatarAnimator
                     { reason = "A synced layer does not match its source layer."; return false; }
                 }
             foreach (var motion in data.Motions)
-                if (motion.Type == "blendTree" && motion.BlendType != "1d" && motion.BlendType != "direct" && motion.BlendType != "2dFreeformCartesian")
+                if (motion.Type == "blendTree" && Array.IndexOf(BlendTypes, motion.BlendType) < 0)
                 {
-                    reason = "2D blend trees other than Freeform Cartesian are not supported.";
+                    reason = "Blend trees of type " + motion.BlendType + " are not supported.";
                     return false;
                 }
             reason = null;
@@ -173,8 +198,13 @@ namespace VRVlog.AvatarAnimator
         readonly List<AvatarAnimatorData.Behaviour> drivers;
         readonly LayerRun[] layers;
         // Per motion: the targets it writes, the order of a 1D tree's children
-        // by threshold and the children's weights while it is evaluated.
+        // by threshold (a Simple Directional tree's directions by angle) and
+        // the children's weights while it is evaluated.
         readonly int[][] motionTargets, childOrder;
+        // A Simple Directional tree's first child at (0, 0) (-1 none) and
+        // whether it has more than one.
+        readonly int[] centreChild;
+        readonly bool[] centres;
         readonly double[][] childWeights;
         // Per layer, per state: the targets the state's motion writes.
         readonly int[][][] stateTargets;
@@ -223,6 +253,8 @@ namespace VRVlog.AvatarAnimator
 
             motionTargets = new int[data.Motions.Count][];
             childOrder = new int[data.Motions.Count][];
+            centreChild = new int[data.Motions.Count];
+            centres = new bool[data.Motions.Count];
             childWeights = new double[data.Motions.Count][];
             for (var m = 0; m < data.Motions.Count; m++)
             {
@@ -234,6 +266,7 @@ namespace VRVlog.AvatarAnimator
                 // Stable: children with the same threshold keep their order.
                 Array.Sort(order, (x, y) => children[x].Threshold != children[y].Threshold ? children[x].Threshold.CompareTo(children[y].Threshold) : x.CompareTo(y));
                 childOrder[m] = order;
+                if (data.Motions[m].BlendType == "2dSimpleDirectional") Directions(data.Motions[m], out childOrder[m], out centreChild[m], out centres[m]);
             }
 
             var source = data.Controllers.Count > 0 ? data.Controllers[0].Layers : new List<AvatarAnimatorData.Layer>();
@@ -425,7 +458,9 @@ namespace VRVlog.AvatarAnimator
 
             var n0 = layer.Time;
             var length = StateLength(states[layer.State]);
-            layer.Time = AdvanceTime(states[layer.State], n0, dt, length);
+            // M5: after an interruption the source is a still copy, so its time
+            // stops too and its exit times are not crossed again.
+            if (!layer.Frozen) layer.Time = AdvanceTime(states[layer.State], n0, dt, length);
             double next0 = 0;
             if (layer.Transitioning)
             {
@@ -446,30 +481,39 @@ namespace VRVlog.AvatarAnimator
                     TryFire(layer, states[layer.State].Transitions, false, -1, n0, layer.Time, dt, length);
                 return;
             }
-            // M5: Any State interrupts only a transition from Any State whose source allows it.
-            // Interruptions of the running transition by its source or destination.
-            var sourceList = layer.ActiveFromAny ? any : states[layer.State].Transitions;
-            var until = -1;
-            if (layer.Active.OrderedInterruption)
-                until = IndexOf(sourceList, layer.Active);
+            // M5: Any State's transitions interrupt first, unless nothing may.
+            var source = layer.Active.InterruptionSource;
+            if (source == "none") return;
+            var ordered = layer.Active.OrderedInterruption;
+            if (TryFire(layer, any, true, ordered && layer.ActiveFromAny ? IndexOf(any, layer.Active) : -1, n0, layer.Time, dt, length))
+                return;
             var nextLength = StateLength(states[layer.Next]);
-            switch (layer.Active.InterruptionSource)
+            switch (source)
             {
                 case "source":
-                    TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length);
+                    TrySource(layer, ordered, n0, dt, length);
                     break;
                 case "destination":
                     TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength);
                     break;
                 case "sourceThenDestination":
-                    if (!TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length))
+                    if (!TrySource(layer, ordered, n0, dt, length))
                         TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength);
                     break;
                 case "destinationThenSource":
                     if (!TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength))
-                        TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length);
+                        TrySource(layer, ordered, n0, dt, length);
                     break;
             }
+        }
+
+        // The source state's own transitions; a transition from Any State
+        // has had its source checked already.
+        bool TrySource(LayerRun layer, bool ordered, double n0, double dt, double length)
+        {
+            if (layer.ActiveFromAny) return false;
+            var own = layer.Layer.States[layer.State].Transitions;
+            return TryFire(layer, own, false, ordered ? IndexOf(own, layer.Active) : -1, n0, layer.Time, dt, length);
         }
 
         static int IndexOf(List<AvatarAnimatorData.Transition> list, AvatarAnimatorData.Transition transition)
@@ -480,8 +524,8 @@ namespace VRVlog.AvatarAnimator
         }
 
         // The first transition of the list that may be taken now. until >= 0
-        // limits the list to the entries before it (ordered interruption); the
-        // running transition itself never interrupts.
+        // limits the list to the entries before it (ordered interruption);
+        // otherwise the running transition may start again.
         bool TryFire(LayerRun layer, List<AvatarAnimatorData.Transition> list, bool fromAny, int until,
             double n0, double n1, double dt, double sourceLength)
         {
@@ -489,7 +533,6 @@ namespace VRVlog.AvatarAnimator
             for (var i = 0; i < count; i++)
             {
                 var transition = list[i];
-                if (layer.Transitioning && ReferenceEquals(transition, layer.Active)) continue;
                 // Unity never takes a transition with neither an exit time nor a condition.
                 if (!transition.HasExitTime && transition.Conditions.Count == 0) continue;
                 double overshoot = 0;
@@ -506,7 +549,8 @@ namespace VRVlog.AvatarAnimator
                 var machine = layer.Layer.States[layer.State].Machine;
                 var destination = Resolve(layer.Layer, transition, fromAny ? 0 : machine, 0);
                 if (destination < 0) continue;
-                if (fromAny && !transition.CanTransitionToSelf && destination == (layer.Transitioning ? layer.Next : layer.State)) continue;
+                // Mid-transition, "self" is the source of the running transition.
+                if (fromAny && !transition.CanTransitionToSelf && destination == layer.State) continue;
                 Fire(layer, transition, destination, fromAny, sourceLength, overshoot);
                 return true;
             }
@@ -569,6 +613,9 @@ namespace VRVlog.AvatarAnimator
             for (var c = 0; c < chainCount; c++)
                 foreach (var condition in chain[c].Conditions)
                     if (types[condition.Parameter] == TriggerType) spent[condition.Parameter] = true;
+            // M5: a transition that starts itself again does not run its destination's
+            // behaviours again, so they run once as before (not measured in Unity).
+            var restart = layer.Transitioning && ReferenceEquals(transition, layer.Active) && destination == layer.Next;
             if (layer.Transitioning)
             {
                 // M5: the interrupted blend continues as a still copy.
@@ -584,7 +631,12 @@ namespace VRVlog.AvatarAnimator
             layer.NextTime = transition.Offset;
             layer.Progress = 0;
             layer.Duration = transition.HasFixedDuration ? transition.Duration : transition.Duration * sourceLength;
-            Enter(layer, destination);
+            if (restart)
+            {
+                layer.EnterSerial++;
+                layer.EnteredState = -1;
+            }
+            else Enter(layer, destination);
             if (overshoot > 0)
             {
                 var states = layer.Layer.States;
@@ -835,6 +887,81 @@ namespace VRVlog.AvatarAnimator
                     for (var c = 0; c < weights.Length; c++) weights[c] /= sum;
                 return weights;
             }
+            if (m.BlendType == "2dSimpleDirectional")
+            {
+                // M13.
+                double x = parameters[m.Parameters[0]], y = parameters[m.Parameters[1]], centre = 1;
+                var directions = childOrder[motion];
+                if (centres[motion])
+                {
+                    if (x == 0 && y == 0) weights[centreChild[motion]] = 1;
+                    return weights;
+                }
+                if ((x != 0 || y != 0) && directions.Length >= 2)
+                    for (var k = 0; k < directions.Length; k++)
+                    {
+                        int a = directions[k], b = directions[(k + 1) % directions.Length];
+                        double ax = children[a].X, ay = children[a].Y, bx = children[b].X, by = children[b].Y;
+                        double det = ax * by - ay * bx, fromA = ax * y - ay * x, toB = x * by - y * bx;
+                        // Neighbours 180 degrees or more apart leave the point to the centre.
+                        if (det <= 0 || fromA <= 0 || toB < 0) continue;
+                        double wa = toB / det, wb = fromA / det, sum = wa + wb;
+                        // Past the line between the two, the centre has no weight.
+                        if (sum > 1) { wa /= sum; wb /= sum; sum = 1; }
+                        weights[a] = wa;
+                        weights[b] = wb;
+                        centre = 1 - sum;
+                        break;
+                    }
+                if (centreChild[motion] >= 0) weights[centreChild[motion]] += centre;
+                else
+                    foreach (var d in directions) weights[d] += centre / directions.Length;
+                return weights;
+            }
+            if (m.BlendType == "2dFreeformDirectional")
+            {
+                // M14.
+                double x = parameters[m.Parameters[0]], y = parameters[m.Parameters[1]], sum = 0;
+                var length = Math.Sqrt(x * x + y * y);
+                int playing = 0;
+                var centre = false;
+                for (var i = 0; i < weights.Length; i++)
+                {
+                    if (children[i].Motion < 0) continue;
+                    playing++;
+                    double xi = children[i].X, yi = children[i].Y, li = Math.Sqrt(xi * xi + yi * yi);
+                    centre |= li == 0;
+                    // A child away from the centre starts from its angle to the point: 1 in its direction, 0 opposite.
+                    var w = li > 0 && length > 0 ? 1 - Math.Abs(Angle(xi, yi, x, y)) / Math.PI : 1;
+                    for (var j = 0; j < weights.Length && w > 0; j++)
+                    {
+                        if (j == i || children[j].Motion < 0 || (children[j].X == xi && children[j].Y == yi)) continue;
+                        double xj = children[j].X, yj = children[j].Y, lj = Math.Sqrt(xj * xj + yj * yj), mean = (li + lj) / 2;
+                        double between, toPoint;
+                        if (li == 0 || lj == 0)
+                        {
+                            // A child at the centre has no direction: the angle is the other child's to the point.
+                            var away = li == 0 ? j : i;
+                            between = length > 0 ? Math.Abs(Angle(children[away].X, children[away].Y, x, y)) : 0;
+                            toPoint = li == 0 ? 0 : between;
+                        }
+                        else
+                        {
+                            between = Angle(xi, yi, xj, yj);
+                            toPoint = length > 0 ? Angle(xi, yi, x, y) : 0;
+                        }
+                        double radial = (lj - li) / mean, distance = radial * radial + between * between;
+                        w = Math.Min(w, 1 - ((length - li) / mean * radial + toPoint * between) / distance);
+                    }
+                    sum += weights[i] = Math.Max(0, w);
+                }
+                // With no weight anywhere, or at (0, 0) without a child there, the children share equally.
+                if (sum == 0 || (length == 0 && !centre))
+                    for (var c = 0; c < weights.Length; c++) weights[c] = children[c].Motion < 0 ? 0 : 1.0 / playing;
+                else
+                    for (var c = 0; c < weights.Length; c++) weights[c] /= sum;
+                return weights;
+            }
             // 1D: between the two neighbouring thresholds, clamped at the ends.
             var p = parameters[m.Parameters[0]];
             var order = childOrder[motion];
@@ -853,6 +980,37 @@ namespace VRVlog.AvatarAnimator
                 }
             }
             return weights;
+        }
+
+        // The signed angle from a to b, in radians.
+        static double Angle(double ax, double ay, double bx, double by) => Math.Atan2(ax * by - ay * bx, ax * bx + ay * by);
+
+        // A 2D tree's children with a motion away from (0, 0), by angle, a
+        // child in the direction of an earlier one left out; and its child
+        // with a motion at (0, 0) (-1 none) and whether it has more than one.
+        static void Directions(AvatarAnimatorData.Motion m, out int[] directions, out int centre, out bool centres)
+        {
+            var children = m.Children;
+            var kept = new List<int>();
+            centre = -1;
+            centres = false;
+            for (var c = 0; c < children.Count; c++)
+            {
+                if (children[c].Motion < 0) continue;
+                double x = children[c].X, y = children[c].Y;
+                if (x == 0 && y == 0)
+                {
+                    if (centre == -1) centre = c;
+                    else centres = true;
+                    continue;
+                }
+                var same = false;
+                foreach (var k in kept) same |= children[k].X * y - children[k].Y * x == 0 && children[k].X * x + children[k].Y * y > 0;
+                if (!same) kept.Add(c);
+            }
+            // Stable: children at one angle cannot both be kept.
+            kept.Sort((a, b) => Math.Atan2(children[a].Y, children[a].X).CompareTo(Math.Atan2(children[b].Y, children[b].X)));
+            directions = kept.ToArray();
         }
 
         // The state's value of each target its motion writes: the children's

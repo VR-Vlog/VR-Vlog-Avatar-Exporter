@@ -134,6 +134,7 @@ public static class AvatarAnimatorEvaluatorTests
         LayerControl();
         BlendTrees();
         FreeformCartesianTrees();
+        DirectionalTrees();
         ValuesPassUnclamped();
         Morphs();
         SyncedLayers();
@@ -485,6 +486,38 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e2.NextState(0) == -1, "its own layer did not start a transition on it");
         e2.Advance(Frame);
         Check(e2.State(0) == done, "its own layer moves on it in the next frame");
+
+        // M8 on the first frame: the default state's driver sets the value its
+        // own transition waits for, which moves from the second frame on.
+        var f = new Builder();
+        var ready = f.Parameter("Ready", "bool");
+        var first = f.Layer("First");
+        var start = Builder.State(first, "Start", -1);
+        var after = Builder.State(first, "After", -1);
+        first.States[start].Transitions.Add(To(after).When(ready, "if"));
+        var setReady = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        setReady.Operations.Add(new AvatarAnimatorData.Operation { Type = "set", Parameter = ready, Value = 1 });
+        first.States[start].Behaviours.Add(setReady);
+        var e3 = f.Build();
+        e3.Advance(Frame);
+        Check(e3.Get(ready) == 1 && e3.State(0) == start && e3.NextState(0) == -1, "M8: the first frame enters the default state and stays");
+        e3.Advance(Frame);
+        Check(e3.State(0) == after, "the second frame takes the transition");
+
+        // M8: drivers of two layers on the same parameter apply in layer order.
+        var g = new Builder();
+        var total = g.Parameter("Total", "int");
+        foreach (var (name, type) in new[] { ("Set", "set"), ("Add", "add") })
+        {
+            var l = g.Layer(name);
+            var s0 = Builder.State(l, "S", -1);
+            var op = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+            op.Operations.Add(new AvatarAnimatorData.Operation { Type = type, Parameter = total, Value = 1 });
+            l.States[s0].Behaviours.Add(op);
+        }
+        var e4 = g.Build();
+        e4.Advance(Frame);
+        Check(e4.Get(total) == 2, "M8: set 1 then add 1 in the same frame gives 2");
     }
 
     // M11: Unity owns a parameter a clip animates.
@@ -694,6 +727,10 @@ public static class AvatarAnimatorEvaluatorTests
         e.Advance(Frame);
         e.Set(go, 1);
         e.Advance(Frame);
+        // M5: unordered, the running transition starts again while Go holds.
+        e.Advance(.25);
+        Check(e.NextState(0) == c && e.TransitionProgress(0) == 0, "M5: the running transition interrupts itself");
+        e.Set(go, 0);
         e.Advance(.5);
         Near(e.Values[node], .5, "halfway to B");
         e.Set(stop, 1);
@@ -711,6 +748,49 @@ public static class AvatarAnimatorEvaluatorTests
         e.Set(stop, 1);
         e.Advance(.5);
         Check(e.NextState(0) == c, "no interruption");
+
+        // Ordered, the running transition does not start again.
+        slow.InterruptionSource = "source";
+        slow.OrderedInterruption = true;
+        e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        Near(e.TransitionProgress(0), .25, "M5: ordered, the running transition goes on");
+
+        // M5: starting again does not run the destination's driver again.
+        slow.OrderedInterruption = false;
+        var count = b.Parameter("Count", "int");
+        var addOne = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        addOne.Operations.Add(new AvatarAnimatorData.Operation { Type = "add", Parameter = count, Value = 1 });
+        layer.States[c].Behaviours.Add(addOne);
+        e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        Check(e.NextState(0) == c && e.Get(count) == 1, "M5: the driver runs once while the transition starts again");
+        layer.States[c].Behaviours.Remove(addOne);
+
+        // Any State interrupts unless the interruption source is none, before
+        // the destination's transitions.
+        var away = Builder.State(layer, "E", b.Clip(1, true, (node, 9)));
+        var any = To(away, duration: 1).When(stop, "if");
+        layer.Machines[0].AnyStateTransitions.Add(any);
+        layer.States[c].Transitions.Add(To(d, duration: 1).When(stop, "if"));
+        foreach (var source in new[] { "none", "destination" })
+        {
+            slow.InterruptionSource = source;
+            e = b.Build();
+            e.Advance(Frame);
+            e.Set(go, 1);
+            e.Advance(Frame);
+            e.Set(stop, 1);
+            e.Advance(Frame);
+            Check(e.NextState(0) == (source == "none" ? c : away), "M5: Any State with interruption source " + source);
+        }
+        layer.Machines[0].AnyStateTransitions.Remove(any);
     }
 
     static void StateOptions()
@@ -771,11 +851,13 @@ public static class AvatarAnimatorEvaluatorTests
         var tree = b.Tree("1d", blend, (0, 0));
         b.Data.Motions[tree].BlendType = "2dSimpleDirectional";
         b.Data.Motions[tree].Parameters.Add(blend);
-        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Simple Directional trees");
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Simple Directional trees are played");
         b.Data.Motions[tree].BlendType = "2dFreeformCartesian";
         Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Cartesian trees are played");
         b.Data.Motions[tree].BlendType = "2dFreeformDirectional";
-        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Directional trees");
+        Check(AvatarAnimatorEvaluator.Supports(b.Data, out _), "2D Freeform Directional trees are played");
+        b.Data.Motions[tree].BlendType = "2dSomethingElse";
+        Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), "a blend tree of another kind");
 
         var s = new Builder();
         var sn = s.Target();
@@ -844,6 +926,76 @@ public static class AvatarAnimatorEvaluatorTests
         e.Set(sx, .5);
         e.Advance(Frame);
         Check(!double.IsNaN(e.Values[sn]), "Freeform Cartesian: the farthest position a float holds gives a number");
+    }
+
+    // M13 and M14. The recordings of the simpleDirectional and freeformDirectional cases hold Unity's weights.
+    static void DirectionalTrees()
+    {
+        AvatarAnimatorEvaluator Directional(string type, out int x, out int y, out int node, params (double X, double Y, double Value)[] children)
+        {
+            var b = new Builder();
+            x = b.Parameter("X", "float");
+            y = b.Parameter("Y", "float");
+            var target = b.Target();
+            var tree = b.Tree("1d", x);
+            var motion = b.Data.Motions[tree];
+            motion.BlendType = type;
+            motion.Parameters.Add(y);
+            foreach (var child in children)
+                motion.Children.Add(new AvatarAnimatorData.Child { Motion = b.Clip(1, true, (target, child.Value)), X = child.X, Y = child.Y, TimeScale = 1 });
+            Builder.State(b.Layer("2D"), "Tree", tree);
+            node = target;
+            return b.Build();
+        }
+
+        var e = Directional("2dSimpleDirectional", out var sx, out var sy, out var sn, (0, 0, 0), (1, 0, 10), (0, 1, 20), (-1, 0, 30), (0, -1, 40));
+        e.Set(sx, .25);
+        e.Advance(Frame);
+        Near(e.Values[sn], 2.5, "Simple Directional: between the centre and one direction");
+        e.Set(sx, .25);
+        e.Set(sy, .5);
+        e.Advance(Frame);
+        Near(e.Values[sn], 12.5, "Simple Directional: inside the triangle of two directions and the centre");
+        e.Set(sx, 1.25);
+        e.Set(sy, .75);
+        e.Advance(Frame);
+        Near(e.Values[sn], 10 * 1.25 / 2 + 20 * .75 / 2, "Simple Directional: past the line between two directions");
+        e = Directional("2dSimpleDirectional", out sx, out sy, out sn, (1, 0, 10), (0, 1, 20), (-1, 0, 30), (0, -1, 40));
+        e.Set(sx, .5);
+        e.Advance(Frame);
+        Near(e.Values[sn], 5 + .5 * 25, "Simple Directional: without a centre, the directions share its weight");
+        e = Directional("2dSimpleDirectional", out sx, out sy, out sn, (0, 0, 5), (1, 0, 10), (0, 1, 20));
+        e.Set(sx, -1);
+        e.Advance(Frame);
+        Near(e.Values[sn], 5, "Simple Directional: between neighbours more than 180 degrees apart, the centre");
+        e = Directional("2dSimpleDirectional", out sx, out sy, out sn, (0, 0, 5), (1, 0, 10), (0, 0, 20));
+        e.Set(sx, .5);
+        e.Advance(Frame);
+        Near(e.Values[sn], 0, "Simple Directional: with two centres no child has weight away from (0, 0)");
+        e.Set(sx, 0);
+        e.Advance(Frame);
+        Near(e.Values[sn], 5, "Simple Directional: with two centres the first takes all at (0, 0)");
+
+        e = Directional("2dFreeformDirectional", out var fx, out var fy, out var fn, (1, 0, 10), (0, 1, 20), (-1, 0, 30), (0, -1, 40));
+        e.Set(fx, .5);
+        e.Set(fy, .5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 15, "Freeform Directional: halfway in angle between two directions of one length");
+        e = Directional("2dFreeformDirectional", out fx, out fy, out fn, (0, 0, 0), (1, 0, 10), (2, 0, 20), (0, 1, 30), (-1, 0, 40), (0, -1, 50));
+        e.Set(fx, 1.5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 15, "Freeform Directional: halfway in length between two children in one direction");
+        e.Set(fx, .5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 5, "Freeform Directional: halfway between the centre and a child");
+        e = Directional("2dFreeformDirectional", out fx, out fy, out fn, (0, 0, 10), (.5, .5, 20));
+        e.Set(fx, -2.5);
+        e.Set(fy, -2.5);
+        e.Advance(Frame);
+        Near(e.Values[fn], 15, "Freeform Directional: with no weight left the children share equally");
+        e = Directional("2dFreeformDirectional", out fx, out fy, out fn, (1, 0, 10), (0, 2, 20), (-2, 0, 30), (0, -1, 40));
+        e.Advance(Frame);
+        Near(e.Values[fn], 25, "Freeform Directional: at (0, 0) without a child there the children share equally");
     }
 
     static void Arguments()
