@@ -65,3 +65,4 @@
 - 残ったA8の2項目とA9の31項目は、どれも前のレイヤーのステートのParameter Driverが変えたパラメーターで、後ろのレイヤーが遷移するところで合わない。評価器は同じフレームで後ろのレイヤーがその値を見る（M8の仮定）が、UnityでSDKの`OnStateEnter`から値を変えると、後ろのレイヤーの遷移は次のフレームから。A9は瞬きのレイヤーが評価器では先に進み、Unityでは最初のステートに留まる。A8は手の形で変わるしっぽのパラメーターで、評価器の方が1フレーム早く遷移を始める。評価器（アプリと同じソース）のM8を変えるかは別に決める
 - VRChat SDKの入ったプロジェクトで`AvatarAnimatorCaptureTests`と`AvatarAnimatorCrossCheckTests`を回した。最初のステートのParameter Driverが同じレイヤーの遷移の条件を変えるテストの組み方では、SDKの`OnStateEnter`から値が入るUnityが1フレーム遅れて、全項目が0フレーム目で合わなかった（上のM8と同じ差）。テストは遷移に終了時刻を付けて、両方が値を持った後に遷移させている。そのうえで、メニューのHatの項目だけがLayer Controlで動くレイヤーの重みで合わず（Unityは1、評価器は0.75）、Unityの側でLayer Controlのフックが一度も呼ばれていないと分かった。フックを付ける所を直した後、2つのクラスの71件が通った
 - 2026-11-15追記: 評価器のParameter Driverを全レイヤーを進めたあとに当てるように変え（`2026-11-15-avatar-animator-driver-after-layers.md`）、A8は0項目、A9は5項目になった。A9の残りはAny Stateの割り込み（M5）の差
+- 2026-11-15追記: テストの遷移の終了時刻の回避を外し、M5のあとの12体でA9は0項目になった（`2026-11-15-avatar-animator-crosscheck-after-m5.md`）
