@@ -697,14 +697,15 @@ namespace VRVlog.AvatarAnimator
                     if (target.Rest != 0 && target.Rest != 1) throw Json.Bad();
                 }
                 // Unique per kind: (node) for active, (node, morph) for morph, (parameter) for
-                // parameter, (node, component) for enabled, (node, component, index) for a
-                // constraint's enabled, (material, name) for materialFloat,
+                // parameter, (node, component) for enabled, (component, index) for a
+                // constraint's enabled (an entry moves one node), (material, name) for materialFloat,
                 // (material, name, channel) for materialColor and materialTextureST.
                 var material = target.Property == "materialFloat" || IsMaterialChannel(target.Property);
                 var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material
                     : target.Property == "enabled" ? target.Index : 0;
                 var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "") : null;
-                if (!seenTargets.Add((target.Node, target.Property, key, keyName))) throw Json.Bad();
+                var keyNode = target.Property == "enabled" && target.Component == "constraint" ? -1 : target.Node;
+                if (!seenTargets.Add((keyNode, target.Property, key, keyName))) throw Json.Bad();
                 data.Targets.Add(target);
             }
             // Unity animates a float parameter only; a curve on an int, bool or

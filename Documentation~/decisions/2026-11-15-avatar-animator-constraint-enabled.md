@@ -10,7 +10,7 @@
 ## 決めたこと
 
 - `Components`に`constraint`を足した。`enabled`で`component`が`constraint`の対象は、`node`・`property`・`component`・`index`・`rest`をちょうど持つ。`index`は0以上の整数で、`Target.Index`に入る
-- 同じノードに制約が2つあれば対象も2つになるので、重なりは`(node, component, index)`で確かめる。`renderer`は今までどおり`(node, component)`
+- 同じノードに制約が2つあれば対象も2つになる。1つの制約が動かすノードは1つなので、重なりは`node`を除いた`(component, index)`で確かめ、ノードの違う対象が同じ制約を指すのも断る。`renderer`は今までどおり`(node, component)`
 - `Write`は、`Fields`がある対象はそのキーを書く。書き出し（`AvatarAnimatorCapture`）は今の対象を`Fields`で作っており、書き出しのコードを変えずに同じ文字列になる
 - スキーマに、制約の`enabled`の対象の形を足した。知らない`component`の形からは`renderer`と`constraint`を除いた。`schemaVersion`は1のまま
 

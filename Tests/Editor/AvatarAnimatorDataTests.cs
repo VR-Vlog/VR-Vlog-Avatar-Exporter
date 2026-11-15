@@ -906,7 +906,7 @@ namespace VRVlog.LilToonExporter.Tests
         // A constraint's enabled target names the node the constraint moves
         // and the index of its VRVLOG_avatar_constraints entry. Two
         // constraints on one node are two targets; the same entry twice is
-        // rejected like any repeated target.
+        // rejected like any repeated target, even from another node.
         [Test]
         public void AConstraintEnabledTargetNamesItsEntry()
         {
@@ -930,6 +930,13 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(AvatarAnimatorData.Read(second).Targets[4].Index, Is.EqualTo(5));
             ((List<object>)second["targets"]).Add(Constraint(3, 5));
             Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(second));
+            var otherNode = WithUnknown(Constraint(3, 2));
+            ((List<object>)otherNode["targets"]).Add(Constraint(2, 2));
+            Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(otherNode));
+            // A renderer and a constraint on one node are two targets.
+            var both = WithUnknown(Constraint(3, 0));
+            ((List<object>)both["targets"]).Add(new Dictionary<string, object> { ["node"] = 3L, ["property"] = "enabled", ["component"] = "renderer", ["rest"] = 1L });
+            Assert.That(AvatarAnimatorData.Read(both).Targets.Count, Is.EqualTo(5));
 
             void Rejects(Action<Dictionary<string, object>> change)
             {
@@ -943,6 +950,8 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(t => t.Remove("node"));
             Rejects(t => t["rest"] = .5);
             Rejects(t => t["material"] = 0L);
+            var renderer = new Dictionary<string, object> { ["node"] = 3L, ["property"] = "enabled", ["component"] = "renderer", ["index"] = 0L, ["rest"] = 1L };
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(WithUnknown(renderer))).Message, Is.EqualTo(Invalid));
         }
 
         // An enabled target of a component the reader does not know is read
