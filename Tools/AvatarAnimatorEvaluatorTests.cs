@@ -1694,6 +1694,109 @@ public static class AvatarAnimatorEvaluatorTests
         Builder.State(synced, "B", b.Ramp(2, true, other, 20));
         skipped = Lockstep(b, 300, (e, frame) => { if (frame == 30) e.Set(go, 1); if (frame == 200) e.Set(go, 0); });
         Check(Count(skipped, 2, 30) == 28 && Count(skipped, 30, 200) == 0 && Count(skipped, 220, 300) == 80, "a synced layer playing a clip whose values change keeps its source playing");
+
+        // A synced layer before its source takes the source's time a frame
+        // late: when the source's time follows a parameter, the frame after
+        // the change moves the synced layer though the source shows nothing.
+        b = new Builder();
+        time = b.Parameter("Time", "float", .25);
+        node = b.Target();
+        var early = b.Layer("Synced");
+        source = b.Layer("Source");
+        early.SyncedLayer = 1;
+        Builder.State(early, "A", b.Ramp(1, false, node, 1));
+        a = Builder.State(source, "A", -1);
+        source.States[a].TimeParameter = time;
+        skipped = Lockstep(b, 90, (e, frame) => { if (frame == 30) e.Set(time, .75); });
+        Check(!skipped[30] && !skipped[31] && Count(skipped, 33, 90) == 57, "a synced layer before a source timed by a parameter moves in the frame after the change");
+        // The same mid-transition into a state timed by a parameter: the next
+        // state's time is compared with the source's next time.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        time = b.Parameter("Time", "float");
+        node = b.Target();
+        early = b.Layer("Synced");
+        source = b.Layer("Source");
+        early.SyncedLayer = 1;
+        Builder.State(early, "A", b.Clip(1, false, (node, 0)));
+        Builder.State(early, "B", b.Ramp(1, false, node, 1));
+        a = Builder.State(source, "A", -1);
+        var timed = Builder.State(source, "B", -1);
+        source.States[timed].TimeParameter = time;
+        source.States[a].Transitions.Add(To(timed, 2).When(go, "if"));
+        skipped = Lockstep(b, 80, (e, frame) => { if (frame == 10) e.Set(go, 1); if (frame == 40) e.Set(time, .5); });
+        Check(!skipped[41], "a synced layer before its source moves its next state in the frame after the change");
+
+        // Random synced layers on either side of their source, with states
+        // timed by a parameter: seeds the settled check failed before.
+        foreach (var seed in SyncedSeeds)
+        {
+            AvatarAnimatorSettledCheck.Play(AvatarAnimatorData.Read(AvatarAnimatorData.Write(SyncedRandom(seed).Data)), seed, "synced random " + seed, 1500);
+            Check(true, "synced random " + seed + " skips only frames that repeat");
+        }
+    }
+
+    static readonly int[] SyncedSeeds = { 4, 10, 18, 53, 67 };
+
+    static Builder SyncedRandom(int seed)
+    {
+        var r = new Random(seed);
+        var b = new Builder();
+        b.Parameter("B", "bool");
+        b.Parameter("I", "int");
+        int[] times = { b.Parameter("F", "float"), b.Parameter("G", "float") };
+        var targets = new List<int>();
+        for (var i = 0; i < 5; i++) targets.Add(b.Target(r.Next(2)));
+        var layerCount = 2 + r.Next(3);
+        var stateCount = 1 + r.Next(3);
+        var layers = new List<AvatarAnimatorData.Layer>();
+        for (var l = 0; l < layerCount; l++) layers.Add(b.Layer("L" + l, r.Next(3) / 2.0));
+        var source = r.Next(layerCount);
+        var synced = new List<int>();
+        for (var l = 0; l < layerCount; l++) if (l != source && r.NextDouble() < .7) synced.Add(l);
+        if (synced.Count == 0) synced.Add((source + 1) % layerCount);
+        int Motion()
+        {
+            if (r.NextDouble() < .15) return -1;
+            var duration = r.NextDouble() < .3 ? 0 : 1;
+            var loop = r.NextDouble() < .4;
+            var target = targets[r.Next(targets.Count)];
+            var value = Math.Round(r.NextDouble() * 4, 1);
+            return duration > 0 && r.NextDouble() < .6 ? b.Ramp(duration, loop, target, value) : b.Clip(duration, loop, (target, value));
+        }
+        for (var l = 0; l < layerCount; l++)
+        {
+            var layer = layers[l];
+            var count = synced.Contains(l) || l == source ? stateCount : 1 + r.Next(3);
+            for (var s = 0; s < count; s++) Builder.State(layer, "S" + s, Motion(), r.NextDouble() < .85);
+            if (synced.Contains(l))
+            {
+                layer.SyncedLayer = source;
+                layer.Machines[0].DefaultState = -1;
+                continue;
+            }
+            foreach (var state in layer.States)
+            {
+                if (r.NextDouble() < .5) state.TimeParameter = times[r.Next(2)];
+                else if (r.NextDouble() < .3) state.Speed = new[] { 0, .5, -1, 2 }[r.Next(4)];
+                for (var i = r.Next(3); i > 0; i--)
+                {
+                    var exit = r.NextDouble() < .3;
+                    var transition = To(r.Next(count), new[] { 0, .1, .4 }[r.Next(3)], exit, r.NextDouble() < .5 ? .5 : 1);
+                    if (!exit || r.NextDouble() < .5)
+                    {
+                        var p = r.Next(b.Data.Parameters.Count);
+                        var type = b.Data.Parameters[p].Type;
+                        if (type == "bool") transition.When(p, r.Next(2) == 0 ? "if" : "ifNot");
+                        else if (type == "int") transition.When(p, r.Next(2) == 0 ? "equals" : "notEqual", r.Next(3));
+                        else transition.When(p, r.Next(2) == 0 ? "greater" : "less", .5);
+                    }
+                    if (r.NextDouble() < .3) transition.InterruptionSource = new[] { "source", "destination", "sourceThenDestination" }[r.Next(3)];
+                    state.Transitions.Add(transition);
+                }
+            }
+        }
+        return b;
     }
 
     static void NoAllocation()
