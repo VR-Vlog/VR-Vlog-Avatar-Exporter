@@ -210,11 +210,13 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var capture = AvatarContactsExport.Capture(root);
                 Set(renamed, "parameter", "After");
+                // The build turns objects on and off on the copy: active stays as captured.
+                kept.gameObject.SetActive(false);
                 Object.DestroyImmediate(removed.gameObject);
                 capture.Rebind();
                 var nodes = new Dictionary<GameObject, int> { [head.gameObject] = 1 };
                 var data = capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1);
-                Assert.That(data.Receivers.Select(r => (r.Node, r.Parameter)), Is.EqualTo(new[] { (1, "After"), (1, "Gone") }));
+                Assert.That(data.Receivers.Select(r => (r.Node, r.Parameter, r.Active)), Is.EqualTo(new[] { (1, "After", true), (1, "Gone", true) }));
                 Assert.That(data.Receivers[1].Position, Is.EqualTo(new[] { 0, .2, 0 }).Within(1e-6));
             }
             finally { Object.DestroyImmediate(root); }
@@ -267,6 +269,45 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(receiver.Node, Is.EqualTo(1));
                 Assert.That(receiver.Position, Is.EqualTo(new[] { 0, (double)y, 0 }).Within(1e-5));
                 Assert.That(receiver.Radius, Is.EqualTo(radius).Within(1e-5));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        // A Bone Proxy whose target holds a Bone Proxy too: the build moves
+        // the target first, so the contact ends under the last target.
+        [Test]
+        public void ContactsFollowBoneProxiesThatHangFromEachOther()
+        {
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (proxyType == null || descriptorType == null) Assert.Ignore("Requires installed Modular Avatar and the VRChat avatar SDK in Unity.");
+            var root = new GameObject("Avatar");
+            try
+            {
+                root.AddComponent(descriptorType);
+                Transform Child(Transform parent, string name) { var t = new GameObject(name).transform; t.SetParent(parent, false); return t; }
+                void Proxy(Transform on, string path) => proxyType.GetField("subPath").SetValue(on.gameObject.AddComponent(proxyType), path);
+                var head = Child(root.transform, "Head");
+                head.localPosition = new Vector3(0, 1.4f, 0);
+                var mount = Child(root.transform, "Mount");
+                mount.localPosition = new Vector3(0, .5f, 0);
+                Proxy(mount, "Head");
+                var gimmick = Child(root.transform, "Gimmick");
+                gimmick.localPosition = new Vector3(0, 1.6f, 0);
+                Proxy(gimmick, "Mount");
+                var pat = Child(gimmick, "Pat");
+                pat.localPosition = new Vector3(0, .1f, 0);
+                pat.gameObject.AddComponent(receiverType);
+
+                var capture = AvatarContactsExport.Capture(root);
+                Object.DestroyImmediate(gimmick.gameObject);
+                Object.DestroyImmediate(mount.gameObject);
+                capture.Rebind();
+                var nodes = new Dictionary<GameObject, int> { [head.gameObject] = 1 };
+                var receiver = capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1).Receivers.Single();
+                Assert.That(receiver.Node, Is.EqualTo(1));
+                Assert.That(receiver.Position, Is.EqualTo(new[] { 0, .1, 0 }).Within(1e-5));
             }
             finally { Object.DestroyImmediate(root); }
         }

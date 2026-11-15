@@ -136,16 +136,18 @@ namespace VRVlog.LilToonExporter
         static List<Transform> Walk(Transform from, Transform stop, ref Matrix4x4 world)
         {
             var chain = new List<Transform>();
-            for (var ancestor = from; ancestor != null; ancestor = ancestor.parent)
+            // Proxies that hang from each other end the walk instead of looping.
+            for (var current = from; current != null && !chain.Contains(current);)
             {
-                chain.Add(ancestor);
-                if (ancestor == stop) break;
-                // Proxies that hang from each other end the walk instead of looping.
-                if (!(Proxied(ancestor) is (Transform target, Matrix4x4 moved)) || chain.Contains(target)) continue;
-                world = moved * ancestor.worldToLocalMatrix * world;
-                chain.Add(target);
-                ancestor = target;
-                if (ancestor == stop) break;
+                chain.Add(current);
+                if (current == stop) break;
+                // The target may hold a Bone Proxy too: look at it before its parent.
+                if (Proxied(current) is (Transform target, Matrix4x4 moved) && !chain.Contains(target))
+                {
+                    world = moved * current.worldToLocalMatrix * world;
+                    current = target;
+                }
+                else current = current.parent;
             }
             return chain;
         }
@@ -185,7 +187,15 @@ namespace VRVlog.LilToonExporter
             if (root == null) return;
             foreach (var entry in entries)
             {
-                if (entry.Component != null && entry.Component.transform.IsChildOf(root)) Read(entry, entry.Component);
+                if (entry.Component != null && entry.Component.transform.IsChildOf(root))
+                {
+                    // Active stays as captured: the build turns objects on and
+                    // off on the copy (menu toggles, MA's fixed looks), as the
+                    // effects keep theirs.
+                    var active = entry.Values.Active;
+                    Read(entry, entry.Component);
+                    entry.Values.Active = active;
+                }
                 // The build may move an object under another parent: from the
                 // nearest object still there, walk the parents as they are now
                 // (through a Bone Proxy the build has not processed yet).
