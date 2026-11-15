@@ -52,16 +52,20 @@ namespace VRVlog.AvatarAnimator
         public static readonly string[] LayerPlayables = { "action", "fx", "gesture", "additive" };
         public static readonly string[] PlayableLayerPlayables = { "action", "fx", "gesture", "additive", "sitting" };
         public static readonly string[] BlendTypes = { "1d", "2dSimpleDirectional", "2dFreeformDirectional", "2dFreeformCartesian", "direct" };
-        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST", "materialSlot" };
+        public static readonly string[] Properties = { "active", "morph", "parameter", "enabled", "materialFloat", "materialColor", "materialTextureST", "materialSlot", "translation", "rotation", "scale" };
         // The components an enabled target turns on and off: a renderer of
         // the node, or a constraint of VRVLOG_avatar_constraints by index.
         public static readonly string[] Components = { "renderer", "constraint" };
         // The channels a materialColor and a materialTextureST target name.
         public static readonly string[] ColorChannels = { "r", "g", "b", "a" };
         public static readonly string[] TextureChannels = { "x", "y", "z", "w" };
+        // The channels a translation, a scale and an Euler rotation target
+        // name, and those of a quaternion rotation target.
+        public static readonly string[] VectorChannels = { "x", "y", "z" };
+        public static readonly string[] QuaternionChannels = { "x", "y", "z", "w" };
         // The order the omitted kinds are written in. A newer exporter adds
         // kinds at the end; a reader keeps those it does not know (see Read).
-        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader" };
+        public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader", "humanoidTransform", "rotationMixed" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
@@ -223,6 +227,13 @@ namespace VRVlog.AvatarAnimator
         // values glTF material indices (-1 an empty slot), Rest among them.
         // It is Stepped: an evaluator never blends it, but takes the value
         // with the most weight, as Unity does with an object reference curve.
+        // A translation, rotation or scale target is Channel of the local
+        // position, rotation or scale of Node, in Unity's space as the curve
+        // holds it (not glTF's), each one float. A rotation target is a
+        // quaternion channel (x, y, z or w), or with Euler an angle in degrees
+        // (x, y or z, Unity's localEulerAnglesRaw) that a player turns into a
+        // rotation with Quaternion.Euler after blending, as Unity does. The
+        // rotation targets of one node are all Euler or all quaternion.
         // A target of a property this reader does not know (Known is false),
         // or an enabled target of a component it does not know,
         // is read without looking at its keys: a newer exporter may write
@@ -242,6 +253,7 @@ namespace VRVlog.AvatarAnimator
             public int Material;
             public int Index;
             public int Slot;
+            public bool Euler;
             public Dictionary<string, object> Fields;
             public bool Stepped => Property == "materialSlot";
             public bool Known => Array.IndexOf(Properties, Property) >= 0 && (Property != "enabled" || Array.IndexOf(Components, Component) >= 0);
@@ -312,6 +324,8 @@ namespace VRVlog.AvatarAnimator
             : t.Property == "materialFloat" ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["rest"] = t.Rest }
             : IsMaterialChannel(t.Property) ? new Dictionary<string, object> { ["property"] = t.Property, ["material"] = (long)t.Material, ["name"] = t.Name, ["channel"] = t.Channel, ["rest"] = t.Rest }
             : t.Property == "materialSlot" ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["slot"] = (long)t.Slot, ["rest"] = (long)t.Rest }
+            : IsTransform(t.Property) && t.Euler ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["channel"] = t.Channel, ["euler"] = true, ["rest"] = t.Rest }
+            : IsTransform(t.Property) ? new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["channel"] = t.Channel, ["rest"] = t.Rest }
             : new Dictionary<string, object> { ["node"] = (long)t.Node, ["property"] = t.Property, ["rest"] = t.Rest == 0 || t.Rest == 1 ? (object)(long)t.Rest : t.Rest };
 
         static Dictionary<string, object> WriteParameter(Parameter p)
@@ -641,6 +655,7 @@ namespace VRVlog.AvatarAnimator
             }
 
             var seenTargets = new HashSet<(int, string, int, string)>();
+            var eulerNodes = new Dictionary<int, bool>();
             foreach (var raw in targets)
             {
                 var t = Json.Obj(raw);
@@ -700,6 +715,18 @@ namespace VRVlog.AvatarAnimator
                     target.Slot = Json.NonNegative(t["slot"]);
                     target.Rest = SlotValue(t["rest"]);
                 }
+                else if (IsTransform(target.Property))
+                {
+                    // Only a rotation is Euler, and its euler key is true.
+                    target.Euler = target.Property == "rotation" && Get(t, "euler") != null;
+                    if (target.Euler && !(t["euler"] is bool eulerKey && eulerKey)) throw Json.Bad();
+                    Json.Obj(t, target.Euler ? new[] { "node", "property", "channel", "euler", "rest" } : new[] { "node", "property", "channel", "rest" });
+                    target.Node = Json.NonNegative(t["node"]);
+                    target.Channel = Choice(t["channel"], target.Property == "rotation" && !target.Euler ? QuaternionChannels : VectorChannels);
+                    target.Rest = Json.Number(t["rest"]);
+                    if (target.Property == "rotation" && eulerNodes.TryGetValue(target.Node, out var wasEuler) && wasEuler != target.Euler) throw Json.Bad();
+                    if (target.Property == "rotation") eulerNodes[target.Node] = target.Euler;
+                }
                 else
                 {
                     var constraint = target.Property == "enabled" && target.Component == "constraint";
@@ -714,11 +741,12 @@ namespace VRVlog.AvatarAnimator
                 // parameter, (node, component) for enabled, (component, index) for a
                 // constraint's enabled (an entry moves one node), (material, name) for materialFloat,
                 // (material, name, channel) for materialColor and materialTextureST,
-                // (node, slot) for materialSlot.
+                // (node, slot) for materialSlot, (node, channel) for translation, rotation and scale.
                 var material = target.Property == "materialFloat" || IsMaterialChannel(target.Property);
                 var key = target.Property == "morph" ? target.Morph : target.Property == "parameter" ? target.Parameter : material ? target.Material :
                     target.Property == "materialSlot" ? target.Slot : target.Property == "enabled" ? target.Index : 0;
-                var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "") : null;
+                var keyName = target.Property == "enabled" ? target.Component : material ? target.Name + (target.Channel != null ? "." + target.Channel : "")
+                    : IsTransform(target.Property) ? target.Channel : null;
                 var keyNode = target.Property == "enabled" && target.Component == "constraint" ? -1 : target.Node;
                 if (!seenTargets.Add((keyNode, target.Property, key, keyName))) throw Json.Bad();
                 data.Targets.Add(target);
@@ -993,6 +1021,9 @@ namespace VRVlog.AvatarAnimator
         }
 
         static bool IsMaterialChannel(string property) => property == "materialColor" || property == "materialTextureST";
+
+        // A translation, rotation or scale target, a channel of a node's local transform.
+        public static bool IsTransform(string property) => property == "translation" || property == "rotation" || property == "scale";
         static string Choice(object value, params string[] allowed) => value is string s && Array.IndexOf(allowed, s) >= 0 ? s : throw Json.Bad();
 
         // An index into a table of count entries; -1 too when none is allowed.

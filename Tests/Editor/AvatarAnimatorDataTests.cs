@@ -738,14 +738,14 @@ namespace VRVlog.LilToonExporter.Tests
             // Its keys are not looked at: a rest that is not a number reads as 0,
             // no rest at all too, and two alike are both kept.
             Assert.That(AvatarAnimatorData.Read(WithUnknown(MaterialVector("half"))).Targets[3].Rest, Is.EqualTo(0));
-            Assert.That(AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["property"] = "translation" })).Targets[3].Rest, Is.EqualTo(0));
+            Assert.That(AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["property"] = "futureKind" })).Targets[3].Rest, Is.EqualTo(0));
             var twice = WithUnknown(MaterialVector(1L));
             ((List<object>)twice["targets"]).Add(MaterialVector(1L));
             Assert.That(AvatarAnimatorData.Read(twice).Targets.Count(t => !t.Known), Is.EqualTo(2));
 
             // One made in code, with no keys read, is written as its property and rest.
             var data = Sample();
-            data.Targets.Add(new AvatarAnimatorData.Target { Property = "translation", Node = -1, Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "futureKind", Node = -1, Rest = 1 });
             var made = Json(data);
             Assert.That(At(made, "targets", 3).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "property", "rest" }));
             Assert.That(AvatarAnimatorData.Read(made).Targets[3].Rest, Is.EqualTo(1));
@@ -1145,6 +1145,93 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(evaluator.Values[0], Is.EqualTo(slot), $"weight {weight}");
                 Assert.That(evaluator.Values[1], Is.EqualTo(mixed).Within(1e-9), $"weight {weight}");
             }
+        }
+        // Translation, quaternion rotation, Euler rotation and scale targets
+        // follow the sample's active and parameter targets on nodes 3 and 4,
+        // with a track of clip 0 on the first.
+        const int TransformTarget = 3;
+
+        static AvatarAnimatorData WithTransforms()
+        {
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "translation", Channel = "y", Rest = .25 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "rotation", Channel = "w", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "rotation", Channel = "z", Euler = true, Rest = 30 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "scale", Channel = "x", Rest = 1.5 });
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = .5 });
+            var track = new AvatarAnimatorData.Track { Target = TransformTarget };
+            track.Curves.Add(curve);
+            data.Clips[0].Tracks.Add(track);
+            return data;
+        }
+
+        static void RejectsTransform(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithTransforms());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void TransformTargetsRoundTrip()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithTransforms()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            Assert.That(read.Targets.Skip(TransformTarget).Select(t => (t.Known, t.Node, t.Property, t.Channel, t.Euler, t.Rest, t.Stepped)), Is.EqualTo(new[]
+            {
+                (true, 3, "translation", "y", false, .25, false), (true, 3, "rotation", "w", false, 1d, false),
+                (true, 4, "rotation", "z", true, 30d, false), (true, 4, "scale", "x", false, 1.5, false),
+            }));
+            var json = Json(WithTransforms());
+            Assert.That(At(json, "targets", TransformTarget).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "channel", "node", "property", "rest" }));
+            Assert.That(At(json, "targets", TransformTarget + 2).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "channel", "euler", "node", "property", "rest" }));
+            Assert.That(At(json, "targets", TransformTarget + 2)["euler"], Is.EqualTo(true));
+            // The evaluator gives a Transform channel its value like any float.
+            var controller = new AvatarAnimatorData.Controller();
+            controller.Layers.Add(Hold("Base", 0));
+            read.Controllers.Clear();
+            read.Omitted.Clear();
+            read.Controllers.Add(controller);
+            Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(read, () => 0);
+            evaluator.Advance(0);
+            Assert.That(evaluator.Values[TransformTarget], Is.EqualTo(.5).Within(1e-9));
+            Assert.That(evaluator.Values[TransformTarget + 2], Is.EqualTo(30));
+        }
+
+        [Test]
+        public void ReadRejectsABrokenTransformTarget()
+        {
+            // A Transform target names a node and one channel of its kind.
+            RejectsTransform(json => At(json, "targets", TransformTarget).Remove("node"));
+            RejectsTransform(json => At(json, "targets", TransformTarget)["node"] = -1L);
+            RejectsTransform(json => At(json, "targets", TransformTarget).Remove("channel"));
+            RejectsTransform(json => At(json, "targets", TransformTarget)["channel"] = "w");
+            RejectsTransform(json => At(json, "targets", TransformTarget)["channel"] = "r");
+            RejectsTransform(json => At(json, "targets", TransformTarget)["rest"] = "1");
+            RejectsTransform(json => At(json, "targets", TransformTarget)["slot"] = 0L);
+            RejectsTransform(json => At(json, "targets", TransformTarget + 3)["channel"] = "w");
+            // Only a rotation is Euler, with euler true, and then on x, y or z.
+            RejectsTransform(json => At(json, "targets", TransformTarget)["euler"] = true);
+            RejectsTransform(json => At(json, "targets", TransformTarget + 2)["euler"] = false);
+            RejectsTransform(json => At(json, "targets", TransformTarget + 2)["euler"] = 1L);
+            RejectsTransform(json => At(json, "targets", TransformTarget + 2)["channel"] = "w");
+            // One target per node, kind and channel.
+            RejectsTransform(json => ((List<object>)json["targets"]).Add(At(json, "targets", TransformTarget)));
+            // The rotation of a node is all Euler or all quaternion.
+            RejectsTransform(json => ((List<object>)json["targets"]).Add(new Dictionary<string, object>
+            {
+                ["node"] = 3L, ["property"] = "rotation", ["channel"] = "x", ["euler"] = true, ["rest"] = 0L
+            }));
+            // Another channel, and the same channel of another node or kind, are their own targets.
+            var data = WithTransforms();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "translation", Channel = "x", Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "translation", Channel = "y", Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "scale", Channel = "y", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "rotation", Channel = "x", Euler = true, Rest = 0 });
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
         }
     }
 }

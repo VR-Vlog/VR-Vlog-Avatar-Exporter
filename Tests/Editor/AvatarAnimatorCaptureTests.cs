@@ -1013,6 +1013,114 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Omitted(without, "enabled"), Is.EqualTo(2));
         }
 
+        static EditorCurveBinding Moves(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
+
+        // Local position, scale and rotation curves are translation, scale
+        // and rotation targets of their node, one per channel, after the
+        // other kinds, each resting at the node's local value: a quaternion
+        // channel for m_LocalRotation, an Euler angle for localEulerAnglesRaw.
+        // A curve on a Humanoid bone is counted as humanoidTransform, and one
+        // on the avatar root or of the baked Euler interpolation as transform.
+        [Test]
+        public void TransformCurvesAreWrittenAndHumanoidBonesCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses");
+            var hat = avatar.Source.transform.Find("Hat");
+            glasses.localPosition = new Vector3(.1f, .2f, .3f);
+            glasses.localScale = new Vector3(1, 2, 1);
+            hat.localRotation = Quaternion.Euler(0, 0, 30);
+            var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            Assert.That(head, Is.Not.Null, "The fixture is a Humanoid avatar.");
+            var headPath = AnimationUtility.CalculateTransformPath(head, avatar.Source.transform);
+            var clip = avatar.Clip("Move", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalPosition.y"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalScale.x"), AnimationCurve.Constant(0, 1f / 60, 3));
+            AnimationUtility.SetEditorCurve(clip, Moves("Hat", "localEulerAnglesRaw.z"), AnimationCurve.Linear(0, 0, 1, 90));
+            AnimationUtility.SetEditorCurve(clip, Moves(headPath, "m_LocalRotation.x"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(clip, Moves("", "m_LocalPosition.y"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Move", clip);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var moved = data.Targets.Where(t => AvatarAnimatorData.IsTransform(t.Property)).ToList();
+            Assert.That(moved.Select(t => (t.Node, t.Property, t.Channel, t.Euler)), Is.EqualTo(new[]
+            {
+                (nodes[glasses.gameObject], "translation", "y", false), (nodes[hat.gameObject], "rotation", "z", true), (nodes[glasses.gameObject], "scale", "x", false),
+            }));
+            Assert.That(moved.Single(t => t.Property == "translation").Rest, Is.EqualTo(.2).Within(1e-6));
+            Assert.That(moved.Single(t => t.Property == "scale").Rest, Is.EqualTo(1).Within(1e-6));
+            Assert.That(moved.Single(t => t.Property == "rotation").Rest, Is.EqualTo(30).Within(1e-3));
+            var tracks = ClipOf(data, "Move").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property).Take(2), Is.EqualTo(new[] { "active", "materialFloat" }));
+            Assert.That(tracks.Skip(2).Select(t => data.Targets[t.Target]), Is.EquivalentTo(moved));
+            var euler = tracks.Single(t => data.Targets[t.Target].Euler).Curves.Single();
+            Assert.That(euler.Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 90d }));
+            Assert.That(Omitted(data, "humanoidTransform"), Is.EqualTo(1));
+            Assert.That(Omitted(data, "transform"), Is.EqualTo(1), "The curve on the avatar root.");
+            Assert.That(AvatarAnimatorData.Read(AvatarAnimatorData.Write(data)).Targets.Count, Is.EqualTo(data.Targets.Count));
+
+            // Without a node for the object, its curves are counted as missingNode.
+            AvatarAnimatorData WithoutHat() => AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => gameObject == hat.gameObject ? -1 : nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count)));
+            var without = WithoutHat();
+            Assert.That(without.Targets.Any(t => t.Property == "rotation"), Is.False);
+            AnimationUtility.SetEditorCurve(clip, Moves("Hat", "localEulerAnglesRaw.z"), null);
+            Assert.That(Omitted(without, "missingNode"), Is.EqualTo(Omitted(WithoutHat(), "missingNode") + 1));
+        }
+
+        // A node whose rotation one clip moves as Euler angles and another as
+        // a quaternion has its rotation curves left out as rotationMixed; its
+        // other channels, and other nodes, are still written.
+        [Test]
+        public void EulerAndQuaternionRotationOfOneNodeAreCountedAsMixed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var euler = avatar.Clip("Euler");
+            AnimationUtility.SetEditorCurve(euler, Moves("Glasses", "localEulerAnglesRaw.y"), AnimationCurve.Constant(0, 1f / 60, 45));
+            AnimationUtility.SetEditorCurve(euler, Moves("Glasses", "m_LocalPosition.x"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(euler, Moves("Hat", "localEulerAnglesRaw.y"), AnimationCurve.Constant(0, 1f / 60, 45));
+            AddLayer(avatar, "Euler", euler);
+            var quaternion = avatar.Clip("Quaternion");
+            var turned = Quaternion.Euler(0, 45, 0);
+            foreach (var (channel, value) in new[] { ("x", turned.x), ("y", turned.y), ("z", turned.z), ("w", turned.w) })
+                AnimationUtility.SetEditorCurve(quaternion, Moves("Glasses", "m_LocalRotation." + channel), AnimationCurve.Constant(0, 1f / 60, value));
+            AddLayer(avatar, "Quaternion", quaternion);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            var glasses = nodes[avatar.Source.transform.Find("Glasses").gameObject];
+            var hat = nodes[avatar.Source.transform.Find("Hat").gameObject];
+            Assert.That(data.Targets.Where(t => AvatarAnimatorData.IsTransform(t.Property)).Select(t => (t.Node, t.Property, t.Channel, t.Euler)),
+                Is.EquivalentTo(new[] { (glasses, "translation", "x", false), (hat, "rotation", "y", true) }));
+            Assert.That(Omitted(data, "rotationMixed"), Is.EqualTo(5), "The Euler curve and the four quaternion curves of Glasses.");
+            Assert.That(ClipOf(data, "Quaternion").Tracks, Is.Empty);
+            Assert.That(ClipOf(data, "Euler").Tracks.Select(t => data.Targets[t.Target].Property), Is.EquivalentTo(new[] { "translation", "rotation" }));
+        }
+
+        // Unity adds an additive layer's Transform curves to the pose, so they
+        // are counted as transform, and a node only they move has no target.
+        [Test]
+        public void TransformCurvesOfAnAdditiveLayerAreCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Grow");
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalScale.x"), AnimationCurve.Constant(0, 1f / 60, 2));
+            avatar.Fx.AddLayer("Added");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState("On").motion = clip;
+            avatar.Fx.layers = layers;
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(data.Targets.Any(t => AvatarAnimatorData.IsTransform(t.Property)), Is.False);
+            Assert.That(Omitted(data, "transform"), Is.EqualTo(1));
+        }
+
         // Renderers that share a material share its target: clips on either
         // move it, and a second curve of the same clip on it is counted.
         [Test]
