@@ -1270,9 +1270,14 @@ namespace VRVlog.LilToonExporter.Tests
             }));
             var json = Json(WithMuscles());
             Assert.That(At(json, "targets", MuscleTarget).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "muscle", "property", "rest" }));
-            // The evaluator gives a muscle its value like any float.
+            // The evaluator gives a muscle its value like any float. An FX
+            // moves muscles only when its base layer has a mask (M16), here
+            // one with the body part of muscle 0 alone.
             var controller = new AvatarAnimatorData.Controller();
-            controller.Layers.Add(Hold("Base", 0));
+            var layer = Hold("Base", 0);
+            layer.Mask = new AvatarAnimatorData.Mask();
+            layer.Mask.Humanoid.Add(1);
+            controller.Layers.Add(layer);
             read.Controllers.Clear();
             read.Omitted.Clear();
             read.Controllers.Add(controller);
