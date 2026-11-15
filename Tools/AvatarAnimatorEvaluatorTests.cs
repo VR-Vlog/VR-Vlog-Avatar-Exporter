@@ -144,6 +144,7 @@ public static class AvatarAnimatorEvaluatorTests
         StateOptions();
         Unsupported();
         Arguments();
+        Settled();
         NoAllocation();
         Console.WriteLine("Avatar animator evaluator: " + count + " assertions passed.");
     }
@@ -1119,6 +1120,210 @@ public static class AvatarAnimatorEvaluatorTests
         Check(e.Get(t) == 1, "a trigger is set");
         e.Advance(Frame);
         Check(e.LayerCount == 0, "no controller: nothing plays");
+    }
+
+    // Plays the data twice side by side, once skipping settled frames and once
+    // evaluating every frame, checks that every frame matches and returns, per
+    // frame, whether the skipping one skipped it. input(e, frame) sets
+    // parameters before each frame.
+    static bool[] Lockstep(Builder b, int frames, Action<AvatarAnimatorEvaluator, int> input = null)
+    {
+        var e = b.Build();
+        var full = b.Build();
+        full.SkipsSettledFrames = false;
+        var skipped = new bool[frames];
+        for (var frame = 0; frame < frames; frame++)
+        {
+            input?.Invoke(e, frame);
+            input?.Invoke(full, frame);
+            e.Advance(Frame);
+            full.Advance(Frame);
+            skipped[frame] = !e.Changed;
+            Check(full.Changed, "an evaluator that does not skip reports every frame changed");
+            var same = true;
+            for (var t = 0; t < e.Values.Count; t++) same &= e.Values[t].Equals(full.Values[t]) && e.Written[t] == full.Written[t];
+            for (var l = 0; l < e.LayerCount; l++)
+                same &= e.State(l) == full.State(l) && e.NextState(l) == full.NextState(l)
+                    && e.NormalizedTime(l).Equals(full.NormalizedTime(l)) && e.NextNormalizedTime(l).Equals(full.NextNormalizedTime(l))
+                    && e.TransitionProgress(l).Equals(full.TransitionProgress(l)) && e.LayerWeight(l).Equals(full.LayerWeight(l));
+            for (var p = 0; p < b.Data.Parameters.Count; p++) same &= e.Get(p).Equals(full.Get(p));
+            Check(same, "frame " + frame + " matches the evaluator that does not skip");
+        }
+        return skipped;
+    }
+
+    static int Count(bool[] skipped, int from, int to)
+    {
+        var n = 0;
+        for (var i = from; i < to; i++) if (skipped[i]) n++;
+        return n;
+    }
+
+    // #3664: while nothing can change the next frame, Advance does not evaluate
+    // it, keeps Values and reports Changed false.
+    static void Settled()
+    {
+        // A toggle: a frame to enter, a frame to see it hold, then skipped until
+        // a parameter changes; a 0.25 s transition plays every frame.
+        var b = new Builder();
+        var hat = b.Parameter("Hat", "bool");
+        var node = b.Target(rest: 1);
+        var layer = b.Layer("Hat");
+        var off = Builder.State(layer, "Off", b.Clip(0, false, (node, 0)));
+        var on = Builder.State(layer, "On", b.Clip(1, true, (node, 1)));
+        layer.States[off].Transitions.Add(To(on, duration: .25).When(hat, "if"));
+        layer.States[on].Transitions.Add(To(off).When(hat, "ifNot"));
+        var skipped = Lockstep(b, 120, (e, frame) =>
+        {
+            if (frame == 10) e.Set(hat, 0);
+            if (frame == 20) e.Set(hat, 1);
+            if (frame == 80) e.Set(hat, 0);
+        });
+        Check(!skipped[0] && !skipped[1] && Count(skipped, 2, 20) == 18, "a toggle at rest is skipped from its third frame, and setting a parameter to its value keeps it so");
+        Check(Count(skipped, 20, 36) == 0, "a transition plays every frame");
+        Check(Count(skipped, 40, 80) == 40, "a looping clip that holds its values is skipped");
+        Check(!skipped[80] && Count(skipped, 82, 120) == 38, "and a parameter that changes plays the next frame");
+
+        // A clip whose values change plays while it loops; once a clip that
+        // does not loop has ended it holds its last values.
+        b = new Builder();
+        node = b.Target();
+        layer = b.Layer("Loop");
+        Builder.State(layer, "Ramp", b.Ramp(1, true, node, 1));
+        Check(Count(Lockstep(b, 180), 0, 180) == 0, "a looping clip whose values change plays every frame");
+        b = new Builder();
+        node = b.Target();
+        layer = b.Layer("Once");
+        Builder.State(layer, "Ramp", b.Ramp(1, false, node, 1));
+        skipped = Lockstep(b, 180);
+        Check(Count(skipped, 0, 60) == 0 && Count(skipped, 70, 180) == 110, "a clip that does not loop is skipped once it has ended");
+
+        // A transition on exit time waits for the state's time: the frames up to
+        // it play, those after it, in a state without one, are skipped.
+        b = new Builder();
+        node = b.Target();
+        layer = b.Layer("Wait");
+        var a = Builder.State(layer, "A", b.Clip(1, true, (node, 0)));
+        var c = Builder.State(layer, "B", b.Clip(0, false, (node, 1)));
+        layer.States[a].Transitions.Add(To(c, exitTime: true, at: 2));
+        skipped = Lockstep(b, 240);
+        Check(Count(skipped, 0, 120) == 0 && Count(skipped, 125, 240) == 115, "a pending exit time plays every frame until it fires");
+        // An exit time below 1 fires on each loop, but not while its conditions fail.
+        b = new Builder();
+        var go = b.Parameter("Go", "bool");
+        node = b.Target();
+        layer = b.Layer("Late");
+        a = Builder.State(layer, "A", b.Clip(1, true, (node, 0)));
+        c = Builder.State(layer, "B", b.Clip(0, false, (node, 1)));
+        layer.States[a].Transitions.Add(To(c, exitTime: true, at: .5).When(go, "if"));
+        skipped = Lockstep(b, 240, (e, frame) => { if (frame == 120) e.Set(go, 1); });
+        Check(Count(skipped, 5, 120) == 115 && Count(skipped, 120, 145) == 0 && Count(skipped, 160, 240) == 80, "an exit time below 1 is pending while its conditions hold, until it fires on the next loop");
+
+        // A material slot is stepped: it takes the value of the state with
+        // more weight across a transition, and settles on a whole index.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = 0, Property = "materialSlot", Slot = 1, Rest = 0 });
+        var slot = b.Data.Targets.Count - 1;
+        layer = b.Layer("Slot");
+        a = Builder.State(layer, "A", b.Clip(0, false, (slot, 2)));
+        c = Builder.State(layer, "B", b.Clip(0, false, (slot, -1)));
+        layer.States[a].Transitions.Add(To(c, duration: .5).When(go, "if"));
+        layer.States[c].Transitions.Add(To(a, duration: .5).When(go, "ifNot"));
+        var values = new List<double>();
+        skipped = Lockstep(b, 200, (e, frame) =>
+        {
+            if (frame == 20) e.Set(go, 1);
+            if (frame == 100) e.Set(go, 0);
+            if (frame > 0) values.Add(e.Values[slot]);
+        });
+        Check(values.TrueForAll(v => v == 2 || v == -1) && values.Contains(-1), "a material slot never takes a value between two indices");
+        Check(Count(skipped, 20, 50) == 0 && Count(skipped, 55, 100) == 45 && Count(skipped, 135, 200) == 65, "and settles once the transition ends");
+        // A stepped key change inside a clip that does not loop.
+        b = new Builder();
+        b.Data.Targets.Add(new AvatarAnimatorData.Target { Node = 0, Property = "materialSlot", Slot = 0, Rest = 0 });
+        var clip = new AvatarAnimatorData.Clip { Name = "swap", Duration = 1 };
+        var curve = new ExpressionAnimationData.Curve();
+        curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 1, InTangent = 0, OutTangent = null });
+        curve.Keys.Add(new ExpressionAnimationData.Key { Time = .5, Value = 3, InTangent = null, OutTangent = 0 });
+        var track = new AvatarAnimatorData.Track { Target = 0 };
+        track.Curves.Add(curve);
+        clip.Tracks.Add(track);
+        b.Data.Clips.Add(clip);
+        b.Data.Motions.Add(new AvatarAnimatorData.Motion { Type = "clip", Clip = 0 });
+        Builder.State(b.Layer("Swap"), "Swap", 0);
+        skipped = Lockstep(b, 120);
+        Check(Count(skipped, 0, 60) == 0 && Count(skipped, 65, 120) == 55, "a clip that swaps a material plays until it has ended");
+
+        // An Any State transition that may go to its own state enters it again
+        // each frame; that repeats the frame, unless entering draws a random number.
+        foreach (var draws in new[] { false, true })
+        {
+            b = new Builder();
+            go = b.Parameter("Go", "bool", 1);
+            var rolled = b.Parameter("Rolled", "float");
+            node = b.Target();
+            layer = b.Layer("Again");
+            a = Builder.State(layer, "A", b.Clip(0, false, (node, 1)));
+            var again = To(a).When(go, "if");
+            again.CanTransitionToSelf = true;
+            layer.Machines[0].AnyStateTransitions.Add(again);
+            if (draws)
+            {
+                var roll = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+                roll.Operations.Add(new AvatarAnimatorData.Operation { Type = "random", Parameter = rolled, ValueMin = 0, ValueMax = 1 });
+                layer.States[a].Behaviours.Add(roll);
+            }
+            var r = new Random(1);
+            var e = new AvatarAnimatorEvaluator(AvatarAnimatorData.Read(AvatarAnimatorData.Write(b.Data)), () => r.NextDouble());
+            var r2 = new Random(1);
+            var full = new AvatarAnimatorEvaluator(AvatarAnimatorData.Read(AvatarAnimatorData.Write(b.Data)), () => r2.NextDouble()) { SkipsSettledFrames = false };
+            var n = 0;
+            for (var frame = 0; frame < 60; frame++)
+            {
+                e.Advance(Frame);
+                full.Advance(Frame);
+                if (!e.Changed) n++;
+                Check(e.Get(rolled).Equals(full.Get(rolled)) && e.Values[node] == full.Values[node] && e.NormalizedTime(0).Equals(full.NormalizedTime(0)), "a layer entering its state again matches every frame");
+            }
+            Check(draws ? n == 0 : n >= 55, draws ? "a state that draws a random number on entry plays every frame" : "a state entered again each frame is skipped");
+        }
+
+        // A layer weight set from outside plays the frame.
+        b = new Builder();
+        node = b.Target();
+        var other = b.Target();
+        Builder.State(b.Layer("Base"), "A", b.Clip(0, false, (node, 1)));
+        Builder.State(b.Layer("Over", .5), "A", b.Clip(0, false, (other, 1)));
+        skipped = Lockstep(b, 60, (e, frame) => { if (frame == 30) e.SetLayerWeight(1, .25); if (frame == 40) e.SetLayerWeight(1, .25); });
+        Check(Count(skipped, 2, 30) == 28 && !skipped[30] && skipped[32] && !skipped[40] && skipped[42], "a layer weight set from outside plays the frame, even one it already has");
+
+        // A parameter a state's time follows: skipped while the parameter holds.
+        b = new Builder();
+        var time = b.Parameter("Time", "float", .25);
+        node = b.Target();
+        layer = b.Layer("Timed");
+        a = Builder.State(layer, "A", b.Ramp(1, true, node, 1));
+        layer.States[a].TimeParameter = time;
+        skipped = Lockstep(b, 90, (e, frame) => { if (frame == 30) e.Set(time, .75); });
+        Check(Count(skipped, 2, 30) == 28 && !skipped[30] && Count(skipped, 32, 90) == 58, "a state whose time is a parameter is skipped while it holds");
+
+        // A synced layer follows its source's clock and states.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        node = b.Target();
+        other = b.Target();
+        var source = b.Layer("Source");
+        a = Builder.State(source, "A", b.Clip(1, true, (node, 0)));
+        c = Builder.State(source, "B", b.Ramp(1, false, node, 1));
+        source.States[a].Transitions.Add(To(c, duration: .25).When(go, "if"));
+        source.States[c].Transitions.Add(To(a, duration: .25).When(go, "ifNot"));
+        var synced = b.Layer("Synced");
+        synced.SyncedLayer = 0;
+        Builder.State(synced, "A", b.Clip(0, false, (other, 10)));
+        Builder.State(synced, "B", b.Ramp(2, true, other, 20));
+        skipped = Lockstep(b, 300, (e, frame) => { if (frame == 30) e.Set(go, 1); if (frame == 200) e.Set(go, 0); });
+        Check(Count(skipped, 2, 30) == 28 && Count(skipped, 30, 200) == 0 && Count(skipped, 220, 300) == 80, "a synced layer playing a clip whose values change keeps its source playing");
     }
 
     static void NoAllocation()
