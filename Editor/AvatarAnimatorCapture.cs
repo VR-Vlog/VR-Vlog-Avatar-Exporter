@@ -775,7 +775,7 @@ namespace VRVlog.LilToonExporter
             missing = lost = shader = 0;
             var result = new List<List<(int, ExpressionAnimationData.Curve)>>();
             var found = new List<(int Clip, (int Node, int Slot) Key, ExpressionAnimationData.Curve Curve)>();
-            var rests = new Dictionary<(int, int), (Renderer Renderer, int Rest)>();
+            var rests = new Dictionary<(int, int), (Renderer Renderer, int Material)>();
             for (var i = 0; i < clipSlotTracks.Count; i++)
             {
                 result.Add(new List<(int, ExpressionAnimationData.Curve)>());
@@ -805,7 +805,7 @@ namespace VRVlog.LilToonExporter
             var targetOf = new Dictionary<(int, int), int>();
             foreach (var key in rests.Keys.OrderBy(key => key.Item1).ThenBy(key => key.Item2))
             {
-                var target = new AvatarAnimatorData.Target { Node = key.Item1, Property = "materialSlot", Slot = key.Item2, Rest = rests[key].Rest };
+                var target = new AvatarAnimatorData.Target { Node = key.Item1, Property = "materialSlot", Slot = key.Item2, Rest = rests[key].Material };
                 targetOf[key] = data.Targets.Count;
                 data.Targets.Add(target);
             }
