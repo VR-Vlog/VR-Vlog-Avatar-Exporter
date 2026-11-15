@@ -844,7 +844,7 @@ namespace VRVlog.AvatarAnimator
                 // A layer entering its state again each frame plays it at the same time each frame.
                 var repeated = clock.Repeated != null;
                 if (repeated && (layer.Source >= 0 || Random(layer.Layer, layer.State))) return false;
-                if (!repeated && !Holds(state, layer.Time, rate)) return false;
+                if (!repeated && !Holds(state, layer.Time, clock.Time, rate)) return false;
                 double nextRate = 0;
                 if (layer.Transitioning)
                 {
@@ -852,7 +852,7 @@ namespace VRVlog.AvatarAnimator
                     var nextTiming = clock.Layer.States[clock.Next];
                     nextRate = Rate(nextTiming);
                     if (nextTiming.TimeParameter.HasValue && clock.NextTime != parameters[nextTiming.TimeParameter.Value]) return false;
-                    if (!Holds(layer.Layer.States[layer.Next], layer.NextTime, nextRate)) return false;
+                    if (!Holds(layer.Layer.States[layer.Next], layer.NextTime, clock.NextTime, nextRate)) return false;
                 }
                 if (layer.Source >= 0) continue;
                 var any = layer.Layer.Machines[0].AnyStateTransitions;
@@ -886,10 +886,13 @@ namespace VRVlog.AvatarAnimator
 
         double Rate(AvatarAnimatorData.State timing) => timing.TimeParameter.HasValue ? 0 : timing.Speed * ParameterOr(timing.SpeedParameter, 1);
 
-        // Whether the state's motion gives the same values at every time to come.
-        bool Holds(AvatarAnimatorData.State state, double time, double rate) =>
-            state.Motion < 0 || rate == 0 || still[state.Motion]
-            || Clamped(state.Motion, time + ParameterOr(state.CycleOffsetParameter, state.CycleOffset), rate > 0);
+        // Whether the state's motion gives the same values at every time to
+        // come: from time, which moves to the clock's time first (a synced
+        // layer before its source takes the source's time a frame late), then
+        // at the rate. A clock that moves reaches the clock's time on the way.
+        bool Holds(AvatarAnimatorData.State state, double time, double clockTime, double rate) =>
+            state.Motion < 0 || still[state.Motion]
+            || (rate == 0 ? time == clockTime : Clamped(state.Motion, time + ParameterOr(state.CycleOffsetParameter, state.CycleOffset), rate > 0));
 
         // The transitions with an exit time Dormant would not let rest: their
         // conditions hold and their time moves toward an exit time not passed.
