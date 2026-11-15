@@ -121,8 +121,8 @@ namespace VRVlog.LilToonExporter.Tests
                 serialized.ApplyModifiedPropertiesWithoutUndo();
             }
             AssetDatabase.SaveAssets();
-            // The fixture plays the FX in every playable layer; the driver would
-            // then change Shown from outside the FX, which the export refuses.
+            // Only the FX plays; a driver outside the FX, which would change
+            // Shown, makes the export refuse.
             var descriptor = avatar.Source.GetComponent(VrcAvatar.DescriptorType);
             VrcAvatar.SetFx(descriptor, fx);
             using (var serialized = new SerializedObject(descriptor))
@@ -912,6 +912,117 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
         }
 
+        static EditorCurveBinding Muscle(string name) => EditorCurveBinding.FloatCurve("", typeof(Animator), name);
+
+        static int MuscleIndex(string name) => Array.IndexOf(HumanTrait.MuscleName, name);
+
+        // An Animator curve on the avatar root named after a Humanoid muscle is
+        // a muscle target, after the other kinds, resting at 0 and with no
+        // node; a clip names a finger muscle as LeftHand.Thumb.1 Stretched.
+        // The root's position and the IK goals are counted as humanoidRoot, a
+        // translation DoF and a muscle of an additive layer as muscle.
+        [Test]
+        public void MuscleCurvesAreWrittenAndRootAndIkCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var pose = avatar.Clip("Pose", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(pose, Muscle("Spine Front-Back"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(pose, Muscle("LeftHand.Thumb.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, -.5f));
+            AnimationUtility.SetEditorCurve(pose, Muscle("RootT.y"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(pose, Muscle("LeftFootT.x"), AnimationCurve.Constant(0, 1f / 60, .2f));
+            AnimationUtility.SetEditorCurve(pose, Muscle("LeftFootTDOF.x"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Pose", pose);
+            var lean = avatar.Clip("Lean");
+            AnimationUtility.SetEditorCurve(lean, Muscle("Chest Front-Back"), AnimationCurve.Constant(0, 1f / 60, .2f));
+            AddLayer(avatar, "Lean", lean, AnimatorLayerBlendingMode.Additive);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var spine = MuscleIndex("Spine Front-Back");
+            var thumb = MuscleIndex("Left Thumb 1 Stretched");
+            Assert.That(spine, Is.GreaterThanOrEqualTo(0));
+            Assert.That(thumb, Is.GreaterThan(spine));
+            Assert.That(data.Targets.Where(t => t.Property == "muscle").Select(t => (t.Node, t.Muscle, t.Rest)), Is.EqualTo(new[] { (-1, spine, 0d), (-1, thumb, 0d) }));
+            var tracks = ClipOf(data, "Pose").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "muscle", "muscle" }));
+            Assert.That(tracks.Skip(1).Select(t => (data.Targets[t.Target].Muscle, t.Curves.Single().Keys[0].Value)), Is.EqualTo(new[] { (spine, .25), (thumb, -.5) }));
+            Assert.That(ClipOf(data, "Lean").Tracks, Is.Empty);
+            Assert.That(Omitted(data, "humanoidRoot"), Is.EqualTo(2), "RootT.y and LeftFootT.x.");
+            Assert.That(Omitted(data, "muscle"), Is.EqualTo(2), "LeftFootTDOF.x and the additive Chest Front-Back.");
+            Assert.That(AvatarAnimatorData.Read(AvatarAnimatorData.Write(data)).Targets.Count, Is.EqualTo(data.Targets.Count));
+            Assert.That(AvatarAnimatorCapture.Muscle("LeftHand.Little.3 Stretched"), Is.EqualTo(MuscleIndex("Left Little 3 Stretched")));
+            Assert.That(AvatarAnimatorCapture.Muscle("RightHand.Index.Spread"), Is.EqualTo(MuscleIndex("Right Index Spread")));
+            Assert.That(AvatarAnimatorCapture.Muscle("RootT.x"), Is.EqualTo(-1));
+        }
+
+        // A custom Gesture and Action are written after the FX, each with the
+        // clips its own override controller gives and the parameters it
+        // declares (a name the FX declares keeps the FX's type). A layer's mask
+        // names the body parts and the nodes it lets move; a transform without
+        // a node is left out, and a mask that lets everything move is no mask.
+        // A default playable layer, and the Additive, are not read.
+        [Test]
+        public void GestureAndActionControllersAreWrittenWithMasks()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fist = avatar.Clip("Fist");
+            AnimationUtility.SetEditorCurve(fist, Muscle("LeftHand.Index.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, -1));
+            var open = avatar.Clip("Open");
+            AnimationUtility.SetEditorCurve(open, Muscle("LeftHand.Index.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, 1));
+            var wave = avatar.Clip("Wave", ("Hat", true));
+
+            var hands = new AvatarMask();
+            for (var part = AvatarMaskBodyPart.Root; part < AvatarMaskBodyPart.LastBodyPart; part++)
+                hands.SetHumanoidBodyPartActive(part, part == AvatarMaskBodyPart.LeftFingers || part == AvatarMaskBodyPart.RightFingers);
+            hands.transformCount = 3;
+            foreach (var (i, path, active) in new[] { (0, "Glasses", true), (1, "Hat", false), (2, "Missing", true) })
+            {
+                hands.SetTransformPath(i, path);
+                hands.SetTransformActive(i, active);
+            }
+            avatar.Asset(hands, "Hands.mask");
+            var everything = avatar.Asset(new AvatarMask(), "Everything.mask");
+
+            var gesture = avatar.Controller("Gesture");
+            gesture.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+            gesture.AddParameter("Blend", AnimatorControllerParameterType.Int);
+            var layers = gesture.layers;
+            layers[0].avatarMask = hands;
+            layers[0].stateMachine.AddState("Fist").motion = fist;
+            gesture.layers = layers;
+            var overrides = avatar.Asset(new AnimatorOverrideController(gesture), "Gesture.overrideController");
+            overrides[fist] = open;
+            var action = avatar.Controller("Action");
+            layers = action.layers;
+            layers[0].avatarMask = everything;
+            layers[0].stateMachine.AddState("Wave").motion = wave;
+            action.layers = layers;
+            var additive = avatar.Controller("Additive");
+            additive.layers[0].stateMachine.AddState("Wave").motion = wave;
+            avatar.Playables(("Base", null), ("Additive", additive), ("Gesture", overrides), ("Action", action), ("FX", avatar.Fx));
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            Assert.That(data.Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture", "action" }));
+            Assert.That(data.Controllers[0].Layers.All(l => l.Mask == null), Is.True);
+            var held = data.Controllers[1].Layers.Single();
+            Assert.That(held.Mask.Humanoid, Is.EqualTo(new[] { (int)AvatarMaskBodyPart.LeftFingers, (int)AvatarMaskBodyPart.RightFingers }));
+            Assert.That(held.Mask.Nodes, Is.EqualTo(new[] { nodes[avatar.Source.transform.Find("Glasses").gameObject] }));
+            Assert.That(data.Controllers[2].Layers.Single().Mask, Is.Null, "A mask that lets everything move.");
+            var clip = data.Clips[data.Motions[held.States.Single().Motion].Clip];
+            Assert.That(clip.Tracks.Select(t => (data.Targets[t.Target].Property, data.Targets[t.Target].Muscle, t.Curves.Single().Keys[0].Value)),
+                Is.EqualTo(new[] { ("muscle", MuscleIndex("Left Index 1 Stretched"), 1d) }), "The override controller's clip.");
+            var gestureLeft = data.Parameters.Single(p => p.Name == "GestureLeft");
+            Assert.That((gestureLeft.Type, gestureLeft.Origin), Is.EqualTo(("int", "builtin")));
+            Assert.That(data.Parameters.Single(p => p.Name == "Blend").Type, Is.EqualTo("float"), "The FX declares Blend first.");
+            Assert.That(data.Controllers.Skip(1).SelectMany(c => c.Layers).Select(l => l.Name), Is.EqualTo(new[] { "Base Layer", "Base Layer" }));
+
+            // A default Action is not read.
+            avatar.Playables(("Gesture", overrides), ("Action", null), ("FX", avatar.Fx));
+            Assert.That(CapturedWithMaterials(avatar, nodes).Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture" }));
+        }
+
         static int Omitted(AvatarAnimatorData data, string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
 
         static EditorCurveBinding Enabled(string path) => EditorCurveBinding.FloatCurve(path, typeof(MeshRenderer), "m_Enabled");
@@ -1427,10 +1538,10 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(runtime); }
         }
 
-        // Unity applies an Avatar Mask to Transform and muscle curves only,
-        // none of which are written: a layer's mask changes nothing.
+        // A layer's Avatar Mask is written as the layer's mask (the body parts
+        // and nodes it lets move) and changes nothing else written.
         [Test]
-        public void ALayersAvatarMaskChangesNothingWritten()
+        public void ALayersAvatarMaskIsWrittenAndChangesNothingElse()
         {
             using var avatar = new AnimatorAvatar();
             var clip = avatar.Clip("Masked", ("Glasses", false));
@@ -1450,7 +1561,12 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var index in new[] { 0, layers.Length - 1 }) layers[index].avatarMask = mask;
                 avatar.Fx.layers = layers;
                 Assert.That(avatar.Fx.layers.Last().avatarMask, Is.SameAs(mask));
-                Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(Captured(avatar))), Is.EqualTo(before));
+                var after = Captured(avatar);
+                var masked = after.Controllers.Single().Layers.Where(layer => layer.Mask != null).ToList();
+                Assert.That(masked.Select(layer => layer.Name), Is.EqualTo(new[] { avatar.Fx.layers[0].name, "Masked" }));
+                Assert.That(masked.Select(layer => (layer.Mask.Humanoid.Count, layer.Mask.Nodes.Count)), Is.EqualTo(new[] { (0, 0), (0, 0) }), "It lets nothing move.");
+                foreach (var layer in masked) layer.Mask = null;
+                Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(after)), Is.EqualTo(before));
             }
             finally
             {
@@ -2377,6 +2493,39 @@ namespace VRVlog.LilToonExporter.Tests
                 return clip;
             }
 
+            // An asset in the fixture's folder, deleted with it.
+            internal T Asset<T>(T asset, string file) where T : Object
+            {
+                owned.Add(asset);
+                AssetDatabase.CreateAsset(asset, directory + "/" + file);
+                return asset;
+            }
+
+            internal AnimatorController Controller(string name)
+            {
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/" + name + ".controller");
+                owned.Add(controller);
+                return controller;
+            }
+
+            // Sets the descriptor's playable layers of these types, each custom
+            // with its controller, or default without one.
+            internal void Playables(params (string Type, RuntimeAnimatorController Controller)[] rows)
+            {
+                var descriptor = Source.GetComponent(VrcAvatar.DescriptorType);
+                var field = descriptor.GetType().GetField("baseAnimationLayers");
+                var values = Array.CreateInstance(field.FieldType.GetElementType(), rows.Length);
+                for (var i = 0; i < rows.Length; i++)
+                {
+                    var row = Activator.CreateInstance(values.GetType().GetElementType());
+                    VrcAvatar.Set(row, "type", rows[i].Type);
+                    VrcAvatar.Set(row, "isDefault", rows[i].Controller == null);
+                    VrcAvatar.Set(row, "animatorController", rows[i].Controller);
+                    values.SetValue(row, i);
+                }
+                field.SetValue(descriptor, values);
+            }
+
             // CreateAsset renames a clip after its file, so clips are found by the name they were made with.
             readonly Dictionary<string, AnimationClip> clips = new Dictionary<string, AnimationClip>();
 
@@ -2391,8 +2540,8 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var row = Activator.CreateInstance(rowType);
                     VrcAvatar.Set(row, "type", types[i]);
-                    VrcAvatar.Set(row, "isDefault", false);
-                    VrcAvatar.Set(row, "animatorController", fx);
+                    VrcAvatar.Set(row, "isDefault", types[i] != "FX");
+                    VrcAvatar.Set(row, "animatorController", types[i] == "FX" ? fx : null);
                     rows.SetValue(row, i);
                 }
                 field.SetValue(descriptor, rows);

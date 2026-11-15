@@ -200,7 +200,8 @@ namespace VRVlog.LilToonExporter
             {
                 var target = data.Targets[t];
                 var binding = t < bindings.Count ? bindings[t] : null;
-                if (target.Property == "parameter") continue;
+                // A muscle is compared through the pose, which this check does not read yet.
+                if (target.Property == "parameter" || target.Property == "muscle") continue;
                 result.Targets++;
                 shapes[t] = -1;
                 if (target.Property == "active" && binding?.Object != null) shown.Add(t);

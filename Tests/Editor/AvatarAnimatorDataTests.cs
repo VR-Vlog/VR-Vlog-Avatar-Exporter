@@ -1233,5 +1233,139 @@ namespace VRVlog.LilToonExporter.Tests
             data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "rotation", Channel = "x", Euler = true, Rest = 0 });
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
         }
+
+        // Two muscle targets after the sample's active and parameter targets,
+        // the first with a track of clip 0.
+        const int MuscleTarget = 3;
+
+        static AvatarAnimatorData WithMuscles()
+        {
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "muscle", Muscle = 0, Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "muscle", Muscle = AvatarAnimatorData.MuscleCount - 1, Rest = 0 });
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = -.5 });
+            var track = new AvatarAnimatorData.Track { Target = MuscleTarget };
+            track.Curves.Add(curve);
+            data.Clips[0].Tracks.Add(track);
+            return data;
+        }
+
+        static void RejectsMuscle(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithMuscles());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void MuscleTargetsRoundTrip()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithMuscles()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            Assert.That(read.Targets.Skip(MuscleTarget).Select(t => (t.Known, t.Node, t.Property, t.Muscle, t.Rest)), Is.EqualTo(new[]
+            {
+                (true, -1, "muscle", 0, 0d), (true, -1, "muscle", 94, 0d),
+            }));
+            var json = Json(WithMuscles());
+            Assert.That(At(json, "targets", MuscleTarget).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "muscle", "property", "rest" }));
+            // The evaluator gives a muscle its value like any float.
+            var controller = new AvatarAnimatorData.Controller();
+            controller.Layers.Add(Hold("Base", 0));
+            read.Controllers.Clear();
+            read.Omitted.Clear();
+            read.Controllers.Add(controller);
+            Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(read, () => 0);
+            evaluator.Advance(0);
+            Assert.That(evaluator.Values[MuscleTarget], Is.EqualTo(-.5).Within(1e-9));
+            Assert.That(evaluator.Values[MuscleTarget + 1], Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ReadRejectsABrokenMuscleTarget()
+        {
+            // A muscle target names one of HumanTrait.MuscleName and no node.
+            RejectsMuscle(json => At(json, "targets", MuscleTarget)["muscle"] = 95L);
+            RejectsMuscle(json => At(json, "targets", MuscleTarget)["muscle"] = -1L);
+            RejectsMuscle(json => At(json, "targets", MuscleTarget)["muscle"] = 1.5);
+            RejectsMuscle(json => At(json, "targets", MuscleTarget).Remove("muscle"));
+            RejectsMuscle(json => At(json, "targets", MuscleTarget).Remove("rest"));
+            RejectsMuscle(json => At(json, "targets", MuscleTarget)["rest"] = "0");
+            RejectsMuscle(json => At(json, "targets", MuscleTarget)["node"] = 3L);
+            // One target per muscle.
+            RejectsMuscle(json => ((List<object>)json["targets"]).Add(At(json, "targets", MuscleTarget)));
+        }
+
+        // The sample's FX, then a Gesture whose layer has a mask, then an Action.
+        static AvatarAnimatorData WithPlayables()
+        {
+            var data = Sample();
+            var gesture = new AvatarAnimatorData.Controller { Playable = "gesture" };
+            var hands = Hold("Hands", 0);
+            hands.Mask = new AvatarAnimatorData.Mask { Nodes = new List<int> { 1, 3 } };
+            hands.Mask.Humanoid.AddRange(new[] { 7, 8 });
+            gesture.Layers.Add(hands);
+            data.Controllers.Add(gesture);
+            var action = new AvatarAnimatorData.Controller { Playable = "action" };
+            var body = Hold("Body", 1);
+            body.Mask = new AvatarAnimatorData.Mask();
+            body.Mask.Humanoid.AddRange(new[] { 0, 1, 2 });
+            action.Layers.Add(body);
+            data.Controllers.Add(action);
+            return data;
+        }
+
+        [Test]
+        public void GestureAndActionControllersWithMasksRoundTrip()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithPlayables()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            Assert.That(read.Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture", "action" }));
+            Assert.That(read.Controllers[1].Layers[0].Mask.Humanoid, Is.EqualTo(new[] { 7, 8 }));
+            Assert.That(read.Controllers[1].Layers[0].Mask.Nodes, Is.EqualTo(new[] { 1, 3 }));
+            Assert.That(read.Controllers[2].Layers[0].Mask.Humanoid, Is.EqualTo(new[] { 0, 1, 2 }));
+            Assert.That(read.Controllers[2].Layers[0].Mask.Nodes, Is.Null, "A mask without transforms lets every node move.");
+            Assert.That(read.Controllers[0].Layers[0].Mask, Is.Null);
+            var json = Json(WithPlayables());
+            Assert.That(At(json, "controllers", 0, "layers", 0).ContainsKey("mask"), Is.False, "A layer without a mask has no key.");
+            Assert.That(At(json, "controllers", 2, "layers", 0, "mask").Keys, Is.EqualTo(new[] { "humanoid" }));
+            // A mask that lets nothing move is a mask too.
+            var none = WithPlayables();
+            none.Controllers[2].Layers[0].Mask.Humanoid.Clear();
+            Assert.That(AvatarAnimatorData.Read(Json(none)).Controllers[2].Layers[0].Mask.Humanoid, Is.Empty);
+        }
+
+        static void RejectsPlayables(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithPlayables());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void ReadRejectsControllersOutOfOrderAndBrokenMasks()
+        {
+            // The FX first, then the Gesture and the Action, each once.
+            RejectsPlayables(json => At(json, "controllers", 1)["playable"] = "fx");
+            RejectsPlayables(json => At(json, "controllers", 2)["playable"] = "gesture");
+            RejectsPlayables(json => At(json, "controllers", 1)["playable"] = "action");
+            RejectsPlayables(json => At(json, "controllers", 1)["playable"] = "additive");
+            RejectsPlayables(json => ((List<object>)json["controllers"]).RemoveAt(0));
+            RejectsPlayables(json => ((List<object>)json["controllers"]).Add(At(json, "controllers", 2)));
+            // A mask names body parts 0 to 12 and nodes, each list in increasing order.
+            RejectsPlayables(json => ((List<object>)At(json, "controllers", 1, "layers", 0, "mask")["humanoid"]).Add(13L));
+            RejectsPlayables(json => ((List<object>)At(json, "controllers", 1, "layers", 0, "mask")["humanoid"]).Add(7L));
+            RejectsPlayables(json => ((List<object>)At(json, "controllers", 1, "layers", 0, "mask")["humanoid"]).Insert(0, 8L));
+            RejectsPlayables(json => ((List<object>)At(json, "controllers", 1, "layers", 0, "mask")["humanoid"]).Add(-1L));
+            RejectsPlayables(json => ((List<object>)At(json, "controllers", 1, "layers", 0, "mask")["nodes"]).Add(2L));
+            RejectsPlayables(json => ((List<object>)At(json, "controllers", 1, "layers", 0, "mask")["nodes"]).Add(-1L));
+            RejectsPlayables(json => At(json, "controllers", 1, "layers", 0, "mask").Remove("humanoid"));
+            RejectsPlayables(json => At(json, "controllers", 1, "layers", 0, "mask")["transforms"] = new List<object>());
+            RejectsPlayables(json => At(json, "controllers", 1, "layers", 0)["mask"] = new List<object>());
+            RejectsPlayables(json => At(json, "controllers", 1, "layers", 0, "mask")["nodes"] = null);
+        }
     }
 }
