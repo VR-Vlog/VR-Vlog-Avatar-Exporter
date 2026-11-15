@@ -1445,6 +1445,7 @@ public static class AvatarAnimatorEvaluatorTests
         var fx = new Builder();
         var m = Muscle(fx, 3);
         var other = Muscle(fx, 55);
+        var unkeyed = Muscle(fx, 5);
         var top = fx.Layer("FX");
         top.Mask = new AvatarAnimatorData.Mask();
         top.Mask.Humanoid.Add(1);
@@ -1453,6 +1454,32 @@ public static class AvatarAnimatorEvaluatorTests
         alone.Advance(Frame);
         Check(alone.HostShare[m] == 0 && alone.Values[m] == .7, "an FX alone at weight 1 covers the muscles it writes");
         Check(alone.HostShare[other] == 1 && !alone.Written[other], "and leaves the host's where its mask keeps it off");
+        // M16: its mask's muscles no clip of it moves are the rest over the host's pose, alone too.
+        Check(alone.HostShare[unkeyed] == 0 && alone.Values[unkeyed] == 0, "and covers the host with the rest on a muscle of its mask no clip moves");
+
+        // An FX alone (the file has only the FX) at half weight, likewise.
+        var gb = new Builder();
+        var weight = gb.Parameter("Half", "bool");
+        var keyed = Muscle(gb, 55);
+        var thumb = Muscle(gb, 57);
+        var lc = gb.Layer("Control");
+        lc.Mask = new AvatarAnimatorData.Mask();
+        lc.Mask.Humanoid.Add(7);
+        var idle = Builder.State(lc, "Idle", -1);
+        var dim = Builder.State(lc, "Dim", -1);
+        lc.States[idle].Transitions.Add(To(dim).When(weight, "if"));
+        lc.States[dim].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = "fx", GoalWeight = .5, BlendDuration = 0 });
+        var left = gb.Layer("Left");
+        left.Mask = new AvatarAnimatorData.Mask();
+        left.Mask.Humanoid.Add(7);
+        Builder.State(left, "Point", gb.Clip(0, false, (keyed, .4)));
+        var single = gb.Build();
+        single.Set(weight, 1);
+        Run(single, .1);
+        Near(single.PlayableWeight(0), .5, "the lone FX's weight");
+        Near(single.HostShare[keyed], .5, "a lone FX at half weight leaves half the host on the finger it moves");
+        Near(single.HostShare[thumb], .5, "and on a finger of its mask no clip moves");
+        Check(single.Values[thumb] == 0, "whose value is the rest");
     }
 
     // M12. The recordings of the freeformCartesian case hold Unity's weights; these are the same rule by hand.

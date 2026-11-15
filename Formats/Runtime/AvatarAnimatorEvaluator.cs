@@ -1400,6 +1400,7 @@ namespace VRVlog.AvatarAnimator
             var weight = Math.Max(0, playableWeight[c]);
             // What lies under the controller is left by 1 - weight where it writes.
             var left = weight < 1 ? 1 - weight : 0;
+            var pose = controllerPose[c];
             if (!stacked)
             {
                 for (var t = 0; t < values.Length; t++)
@@ -1408,9 +1409,11 @@ namespace VRVlog.AvatarAnimator
                         if (weight < 1) values[t] = Blend(t, rest[t], values[t], weight);
                         hostShare[t] = left;
                     }
+                    // Alone it plays over the rest as before, but over the host's pose its muscles
+                    // cover the host's even where no clip moves them (M16): the rest under its weight.
+                    else if (pose != null && pose[t]) hostShare[t] = left;
                 return;
             }
-            var pose = controllerPose[c];
             for (var t = 0; t < values.Length; t++)
             {
                 if (!written[t] && pose != null && pose[t])
