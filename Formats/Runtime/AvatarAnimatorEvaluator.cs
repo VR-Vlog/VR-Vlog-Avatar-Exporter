@@ -446,30 +446,39 @@ namespace VRVlog.AvatarAnimator
                     TryFire(layer, states[layer.State].Transitions, false, -1, n0, layer.Time, dt, length);
                 return;
             }
-            // M5: Any State interrupts only a transition from Any State whose source allows it.
+            // M5: Any State interrupts a transition only when its source may: Any
+            // State's transitions come first among the source's.
             // Interruptions of the running transition by its source or destination.
-            var sourceList = layer.ActiveFromAny ? any : states[layer.State].Transitions;
-            var until = -1;
-            if (layer.Active.OrderedInterruption)
-                until = IndexOf(sourceList, layer.Active);
             var nextLength = StateLength(states[layer.Next]);
             switch (layer.Active.InterruptionSource)
             {
                 case "source":
-                    TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length);
+                    TrySource(layer, any, n0, dt, length);
                     break;
                 case "destination":
                     TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength);
                     break;
                 case "sourceThenDestination":
-                    if (!TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length))
+                    if (!TrySource(layer, any, n0, dt, length))
                         TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength);
                     break;
                 case "destinationThenSource":
                     if (!TryFire(layer, states[layer.Next].Transitions, false, -1, next0, layer.NextTime, dt, nextLength))
-                        TryFire(layer, sourceList, layer.ActiveFromAny, until, n0, layer.Time, dt, length);
+                        TrySource(layer, any, n0, dt, length);
                     break;
             }
+        }
+
+        // The source's interruptions: Any State's transitions, then the source
+        // state's, each list up to the running transition when ordered.
+        bool TrySource(LayerRun layer, List<AvatarAnimatorData.Transition> any, double n0, double dt, double length)
+        {
+            var ordered = layer.Active.OrderedInterruption;
+            if (TryFire(layer, any, true, ordered && layer.ActiveFromAny ? IndexOf(any, layer.Active) : -1, n0, layer.Time, dt, length))
+                return true;
+            if (layer.ActiveFromAny) return false;
+            var own = layer.Layer.States[layer.State].Transitions;
+            return TryFire(layer, own, false, ordered ? IndexOf(own, layer.Active) : -1, n0, layer.Time, dt, length);
         }
 
         static int IndexOf(List<AvatarAnimatorData.Transition> list, AvatarAnimatorData.Transition transition)

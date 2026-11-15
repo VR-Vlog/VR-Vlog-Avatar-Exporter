@@ -198,6 +198,8 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return AnyState();
             yield return Interruption();
             yield return AnyStateInterruption();
+            yield return AnyStateInterruption("source");
+            yield return AnyStateInterruption("destination");
             yield return WriteDefaultsOff();
             yield return Layers();
             yield return Trees();
@@ -347,10 +349,11 @@ namespace VRVlog.AvatarAnimator.Comparison
             return c.Case;
         }
 
-        // Any State taking a layer that is in a transition.
-        static Case AnyStateInterruption()
+        // Any State taking a layer that is in a transition, which may let
+        // its source or its destination interrupt it.
+        static Case AnyStateInterruption(string source = "none")
         {
-            var c = new Builder("anyStateInterruption", 2);
+            var c = new Builder(source == "none" ? "anyStateInterruption" : "anyStateInterruption" + char.ToUpperInvariant(source[0]) + source.Substring(1), 2);
             var go = c.Parameter("Go", "bool");
             var stop = c.Parameter("Stop", "bool");
             var node = c.Target(0);
@@ -358,7 +361,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
             var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
             var d = c.State(layer, "C", c.Ramp(1, true, node, 20, 21));
-            layer.States[a].Transitions.Add(To(b, duration: 1).When(go, "if"));
+            var slow = To(b, duration: 1).When(go, "if");
+            slow.InterruptionSource = source;
+            layer.States[a].Transitions.Add(slow);
             layer.Machines[0].AnyStateTransitions.Add(To(d, duration: .5).When(stop, "if"));
             c.Input(.2, go, 1).Input(.6, stop, 1).Input(.7, stop, 0);
             return c.Case;
