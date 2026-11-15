@@ -104,9 +104,8 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, fx);
             shown.motion = clip;
             var go = drive.AddTransition(shown);
-            // Unity's transitions see a driver's change from the next frame, the
-            // app's player in the same frame (M8): the exit time keeps the
-            // transition after both have the value.
+            // Transitions see a driver's change from the next frame (M8); the
+            // exit time keeps the transition after the value is set.
             go.hasExitTime = true;
             go.exitTime = .26f;
             go.duration = 0;
