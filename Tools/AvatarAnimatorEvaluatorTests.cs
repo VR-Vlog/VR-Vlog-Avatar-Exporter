@@ -1289,6 +1289,22 @@ public static class AvatarAnimatorEvaluatorTests
             Check(draws ? n == 0 : n >= 55, draws ? "a state that draws a random number on entry plays every frame" : "a state entered again each frame is skipped");
         }
 
+        // A state entered again each frame whose 0 s Layer Control sets the
+        // weight of a layer that has already stepped: the frame after plays it.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        node = b.Target();
+        Builder.State(b.Layer("Base"), "A", -1);
+        Builder.State(b.Layer("Lit"), "A", b.Clip(0, false, (node, 1)));
+        layer = b.Layer("Control");
+        a = Builder.State(layer, "S", -1);
+        layer.States[a].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "layerControl", Playable = "fx", Layer = 1, GoalWeight = 1, BlendDuration = 0 });
+        var enter = To(a).When(go, "if");
+        enter.CanTransitionToSelf = true;
+        layer.Machines[0].AnyStateTransitions.Add(enter);
+        skipped = Lockstep(b, 30, (e, frame) => { if (frame == 5) e.SetLayerWeight(1, 0); if (frame == 10) e.Set(go, 1); });
+        Check(!skipped[11] && Count(skipped, 13, 30) == 17, "a Layer Control that changes the weight of an earlier layer plays the next frame");
+
         // A layer weight set from outside plays the frame.
         b = new Builder();
         node = b.Target();

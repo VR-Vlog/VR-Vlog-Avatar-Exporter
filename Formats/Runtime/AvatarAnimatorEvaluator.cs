@@ -996,7 +996,12 @@ namespace VRVlog.AvatarAnimator
                         target.WeightGoal = behaviour.GoalWeight;
                         target.WeightDuration = behaviour.BlendDuration;
                         target.WeightElapsed = 0;
-                        if (!target.WeightBlending) target.Weight = behaviour.GoalWeight;
+                        if (!target.WeightBlending)
+                        {
+                            // A layer that has already stepped this frame plays the new weight from the next.
+                            if (target.Weight != behaviour.GoalWeight) moved = true;
+                            target.Weight = behaviour.GoalWeight;
+                        }
                     }
                     break;
                 case "playableLayerControl":
