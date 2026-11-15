@@ -9,6 +9,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 using VRVlog.AvatarAnimator;
 using VRVlog.AvatarFormats;
+using VRVlog.LilToon;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -41,10 +42,10 @@ namespace VRVlog.LilToonExporter.Tests
 
             var data = Read(json);
             var nodes = Nodes(json);
-            var hat = data.Targets.Single(target => nodes[target.Node] == "Hat");
+            var hat = data.Targets.Single(target => target.Node >= 0 && nodes[target.Node] == "Hat");
             Assert.That(hat.Property, Is.EqualTo("active"));
             Assert.That(hat.Rest, Is.EqualTo(0), "Hat is off by default, though the export turns its mesh on.");
-            Assert.That(data.Targets.Single(target => nodes[target.Node] == "Glasses").Rest, Is.EqualTo(1));
+            Assert.That(data.Targets.Single(target => target.Node >= 0 && nodes[target.Node] == "Glasses").Rest, Is.EqualTo(1));
 
             var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Hat");
             double[] Values(string state)
@@ -154,7 +155,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(written.Controllers.Single().Layers[driven].States.Single(s => s.Name == "Shown").Behaviours.Single().Type, Is.EqualTo("layerControl"));
             // The start, Hat, the radial in the submenu and the seven gestures of the left hand.
             Assert.That(matched.FirstOrDefault(), Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix +
-                "inputs 10 compared 10 mismatched 0 skipped 0 outOfTime 0 targets 3 unbound 0 "), string.Join("\n", matched));
+                "inputs 10 compared 10 mismatched 0 skipped 0 outOfTime 0 targets 4 unbound 0 "), string.Join("\n", matched));
             var note = ExporterLocalization.T(AvatarAnimatorCrossCheck.MismatchNote);
             Assert.That(shownWarnings.Where(w => w.StartsWith(note.Substring(0, note.IndexOf('{')), StringComparison.Ordinal)), Is.Empty);
 
@@ -322,22 +323,28 @@ namespace VRVlog.LilToonExporter.Tests
         // Hat on moves Front's Hair detail to 80. The scene holds it at 35,
         // which the export bakes into the base, and its one frame is at 100.
         // The file keeps the target the extension names, though no face uses it.
+        // Hat on also moves a property only another shader has and a feature
+        // switch of lilToon, which are counted.
         [Test]
         public void BlendShapeCurvesAreWrittenAndMaterialCurvesCounted()
         {
             using var avatar = new AnimatorAvatar();
+            var hatOnClip = avatar.ClipNamed("Hat on");
+            foreach (var property in new[] { "material._NotLilToon", "material._UseEmission" })
+                AnimationUtility.SetEditorCurve(hatOnClip, EditorCurveBinding.FloatCurve("Hat", typeof(MeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, 1));
             var warnings = new List<string>();
             var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
             var data = Read(json);
             var nodes = Nodes(json);
 
             // "other" is the root's activeSelf curve, whose last key is past the hour the contract allows.
-            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("material", 1), ("other", 1) }));
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("other", 1), ("materialProperty", 1), ("materialSwitch", 1) }));
             // The result lists the curves left out, by kind.
             var line = ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurvesNote, string.Join(ExporterLocalization.T("、"), new[]
             {
-                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("マテリアル"), 1),
                 ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("その他"), 1),
+                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("アプリで扱わないマテリアルのプロパティ"), 1),
+                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("マテリアルの機能のオン・オフ"), 1),
             }));
             Assert.That(warnings.Count(warning => warning == line), Is.EqualTo(1), string.Join("\n", warnings));
             Assert.That(data.Targets.Where(t => t.Property == "active").Select(t => nodes[t.Node]).OrderBy(name => name), Is.EqualTo(new[] { "Glasses", "Hat" }));
@@ -365,7 +372,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False, "Holding the weight the base shows changes nothing.");
             var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
             Assert.That(hatOn.Tracks.Select(t => data.Targets[t.Target].Property), Has.No.Member("morph"));
-            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }), "Nothing is lost, so nothing is counted.");
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "other" }), "Nothing is lost, so nothing is counted.");
             Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Hair detail"), Is.False, "Nothing else keeps the shape.");
         }
 
@@ -393,7 +400,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(delta.y, Is.EqualTo(-.01f).Within(1e-4f));
                 Assert.That(Mathf.Abs(delta.x) + Mathf.Abs(delta.z), Is.EqualTo(.02f).Within(1e-4f));
             }
-            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "material", "other" }), "Nothing is lost, so nothing is counted.");
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "other" }), "Nothing is lost, so nothing is counted.");
             var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
             var track = hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph));
             Assert.That(track.Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 80d, 80d }));
@@ -427,7 +434,7 @@ namespace VRVlog.LilToonExporter.Tests
             var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
             var data = Read(json);
 
-            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1), ("missingNode", 1) }));
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1), ("missingNode", 1) }));
             Assert.That(Nodes(json)[data.Targets.Single(t => t.Property == "morph").Node], Is.EqualTo("Front"));
         }
 
@@ -492,7 +499,7 @@ namespace VRVlog.LilToonExporter.Tests
             var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
 
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
-            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1) }));
         }
 
         // An additive layer adds a shape's curve less its reference pose,
@@ -534,7 +541,7 @@ namespace VRVlog.LilToonExporter.Tests
             var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
 
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
-            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1) }));
         }
 
         // What the export made of the shape decides whether it is written.
@@ -736,9 +743,9 @@ namespace VRVlog.LilToonExporter.Tests
             var data = Read(json);
             var nodes = Nodes(json);
             string Name(AvatarAnimatorData.Target t) => t.Property == "active" ? nodes[t.Node] : data.Parameters[t.Parameter].Name;
-            // Hat on also moves a BlendShape, a node target too.
-            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "morph", "parameter", "parameter" }));
-            Assert.That(data.Targets.Skip(3).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            // Hat on also moves a BlendShape, a node target too, and a color channel of Hat's material.
+            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "morph", "parameter", "parameter", "materialColor" }));
+            Assert.That(data.Targets.Skip(3).Take(2).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
             var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Both");
             var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
             Assert.That(tracks.Select(t => Name(data.Targets[t.Target])), Is.EqualTo(new[] { "Hat", "BlendX", "BlendY" }));
@@ -960,9 +967,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "enabled", "materialFloat" }));
             Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 0d }));
             Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .25, .25 }));
-            // The color channel curve the fixture has is still counted, and so is
-            // the material float curve when the file's materials are not given.
-            Assert.That(Omitted(data, "material"), Is.EqualTo(1));
+            // The fixture's color channel curve is a materialColor target; both
+            // curves are counted when the file's materials are not given.
+            Assert.That(Omitted(data, "material"), Is.EqualTo(0));
             Assert.That(Omitted(before, "material"), Is.EqualTo(2));
             Assert.That(before.Targets.Any(t => t.Property == "materialFloat"), Is.False);
             Assert.That(before.Targets.Count(t => t.Property == "enabled"), Is.EqualTo(1));
@@ -1026,7 +1033,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(data.Targets.Count(t => t.Property == "materialFloat"), Is.EqualTo(1));
             Assert.That(ClipOf(data, "Both").Tracks.Single().Target, Is.EqualTo(target));
             Assert.That(ClipOf(data, "One").Tracks.Single().Target, Is.EqualTo(target));
-            Assert.That(Omitted(data, "material"), Is.EqualTo(2), "The fixture's color channel and the second curve of Both.");
+            Assert.That(Omitted(data, "material"), Is.EqualTo(1), "The second curve of Both.");
         }
 
         // An additive layer adds a material float less its reference pose,
@@ -1049,9 +1056,95 @@ namespace VRVlog.LilToonExporter.Tests
             var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
             Assert.That(data.Targets.Any(t => t.Property == "materialFloat"), Is.False);
             Assert.That(ClipOf(data, "Plain").Tracks, Is.Empty);
-            Assert.That(Omitted(data, "material"), Is.EqualTo(3), "The fixture's color channel and both curves on the left-out target.");
+            Assert.That(Omitted(data, "material"), Is.EqualTo(2), "Both curves on the left-out target.");
             Assert.That(Omitted(data, "enabled"), Is.EqualTo(1));
             Assert.That(data.Targets.Any(t => t.Property == "enabled"), Is.False);
+        }
+
+        // A color channel curve is a materialColor target and a channel of a
+        // texture's scale and offset (material.X_ST.x) a materialTextureST
+        // target named by the texture, after the materialFloat targets, and
+        // their tracks follow the clip's other tracks. Rest is the channel in
+        // the avatar's material. A curve on a name or type the app's material
+        // does not keep is counted as materialProperty, one on a feature
+        // switch the app fixes as materialSwitch, and a vector channel as
+        // material.
+        [Test]
+        public void MaterialColorAndTextureSTCurvesAreWrittenAndTheOthersCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var shared = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            shared.SetColor("_Color", new Color(1, .5f, .25f, 1));
+            shared.SetTextureScale("_MainTex", new Vector2(2, 3));
+            shared.SetTextureOffset("_MainTex", new Vector2(.125f, .375f));
+            var clip = avatar.Clip("Tint");
+            void Set(string property, float value) =>
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(MeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, value));
+            Set("material._MainTex_ST.w", .75f);
+            Set("material._MainTex_ST.x", 4);
+            Set("material._Color.g", .25f);
+            Set("material._Cutoff", .25f);
+            Set("material._UseEmission", 1);
+            Set("material._Color", 1);
+            Set("material._MainTex_ST", 1);
+            Set("material._NotLilToon", 1);
+            Set("material._NotLilToon.r", 1);
+            Set("material._Main2ndDissolveParams.x", 1);
+            AddLayer(avatar, "Tint", clip);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var tracks = ClipOf(data, "Tint").Tracks;
+            Assert.That(tracks.Select(t => (data.Targets[t.Target].Property, data.Targets[t.Target].Name, data.Targets[t.Target].Channel)), Is.EqualTo(new[]
+            {
+                ("materialFloat", "_Cutoff", (string)null),
+                ("materialColor", "_Color", "g"),
+                ("materialTextureST", "_MainTex", "w"),
+                ("materialTextureST", "_MainTex", "x"),
+            }));
+            Assert.That(tracks.Select(t => t.Curves.Single().Keys[0].Value), Is.EqualTo(new[] { .25, .25, .75, 4 }));
+            Assert.That(tracks.Select(t => data.Targets[t.Target]).Select(t => (t.Node, t.Material, t.Rest)), Is.EqualTo(new[]
+            {
+                (-1, 0, (double)shared.GetFloat("_Cutoff")),
+                (-1, 0, .5),
+                (-1, 0, .375),
+                (-1, 0, 2d),
+            }));
+            // The fixture's own color channel curve, on the same material.
+            var red = data.Targets.Single(t => t.Property == "materialColor" && t.Channel == "r");
+            Assert.That((red.Material, red.Name, red.Rest), Is.EqualTo((0, "_Color", 1d)));
+            Assert.That(Omitted(data, "materialProperty"), Is.EqualTo(4), "_Color and _MainTex_ST as floats, and both curves on _NotLilToon.");
+            Assert.That(Omitted(data, "materialSwitch"), Is.EqualTo(1));
+            Assert.That(Omitted(data, "material"), Is.EqualTo(1), "The vector channel.");
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(data.Omitted.Select(o => o.Kind).OrderBy(kind => Array.IndexOf(AvatarAnimatorData.OmittedKinds, kind))));
+
+            // Without the file's materials they reach no target and are counted
+            // as material; the others are counted the same.
+            var before = CapturedWithNodes(avatar);
+            Assert.That(before.Targets.Any(t => t.Property == "materialColor" || t.Property == "materialTextureST"), Is.False);
+            Assert.That(Omitted(before, "material"), Is.EqualTo(6), "Four channels, the float and the vector channel of Tint, and the fixture's color channel.");
+            Assert.That(Omitted(before, "materialProperty"), Is.EqualTo(4));
+            Assert.That(Omitted(before, "materialSwitch"), Is.EqualTo(1));
+        }
+
+        // Each switch the app fixes is a float the contract keeps for the
+        // app's material, so its curve is counted as materialSwitch and not
+        // as materialProperty.
+        [Test]
+        public void TheAppsFeatureSwitchesAreFloatsOfTheContract()
+        {
+            Assert.That(LilToonFullContract.Switches.Select(LilToonFullContract.RuntimeType), Is.All.EqualTo("float"));
+            foreach (var name in LilToonFullContract.Switches)
+            {
+                AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(SkinnedMeshRenderer), "material." + name), out var omitted);
+                Assert.That(omitted, Is.EqualTo("materialSwitch"), name);
+            }
+            Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(MeshRenderer), "material._MainTex_ST.y"), out _), Is.EqualTo(("materialTextureST", "_MainTex", "y")));
+            Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(MeshRenderer), "material._Color.a"), out _), Is.EqualTo(("materialColor", "_Color", "a")));
+            Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(ParticleSystemRenderer), "material._Color.a"), out var other), Is.Null);
+            Assert.That(other, Is.Null, "Not a mesh renderer's material curve.");
         }
 
         // In a real export a materialFloat target names a material of the

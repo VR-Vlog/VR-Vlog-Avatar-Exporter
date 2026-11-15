@@ -9,6 +9,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 using VRVlog.AvatarAnimator;
 using VRVlog.Expressions;
+using VRVlog.LilToon;
 
 namespace VRVlog.LilToonExporter
 {
@@ -36,6 +37,7 @@ namespace VRVlog.LilToonExporter
         {
             ("blendShape", "BlendShape"), ("material", "マテリアル"), ("transform", "Transform"), ("enabled", "コンポーネントのオン・オフ"),
             ("parameter", "パラメーター"), ("muscle", "Humanoidのマッスル"), ("other", "その他"), ("missingNode", "VRMに無いオブジェクト"),
+            ("materialProperty", "アプリで扱わないマテリアルのプロパティ"), ("materialSwitch", "マテリアルの機能のオン・オフ"),
         };
         internal static string TooLarge => ExporterLocalization.Format(TooLargeReason, MaximumMegabytes);
         internal static string TooDeep => ExporterLocalization.Format(TooDeepReason, AvatarAnimatorData.MaximumBlendTreeDepth);
@@ -63,15 +65,17 @@ namespace VRVlog.LilToonExporter
         readonly List<(Behaviour Constraint, int Default)> constraints = new List<(Behaviour, int)>();
         readonly Dictionary<Behaviour, int> constraintIndex = new Dictionary<Behaviour, int>();
         readonly List<List<(int Constraint, ExpressionAnimationData.Curve Curve)>> clipConstraintTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
-        // Material float curves stay a renderer and a property name until the
-        // output materials are known.
-        readonly List<List<(Renderer Renderer, string Name, ExpressionAnimationData.Curve Curve)>> clipMaterialTracks = new List<List<(Renderer, string, ExpressionAnimationData.Curve)>>();
-        // Each slot of a renderer when its first curve on a property was read,
-        // with whether the slot's material has the property and its value
-        // there: the export later swaps lilToon slots for fallback materials,
-        // which the output indices are taken from, but which may lack the
-        // property or hold another value.
-        readonly Dictionary<(Renderer, string), (Material Material, bool Has, float Value)[]> slotsAtRead = new Dictionary<(Renderer, string), (Material, bool, float)[]>();
+        // Material curves stay a renderer and what they move (MaterialCurve)
+        // until the output materials are known.
+        readonly List<List<(Renderer Renderer, (string Property, string Name, string Channel) Moves, ExpressionAnimationData.Curve Curve)>> clipMaterialTracks =
+            new List<List<(Renderer, (string, string, string), ExpressionAnimationData.Curve)>>();
+        // Each slot of a renderer when its first curve on a property channel
+        // was read, with whether the slot's material has the property and its
+        // value there: the export later swaps lilToon slots for fallback
+        // materials, which the output indices are taken from, but which may
+        // lack the property or hold another value.
+        readonly Dictionary<(Renderer, (string, string, string)), (Material Material, bool Has, float Value)[]> slotsAtRead =
+            new Dictionary<(Renderer, (string, string, string)), (Material, bool, float)[]>();
 
         // The export drops empty submeshes with their slots after the curves
         // were read (UniVrmOneClickExporter.DropEmptySubmeshes): kept holds,
@@ -91,7 +95,7 @@ namespace VRVlog.LilToonExporter
         // AvatarAnimatorCrossCheck: the object of an active target, the
         // renderer and shape a morph target was read from (not its reverse),
         // the renderer of an enabled target, and the first renderer and the
-        // material a materialFloat target was read from.
+        // material a material target was read from.
         readonly Dictionary<AvatarAnimatorData.Target, AvatarAnimatorCrossCheck.Binding> shownBy = new Dictionary<AvatarAnimatorData.Target, AvatarAnimatorCrossCheck.Binding>();
         // The path under the root each curve's object had when the clips were
         // read; the export may rename or move it before the cross-check.
@@ -464,7 +468,7 @@ namespace VRVlog.LilToonExporter
         // or when they disagree, its curves are counted as blendShape. When the
         // shapes would take the extension past MaximumBytes, all of them are.
         // material gives the glTF index of a material the file writes, or -1;
-        // without it, material float curves are counted as material.
+        // without it, material curves are counted as material.
         // constraint gives the VRVLOG_avatar_constraints entry of a
         // constraint component, or -1; without it, or for -1, constraint
         // enabled curves are counted as enabled.
@@ -507,7 +511,8 @@ namespace VRVlog.LilToonExporter
                 parameterTarget[parameter] = data.Targets.Count;
                 data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "parameter", Parameter = parameter, Rest = controllerDefaults[parameter] });
             }
-            // Then the renderer enabled targets, then the material float targets.
+            // Then the renderer enabled targets, then the constraint enabled
+            // targets, then the material targets.
             // A renderer that is off or under an inactive object when the
             // file is written is not a mesh there (ModelExporter), so nothing
             // shows it: its curves are counted as enabled (switchedOff).
@@ -545,12 +550,16 @@ namespace VRVlog.LilToonExporter
                     }
                 });
             }
-            // Material float curves take the track room the other kinds leave.
+            // Material curves take the track room the other kinds leave.
             var room = new int[data.Clips.Count];
+            var constraintTracks = new int[data.Clips.Count];
             for (var i = 0; i < data.Clips.Count; i++)
+            {
                 room[i] = AvatarAnimatorData.MaximumTracksPerClip - clipTracks[i].Count(t => map[t.Target] >= 0) - clipMorphTracks[i].Count(t => morphMap[t.Morph] >= 0) -
                           clipParameterTracks[i].Count - clipEnabledTracks[i].Count(t => rendererMap[t.Renderer] >= 0);
-            var materialMap = MaterialTargets(node, material, room, out var materialMissing, out var materialLost);
+                constraintTracks[i] = clipConstraintTracks[i].Count(t => constraintMap[t.Constraint] >= 0);
+            }
+            var (floatMap, channelMap) = MaterialTargets(node, material, room, constraintTracks, out var materialMissing, out var materialLost);
             var missing = materialMissing;
             var lost = 0;
             var off = 0;
@@ -587,19 +596,26 @@ namespace VRVlog.LilToonExporter
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
-                foreach (var (target, curve) in materialMap[i])
+                foreach (var (target, curve) in floatMap[i])
                 {
                     var track = new AvatarAnimatorData.Track { Target = target };
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
-                // Constraint enabled curves come last and take the room the
-                // material targets leave, so they never leave out a track the
+                // Constraint enabled curves come after the material floats and
+                // take the room they leave, so they never leave out a track the
                 // file wrote before the extension.
                 foreach (var (index, curve) in clipConstraintTracks[i])
                 {
                     if (constraintMap[index] < 0 || data.Clips[i].Tracks.Count >= AvatarAnimatorData.MaximumTracksPerClip) { off++; continue; }
                     var track = new AvatarAnimatorData.Track { Target = constraintMap[index] };
+                    track.Curves.Add(curve);
+                    data.Clips[i].Tracks.Add(track);
+                }
+                // The color and texture channels, added after them, come last.
+                foreach (var (target, curve) in channelMap[i])
+                {
+                    var track = new AvatarAnimatorData.Track { Target = target };
                     track.Curves.Add(curve);
                     data.Clips[i].Tracks.Add(track);
                 }
@@ -613,83 +629,113 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Adds the materialFloat targets, ordered by material and name, and
-        // returns each clip's tracks on them. Unity moves a renderer's
+        // Adds the material targets, the materialFloat ones first, each kind
+        // ordered by material, name and channel, and returns each clip's
+        // tracks on them: those of the materialFloat targets, and those of the
+        // materialColor and materialTextureST ones. Unity moves a renderer's
         // material property on every material of the renderer, so a curve
         // becomes a track of each material the renderer draws with that the
-        // file writes and that has the float property; renderers that share
-        // a material share its target. A curve on a renderer the file has no
+        // file writes and that has the property; renderers that share a
+        // material share its target. A curve on a renderer the file has no
         // node for is counted as missingNode (missing). One that reaches no
         // target is counted as material (lost): no material has the
         // property, the file writes none of them, a clip of an additive layer
         // moves the target (its reference pose is not carried), or another
         // curve of the same clip moved each of its targets first.
-        List<List<(int Target, ExpressionAnimationData.Curve Curve)>> MaterialTargets(Func<GameObject, int> node, Func<Material, int> material, int[] room,
-            out int missing, out int lost)
+        // Material floats take the room the other kinds leave; the color and
+        // texture channels, added later, the room the constraint tracks
+        // (constraintTracks for each clip) leave after them, so they never
+        // leave out a track the file wrote before.
+        (List<List<(int Target, ExpressionAnimationData.Curve Curve)>> Floats, List<List<(int Target, ExpressionAnimationData.Curve Curve)>> Channels) MaterialTargets(
+            Func<GameObject, int> node, Func<Material, int> material, int[] room, int[] constraintTracks, out int missing, out int lost)
         {
-            missing = 0; lost = 0;
-            var found = new List<List<((int Material, string Name) Key, ExpressionAnimationData.Curve Curve)>>();
-            var first = new Dictionary<(int, string), (Renderer Renderer, Material Material, float Value)>();
-            var additive = new HashSet<(int, string)>();
-            for (var i = 0; i < clipMaterialTracks.Count; i++)
+            var missed = 0;
+            var left = 0;
+            var first = new Dictionary<(int, (string, string, string)), (Renderer Renderer, Material Material, float Value)>();
+            var additive = new HashSet<(int, (string, string, string))>();
+            List<List<((int, (string, string, string)) Key, ExpressionAnimationData.Curve Curve)>> Expand(bool floats, int[] free)
             {
-                var tracks = new List<((int, string), ExpressionAnimationData.Curve)>();
-                found.Add(tracks);
-                var taken = new HashSet<(int, string)>();
-                foreach (var (renderer, name, curve) in clipMaterialTracks[i])
+                var found = new List<List<((int, (string, string, string)), ExpressionAnimationData.Curve)>>();
+                for (var i = 0; i < clipMaterialTracks.Count; i++)
                 {
-                    if (renderer == null || node(renderer.gameObject) < 0) { missing++; continue; }
-                    // Whether a slot has the property, and its rest, come from
-                    // the material read with the curve; the index from the
-                    // material the slot holds now, which the file writes.
-                    var read = slotsAtRead[(renderer, name)];
-                    var now = renderer.sharedMaterials;
-                    var keys = new List<((int, string) Key, int Slot)>();
-                    for (var s = 0; s < read.Length; s++)
+                    var tracks = new List<((int, (string, string, string)), ExpressionAnimationData.Curve)>();
+                    found.Add(tracks);
+                    var taken = new HashSet<(int, (string, string, string))>();
+                    foreach (var (renderer, moves, curve) in clipMaterialTracks[i])
                     {
-                        var index = !read[s].Has || material == null || s >= now.Length || now[s] == null ? -1 : material(now[s]);
-                        if (index >= 0 && !taken.Contains((index, name)) && !keys.Any(k => k.Key == (index, name))) keys.Add(((index, name), s));
-                    }
-                    // A curve that would take the clip past its track room is
-                    // left out with all its tracks.
-                    if (keys.Count == 0 || tracks.Count + keys.Count > room[i]) { lost++; continue; }
-                    foreach (var (key, slot) in keys)
-                    {
-                        taken.Add(key);
-                        tracks.Add((key, curve));
-                        if (!first.ContainsKey(key)) first[key] = (renderer, read[slot].Material, read[slot].Value);
-                        if (additiveClips.Contains(i)) additive.Add(key);
+                        if ((moves.Property == "materialFloat") != floats) continue;
+                        if (renderer == null || node(renderer.gameObject) < 0) { missed++; continue; }
+                        // Whether a slot has the property, and its rest, come from
+                        // the material read with the curve; the index from the
+                        // material the slot holds now, which the file writes.
+                        var read = slotsAtRead[(renderer, moves)];
+                        var now = renderer.sharedMaterials;
+                        var keys = new List<((int, (string, string, string)) Key, int Slot)>();
+                        for (var s = 0; s < read.Length; s++)
+                        {
+                            var index = !read[s].Has || material == null || s >= now.Length || now[s] == null ? -1 : material(now[s]);
+                            if (index >= 0 && !taken.Contains((index, moves)) && !keys.Any(k => k.Key == (index, moves))) keys.Add(((index, moves), s));
+                        }
+                        // A curve that would take the clip past its track room is
+                        // left out with all its tracks.
+                        if (keys.Count == 0 || tracks.Count + keys.Count > free[i]) { left++; continue; }
+                        foreach (var (key, slot) in keys)
+                        {
+                            taken.Add(key);
+                            tracks.Add((key, curve));
+                            if (!first.ContainsKey(key)) first[key] = (renderer, read[slot].Material, read[slot].Value);
+                            if (additiveClips.Contains(i)) additive.Add(key);
+                        }
                     }
                 }
+                return found;
             }
-            var targetOf = new Dictionary<(int, string), int>();
-            foreach (var key in first.Keys.Where(key => !additive.Contains(key)).OrderBy(key => key.Item1).ThenBy(key => key.Item2, StringComparer.Ordinal))
+            var floatFound = Expand(true, room);
+            var later = new int[room.Length];
+            for (var i = 0; i < room.Length; i++)
+            {
+                var free = room[i] - floatFound[i].Count;
+                later[i] = free - Math.Min(constraintTracks[i], free);
+            }
+            var channelFound = Expand(false, later);
+            var targetOf = new Dictionary<(int, (string, string, string)), int>();
+            foreach (var key in first.Keys.Where(key => !additive.Contains(key)).OrderBy(key => Array.IndexOf(MaterialProperties, key.Item2.Item1)).ThenBy(key => key.Item1)
+                         .ThenBy(key => key.Item2.Item2, StringComparer.Ordinal).ThenBy(key => key.Item2.Item3, StringComparer.Ordinal))
             {
                 var (renderer, slot, value) = first[key];
-                var target = new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = key.Item1, Name = key.Item2, Rest = value };
+                var (property, name, channel) = key.Item2;
+                var target = new AvatarAnimatorData.Target { Node = -1, Property = property, Material = key.Item1, Name = name, Channel = channel, Rest = value };
                 targetOf[key] = data.Targets.Count;
                 data.Targets.Add(target);
-                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Material = slot, Name = key.Item2, Path = PathAtRead(renderer.gameObject) };
+                shownBy[target] = new AvatarAnimatorCrossCheck.Binding { Component = renderer, Material = slot, Name = name, Path = PathAtRead(renderer.gameObject) };
             }
-            var result = new List<List<(int, ExpressionAnimationData.Curve)>>();
-            for (var i = 0; i < found.Count; i++)
+            List<List<(int, ExpressionAnimationData.Curve)>> Tracks(List<List<((int, (string, string, string)) Key, ExpressionAnimationData.Curve Curve)>> found)
             {
-                var tracks = new List<(int, ExpressionAnimationData.Curve)>();
-                result.Add(tracks);
-                // A curve whose every track went is counted once.
-                var curves = new HashSet<ExpressionAnimationData.Curve>();
-                var kept = new HashSet<ExpressionAnimationData.Curve>();
-                foreach (var (key, curve) in found[i])
+                var result = new List<List<(int, ExpressionAnimationData.Curve)>>();
+                for (var i = 0; i < found.Count; i++)
                 {
-                    curves.Add(curve);
-                    if (!targetOf.TryGetValue(key, out var target)) continue;
-                    kept.Add(curve);
-                    tracks.Add((target, curve));
+                    var tracks = new List<(int, ExpressionAnimationData.Curve)>();
+                    result.Add(tracks);
+                    // A curve whose every track went is counted once.
+                    var curves = new HashSet<ExpressionAnimationData.Curve>();
+                    var kept = new HashSet<ExpressionAnimationData.Curve>();
+                    foreach (var (key, curve) in found[i])
+                    {
+                        curves.Add(curve);
+                        if (!targetOf.TryGetValue(key, out var target)) continue;
+                        kept.Add(curve);
+                        tracks.Add((target, curve));
+                    }
+                    left += curves.Count(curve => !kept.Contains(curve));
+                    tracks.Sort((a, b) => a.Item1.CompareTo(b.Item1));
                 }
-                lost += curves.Count(curve => !kept.Contains(curve));
-                tracks.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+                return result;
             }
-            return result;
+            var floatTracks = Tracks(floatFound);
+            var channelTracks = Tracks(channelFound);
+            missing = missed;
+            lost = left;
+            return (floatTracks, channelTracks);
         }
 
         // The target index of a moved shape, or why its tracks are not written.
@@ -768,9 +814,9 @@ namespace VRVlog.LilToonExporter
             // A morph target names one of its node's mesh's targets.
             if (data.Targets.Any(target => target.Property == "morph" && !Fits(target, nodes, meshes)))
                 throw new InvalidOperationException("Avatar animator morph target is out of range.");
-            // A materialFloat target names one of the file's materials.
+            // A material target names one of the file's materials.
             var materials = document.Json.TryGetValue("materials", out var rawMaterials) && rawMaterials is List<object> materialList ? materialList.Count : 0;
-            if (data.Targets.Any(target => target.Property == "materialFloat" && target.Material >= materials))
+            if (data.Targets.Any(target => Array.IndexOf(MaterialProperties, target.Property) >= 0 && target.Material >= materials))
                 throw new InvalidOperationException("Avatar animator material is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
@@ -1340,7 +1386,7 @@ namespace VRVlog.LilToonExporter
             clipEnabledTracks.Add(enabledTracks);
             var constraintTracks = new List<(int, ExpressionAnimationData.Curve)>();
             clipConstraintTracks.Add(constraintTracks);
-            var materialTracks = new List<(Renderer, string, ExpressionAnimationData.Curve)>();
+            var materialTracks = new List<(Renderer, (string, string, string), ExpressionAnimationData.Curve)>();
             clipMaterialTracks.Add(materialTracks);
             var keys = 0;
             var bindings = AnimationUtility.GetCurveBindings(clip);
@@ -1350,10 +1396,10 @@ namespace VRVlog.LilToonExporter
             var floats = new List<EditorCurveBinding>();
             // The clip's key and track room goes to activeSelf curves first, then
             // to parameter curves, then to BlendShape curves, then to renderer
-            // enabled curves, then to material float curves, then to
+            // enabled curves, then to material curves, then to
             // constraint enabled curves, so a kind written
             // later never leaves out one written before. A curve past the room
-            // is left out alone (see Curve). A material float curve counts as
+            // is left out alone (see Curve). A material curve counts as
             // one track here; Resolve leaves it out when the materials it
             // becomes take the clip past the room.
             bool Full() => tracks.Count + parameterTracks.Count + morphTracks.Count + enabledTracks.Count + constraintTracks.Count + materialTracks.Count >= AvatarAnimatorData.MaximumTracksPerClip;
@@ -1362,13 +1408,13 @@ namespace VRVlog.LilToonExporter
                 if (AnimatedParameter(binding) >= 0) continue;
                 if (!(binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive"))
                 {
-                    // BlendShape, enabled and material float curves take what
+                    // BlendShape, enabled and material curves take what
                     // activeSelf and parameters leave of the room.
                     if (Kind(binding) == "blendShape") shapes.Add(binding);
                     else if (RendererSwitch(binding)) switches.Add(binding);
                     else if (binding.propertyName == "m_Enabled" && AvatarConstraintsExport.IsConstraint(binding.type)) constraintSwitches.Add(binding);
-                    else if (MaterialFloat(binding) != null) floats.Add(binding);
-                    else Omit(Kind(binding));
+                    else if (MaterialCurve(binding, out var materialOmitted) != null) floats.Add(binding);
+                    else Omit(materialOmitted ?? Kind(binding));
                     continue;
                 }
                 var target = binding.path.Length == 0 ? root.transform : root.transform.Find(binding.path);
@@ -1418,10 +1464,10 @@ namespace VRVlog.LilToonExporter
                 var converted = Full() ? null : Curve(clip, binding, ref keys);
                 if (converted == null) { Omit("material"); continue; }
                 pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
-                var name = MaterialFloat(binding);
-                if (!slotsAtRead.ContainsKey((renderer, name)))
-                    slotsAtRead[(renderer, name)] = renderer.sharedMaterials.Select(slot => slot != null && slot.HasFloat(name) ? (slot, true, slot.GetFloat(name)) : (slot, false, 0f)).ToArray();
-                materialTracks.Add((renderer, name, converted));
+                var moves = MaterialCurve(binding, out _).Value;
+                if (!slotsAtRead.ContainsKey((renderer, moves)))
+                    slotsAtRead[(renderer, moves)] = renderer.sharedMaterials.Select(slot => SlotValue(slot, moves)).ToArray();
+                materialTracks.Add((renderer, moves, converted));
             }
             // A curve on a constraint the avatar does not have is counted as
             // enabled, as before the extension.
@@ -1502,16 +1548,67 @@ namespace VRVlog.LilToonExporter
 
         const string MaterialPrefix = "material.";
 
-        // The shader property a mesh renderer's material float curve moves,
-        // or null for another curve. A color or vector curve moves one
-        // channel (material._Color.r) and is counted as material.
-        static string MaterialFloat(EditorCurveBinding binding)
+        // The material target kinds, in the order their targets are written.
+        static readonly string[] MaterialProperties = { "materialFloat", "materialColor", "materialTextureST" };
+
+        const string TextureTransformSuffix = "_ST";
+
+        // What a mesh renderer's material curve moves: material.X the float
+        // X (materialFloat), material.X.r a channel of the color X
+        // (materialColor) and material.X_ST.x a channel of the scale and
+        // offset of the texture X (materialTextureST). Null for another curve,
+        // with the kind it is counted as in omitted, or null when it is not a
+        // mesh renderer's material curve. The app's lilToon material keeps
+        // the contract's properties under the same names: a name it does not
+        // keep with that type is counted as materialProperty, and a feature
+        // switch the app fixes on loading as materialSwitch. A vector channel
+        // (material._Vector.x) is counted as material.
+        internal static (string Property, string Name, string Channel)? MaterialCurve(EditorCurveBinding binding, out string omitted)
         {
+            omitted = null;
             var property = binding.propertyName ?? "";
             if (!(binding.type == typeof(SkinnedMeshRenderer) || binding.type == typeof(MeshRenderer)) ||
                 !property.StartsWith(MaterialPrefix, StringComparison.Ordinal)) return null;
-            var name = property.Substring(MaterialPrefix.Length);
-            return name.Length == 0 || name.IndexOf('.') >= 0 ? null : name;
+            omitted = "material";
+            var moved = property.Substring(MaterialPrefix.Length);
+            var dot = moved.IndexOf('.');
+            var name = dot < 0 ? moved : moved.Substring(0, dot);
+            var channel = dot < 0 ? null : moved.Substring(dot + 1);
+            string kind, type;
+            if (channel == null) { kind = "materialFloat"; type = "float"; }
+            else if (Array.IndexOf(AvatarAnimatorData.ColorChannels, channel) >= 0) { kind = "materialColor"; type = "color"; }
+            else if (Array.IndexOf(AvatarAnimatorData.TextureChannels, channel) < 0) return null;
+            else if (name.EndsWith(TextureTransformSuffix, StringComparison.Ordinal) &&
+                     LilToonFullContract.RuntimeType(name.Substring(0, name.Length - TextureTransformSuffix.Length)) == "texture")
+            {
+                kind = "materialTextureST"; type = "texture";
+                name = name.Substring(0, name.Length - TextureTransformSuffix.Length);
+            }
+            else { kind = null; type = "vector"; }
+            if (name.Length == 0) return null;
+            if (LilToonFullContract.RuntimeType(name) != type) { omitted = "materialProperty"; return null; }
+            if (LilToonFullContract.IsSwitch(name)) { omitted = "materialSwitch"; return null; }
+            if (kind == null) return null;
+            omitted = null;
+            return (kind, name, channel);
+        }
+
+        // Whether a slot's material has what a material curve moves, and its value there.
+        static (Material Material, bool Has, float Value) SlotValue(Material slot, (string Property, string Name, string Channel) moves)
+        {
+            if (slot == null) return (null, false, 0f);
+            switch (moves.Property)
+            {
+                case "materialFloat":
+                    return slot.HasFloat(moves.Name) ? (slot, true, slot.GetFloat(moves.Name)) : (slot, false, 0f);
+                case "materialColor":
+                    return slot.HasColor(moves.Name) ? (slot, true, slot.GetColor(moves.Name)[Array.IndexOf(AvatarAnimatorData.ColorChannels, moves.Channel)]) : (slot, false, 0f);
+                default:
+                    if (!slot.HasTexture(moves.Name)) return (slot, false, 0f);
+                    var channel = Array.IndexOf(AvatarAnimatorData.TextureChannels, moves.Channel);
+                    var pair = channel < 2 ? slot.GetTextureScale(moves.Name) : slot.GetTextureOffset(moves.Name);
+                    return (slot, true, pair[channel % 2]);
+            }
         }
 
         string PathAtRead(GameObject gameObject) => gameObject != null && pathAtRead.TryGetValue(gameObject, out var path) ? path : null;

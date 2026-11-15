@@ -245,6 +245,58 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // Smile on also sets the green of the color _Color of the Body
+        // renderer's material to 0.25 and the x offset of the texture _MainTex
+        // to 0.5; Unity keeps the animated color and the texture's scale and
+        // offset (_MainTex_ST) whole in the renderer's property block.
+        [Test]
+        public void MaterialColorAndTextureSTMatchUnity()
+        {
+            var (root, controller, data, bindings) = Build();
+            var renderer = bindings[1].Renderer;
+            var material = new Material(Shader.Find("Standard")) { name = "Body" };
+            owned.Add(material);
+            material.SetColor("_Color", new Color(1, .75f, .5f, 1));
+            material.SetTextureScale("_MainTex", new Vector2(2, 1));
+            renderer.sharedMaterial = material;
+            const int Green = 2, Offset = 3;
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialColor", Material = 0, Name = "_Color", Channel = "g", Rest = .75 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialTextureST", Material = 0, Name = "_MainTex", Channel = "z", Rest = 0 });
+            var on = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(controller)).OfType<AnimationClip>().Single(clip => clip.name == "Clip3");
+            foreach (var (target, property, value) in new[] { (Green, "material._Color.g", .25f), (Offset, "material._MainTex_ST.z", .5f) })
+            {
+                AnimationUtility.SetEditorCurve(on, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, value));
+                var track = new AvatarAnimatorData.Track { Target = target };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = value, InTangent = 0, OutTangent = 0 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1.0 / 60, Value = value, InTangent = 0, OutTangent = 0 });
+                track.Curves.Add(curve);
+                data.Clips[3].Tracks.Add(track);
+            }
+            var all = bindings.Concat(new[]
+            {
+                new AvatarAnimatorCrossCheck.Binding { Component = renderer, Material = material, Name = "_Color", Path = "Body" },
+                new AvatarAnimatorCrossCheck.Binding { Component = renderer, Material = material, Name = "_MainTex", Path = "Body" },
+            }).ToList();
+            data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, all, null);
+
+            Assert.That(result.Unsupported, Is.Null);
+            Assert.That((result.Inputs, result.Compared, result.Targets, result.Unbound), Is.EqualTo((9, 9, 4, 0)));
+            Assert.That(result.Mismatches.Select(m => $"{m.Input} {m.Frame} T{m.Target} {m.Unity} {m.Evaluator}"), Is.Empty);
+
+            // Data that holds another value differs on the fist, and names the channel.
+            var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
+            foreach (var (target, value, shown) in new[] { (Green, .5, "Body:_Color.g"), (Offset, .25, "Body:_MainTex_ST.z") })
+            {
+                var changed = AvatarAnimatorData.Read(AvatarAnimatorData.Write(data));
+                changed.Clips[3].Tracks.Single(t => t.Target == target).Curves[0].Keys.ForEach(key => key.Value = value);
+                var differs = AvatarAnimatorCrossCheck.Run(root, controller, changed, all, null);
+                Assert.That(differs.Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, target) }));
+                Assert.That(AvatarAnimatorCrossCheck.Describe(root, changed, all, target), Does.Contain(shown));
+            }
+        }
+
         // The objects, the Unity controller and the data written for them.
         (GameObject Root, AnimatorController Controller, AvatarAnimatorData Data, IReadOnlyList<AvatarAnimatorCrossCheck.Binding> Bindings) Build()
         {

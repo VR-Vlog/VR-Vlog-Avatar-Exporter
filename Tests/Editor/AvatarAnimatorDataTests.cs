@@ -371,7 +371,42 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(json => At(json, "targets", 0)["property"] = 1L);
             Rejects(json => At(json, "targets", 0).Remove("property"));
             Rejects(json => At(json, "targets", 0)["rest"] = 2L);
+            // A kind a newer exporter adds comes after the known ones (AnOmittedKindANewerExporterAddsIsKept).
             Rejects(json => At(json, "omitted", 0)["kind"] = "camera");
+        }
+
+        [Test]
+        public void AnOmittedKindANewerExporterAddsIsKept()
+        {
+            var json = Json(Sample());
+            var omitted = (List<object>)json["omitted"];
+            omitted.Add(new Dictionary<string, object> { ["kind"] = "camera", ["count"] = 2L });
+            omitted.Add(new Dictionary<string, object> { ["kind"] = "light", ["count"] = 1L });
+            var text = JsonDom.Serialize(json);
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(read.Omitted.Select(o => (o.Kind, o.Count)),
+                Is.EqualTo(new[] { ("blendShape", 2), ("behaviour", 1), ("operation", 3), ("camera", 2), ("light", 1) }));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+
+            // The kinds this exporter adds are known ones, in their place.
+            var data = Sample();
+            data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "materialProperty", Count = 4 });
+            data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "materialSwitch", Count = 1 });
+            Assert.That(AvatarAnimatorData.Read(Json(data)).Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "blendShape", "behaviour", "operation", "materialProperty", "materialSwitch" }));
+            Rejects(changed => ((List<object>)changed["omitted"]).Insert(0, new Dictionary<string, object> { ["kind"] = "materialSwitch", ["count"] = 1L }));
+
+            // A newer kind comes once, after every known one, and its name is text.
+            static void Add(Dictionary<string, object> changed, object kind) =>
+                ((List<object>)changed["omitted"]).Add(new Dictionary<string, object> { ["kind"] = kind, ["count"] = 1L });
+            Rejects(changed => { Add(changed, "camera"); Add(changed, "camera"); });
+            Rejects(changed => { Add(changed, "camera"); Add(changed, "unreadParameter"); });
+            Rejects(changed => Add(changed, ""));
+            Rejects(changed => Add(changed, 1L));
+            Rejects(changed => Add(changed, new string('a', 1025)));
+            Rejects(changed =>
+            {
+                for (var i = 0; i <= AvatarAnimatorData.MaximumOmittedKinds; i++) Add(changed, "kind" + i);
+            });
         }
 
         [Test]
@@ -679,20 +714,20 @@ namespace VRVlog.LilToonExporter.Tests
             return json;
         }
 
-        static Dictionary<string, object> MaterialColor(object rest) => new Dictionary<string, object>
+        static Dictionary<string, object> MaterialVector(object rest) => new Dictionary<string, object>
         {
-            ["node"] = 3L, ["property"] = "materialColor", ["material"] = 1L, ["name"] = "_Color", ["rest"] = rest,
+            ["node"] = 3L, ["property"] = "materialVector", ["material"] = 1L, ["name"] = "_Color", ["rest"] = rest,
             ["range"] = new List<object> { 0L, 1L }
         };
 
         [Test]
         public void AnUnknownTargetIsReadAsOneNothingWrites()
         {
-            var json = WithUnknown(MaterialColor(.5));
+            var json = WithUnknown(MaterialVector(.5));
             var text = JsonDom.Serialize(json);
             var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
             var unknown = read.Targets[3];
-            Assert.That((unknown.Known, unknown.Property, unknown.Node, unknown.Rest), Is.EqualTo((false, "materialColor", -1, .5)));
+            Assert.That((unknown.Known, unknown.Property, unknown.Node, unknown.Rest), Is.EqualTo((false, "materialVector", -1, .5)));
             Assert.That(read.Targets.Take(3).All(t => t.Known), Is.True);
             Assert.That(read.Clips[0].Tracks.Select(t => t.Target), Is.EqualTo(new[] { 0, 1, 3 }), "A clip may move it.");
             // Write keeps every key as read, so Write -> Read -> Write is the same text.
@@ -702,10 +737,10 @@ namespace VRVlog.LilToonExporter.Tests
 
             // Its keys are not looked at: a rest that is not a number reads as 0,
             // no rest at all too, and two alike are both kept.
-            Assert.That(AvatarAnimatorData.Read(WithUnknown(MaterialColor("half"))).Targets[3].Rest, Is.EqualTo(0));
+            Assert.That(AvatarAnimatorData.Read(WithUnknown(MaterialVector("half"))).Targets[3].Rest, Is.EqualTo(0));
             Assert.That(AvatarAnimatorData.Read(WithUnknown(new Dictionary<string, object> { ["property"] = "translation" })).Targets[3].Rest, Is.EqualTo(0));
-            var twice = WithUnknown(MaterialColor(1L));
-            ((List<object>)twice["targets"]).Add(MaterialColor(1L));
+            var twice = WithUnknown(MaterialVector(1L));
+            ((List<object>)twice["targets"]).Add(MaterialVector(1L));
             Assert.That(AvatarAnimatorData.Read(twice).Targets.Count(t => !t.Known), Is.EqualTo(2));
 
             // One made in code, with no keys read, is written as its property and rest.
@@ -794,6 +829,80 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithRendererAndMaterial())));
         }
 
+        // A materialColor and a materialTextureST target follow the sample's
+        // active and parameter targets, each with a track of clip 0.
+        const int ColorTarget = 3;
+
+        static AvatarAnimatorData WithMaterialChannels()
+        {
+            var data = Sample();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialColor", Material = 1, Name = "_Color", Channel = "g", Rest = .75 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialTextureST", Material = 0, Name = "_MainTex", Channel = "z", Rest = .125 });
+            for (var t = ColorTarget; t < ColorTarget + 2; t++)
+            {
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 0, InTangent = 0, OutTangent = 0 });
+                var track = new AvatarAnimatorData.Track { Target = t };
+                track.Curves.Add(curve);
+                data.Clips[0].Tracks.Add(track);
+            }
+            return data;
+        }
+
+        static void RejectsMaterialChannels(Action<Dictionary<string, object>> change)
+        {
+            var json = Json(WithMaterialChannels());
+            change(json);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void MaterialColorAndTextureSTTargetsRoundTrip()
+        {
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(WithMaterialChannels()));
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+            Assert.That(read.Targets.Skip(ColorTarget).Select(t => (t.Known, t.Node, t.Property, t.Material, t.Name, t.Channel, t.Rest)), Is.EqualTo(new[]
+            {
+                (true, -1, "materialColor", 1, "_Color", "g", .75),
+                (true, -1, "materialTextureST", 0, "_MainTex", "z", .125),
+            }));
+            var json = Json(WithMaterialChannels());
+            Assert.That(At(json, "targets", ColorTarget).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "channel", "material", "name", "property", "rest" }));
+            Assert.That(At(json, "targets", ColorTarget + 1).Keys.OrderBy(key => key, StringComparer.Ordinal), Is.EqualTo(new[] { "channel", "material", "name", "property", "rest" }));
+            // Another channel of the same property, the same channel of another
+            // material, and a materialFloat of the same name are their own targets.
+            var data = WithMaterialChannels();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialColor", Material = 1, Name = "_Color", Channel = "a", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialColor", Material = 0, Name = "_Color", Channel = "g", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 1, Name = "_Color", Rest = 1 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialTextureST", Material = 0, Name = "_MainTex", Channel = "x", Rest = 1 });
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(data)));
+        }
+
+        [Test]
+        public void ReadRejectsABrokenMaterialColorOrTextureSTTarget()
+        {
+            foreach (var t in new[] { ColorTarget, ColorTarget + 1 })
+            {
+                // Like a materialFloat target, with a channel of its kind.
+                RejectsMaterialChannels(json => At(json, "targets", t)["node"] = 3L);
+                RejectsMaterialChannels(json => At(json, "targets", t)["material"] = -1L);
+                RejectsMaterialChannels(json => At(json, "targets", t).Remove("name"));
+                RejectsMaterialChannels(json => At(json, "targets", t)["name"] = "");
+                RejectsMaterialChannels(json => At(json, "targets", t).Remove("channel"));
+                RejectsMaterialChannels(json => At(json, "targets", t)["channel"] = 0L);
+                RejectsMaterialChannels(json => At(json, "targets", t)["channel"] = "R");
+                RejectsMaterialChannels(json => At(json, "targets", t)["rest"] = "0.5");
+                RejectsMaterialChannels(json => At(json, "targets", t)["extra"] = 1L);
+                RejectsMaterialChannels(json => ((List<object>)json["targets"]).Add(At(json, "targets", t)));
+            }
+            // A color has r, g, b and a; a texture's scale and offset x, y, z and w.
+            RejectsMaterialChannels(json => At(json, "targets", ColorTarget)["channel"] = "x");
+            RejectsMaterialChannels(json => At(json, "targets", ColorTarget + 1)["channel"] = "r");
+            Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithMaterialChannels())));
+        }
+
         // An enabled target of a component the reader does not know is read
         // as an unknown target and written back as read.
         [Test]
@@ -828,7 +937,7 @@ namespace VRVlog.LilToonExporter.Tests
             track.Curves.Add(curve);
             clip.Tracks.Add(track);
             data.Clips.Add(clip);
-            data.Targets.Add(new AvatarAnimatorData.Target { Property = "materialColor", Node = -1, Rest = .5 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Property = "materialVector", Node = -1, Rest = .5 });
             var read = AvatarAnimatorData.Read(Json(data));
             Assert.That(AvatarAnimatorEvaluator.Supports(read, out var reason), Is.True, reason);
             var evaluator = new AvatarAnimatorEvaluator(read, () => 0);
