@@ -2645,6 +2645,119 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // Added materials count toward the app's 64 materials. With the
+        // meshes' materials one short of it, the first swap the curves name is
+        // added and the second is left out (its curve counted as material),
+        // so the lilToon extension stays rather than the whole file dropping it.
+        [Test]
+        public void AddedMaterialsPastTheLimitAreLeftOutAndTheLilToonExtensionStays()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var made = new List<Material>();
+            Material Copy(string name, Color color) { var copy = new Material(animator) { name = name }; copy.SetColor("_Color", color); made.Add(copy); return copy; }
+            try
+            {
+                void Add(string name, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Held", animator);
+                var warnings = new List<string>();
+                var baseline = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var count = ((List<object>)baseline["materials"]).Count;
+                var lostBefore = Omitted(Read(baseline), "material");
+                var mesh = glasses.GetComponent<MeshFilter>().sharedMesh;
+                for (var i = count; i < LilToonMobileProfile.MaximumMaterials - 1; i++)
+                {
+                    var part = new GameObject("Part " + i);
+                    part.transform.SetParent(avatar.Source.transform, false);
+                    part.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    part.AddComponent<MeshRenderer>().sharedMaterial = Copy("Part " + i, new Color(i / 64f, .5f, .5f));
+                }
+                var first = Copy("First", Color.red);
+                var second = Copy("Second", Color.blue);
+                Add("First", first, animator);
+                Add("Second", second, animator);
+                warnings.Clear();
+                var bytes = Export(avatar.Source, warnings, null);
+                var glb = GlbDocument.Read(bytes);
+                var json = glb.Json;
+                var materials = (List<object>)json["materials"];
+                Assert.That(materials.Count, Is.EqualTo(LilToonMobileProfile.MaximumMaterials), string.Join("\n", warnings));
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                Assert.That(extensions.ContainsKey(LilToonFullContract.ExtensionName), Is.True, string.Join("\n", warnings));
+                var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
+                Assert.That(((string)record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("First", LilToonMobileProfile.MaximumMaterials - 1)));
+
+                var data = Read(json);
+                var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
+                Assert.That(ClipOf(data, "First").Tracks.Single(t => t.Target == slot).Curves.Single().Keys.Select(k => k.Value).First(),
+                    Is.EqualTo((double)(LilToonMobileProfile.MaximumMaterials - 1)));
+                Assert.That(ClipOf(data, "Second").Tracks.Any(t => t.Target == slot), Is.False);
+                Assert.That(Omitted(data, "material"), Is.EqualTo(lostBefore + 1));
+                Assert.DoesNotThrow(() => LilToonFullContract.Validate(json, bytes.LongLength, glb.Binary.Length));
+            }
+            finally
+            {
+                foreach (var material in made) Object.DestroyImmediate(material);
+            }
+        }
+
+        // A swap target whose lilToon record cannot be read (AudioLink on) is
+        // left out alone: the other is still added with its record, and only
+        // the unreadable one's curve is counted as material.
+        [Test]
+        public void AnUnreadableSwapIsLeftOutAlone()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var loud = new Material(animator) { name = "Loud" };
+            var loose = new Material(animator) { name = "Loose" };
+            if (!loud.HasProperty("_UseAudioLink")) Assert.Ignore("This lilToon has no AudioLink switch.");
+            loud.SetFloat("_UseAudioLink", 1);
+            try
+            {
+                void Add(string name, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Held", animator);
+                var warnings = new List<string>();
+                var baseline = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var count = ((List<object>)baseline["materials"]).Count;
+                var lostBefore = Omitted(Read(baseline), "material");
+                Add("Loud", loud, animator);
+                Add("Loose", loose, animator);
+                warnings.Clear();
+                // AddUnbound logs why the record could not be read.
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new Regex("AudioLink"));
+                var json = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                Assert.That(((List<object>)json["materials"]).Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
+                Assert.That(((string)record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("Loose", count)));
+                var data = Read(json);
+                var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
+                Assert.That(ClipOf(data, "Loud").Tracks.Any(t => t.Target == slot), Is.False);
+                Assert.That(ClipOf(data, "Loose").Tracks.Any(t => t.Target == slot), Is.True);
+                Assert.That(Omitted(data, "material"), Is.EqualTo(lostBefore + 1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(loud);
+                Object.DestroyImmediate(loose);
+            }
+        }
+
         [Test]
         public void AMaterialSlotCurveIsAMeshRenderersMaterialsElement()
         {
