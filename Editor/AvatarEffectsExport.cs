@@ -111,7 +111,8 @@ namespace VRVlog.LilToonExporter
         {
             if (root == null) throw new ArgumentNullException(nameof(root));
             var capture = new AvatarEffectsExport { root = root.transform };
-            bool Excluded(Component component) => excluded != null && excluded(component.transform);
+            // VRChat removes objects tagged EditorOnly at upload; their effects never play.
+            bool Excluded(Component component) => EditorOnly(component.transform, root.transform) || excluded != null && excluded(component.transform);
 
             var systems = 0;
             var total = 0;
@@ -156,6 +157,13 @@ namespace VRVlog.LilToonExporter
             }
             capture.Rebind();
             return capture.effects.Count == 0 && capture.omitted.Count == 0 ? null : capture;
+        }
+
+        static bool EditorOnly(Transform transform, Transform root)
+        {
+            for (var current = transform; current != null; current = current == root ? null : current.parent)
+                if (current.CompareTag("EditorOnly")) return true;
+            return false;
         }
 
         // The build may remove the effect's object or any ancestor, and

@@ -299,6 +299,10 @@ namespace VRVlog.LilToonExporter.Tests
         public void LightsKeepTheirTypeColorIntensityRangeAndSpotAngle()
         {
             var root = Root();
+            // VRChat removes EditorOnly objects at upload; a preview light under one takes no slot.
+            var preview = Child(root.transform, "Preview");
+            preview.tag = "EditorOnly";
+            Child(preview.transform, "PreviewLight").AddComponent<Light>().lightmapBakeType = LightmapBakeType.Realtime;
             var spotObject = Child(root.transform, "Spot");
             spotObject.transform.localRotation = UnityEngine.Quaternion.Euler(90, 0, 0);
             var spot = spotObject.AddComponent<Light>();
