@@ -22,7 +22,11 @@
 
 ## 古い出力との関係
 
-書き出しは、表情ごとの値を評価器で確かめる（`AvatarAnimatorCrossCheck.FaceMismatch`）。FXのレイヤーがTransformのマスクを持ち、表情がそのマスクの外のTransformを動かすときだけ、評価器の値が変わる。変わった値はUnityの再生に近づく。それ以外のアバターの書き出しは変わらない。
+書き出しは、表情ごとの値を評価器で確かめる（`AvatarAnimatorCrossCheck.FaceMismatch`）。FXのレイヤーがTransformのマスクを持ち、表情のクリップがそのマスクの外のTransformを動かすときだけ、評価器の値が変わる。
+
+- VRMの表情のTransformの値（`ExpressionTransformCurves`）はマスクを見ずにクリップから作る。この形の表情は、評価器（＝Unityの再生）では動かないTransformをVRMの表情が動かすので、`FaceMismatch`が不一致を返し、`VRVLOG_avatar_animator`の`expressions`から外れる（ログに「left out」と出る）。VRChatで動かない値をアプリが表情として出さない方向の変化
+- VRChatの手のマスク（Humanoidの部位だけを持ち、Transformを持たない）は`nodes`が無いので、今までと変わらない
+- それ以外のアバターの書き出しは変わらない
 
 ## 採らなかった案
 
