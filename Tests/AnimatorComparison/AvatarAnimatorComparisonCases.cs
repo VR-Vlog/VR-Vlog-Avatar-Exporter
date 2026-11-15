@@ -205,6 +205,8 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return AnyStateRunning("anyStateOrdered");
             yield return AnyStateRunning("anyStateUnordered");
             yield return AnyStateRunning("anyStateBeforeDestination");
+            yield return ExitTimeRestart(false);
+            yield return ExitTimeRestart(true);
             yield return WriteDefaultsOff();
             yield return Layers();
             yield return Trees();
@@ -423,6 +425,26 @@ namespace VRVlog.AvatarAnimator.Comparison
             anys.Add(To(e, duration: .5).When(stop2, "if"));
             c.Input(.2, go, 1).Input(.3, go, 0).Input(.5, stop2, 1).Input(.6, stop2, 0)
              .Input(1.6, go, 1).Input(1.7, go, 0).Input(1.9, stop, 1).Input(2, stop, 0);
+            return c.Case;
+        }
+
+        // A transition with an exit time and no ordered interruption, longer
+        // than a loop of its source: it starts itself again when the source
+        // crosses the exit time once more, then the source holds still and
+        // it is not crossed again.
+        static Case ExitTimeRestart(bool condition)
+        {
+            var c = new Builder(condition ? "exitTimeRestartGo" : "exitTimeRestart", 5);
+            var go = c.Parameter("Go", "bool");
+            var node = c.Target(0);
+            var layer = c.Layer("Exit");
+            var a = c.State(layer, "A", c.Ramp(1, true, node, 0, 1));
+            var b = c.State(layer, "B", c.Ramp(1, true, node, 10, 11));
+            var slow = To(b, duration: 2, exitTime: true, at: .9);
+            if (condition) slow.When(go, "if");
+            slow.InterruptionSource = "source";
+            layer.States[a].Transitions.Add(slow);
+            if (condition) c.Input(.5, go, 1);
             return c.Case;
         }
 

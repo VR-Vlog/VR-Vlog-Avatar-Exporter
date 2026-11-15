@@ -27,7 +27,7 @@ namespace VRVlog.AvatarAnimator
     // interrupted by Any State's transitions first, then by its source's or
     // destination's; ordered, a list stops before the running transition,
     // otherwise the running transition interrupts itself; an interrupted
-    // transition blends from a still copy;
+    // transition blends from a still copy, and its source's time stops;
     // M6 for a target a state's motion does not write: mid-transition, when
     // the other side's motion writes it, a Write Defaults side gives the
     // rest; otherwise a Write Defaults state leaves it to the layers below
@@ -458,7 +458,9 @@ namespace VRVlog.AvatarAnimator
 
             var n0 = layer.Time;
             var length = StateLength(states[layer.State]);
-            layer.Time = AdvanceTime(states[layer.State], n0, dt, length);
+            // M5: after an interruption the source is a still copy, so its time
+            // stops too and its exit times are not crossed again.
+            if (!layer.Frozen) layer.Time = AdvanceTime(states[layer.State], n0, dt, length);
             double next0 = 0;
             if (layer.Transitioning)
             {
@@ -611,6 +613,9 @@ namespace VRVlog.AvatarAnimator
             for (var c = 0; c < chainCount; c++)
                 foreach (var condition in chain[c].Conditions)
                     if (types[condition.Parameter] == TriggerType) spent[condition.Parameter] = true;
+            // M5: a transition that starts itself again does not run its destination's
+            // behaviours again, so they run once as before (not measured in Unity).
+            var restart = layer.Transitioning && ReferenceEquals(transition, layer.Active) && destination == layer.Next;
             if (layer.Transitioning)
             {
                 // M5: the interrupted blend continues as a still copy.
@@ -626,7 +631,12 @@ namespace VRVlog.AvatarAnimator
             layer.NextTime = transition.Offset;
             layer.Progress = 0;
             layer.Duration = transition.HasFixedDuration ? transition.Duration : transition.Duration * sourceLength;
-            Enter(layer, destination);
+            if (restart)
+            {
+                layer.EnterSerial++;
+                layer.EnteredState = -1;
+            }
+            else Enter(layer, destination);
             if (overshoot > 0)
             {
                 var states = layer.Layer.States;

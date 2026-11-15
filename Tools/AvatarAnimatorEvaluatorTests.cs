@@ -759,6 +759,20 @@ public static class AvatarAnimatorEvaluatorTests
         e.Advance(.25);
         Near(e.TransitionProgress(0), .25, "M5: ordered, the running transition goes on");
 
+        // M5: starting again does not run the destination's driver again.
+        slow.OrderedInterruption = false;
+        var count = b.Parameter("Count", "int");
+        var addOne = new AvatarAnimatorData.Behaviour { Type = "parameterDriver" };
+        addOne.Operations.Add(new AvatarAnimatorData.Operation { Type = "add", Parameter = count, Value = 1 });
+        layer.States[c].Behaviours.Add(addOne);
+        e = b.Build();
+        e.Advance(Frame);
+        e.Set(go, 1);
+        e.Advance(Frame);
+        e.Advance(.25);
+        Check(e.NextState(0) == c && e.Get(count) == 1, "M5: the driver runs once while the transition starts again");
+        layer.States[c].Behaviours.Remove(addOne);
+
         // Any State interrupts unless the interruption source is none, before
         // the destination's transitions.
         var away = Builder.State(layer, "E", b.Clip(1, true, (node, 9)));
