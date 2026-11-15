@@ -52,7 +52,8 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<(SkinnedMeshRenderer, string), int> morphIndex = new Dictionary<(SkinnedMeshRenderer, string), int>();
         readonly List<List<(int Morph, ExpressionAnimationData.Curve Curve)>> clipMorphTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
         // Renderer enabled curves stay renderers until the output nodes are
-        // known, each renderer with its enabled flag when its first curve was read.
+        // known, each renderer with its enabled flag when its first curve was
+        // read, or the one enabledRest gives it.
         readonly List<(Renderer Renderer, int Default)> renderers = new List<(Renderer, int)>();
         readonly Dictionary<Renderer, int> rendererIndex = new Dictionary<Renderer, int>();
         readonly List<List<(int Renderer, ExpressionAnimationData.Curve Curve)>> clipEnabledTracks = new List<List<(int, ExpressionAnimationData.Curve)>>();
@@ -101,6 +102,7 @@ namespace VRVlog.LilToonExporter
 
         readonly GameObject root;
         readonly IReadOnlyDictionary<GameObject, bool> rest;
+        readonly IReadOnlyDictionary<Renderer, bool> enabledRest;
         readonly Dictionary<string, int> parameterIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         readonly HashSet<string> controllerParameters = new HashSet<string>(StringComparer.Ordinal);
         // The names Expression Parameters or the FX controller declare.
@@ -125,9 +127,10 @@ namespace VRVlog.LilToonExporter
         readonly List<(VrmMenuExpressions.Expression Face, SortedSet<int> Clips)> faces = new List<(VrmMenuExpressions.Expression, SortedSet<int>)>();
         bool readingAdditive;
 
-        AvatarAnimatorCapture(GameObject root, IReadOnlyDictionary<GameObject, bool> rest, Dictionary<AnimationClip, AnimationClip> overrides)
+        AvatarAnimatorCapture(GameObject root, IReadOnlyDictionary<GameObject, bool> rest, IReadOnlyDictionary<Renderer, bool> enabledRest,
+            Dictionary<AnimationClip, AnimationClip> overrides)
         {
-            this.root = root; this.rest = rest; this.overrides = overrides;
+            this.root = root; this.rest = rest; this.enabledRest = enabledRest; this.overrides = overrides;
         }
 
         // activeSelf of every object of the copy before the export's own
@@ -240,14 +243,18 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal static AvatarAnimatorCapture Capture(GameObject clone, IReadOnlyDictionary<GameObject, bool> rest)
+        // enabledRest gives renderers whose enabled the export's own steps
+        // changed the value they had (ObjectToggleCapture.CopiedEnablementRest).
+        internal static AvatarAnimatorCapture Capture(GameObject clone, IReadOnlyDictionary<GameObject, bool> rest,
+            IReadOnlyDictionary<Renderer, bool> enabledRest = null)
         {
             var descriptor = VrChatExpressionMenu.Descriptor(clone);
             if (descriptor == null) return null;
             var fx = Fx(descriptor);
             if (fx == null) return null;
             var controller = ExpressionDependencies.Controller(fx);
-            var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), ExpressionDependencies.Overrides(fx)) { Controller = fx };
+            var capture = new AvatarAnimatorCapture(clone, rest ?? new Dictionary<GameObject, bool>(), enabledRest ?? new Dictionary<Renderer, bool>(),
+                ExpressionDependencies.Overrides(fx)) { Controller = fx };
             var expressions = Member(descriptor, "customExpressions") is bool enabled && enabled;
             capture.ReadParameters(expressions ? Member(descriptor, "expressionParameters") : null, controller);
             capture.data.Controllers.Add(capture.ReadController(controller));
@@ -255,6 +262,9 @@ namespace VRVlog.LilToonExporter
             if (expressions) capture.ReadMenus(Member(descriptor, "expressionsMenu"));
             return capture;
         }
+
+        // Whether an FX curve turns this renderer on and off (an enabled target).
+        internal bool Switches(Renderer renderer) => renderer != null && rendererIndex.ContainsKey(renderer);
 
         // Matches the faces to the clips read above. The faces were read from
         // the build's copy before the optimizer, which may replace a clip
@@ -1408,7 +1418,7 @@ namespace VRVlog.LilToonExporter
             if (rendererIndex.TryGetValue(renderer, out var index)) return index;
             rendererIndex[renderer] = renderers.Count;
             pathAtRead[renderer.gameObject] = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
-            renderers.Add((renderer, renderer.enabled ? 1 : 0));
+            renderers.Add((renderer, (enabledRest.TryGetValue(renderer, out var enabled) ? enabled : renderer.enabled) ? 1 : 0));
             return renderers.Count - 1;
         }
 

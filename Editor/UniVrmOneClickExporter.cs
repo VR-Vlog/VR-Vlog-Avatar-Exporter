@@ -891,7 +891,9 @@ namespace VRVlog.LilToonExporter
                 // left them. Only read; nothing below changes the FX.
                 // The faces are matched to its clips here, while the build's
                 // record of the clips it copied is still open.
-                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest)?.ReadFaces(expressions,
+                // A merge that copies enablement ran only with Optimizing.
+                var enabledRest = optimizes && requiresPreparation ? objectToggles?.CopiedEnablementRest : null;
+                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest, enabledRest)?.ReadFaces(expressions,
                     clip => ListFaceSource(listFaces, listFaceSources, clip), preparation != null ? preparation.IsolatedCopyOf : (Func<UnityEngine.Object, UnityEngine.Object>)null,
                     value => RegisteredOriginal(preparation?.ObjectRegistry, value)), () => null);
                 // The same holds for expressions or materials the optimizer
@@ -1043,7 +1045,7 @@ namespace VRVlog.LilToonExporter
                         // Default-off meshes are already on in the copy; without the
                         // extension they would show, so a failure writes the file
                         // again without the toggles.
-                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
+                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings, avatarAnimator == null ? null : avatarAnimator.Switches), () => null);
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
                             AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
                                 animatorMorphReverses), material => model.Materials.IndexOf(material)), () => null);
