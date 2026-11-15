@@ -623,8 +623,15 @@ namespace VRVlog.LilToonExporter
             // with their settings as VRVLOG_avatar_constraints.
             var avatarConstraints = new AvatarConstraintsExport();
             VRVlog.AvatarConstraints.AvatarConstraintsData avatarConstraintsData = null;
-            // Builds the FX extension again with or without the constraint entries.
-            Func<Func<Component, int>, VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
+            // The PhysBones' settings for their parameters, VRVLOG_avatar_physbones.
+            AvatarPhysBonesExport physBones = null;
+            VRVlog.AvatarPhysBones.AvatarPhysBonesData physBonesData = null;
+            // Builds the FX extension again: with the constraint entries while
+            // animatorConstraints is set, and with the PhysBone parameters
+            // builtin while animatorPhysBones is.
+            Func<Component, int> animatorConstraints = null;
+            ISet<string> animatorPhysBones = null;
+            Func<VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -1035,6 +1042,9 @@ namespace VRVlog.LilToonExporter
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
                 recoveryReport.Phase = ExportPhase.Springs;
+                // Read before the conversion; a failure writes the file without the extension.
+                try { physBones = AvatarPhysBonesExport.Capture(clone); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
@@ -1098,13 +1108,17 @@ namespace VRVlog.LilToonExporter
                         // Before the FX, whose constraint enabled curves name the entries.
                         // Checked against the nodes here, so Inject has little left to fail on.
                         avatarConstraintsData = OptionalConstraints(() => AvatarConstraintsExport.Checked(avatarConstraints.Resolve(OutputNode), model.Nodes.Count), null);
+                        // Also before the FX, whose builtin parameters are those of its entries.
+                        try { physBonesData = AvatarPhysBonesExport.Checked(physBones?.Resolve(OutputNode), model.Nodes.Count); }
+                        catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                         if (avatarAnimator != null)
                         {
-                            resolveAnimator = constraint => avatarAnimator.Resolve(OutputNode,
+                            animatorConstraints = avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null;
+                            animatorPhysBones = physBonesData != null ? AvatarPhysBonesExport.ParameterNames(physBonesData) : null;
+                            resolveAnimator = () => avatarAnimator.Resolve(OutputNode,
                                 AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
-                                    animatorMorphReverses), material => model.Materials.IndexOf(material), constraint);
-                            avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator,
-                                () => resolveAnimator(avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null), () => null);
+                                    animatorMorphReverses), material => model.Materials.IndexOf(material), animatorConstraints, animatorPhysBones);
+                            avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
                         }
                         try { effectsData = effects?.Resolve(OutputNode); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
@@ -1272,7 +1286,22 @@ namespace VRVlog.LilToonExporter
                     var withConstraints = OptionalConstraints(() => AvatarConstraintsExport.Inject(exported, avatarConstraintsData), null);
                     if (withConstraints != null) exported = withConstraints;
                     else if (avatarAnimatorData != null && resolveAnimator != null)
-                        avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => resolveAnimator(null), () => null);
+                    {
+                        animatorConstraints = null;
+                        avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                    }
+                }
+                // The PhysBones too: without the table, the FX is built again
+                // with their parameters animator, as before the extension.
+                if (physBonesData != null)
+                {
+                    var withPhysBones = OptionalConstraints(() => AvatarPhysBonesExport.Inject(exported, physBonesData), null);
+                    if (withPhysBones != null) exported = withPhysBones;
+                    else if (avatarAnimatorData != null && resolveAnimator != null)
+                    {
+                        animatorPhysBones = null;
+                        avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                    }
                 }
                 if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, avatarAnimator.FaceClips), () => exported);
                 if (effectsData != null)
