@@ -104,10 +104,9 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, fx);
             shown.motion = clip;
             var go = drive.AddTransition(shown);
-            // Transitions see a driver's change from the next frame (M8); the
-            // exit time keeps the transition after the value is set.
-            go.hasExitTime = true;
-            go.exitTime = .26f;
+            // No exit time: the transition waits only for Shown, which it sees
+            // from the frame after the driver sets it (M8), as in Unity.
+            go.hasExitTime = false;
             go.duration = 0;
             go.AddCondition(AnimatorConditionMode.If, 0, "Shown");
             var control = shown.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl"));
