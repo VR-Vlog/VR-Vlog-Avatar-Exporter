@@ -903,6 +903,48 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => AvatarAnimatorData.Read(Json(WithMaterialChannels())));
         }
 
+        // A constraint's enabled target names the node the constraint moves
+        // and the index of its VRVLOG_avatar_constraints entry. Two
+        // constraints on one node are two targets; the same entry twice is
+        // rejected like any repeated target.
+        [Test]
+        public void AConstraintEnabledTargetNamesItsEntry()
+        {
+            Dictionary<string, object> Constraint(long node, long index) =>
+                new Dictionary<string, object> { ["node"] = node, ["property"] = "enabled", ["component"] = "constraint", ["index"] = index, ["rest"] = 1L };
+            var json = WithUnknown(Constraint(3, 2));
+            var text = JsonDom.Serialize(json);
+            var read = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            var target = read.Targets[3];
+            Assert.That((target.Known, target.Node, target.Component, target.Index, target.Rest), Is.EqualTo((true, 3, "constraint", 2, 1d)));
+            Assert.That(target.Fields, Is.Null);
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(text));
+
+            // A known target made with Fields, as the capture makes it, is written as them.
+            var data = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            data.Targets[3] = new AvatarAnimatorData.Target { Node = -1, Property = "enabled", Component = "constraint", Rest = 1, Fields = Constraint(3, 2) };
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(data)), Is.EqualTo(text));
+
+            var second = WithUnknown(Constraint(3, 2));
+            ((List<object>)second["targets"]).Add(Constraint(3, 5));
+            Assert.That(AvatarAnimatorData.Read(second).Targets[4].Index, Is.EqualTo(5));
+            ((List<object>)second["targets"]).Add(Constraint(3, 5));
+            Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(second));
+
+            void Rejects(Action<Dictionary<string, object>> change)
+            {
+                var broken = Constraint(3, 2);
+                change(broken);
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(WithUnknown(broken))).Message, Is.EqualTo(Invalid));
+            }
+            Rejects(t => t.Remove("index"));
+            Rejects(t => t["index"] = -1L);
+            Rejects(t => t["index"] = 1.5);
+            Rejects(t => t.Remove("node"));
+            Rejects(t => t["rest"] = .5);
+            Rejects(t => t["material"] = 0L);
+        }
+
         // An enabled target of a component the reader does not know is read
         // as an unknown target and written back as read.
         [Test]
