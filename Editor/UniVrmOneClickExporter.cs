@@ -1045,7 +1045,8 @@ namespace VRVlog.LilToonExporter
                         // Default-off meshes are already on in the copy; without the
                         // extension they would show, so a failure writes the file
                         // again without the toggles.
-                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings, avatarAnimator == null ? null : avatarAnimator.Switches), () => null);
+                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings,
+                            avatarAnimator == null ? null : (Func<Renderer, bool>)(renderer => avatarAnimator.Switches(renderer) && OutputNode(renderer.gameObject) >= 0)), () => null);
                         if (avatarAnimator != null) avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => avatarAnimator.Resolve(OutputNode,
                             AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
                                 animatorMorphReverses), material => model.Materials.IndexOf(material)), () => null);

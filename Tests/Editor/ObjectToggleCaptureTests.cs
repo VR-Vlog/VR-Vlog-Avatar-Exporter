@@ -451,7 +451,7 @@ namespace VRVlog.LilToonExporter.Tests
         // Merged's enabled target rests off as Hat did, where VRChat's build
         // leaves it, while Merged keeps its mesh for the FX to show. Without it
         // the merge keeps what it did: Hat's toggle is lost with a warning and
-        // nothing turns Merged off. AAO 1.8 copies nothing for Hat alone (see
+        // nothing turns Merged off. AAO 1.8 copies no m_IsActive for Hat alone (see
         // ObjectToggleCapture.ReadCopiedEnablement); the warning then stays
         // exactly when Merged gets no enabled target.
         [TestCase(true, true)]

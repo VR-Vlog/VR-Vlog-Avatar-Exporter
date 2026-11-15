@@ -263,8 +263,10 @@ namespace VRVlog.LilToonExporter
             return capture;
         }
 
-        // Whether an FX curve turns this renderer on and off (an enabled target).
-        internal bool Switches(Renderer renderer) => renderer != null && rendererIndex.ContainsKey(renderer);
+        // Whether an FX curve turns this renderer on and off: an enabled target
+        // when the renderer is also a mesh in the file (see Resolve).
+        internal bool Switches(Renderer renderer) =>
+            renderer != null && rendererIndex.ContainsKey(renderer) && renderer.enabled && renderer.gameObject.activeInHierarchy;
 
         // Matches the faces to the clips read above. The faces were read from
         // the build's copy before the optimizer, which may replace a clip

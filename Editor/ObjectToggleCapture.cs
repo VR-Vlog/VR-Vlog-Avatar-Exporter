@@ -180,8 +180,9 @@ namespace VRVlog.LilToonExporter
         // animated, so it is that object: the FX turns the merged renderer on
         // and off for it (AvatarAnimatorCapture writes an enabled target), and
         // one turned on above leaves the renderer on where VRChat has it off.
-        // AAO 1.8 finds that object under a common root that skips the second
-        // of the renderers, so with one source it copies nothing: Resolve
+        // AAO 1.8 looks for that object under a common root that skips the
+        // second of the renderers, so with one source it copies no object's
+        // m_IsActive (only the source renderer's own m_Enabled): Resolve
         // hands a target over only when the FX does switch the renderer.
         void ReadCopiedEnablement(GameObject clone, HashSet<GameObject> turnedOn)
         {
@@ -200,7 +201,12 @@ namespace VRVlog.LilToonExporter
                 foreach (var source in sources)
                     for (var at = source.transform; at != top && at != clone.transform; at = at.parent)
                     {
-                        if (targets.Contains(at.gameObject)) copiedEnablement[at.gameObject.GetInstanceID()] = merged;
+                        if (targets.Contains(at.gameObject))
+                        {
+                            var id = at.gameObject.GetInstanceID();
+                            if (!copiedEnablement.TryGetValue(id, out var mergedInto)) copiedEnablement[id] = mergedInto = new List<Renderer>();
+                            mergedInto.Add(merged);
+                        }
                         off |= turnedOn.Contains(at.gameObject);
                     }
                 if (off) copiedEnablementRest[merged] = false;
@@ -240,9 +246,9 @@ namespace VRVlog.LilToonExporter
         }
 
         // Targets on the way to the meshes such a merge removes, by instance
-        // ID, which outlives the object, and the merged renderer, whose
+        // ID, which outlives the object, and the merged renderers, whose
         // enabled target shows and hides what they did.
-        readonly Dictionary<int, Renderer> copiedEnablement = new Dictionary<int, Renderer>();
+        readonly Dictionary<int, List<Renderer>> copiedEnablement = new Dictionary<int, List<Renderer>>();
         readonly Dictionary<Renderer, bool> copiedEnablementRest = new Dictionary<Renderer, bool>();
 
         // The merged renderers that VRChat has off at rest though the copy
@@ -294,7 +300,7 @@ namespace VRVlog.LilToonExporter
                     if (index < 0)
                     {
                         if (group.Targets[i] is null || switches == null ||
-                            !(copiedEnablement.TryGetValue(group.Targets[i].GetInstanceID(), out var merged) && switches(merged)))
+                            !(copiedEnablement.TryGetValue(group.Targets[i].GetInstanceID(), out var mergedInto) && mergedInto.Any(switches)))
                             warnings?.Add(ExporterLocalization.T(MissingWarning) + group.Paths[i]);
                         continue;
                     }

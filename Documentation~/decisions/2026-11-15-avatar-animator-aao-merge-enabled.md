@@ -10,15 +10,16 @@
 
 書き出しでは、AAO が走る前に ObjectToggleCapture が既定でオフの表示切り替えの対象をオンにしている（メッシュを書くため）。このため AAO が見る値はオンで、まとめた Renderer の `enabled` は 1 になる。VRChat のビルドでは同じ Renderer は 0 で、アプリでは既定でオフのはずのメッシュが出ていた。AAO がまとめて消したオブジェクトは、表示切り替えから「書き出しで無くなったオブジェクト」の警告つきで外れていた。FX の `enabled` のターゲットがそのメッシュを切り替えるので、この警告は誤りだった。
 
-検証用のプロジェクトで AAO 1.8.16 を使って確かめた。AAO の `Utils.CommonRoot` は 2 番目の Transform を読み飛ばす。元のメッシュが 1 つのまとめでは共通の親が元のメッシュ自身になり、有効化のアニメーションは何も写らない。元が 2 つ以上なら写る。
+検証用のプロジェクトで AAO 1.8.16 を使って確かめた。AAO の `Utils.CommonRoot` は 2 番目の Transform を読み飛ばす。元のメッシュが 1 つのまとめでは共通の親が元のメッシュ自身になり、途中のオブジェクトの `m_IsActive` は写らない（元の Renderer 自身の `m_Enabled` は写る）。元が 2 つ以上なら写る。
 
 ## 決定
 
 - ObjectToggleCapture は、対象をオンにしたあと、`copyEnablementAnimation` がオンの Merge Skinned Mesh を探す。元のメッシュ（`renderersSet` と `staticRenderersSet`）から共通の親（元とまとめ先のすべてを含む一番深い Transform。親自身は含まない）までの道のりに表示切り替えの対象があるかを見る。対象は FX が動かすものなので、あれば AAO が写す 1 か所はその対象になる
   - そのうち 1 つでもさっきオンにしたものなら、まとめた Renderer の `enabled` の rest を 0 にする（`CopiedEnablementRest`）。AvatarAnimatorCapture は、この Renderer の `enabled` のターゲットの rest を、書き出し時の `enabled` でなくこの値にする
-  - 道のりにある対象が書き出しで無くなったときは、FX がまとめた Renderer を切り替える（AvatarAnimatorCapture がその Renderer の `enabled` のカーブを読んだ）ときに限り、警告を出さずに FX に任せる。AAO 1.8 が元 1 つで何も写さないときは、今までどおり警告を出す。AAO の読み飛ばしを真似ずに FX の結果を見るので、AAO 側が直っても合う
+  - 道のりにある対象が書き出しで無くなったときは、FX がまとめた Renderer を切り替えるときに限り、警告を出さずに FX に任せる。切り替えるとは、AvatarAnimatorCapture がその Renderer の `enabled` のカーブを読み、Renderer が書き出し時にオンでファイルにメッシュとして書かれること。AAO 1.8 が元 1 つで写さないときは、今までどおり警告を出す。AAO の読み飛ばしを真似ずに FX の結果を見るので、AAO 側が直っても合う
 - Optimizing を走らせない書き出し（プレビューの複製など）では、この値を使わない
 - `copyEnablementAnimation` がオフのまとめと、AAO を使わないアバターの出力は変えない
+- 既にある差として、`skipEnablementMismatchedRenderers` がオンのまとめでは、VRChat は既定オフの元を有効化が合わないとしてまとめずに残すが、書き出しでは対象をオンにしてから AAO が走るのでまとめられる。`copyEnablementAnimation` もオンならこの変更で VRChat と同じ見え方になるが、オフだと今までどおり警告つきで表示切り替えが落ちる。この段では扱わない
 
 検証用のプロジェクトで、5 通りのアバター（元 2 つで既定オフ・既定オン、写さないまとめ、静的メッシュのまとめ、親が切り替わる静的メッシュのまとめ）を、変える前と後で書き出し、`Tools/compare-exports.py --diff-paths` で比べた。変わったのは既定オフの 1 通りの `/extensions/VRVLOG_avatar_animator/targets/0/rest`（1 から 0）だけで、ほかの 4 通りは同じだった。既定オフと既定オンでは、無くなったオブジェクトの警告も出なくなった。
 
