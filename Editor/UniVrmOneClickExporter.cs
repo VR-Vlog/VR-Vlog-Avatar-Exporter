@@ -619,6 +619,9 @@ namespace VRVlog.LilToonExporter
             // The particles the VRM cannot carry, for VRVLOG_avatar_effects.
             AvatarEffectsExport effects = null;
             Dictionary<string, object> effectsData = null;
+            // The Contact Senders and Receivers, for VRVLOG_avatar_contacts.
+            AvatarContactsExport contacts = null;
+            VRVlog.AvatarContacts.AvatarContactsData contactsData = null;
             // The constraints ConstraintExport leaves in their pose, written
             // with their settings as VRVLOG_avatar_constraints.
             var avatarConstraints = new AvatarConstraintsExport();
@@ -646,6 +649,9 @@ namespace VRVlog.LilToonExporter
                 // while the copy still matches the source. A failure writes the
                 // file without the extension.
                 try { effects = AvatarEffectsExport.Capture(clone, target => manualExclusions.ContainsCopyTransform(clone, target)); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                // The contacts too, which the gimmick removal takes with their objects.
+                try { contacts = AvatarContactsExport.Capture(clone, target => manualExclusions.ContainsCopyTransform(clone, target)); }
                 catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
@@ -1077,6 +1083,8 @@ namespace VRVlog.LilToonExporter
                 // The particles hang from what the build left, as it stands now.
                 try { effects?.Rebind(); }
                 catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); effects = null; }
+                try { contacts?.Rebind(); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); contacts = null; }
                 // Every capture above is taken; objects with nothing to write
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)
@@ -1121,6 +1129,8 @@ namespace VRVlog.LilToonExporter
                             avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
                         }
                         try { effectsData = effects?.Resolve(OutputNode); }
+                        catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                        try { contactsData = AvatarContactsExport.Checked(contacts?.Resolve(OutputNode), model.Nodes.Count); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
@@ -1313,6 +1323,10 @@ namespace VRVlog.LilToonExporter
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 // Nothing written: still say what was left out.
                 if (effectsData == null && effects?.LeftOut is string effectsNoneWritten) warnings?.Add(effectsNoneWritten);
+                if (contactsData != null)
+                    try { exported = AvatarContactsExport.Inject(exported, contactsData); }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                if (contacts?.LeftOut is string contactsLeftOut) warnings?.Add(contactsLeftOut);
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);
