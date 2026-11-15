@@ -692,8 +692,7 @@ namespace VRVlog.AvatarAnimator
             if (layer.Duration <= 0 || layer.Progress >= 1) Complete(layer);
         }
 
-        // Only a transition is interrupted, so the layer did not pass in the
-        // last frame; Rebuild keeps that from mattering.
+        // A layer that passed keeps no Out, so rebuild it before copying.
         void Snap(LayerRun layer)
         {
             if (layer.Passed >= 0) Rebuild(layer);
