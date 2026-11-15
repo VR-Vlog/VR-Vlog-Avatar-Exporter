@@ -118,7 +118,7 @@ namespace VRVlog.AvatarAnimator
 
         // The omitted kinds that change how the controller moves: playing
         // without them would take other transitions than Unity.
-        static readonly string[] TimingKinds = { "parameter", "operation", "unreadParameter" };
+        static readonly string[] TimingKinds = AvatarAnimatorData.TransitionOmittedKinds;
 
         static readonly string[] BlendTypes = { "1d", "direct", "2dSimpleDirectional", "2dFreeformCartesian", "2dFreeformDirectional" };
 

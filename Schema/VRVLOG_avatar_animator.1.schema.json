@@ -282,13 +282,25 @@
           }
         },
         "omitted": {
-          "description": "A Gesture or Action controller only, and only when not empty: what the exporter left out while reading this controller (its states, behaviours, motions and clips), counted as the root omitted counts it. The FX's omissions, and those of the extension as a whole, stay in the root omitted. A reader that plays the controllers tells from this whose transitions an omission changes.",
+          "description": "A Gesture or Action controller only, and only when not empty: what the exporter left out while reading this controller that changes which transitions it takes: the kinds parameter, operation and unreadParameter in that order, then a kind a newer exporter adds, each once. Other kinds of the controller, the FX's omissions and those of the extension as a whole stay in the root omitted. A reader that plays the controllers tells from this whose transitions an omission changes.",
           "type": "array",
           "minItems": 1,
           "maxItems": 64,
           "items": {
             "$ref": "#/$defs/omission"
           }
+        }
+      },
+      "if": {
+        "properties": {
+          "playable": {
+            "const": "fx"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "omitted": false
         }
       }
     },

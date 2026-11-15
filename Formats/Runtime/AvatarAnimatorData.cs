@@ -74,6 +74,10 @@ namespace VRVlog.AvatarAnimator
         // The order the omitted kinds are written in. A newer exporter adds
         // kinds at the end; a reader keeps those it does not know (see Read).
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader", "humanoidTransform", "rotationMixed", "humanoidRoot" };
+        // The omitted kinds that change which transitions a controller takes,
+        // in OmittedKinds order. A gesture or action controller's own omitted
+        // holds only these, and the kinds a newer exporter adds.
+        public static readonly string[] TransitionOmittedKinds = { "parameter", "operation", "unreadParameter" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
@@ -584,7 +588,7 @@ namespace VRVlog.AvatarAnimator
                 if (omitted)
                 {
                     if (controller.Playable == "fx") throw Json.Bad();
-                    ReadOmitted(c["omitted"], controller.Omitted);
+                    ReadOmitted(c["omitted"], controller.Omitted, TransitionOmittedKinds);
                     if (controller.Omitted.Count == 0) throw Json.Bad();
                 }
                 var next = Array.IndexOf(ControllerPlayables, controller.Playable);
@@ -876,13 +880,14 @@ namespace VRVlog.AvatarAnimator
                 data.Expressions.Add(expression);
             }
 
-            ReadOmitted(root["omitted"], data.Omitted);
+            ReadOmitted(root["omitted"], data.Omitted, OmittedKinds);
             return data;
         }
 
-        // Known kinds in OmittedKinds order, then the kinds a newer exporter
-        // added, each once.
-        static void ReadOmitted(object value, List<Omission> into)
+        // Known kinds in the order of known, then the kinds a newer exporter
+        // added, each once. A kind of OmittedKinds that known leaves out is
+        // not read.
+        static void ReadOmitted(object value, List<Omission> into, string[] known)
         {
             var kind = -1;
             var newer = new HashSet<string>(StringComparer.Ordinal);
@@ -890,8 +895,8 @@ namespace VRVlog.AvatarAnimator
             {
                 var o = Json.Obj(raw, "kind", "count");
                 var omission = new Omission { Kind = Name(o["kind"]), Count = Json.NonNegative(o["count"]) };
-                var next = Array.IndexOf(OmittedKinds, omission.Kind);
-                if (omission.Kind.Length == 0 || omission.Count == 0) throw Json.Bad();
+                var next = Array.IndexOf(known, omission.Kind);
+                if (omission.Kind.Length == 0 || omission.Count == 0 || next < 0 && Array.IndexOf(OmittedKinds, omission.Kind) >= 0) throw Json.Bad();
                 if (next < 0 ? !newer.Add(omission.Kind) : next <= kind || newer.Count > 0) throw Json.Bad();
                 kind = Math.Max(kind, next);
                 into.Add(omission);
