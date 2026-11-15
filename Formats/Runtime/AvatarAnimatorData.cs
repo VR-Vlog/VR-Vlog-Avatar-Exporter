@@ -74,6 +74,10 @@ namespace VRVlog.AvatarAnimator
         // The order the omitted kinds are written in. A newer exporter adds
         // kinds at the end; a reader keeps those it does not know (see Read).
         public static readonly string[] OmittedKinds = { "blendShape", "material", "transform", "enabled", "parameter", "muscle", "other", "missingNode", "behaviour", "operation", "unreadParameter", "materialProperty", "materialSwitch", "materialSlotShader", "humanoidTransform", "rotationMixed", "humanoidRoot" };
+        // The omitted kinds that change which transitions a controller takes,
+        // in OmittedKinds order. A gesture or action controller's own omitted
+        // holds only these, and the kinds a newer exporter adds.
+        public static readonly string[] TransitionOmittedKinds = { "parameter", "operation", "unreadParameter" };
         public static readonly string[] EntranceSources = { "default", "entry", "any", "state" };
 
         public readonly List<Parameter> Parameters = new List<Parameter>();
@@ -106,7 +110,16 @@ namespace VRVlog.AvatarAnimator
             public readonly List<string> Labels = new List<string>();
         }
 
-        public sealed class Controller { public string Playable = "fx"; public readonly List<Layer> Layers = new List<Layer>(); }
+        // Omitted of a gesture or action controller holds what the exporter
+        // left out while reading it (its states, behaviours, motions and
+        // clips), so a reader can tell whose timing it changes; the FX's go
+        // to the data's Omitted, with those of the extension as a whole.
+        public sealed class Controller
+        {
+            public string Playable = "fx";
+            public readonly List<Layer> Layers = new List<Layer>();
+            public readonly List<Omission> Omitted = new List<Omission>();
+        }
 
         // Machines[0] is the layer's root; States lists the states of every machine.
         // A synced layer (SyncedLayer, the index of its source layer, or -1)
@@ -321,9 +334,11 @@ namespace VRVlog.AvatarAnimator
                 {
                     ["name"] = e.Name, ["clips"] = e.Clips.Select(c => (object)(long)c).ToList(), ["when"] = e.When.Select(w => (object)WriteEntrance(w)).ToList()
                 }).ToList(),
-                ["controllers"] = data.Controllers.Select(c => (object)new Dictionary<string, object>
+                ["controllers"] = data.Controllers.Select(c =>
                 {
-                    ["playable"] = c.Playable, ["layers"] = c.Layers.Select(l => (object)WriteLayer(l)).ToList()
+                    var controller = new Dictionary<string, object> { ["playable"] = c.Playable, ["layers"] = c.Layers.Select(l => (object)WriteLayer(l)).ToList() };
+                    if (c.Omitted.Count > 0) controller["omitted"] = WriteOmitted(c.Omitted);
+                    return (object)controller;
                 }).ToList(),
                 ["motions"] = data.Motions.Select(m => (object)WriteMotion(m)).ToList(),
                 ["clips"] = data.Clips.Select(c => (object)new Dictionary<string, object>
@@ -335,11 +350,14 @@ namespace VRVlog.AvatarAnimator
                     }).ToList()
                 }).ToList(),
                 ["targets"] = data.Targets.Select(t => (object)WriteTarget(t)).ToList(),
-                ["omitted"] = data.Omitted.Select(o => (object)new Dictionary<string, object> { ["kind"] = o.Kind, ["count"] = (long)o.Count }).ToList()
+                ["omitted"] = WriteOmitted(data.Omitted)
             };
             Read(result); // The exporter and runtime enforce the same contract.
             return result;
         }
+
+        static List<object> WriteOmitted(List<Omission> omitted) =>
+            omitted.Select(o => (object)new Dictionary<string, object> { ["kind"] = o.Kind, ["count"] = (long)o.Count }).ToList();
 
         static Dictionary<string, object> WriteTarget(Target t) =>
             t.Fields != null ? new Dictionary<string, object>(t.Fields)
@@ -563,8 +581,16 @@ namespace VRVlog.AvatarAnimator
             var playable = -1;
             foreach (var raw in Json.Arr(root["controllers"], 0, ControllerPlayables.Length))
             {
-                var c = Json.Obj(raw, "playable", "layers");
+                var omitted = raw is Dictionary<string, object> rawController && rawController.ContainsKey("omitted");
+                var c = omitted ? Json.Obj(raw, "playable", "layers", "omitted") : Json.Obj(raw, "playable", "layers");
                 var controller = new Controller { Playable = Choice(c["playable"], ControllerPlayables) };
+                // Only a gesture or action controller has omitted of its own, and then some.
+                if (omitted)
+                {
+                    if (controller.Playable == "fx") throw Json.Bad();
+                    ReadOmitted(c["omitted"], controller.Omitted, TransitionOmittedKinds);
+                    if (controller.Omitted.Count == 0) throw Json.Bad();
+                }
                 var next = Array.IndexOf(ControllerPlayables, controller.Playable);
                 if (playable < 0 ? next != 0 : next <= playable) throw Json.Bad();
                 playable = next;
@@ -854,21 +880,27 @@ namespace VRVlog.AvatarAnimator
                 data.Expressions.Add(expression);
             }
 
-            // Known kinds in OmittedKinds order, then the kinds a newer
-            // exporter added, each once.
+            ReadOmitted(root["omitted"], data.Omitted, OmittedKinds);
+            return data;
+        }
+
+        // Known kinds in the order of known, then the kinds a newer exporter
+        // added, each once. A kind of OmittedKinds that known leaves out is
+        // not read.
+        static void ReadOmitted(object value, List<Omission> into, string[] known)
+        {
             var kind = -1;
             var newer = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var raw in Json.Arr(root["omitted"], 0, MaximumOmittedKinds))
+            foreach (var raw in Json.Arr(value, 0, MaximumOmittedKinds))
             {
                 var o = Json.Obj(raw, "kind", "count");
                 var omission = new Omission { Kind = Name(o["kind"]), Count = Json.NonNegative(o["count"]) };
-                var next = Array.IndexOf(OmittedKinds, omission.Kind);
-                if (omission.Kind.Length == 0 || omission.Count == 0) throw Json.Bad();
+                var next = Array.IndexOf(known, omission.Kind);
+                if (omission.Kind.Length == 0 || omission.Count == 0 || next < 0 && Array.IndexOf(OmittedKinds, omission.Kind) >= 0) throw Json.Bad();
                 if (next < 0 ? !newer.Add(omission.Kind) : next <= kind || newer.Count > 0) throw Json.Bad();
                 kind = Math.Max(kind, next);
-                data.Omitted.Add(omission);
+                into.Add(omission);
             }
-            return data;
         }
 
         static Layer ReadLayer(object raw, int layerIndex, int layerCount, List<Parameter> parameters, int motionCount)

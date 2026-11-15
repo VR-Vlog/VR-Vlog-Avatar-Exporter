@@ -102,7 +102,8 @@ namespace VRVlog.AvatarAnimator
     // the ones before show through. A controller whose timing the evaluator
     // cannot play as Unity (an additive layer, a synced layer with Timing or
     // of another shape, a random with preventRepeats, a blend tree of a kind
-    // it does not know) is skipped, and the others play as if it were not
+    // it does not know, or something that drives its transitions the export
+    // left out of it) is skipped, and the others play as if it were not
     // there; the FX is not skipped but refused (Supports). M16 a layer's
     // mask keeps it off the muscles of the body parts it leaves out, and
     // the FX applies no muscle when its base layer has no mask; the mask's
@@ -117,13 +118,14 @@ namespace VRVlog.AvatarAnimator
 
         // The omitted kinds that change how the controller moves: playing
         // without them would take other transitions than Unity.
-        static readonly string[] TimingKinds = { "parameter", "operation", "unreadParameter" };
+        static readonly string[] TimingKinds = AvatarAnimatorData.TransitionOmittedKinds;
 
         static readonly string[] BlendTypes = { "1d", "direct", "2dSimpleDirectional", "2dFreeformCartesian", "2dFreeformDirectional" };
 
         // Whether this evaluator plays the data as Unity would. False when the
-        // exporter left out something that drives transitions, or the FX
-        // (Controllers[0]) uses what is not implemented yet (ControllerReason).
+        // exporter left out something that drives the FX's transitions (the
+        // data's Omitted), or the FX (Controllers[0]) uses what is not
+        // implemented yet (ControllerReason).
         // A gesture or action controller the evaluator cannot play is skipped
         // instead (SkipReason), and the others play as if it were not there
         // (M15). reason is null when true. A morph target blends as an active
@@ -132,13 +134,7 @@ namespace VRVlog.AvatarAnimator
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
-            foreach (var omission in data.Omitted)
-                if (Array.IndexOf(TimingKinds, omission.Kind) >= 0)
-                {
-                    reason = "The export left out " + omission.Count + " " + omission.Kind + " entries that drive transitions.";
-                    return false;
-                }
-            reason = data.Controllers.Count > 0 ? ControllerReason(data, 0) : null;
+            reason = TimingReason(data.Omitted) ?? (data.Controllers.Count > 0 ? ControllerReason(data, 0) : null);
             if (reason != null) return false;
             // A motion only a skipped controller plays does not count.
             var skipped = new HashSet<int>();
@@ -151,6 +147,14 @@ namespace VRVlog.AvatarAnimator
                     return false;
                 }
             return true;
+        }
+
+        static string TimingReason(List<AvatarAnimatorData.Omission> omitted)
+        {
+            foreach (var omission in omitted)
+                if (Array.IndexOf(TimingKinds, omission.Kind) >= 0)
+                    return "The export left out " + omission.Count + " " + omission.Kind + " entries that drive transitions.";
+            return null;
         }
 
         static bool UnsupportedTree(AvatarAnimatorData.Motion motion) => motion.Type == "blendTree" && Array.IndexOf(BlendTypes, motion.BlendType) < 0;
@@ -176,10 +180,12 @@ namespace VRVlog.AvatarAnimator
         // Why the evaluator cannot play the controller, or null when it can:
         // additive layers, synced layers that affect timing or do not match
         // their source, a blend tree of another kind, a random that prevents
-        // repeats.
+        // repeats, an omission of its own that drives transitions.
         static string ControllerReason(AvatarAnimatorData data, int index)
         {
             var controller = data.Controllers[index];
+            var omitted = TimingReason(controller.Omitted);
+            if (omitted != null) return omitted;
             // How VRChat picks again when a random would repeat is not measured.
             bool PreventsRepeats(List<AvatarAnimatorData.Behaviour> behaviours)
             {
@@ -844,7 +850,7 @@ namespace VRVlog.AvatarAnimator
                 // A layer entering its state again each frame plays it at the same time each frame.
                 var repeated = clock.Repeated != null;
                 if (repeated && (layer.Source >= 0 || Random(layer.Layer, layer.State))) return false;
-                if (!repeated && !Holds(state, layer.Time, rate)) return false;
+                if (!repeated && !Holds(state, layer.Time, clock.Time, rate)) return false;
                 double nextRate = 0;
                 if (layer.Transitioning)
                 {
@@ -852,7 +858,7 @@ namespace VRVlog.AvatarAnimator
                     var nextTiming = clock.Layer.States[clock.Next];
                     nextRate = Rate(nextTiming);
                     if (nextTiming.TimeParameter.HasValue && clock.NextTime != parameters[nextTiming.TimeParameter.Value]) return false;
-                    if (!Holds(layer.Layer.States[layer.Next], layer.NextTime, nextRate)) return false;
+                    if (!Holds(layer.Layer.States[layer.Next], layer.NextTime, clock.NextTime, nextRate)) return false;
                 }
                 if (layer.Source >= 0) continue;
                 var any = layer.Layer.Machines[0].AnyStateTransitions;
@@ -886,10 +892,13 @@ namespace VRVlog.AvatarAnimator
 
         double Rate(AvatarAnimatorData.State timing) => timing.TimeParameter.HasValue ? 0 : timing.Speed * ParameterOr(timing.SpeedParameter, 1);
 
-        // Whether the state's motion gives the same values at every time to come.
-        bool Holds(AvatarAnimatorData.State state, double time, double rate) =>
-            state.Motion < 0 || rate == 0 || still[state.Motion]
-            || Clamped(state.Motion, time + ParameterOr(state.CycleOffsetParameter, state.CycleOffset), rate > 0);
+        // Whether the state's motion gives the same values at every time to
+        // come: from time, which moves to the clock's time first (a synced
+        // layer before its source takes the source's time a frame late), then
+        // at the rate. A clock that moves reaches the clock's time on the way.
+        bool Holds(AvatarAnimatorData.State state, double time, double clockTime, double rate) =>
+            state.Motion < 0 || still[state.Motion]
+            || (rate == 0 ? time == clockTime : Clamped(state.Motion, time + ParameterOr(state.CycleOffsetParameter, state.CycleOffset), rate > 0));
 
         // The transitions with an exit time Dormant would not let rest: their
         // conditions hold and their time moves toward an exit time not passed.

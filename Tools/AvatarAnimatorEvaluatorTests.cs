@@ -144,6 +144,7 @@ public static class AvatarAnimatorEvaluatorTests
         StateOptions();
         Unsupported();
         Controllers();
+        ControllerOmitted();
         Arguments();
         Settled();
         NoAllocation();
@@ -1018,6 +1019,94 @@ public static class AvatarAnimatorEvaluatorTests
         Check(true, what);
     }
 
+    // #3666: what the exporter left out while reading a gesture or action
+    // controller is its own; omissions there that change its transitions
+    // skip only it, and data with the FX alone is written and played as before.
+    static void ControllerOmitted()
+    {
+        // The FX alone writes no omitted of its controller, so a reader of
+        // the extension before this sees the same data.
+        var (alone, _, _) = FxToggle();
+        alone.Data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "unreadParameter", Count = 2 });
+        var written = AvatarAnimatorData.Write(alone.Data);
+        var fxController = (Dictionary<string, object>)((List<object>)written["controllers"])[0];
+        Check(fxController.Count == 2 && fxController.ContainsKey("playable") && fxController.ContainsKey("layers"), "the FX's controller has only its playable and layers");
+        Check(((List<object>)written["omitted"]).Count == 1, "the FX's omissions stay in the root");
+        Check(!AvatarAnimatorEvaluator.Supports(AvatarAnimatorData.Read(written), out _), "an FX omission that changes its transitions still refuses the data");
+
+        foreach (var playable in new[] { "gesture", "action" })
+            foreach (var kind in new[] { "unreadParameter", "operation", "parameter" })
+            {
+                var (b, hat, node) = FxToggle();
+                Playable(b, playable);
+                var hand = b.Target();
+                Builder.State(b.Layer("Hands"), "Fist", b.Clip(0, false, (hand, 1)));
+                b.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = 3 });
+                b.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "somethingNewer", Count = 1 });
+                var read = AvatarAnimatorData.Read(AvatarAnimatorData.Write(b.Data));
+                var c = read.Controllers[1];
+                Check(c.Omitted.Count == 2 && c.Omitted[0].Kind == kind && c.Omitted[0].Count == 3 && c.Omitted[1].Kind == "somethingNewer" && read.Omitted.Count == 0 && read.Controllers[0].Omitted.Count == 0,
+                    playable + " " + kind + ": its omitted is read back as its own");
+                Check(AvatarAnimatorEvaluator.Supports(read, out var reason) && reason == null, playable + " " + kind + ": does not refuse the FX");
+                var e = new AvatarAnimatorEvaluator(read, () => 0);
+                Check(e.SkipReason(1) != null && e.SkipReason(0) == null && e.LayerCount == 1, playable + " " + kind + ": skips only that controller");
+                e.Advance(Frame);
+                Check(!e.Written[hand], playable + " " + kind + ": does not write its target");
+                SameAsFxAlone(b, hat, node, playable + " " + kind + ": the FX plays as without it");
+                b.Controller.Omitted.RemoveAt(0);
+                var clean = b.Build();
+                clean.Advance(Frame);
+                Check(clean.SkipReason(1) == null && clean.LayerCount == 2 && clean.Written[hand], playable + " " + kind + ": plays without the omission");
+                // Data as the exporter writes it before this, with the
+                // gesture's omission in the root, is still refused.
+                b.Controller.Omitted.Clear();
+                b.Data.Omitted.Add(new AvatarAnimatorData.Omission { Kind = kind, Count = 3 });
+                Check(!AvatarAnimatorEvaluator.Supports(b.Data, out _), playable + " " + kind + ": in the root it refuses the data");
+            }
+
+        // A gesture without omitted and an action with one: only the action is skipped.
+        var (g, _, _) = FxToggle();
+        Playable(g, "gesture");
+        var target = g.Target();
+        Builder.State(g.Layer("Hands"), "Fist", g.Clip(0, false, (target, 1)));
+        Playable(g, "action");
+        Builder.State(g.Layer("Act"), "Sit", g.Clip(0, false, (g.Target(), 1)));
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "operation", Count = 1 });
+        var played = new AvatarAnimatorEvaluator(AvatarAnimatorData.Read(AvatarAnimatorData.Write(g.Data)), () => 0);
+        played.Advance(Frame);
+        Check(played.SkipReason(1) == null && played.SkipReason(2) != null && played.Values[target] == 1, "only the controller with the omission is skipped");
+
+        // Newer kinds after the known ones are read; other known kinds, the
+        // FX, an empty list, a kind twice or out of order are not.
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "somethingNewer", Count = 1 });
+        Check(AvatarAnimatorData.Read(AvatarAnimatorData.Write(g.Data)).Controllers[2].Omitted[1].Kind == "somethingNewer", "a newer kind of a controller's omission is read");
+        g.Controller.Omitted.Insert(0, new AvatarAnimatorData.Omission { Kind = "unreadParameter", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(g.Data), "known kinds out of order are not written");
+        g.Controller.Omitted.Clear();
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "operation", Count = 1 });
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "operation", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(g.Data), "a kind twice is not written");
+        g.Controller.Omitted.Clear();
+        g.Controller.Omitted.Add(new AvatarAnimatorData.Omission { Kind = "blendShape", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(g.Data), "a kind that does not change transitions stays in the root");
+        var fx = FxToggle().Item1;
+        fx.Data.Controllers[0].Omitted.Add(new AvatarAnimatorData.Omission { Kind = "unreadParameter", Count = 1 });
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Write(fx.Data), "the FX's omissions are not written in its controller");
+        var raw = AvatarAnimatorData.Write(FxToggle().Item1.Data);
+        var omission = new Dictionary<string, object> { ["kind"] = "unreadParameter", ["count"] = 1L };
+        var rawFx = (Dictionary<string, object>)((List<object>)raw["controllers"])[0];
+        rawFx["omitted"] = new List<object> { omission };
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(raw), "an omitted of the FX controller is not read");
+        rawFx.Remove("omitted");
+        var gesture = new Dictionary<string, object> { ["playable"] = "gesture", ["layers"] = new List<object>(), ["omitted"] = new List<object>() };
+        ((List<object>)raw["controllers"]).Add(gesture);
+        Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(raw), "an empty omitted of a controller is not read");
+        gesture["omitted"] = new List<object> { omission };
+        Check(AvatarAnimatorData.Read(raw).Controllers[1].Omitted[0].Kind == "unreadParameter", "a gesture's omitted is read from JSON");
+        gesture.Remove("omitted");
+        Check(AvatarAnimatorData.Read(raw).Controllers[1].Omitted.Count == 0, "a controller without omitted is read");
+    }
+
     // #3666: the gesture and action controllers under the FX, each over the
     // ones below with its playable weight; one the evaluator cannot play is
     // skipped and the FX plays as before.
@@ -1694,6 +1783,109 @@ public static class AvatarAnimatorEvaluatorTests
         Builder.State(synced, "B", b.Ramp(2, true, other, 20));
         skipped = Lockstep(b, 300, (e, frame) => { if (frame == 30) e.Set(go, 1); if (frame == 200) e.Set(go, 0); });
         Check(Count(skipped, 2, 30) == 28 && Count(skipped, 30, 200) == 0 && Count(skipped, 220, 300) == 80, "a synced layer playing a clip whose values change keeps its source playing");
+
+        // A synced layer before its source takes the source's time a frame
+        // late: when the source's time follows a parameter, the frame after
+        // the change moves the synced layer though the source shows nothing.
+        b = new Builder();
+        time = b.Parameter("Time", "float", .25);
+        node = b.Target();
+        var early = b.Layer("Synced");
+        source = b.Layer("Source");
+        early.SyncedLayer = 1;
+        Builder.State(early, "A", b.Ramp(1, false, node, 1));
+        a = Builder.State(source, "A", -1);
+        source.States[a].TimeParameter = time;
+        skipped = Lockstep(b, 90, (e, frame) => { if (frame == 30) e.Set(time, .75); });
+        Check(!skipped[30] && !skipped[31] && Count(skipped, 33, 90) == 57, "a synced layer before a source timed by a parameter moves in the frame after the change");
+        // The same mid-transition into a state timed by a parameter: the next
+        // state's time is compared with the source's next time.
+        b = new Builder();
+        go = b.Parameter("Go", "bool");
+        time = b.Parameter("Time", "float");
+        node = b.Target();
+        early = b.Layer("Synced");
+        source = b.Layer("Source");
+        early.SyncedLayer = 1;
+        Builder.State(early, "A", b.Clip(1, false, (node, 0)));
+        Builder.State(early, "B", b.Ramp(1, false, node, 1));
+        a = Builder.State(source, "A", -1);
+        var timed = Builder.State(source, "B", -1);
+        source.States[timed].TimeParameter = time;
+        source.States[a].Transitions.Add(To(timed, 2).When(go, "if"));
+        skipped = Lockstep(b, 80, (e, frame) => { if (frame == 10) e.Set(go, 1); if (frame == 40) e.Set(time, .5); });
+        Check(!skipped[41], "a synced layer before its source moves its next state in the frame after the change");
+
+        // Random synced layers on either side of their source, with states
+        // timed by a parameter: seeds the settled check failed before.
+        foreach (var seed in SyncedSeeds)
+        {
+            AvatarAnimatorSettledCheck.Play(AvatarAnimatorData.Read(AvatarAnimatorData.Write(SyncedRandom(seed).Data)), seed, "synced random " + seed, 1500);
+            Check(true, "synced random " + seed + " skips only frames that repeat");
+        }
+    }
+
+    static readonly int[] SyncedSeeds = { 4, 10, 18, 53, 67 };
+
+    static Builder SyncedRandom(int seed)
+    {
+        var r = new Random(seed);
+        var b = new Builder();
+        b.Parameter("B", "bool");
+        b.Parameter("I", "int");
+        int[] times = { b.Parameter("F", "float"), b.Parameter("G", "float") };
+        var targets = new List<int>();
+        for (var i = 0; i < 5; i++) targets.Add(b.Target(r.Next(2)));
+        var layerCount = 2 + r.Next(3);
+        var stateCount = 1 + r.Next(3);
+        var layers = new List<AvatarAnimatorData.Layer>();
+        for (var l = 0; l < layerCount; l++) layers.Add(b.Layer("L" + l, r.Next(3) / 2.0));
+        var source = r.Next(layerCount);
+        var synced = new List<int>();
+        for (var l = 0; l < layerCount; l++) if (l != source && r.NextDouble() < .7) synced.Add(l);
+        if (synced.Count == 0) synced.Add((source + 1) % layerCount);
+        int Motion()
+        {
+            if (r.NextDouble() < .15) return -1;
+            var duration = r.NextDouble() < .3 ? 0 : 1;
+            var loop = r.NextDouble() < .4;
+            var target = targets[r.Next(targets.Count)];
+            var value = Math.Round(r.NextDouble() * 4, 1);
+            return duration > 0 && r.NextDouble() < .6 ? b.Ramp(duration, loop, target, value) : b.Clip(duration, loop, (target, value));
+        }
+        for (var l = 0; l < layerCount; l++)
+        {
+            var layer = layers[l];
+            var count = synced.Contains(l) || l == source ? stateCount : 1 + r.Next(3);
+            for (var s = 0; s < count; s++) Builder.State(layer, "S" + s, Motion(), r.NextDouble() < .85);
+            if (synced.Contains(l))
+            {
+                layer.SyncedLayer = source;
+                layer.Machines[0].DefaultState = -1;
+                continue;
+            }
+            foreach (var state in layer.States)
+            {
+                if (r.NextDouble() < .5) state.TimeParameter = times[r.Next(2)];
+                else if (r.NextDouble() < .3) state.Speed = new[] { 0, .5, -1, 2 }[r.Next(4)];
+                for (var i = r.Next(3); i > 0; i--)
+                {
+                    var exit = r.NextDouble() < .3;
+                    var transition = To(r.Next(count), new[] { 0, .1, .4 }[r.Next(3)], exit, r.NextDouble() < .5 ? .5 : 1);
+                    if (!exit || r.NextDouble() < .5)
+                    {
+                        var p = r.Next(b.Data.Parameters.Count);
+                        var type = b.Data.Parameters[p].Type;
+                        if (type == "bool") transition.When(p, r.Next(2) == 0 ? "if" : "ifNot");
+                        else if (type == "int") transition.When(p, r.Next(2) == 0 ? "equals" : "notEqual", r.Next(3));
+                        else transition.When(p, r.Next(2) == 0 ? "greater" : "less", .5);
+                    }
+                    if (r.NextDouble() < .3) transition.InterruptionSource = new[] { "source", "destination", "sourceThenDestination" }[r.Next(3)];
+                    state.Transitions.Add(transition);
+                }
+            }
+        }
+        return b;
     }
 
     static void NoAllocation()
