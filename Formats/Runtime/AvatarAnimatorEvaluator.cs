@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 
 // Plays VRVLOG_avatar_animator (AvatarAnimatorData.cs) the way Unity's Animator
-// plays the FX controller. No Unity/Editor dependency: the app drives it from a
+// plays the FX, Gesture and Action controllers in VRChat's playable graph
+// (M15). No Unity/Editor dependency: the app drives it from a
 // MonoBehaviour and the exporter's EditMode tests compare it with Unity 2022.3's
 // Animator. Advance allocates nothing.
 namespace VRVlog.AvatarAnimator
@@ -89,8 +90,23 @@ namespace VRVlog.AvatarAnimator
     // transition sees them before the next frame, in its own layer or a
     // later one, as Unity does when the SDK drives from OnStateEnter; M9 a
     // state without a motion, or with a clip of length 0, is 1 second long;
-    // M10 a layer or FX weight blend moves from the frame after the behaviour
-    // that starts it, and a blend of 0 seconds applies at once.
+    // M10 a layer or playable weight blend moves from the frame after the
+    // behaviour that starts it, and a blend of 0 seconds applies at once.
+    // M15 and M16 are assumptions too, from VRChat's documentation and its
+    // SDK's playable graph; 5-3 measures them. M15 Gesture, Action and FX
+    // play in that order, each over the ones before: a controller's layers
+    // see only its own (M6 and M7 take the rest where none of its layers
+    // wrote a target), and the controller's output then blends over what
+    // the ones before it gave by its playable weight (1 at the start, 0 for
+    // Action), which a Playable Layer Control sets; where it wrote nothing
+    // the ones before show through. A controller whose timing the evaluator
+    // cannot play as Unity (an additive layer, a synced layer with Timing or
+    // of another shape, a random with preventRepeats, a blend tree of a kind
+    // it does not know) is skipped, and the others play as if it were not
+    // there; the FX is not skipped but refused (Supports). M16 a layer's
+    // mask keeps it off the muscles of the body parts it leaves out, and
+    // the FX applies no muscle when its base layer has no mask; the mask's
+    // transforms are not applied.
     public sealed class AvatarAnimatorEvaluator
     {
         // M9.
@@ -103,13 +119,16 @@ namespace VRVlog.AvatarAnimator
         // without them would take other transitions than Unity.
         static readonly string[] TimingKinds = { "parameter", "operation", "unreadParameter" };
 
-        // Whether this evaluator plays the controller as Unity would. False
-        // when the exporter left out something that drives transitions, or the
-        // controller uses what is not implemented yet (additive layers, synced
-        // layers that affect timing, a blend tree of another kind, a random
-        // that prevents repeats). reason is null when true.
         static readonly string[] BlendTypes = { "1d", "direct", "2dSimpleDirectional", "2dFreeformCartesian", "2dFreeformDirectional" };
 
+        // Whether this evaluator plays the data as Unity would. False when the
+        // exporter left out something that drives transitions, or the FX
+        // (Controllers[0]) uses what is not implemented yet (ControllerReason).
+        // A gesture or action controller the evaluator cannot play is skipped
+        // instead (SkipReason), and the others play as if it were not there
+        // (M15). reason is null when true. A morph target blends as an active
+        // one does: its value is the Unity weight, which the host maps to the
+        // glTF weight with Baked and End. A parameter target is M11.
         public static bool Supports(AvatarAnimatorData data, out string reason)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
@@ -119,9 +138,48 @@ namespace VRVlog.AvatarAnimator
                     reason = "The export left out " + omission.Count + " " + omission.Kind + " entries that drive transitions.";
                     return false;
                 }
-            // A morph target blends as an active one does: its value is the
-            // Unity weight, which the host maps to the glTF weight with Baked
-            // and End. A parameter target is M11.
+            reason = data.Controllers.Count > 0 ? ControllerReason(data, 0) : null;
+            if (reason != null) return false;
+            // A motion only a skipped controller plays does not count.
+            var skipped = new HashSet<int>();
+            for (var c = 1; c < data.Controllers.Count; c++)
+                if (ControllerReason(data, c) != null) skipped.UnionWith(Reached(data, data.Controllers[c]));
+            for (var m = 0; m < data.Motions.Count; m++)
+                if (!skipped.Contains(m) && UnsupportedTree(data.Motions[m]))
+                {
+                    reason = "Blend trees of type " + data.Motions[m].BlendType + " are not supported.";
+                    return false;
+                }
+            return true;
+        }
+
+        static bool UnsupportedTree(AvatarAnimatorData.Motion motion) => motion.Type == "blendTree" && Array.IndexOf(BlendTypes, motion.BlendType) < 0;
+
+        // The motions the controller's states play, their children too.
+        static HashSet<int> Reached(AvatarAnimatorData data, AvatarAnimatorData.Controller controller)
+        {
+            var seen = new HashSet<int>();
+            var pending = new Stack<int>();
+            foreach (var layer in controller.Layers)
+                foreach (var state in layer.States)
+                    if (state.Motion >= 0) pending.Push(state.Motion);
+            while (pending.Count > 0)
+            {
+                var m = pending.Pop();
+                if (!seen.Add(m) || data.Motions[m].Type != "blendTree") continue;
+                foreach (var child in data.Motions[m].Children)
+                    if (child.Motion >= 0) pending.Push(child.Motion);
+            }
+            return seen;
+        }
+
+        // Why the evaluator cannot play the controller, or null when it can:
+        // additive layers, synced layers that affect timing or do not match
+        // their source, a blend tree of another kind, a random that prevents
+        // repeats.
+        static string ControllerReason(AvatarAnimatorData data, int index)
+        {
+            var controller = data.Controllers[index];
             // How VRChat picks again when a random would repeat is not measured.
             bool PreventsRepeats(List<AvatarAnimatorData.Behaviour> behaviours)
             {
@@ -130,31 +188,39 @@ namespace VRVlog.AvatarAnimator
                         if (operation.PreventRepeats) return true;
                 return false;
             }
-            foreach (var controller in data.Controllers)
-                foreach (var layer in controller.Layers)
-                {
-                    var prevents = false;
-                    foreach (var machine in layer.Machines) prevents |= PreventsRepeats(machine.Behaviours);
-                    foreach (var state in layer.States) prevents |= PreventsRepeats(state.Behaviours);
-                    if (prevents) { reason = "A random that prevents repeats is not supported."; return false; }
-                }
-            foreach (var controller in data.Controllers)
-                foreach (var layer in controller.Layers)
-                {
-                    if (layer.Blending != "override") { reason = "Additive layers are not supported."; return false; }
-                    if (layer.SyncedLayer >= 0 && layer.SyncedLayerAffectsTiming) { reason = "Synced layers that affect timing are not supported."; return false; }
-                    if (layer.SyncedLayer >= 0 && (layer.SyncedLayer >= controller.Layers.Count || !AvatarAnimatorData.SyncedShape(layer, controller.Layers[layer.SyncedLayer])))
-                    { reason = "A synced layer does not match its source layer."; return false; }
-                }
-            foreach (var motion in data.Motions)
-                if (motion.Type == "blendTree" && Array.IndexOf(BlendTypes, motion.BlendType) < 0)
-                {
-                    reason = "Blend trees of type " + motion.BlendType + " are not supported.";
-                    return false;
-                }
-            reason = null;
-            return true;
+            foreach (var layer in controller.Layers)
+            {
+                var prevents = false;
+                foreach (var machine in layer.Machines) prevents |= PreventsRepeats(machine.Behaviours);
+                foreach (var state in layer.States) prevents |= PreventsRepeats(state.Behaviours);
+                if (prevents) return "A random that prevents repeats is not supported.";
+            }
+            foreach (var layer in controller.Layers)
+            {
+                if (layer.Blending != "override") return "Additive layers are not supported.";
+                if (layer.SyncedLayer >= 0 && layer.SyncedLayerAffectsTiming) return "Synced layers that affect timing are not supported.";
+                if (layer.SyncedLayer >= 0 && (layer.SyncedLayer >= controller.Layers.Count || !AvatarAnimatorData.SyncedShape(layer, controller.Layers[layer.SyncedLayer])))
+                    return "A synced layer does not match its source layer.";
+            }
+            foreach (var m in Reached(data, controller))
+                if (UnsupportedTree(data.Motions[m])) return "Blend trees of type " + data.Motions[m].BlendType + " are not supported.";
+            return null;
         }
+
+        // VRChat's playable layers from the bottom: the gesture, the action,
+        // then the FX on top (Controllers holds the FX first).
+        static readonly string[] PlayOrder = { "gesture", "action", "fx" };
+
+        // A playable's weight before a Playable Layer Control moves it: the
+        // action rests at 0 until an emote raises it, the others at 1.
+        static double PlayableRest(string playable) => playable == "action" ? 0 : 1;
+
+        // Unity's AvatarMaskBodyPart of the muscle (HumanTrait.MuscleName's
+        // order): Body 1, Head 2 (neck, head, eyes, jaw), LeftLeg 3,
+        // RightLeg 4, LeftArm 5 and RightArm 6 (shoulder to hand),
+        // LeftFingers 7, RightFingers 8.
+        internal static int MuscleBodyPart(int muscle) =>
+            muscle < 9 ? 1 : muscle < 21 ? 2 : muscle < 29 ? 3 : muscle < 37 ? 4 : muscle < 46 ? 5 : muscle < 55 ? 6 : muscle < 75 ? 7 : 8;
 
         const int BoolType = 0, IntType = 1, FloatType = 2, TriggerType = 3;
 
@@ -172,7 +238,13 @@ namespace VRVlog.AvatarAnimator
         sealed class LayerRun
         {
             internal AvatarAnimatorData.Layer Layer;
-            internal int Index, Source = -1;
+            // Index in the evaluator's layers; Controller the index in
+            // Data.Controllers; First whether it is its controller's base layer.
+            internal int Index, Source = -1, Controller;
+            internal bool First;
+            // Whether Animated holds every target the controller animates
+            // (no mask leaves one out), so the layer may pass them all through.
+            internal bool AnimatesAll;
             internal int[] Animated;
             // Out holds this layer's value of Animated[k] after the last Advance.
             internal double[] Out, Snapshot, Held;
@@ -217,11 +289,26 @@ namespace VRVlog.AvatarAnimator
         // The values at the start of this frame and of the last one.
         double[] previous, lastPrevious;
         readonly bool[] written;
-        // Whether the controller's motions write a target, and whether a layer
-        // passing every such target through (see Output) has marked them all
-        // written this frame; Wrote reads both.
-        readonly bool[] isAnimated;
+        // Whether the motions of the controller being played write a target
+        // (one array per controller), and whether a layer passing every such
+        // target through (see Output) has marked them all written this frame;
+        // Wrote reads both.
+        bool[] isAnimated;
+        readonly bool[][] controllerAnimated;
         bool animatedWritten;
+        // Per controller: the range of its layers in layers (an empty range
+        // when it is skipped), why it is skipped (null when it plays) and its
+        // playable weight with the Playable Layer Control blend moving it.
+        readonly int[] controllerStart, controllerEnd;
+        readonly string[] skipReasons;
+        readonly double[] playableWeight, playableFrom, playableGoal, playableDuration, playableElapsed;
+        readonly bool[] playableBlending;
+        // The controllers that play, from the bottom (PlayOrder).
+        readonly int[] played;
+        // With more than one controller playing: the values and Written that
+        // the controllers below leave, over which the next one blends.
+        readonly double[] below;
+        readonly bool[] belowWritten;
         // Each value a layer set in values this frame and the last, in layer
         // order: the layer, the value and the same target's entry before it
         // (-1 none). Head holds each target's latest entry (-1 none).
@@ -254,8 +341,6 @@ namespace VRVlog.AvatarAnimator
         readonly Side sideA, sideB;
         readonly AvatarAnimatorData.Transition[] chain;
         int chainCount;
-        double fxWeight = 1, fxFrom, fxGoal, fxDuration, fxElapsed;
-        bool fxBlending;
         // Whether the next Advance may skip the layers (see Advance), whether
         // this frame changed a layer's state or weight, and the parameters at
         // the start of this frame.
@@ -302,7 +387,6 @@ namespace VRVlog.AvatarAnimator
             previous = (double[])rest.Clone();
             lastPrevious = (double[])rest.Clone();
             written = new bool[targetCount];
-            isAnimated = new bool[targetCount];
             sideA = NewSide(targetCount);
             sideB = NewSide(targetCount);
 
@@ -326,11 +410,61 @@ namespace VRVlog.AvatarAnimator
                 if (data.Motions[m].BlendType == "2dSimpleDirectional") Directions(data.Motions[m], out childOrder[m], out centreChild[m], out centres[m]);
             }
 
-            var source = data.Controllers.Count > 0 ? data.Controllers[0].Layers : new List<AvatarAnimatorData.Layer>();
+            // The controllers that play, and their layers in one list: the FX's
+            // first, so a layer of the FX keeps its index in the controller.
+            var controllerCount = data.Controllers.Count;
+            controllerStart = new int[controllerCount];
+            controllerEnd = new int[controllerCount];
+            skipReasons = new string[controllerCount];
+            playableWeight = new double[controllerCount];
+            playableFrom = new double[controllerCount];
+            playableGoal = new double[controllerCount];
+            playableDuration = new double[controllerCount];
+            playableElapsed = new double[controllerCount];
+            playableBlending = new bool[controllerCount];
+            controllerAnimated = new bool[controllerCount][];
+            var source = new List<AvatarAnimatorData.Layer>();
+            var owners = new List<int>();
+            for (var c = 0; c < controllerCount; c++)
+            {
+                skipReasons[c] = ControllerReason(data, c);
+                playableWeight[c] = PlayableRest(data.Controllers[c].Playable);
+                controllerStart[c] = source.Count;
+                if (skipReasons[c] == null)
+                    foreach (var layer in data.Controllers[c].Layers) { source.Add(layer); owners.Add(c); }
+                controllerEnd[c] = source.Count;
+                controllerAnimated[c] = new bool[targetCount];
+            }
+            var playing = new List<int>();
+            foreach (var playable in PlayOrder)
+                for (var c = 0; c < controllerCount; c++)
+                    if (data.Controllers[c].Playable == playable && skipReasons[c] == null) playing.Add(c);
+            played = playing.ToArray();
+            if (played.Length > 1)
+            {
+                below = new double[targetCount];
+                belowWritten = new bool[targetCount];
+            }
+            isAnimated = controllerCount > 0 ? controllerAnimated[0] : new bool[targetCount];
+
+            // M16: whether the layer's mask keeps it off the target. A mask moves
+            // only the muscles of its body parts (its transforms are not read
+            // yet), and VRChat applies no muscle of an FX whose base layer
+            // has no mask.
+            bool Masked(int c, AvatarAnimatorData.Layer layer, int t)
+            {
+                var target = data.Targets[t];
+                if (target.Property != "muscle") return false;
+                var controller = data.Controllers[c];
+                if (controller.Playable == "fx" && controller.Layers[0].Mask == null) return true;
+                return layer.Mask != null && !layer.Mask.Humanoid.Contains(MuscleBodyPart(target.Muscle));
+            }
+
             layers = new LayerRun[source.Count];
             stateTargets = new int[source.Count][][];
             var machines = 1;
-            var controllerTargets = new HashSet<int>();
+            var controllerTargets = new HashSet<int>[controllerCount];
+            for (var c = 0; c < controllerCount; c++) controllerTargets[c] = new HashSet<int>();
             for (var l = 0; l < source.Count; l++)
             {
                 stateTargets[l] = new int[source[l].States.Count][];
@@ -338,14 +472,35 @@ namespace VRVlog.AvatarAnimator
                 {
                     var motion = source[l].States[s].Motion;
                     stateTargets[l][s] = motion < 0 ? Array.Empty<int>() : motionTargets[motion];
-                    controllerTargets.UnionWith(stateTargets[l][s]);
+                    foreach (var t in stateTargets[l][s])
+                        if (!Masked(owners[l], source[l], t)) controllerTargets[owners[l]].Add(t);
                 }
             }
-            foreach (var t in controllerTargets) isAnimated[t] = true;
+            for (var c = 0; c < controllerCount; c++)
+                foreach (var t in controllerTargets[c]) controllerAnimated[c][t] = true;
+            // M11 holds for a parameter a playing controller animates. One only a
+            // skipped controller animates stays a parameter the host and the
+            // drivers set, with its declared default, as without that controller.
+            for (var c = 0; c < controllerCount; c++)
+            {
+                if (skipReasons[c] == null) continue;
+                foreach (var m in Reached(data, data.Controllers[c]))
+                    foreach (var t in motionTargets[m])
+                    {
+                        var plays = false;
+                        foreach (var targets in controllerTargets) plays |= targets.Contains(t);
+                        if (!isParameter[t] || plays) continue;
+                        var parameter = data.Targets[t].Parameter;
+                        isParameter[t] = false;
+                        parameterTargets[parameter] = -1;
+                        parameters[parameter] = Convert(types[parameter], data.Parameters[parameter].Default);
+                    }
+            }
             var entries = 0;
             for (var l = 0; l < source.Count; l++)
             {
                 var layer = source[l];
+                var c = owners[l];
                 machines = Math.Max(machines, layer.Machines.Count);
                 // M6: a layer with a Write Defaults off state keeps its own value of
                 // every target the controller animates, its motions or not.
@@ -356,22 +511,32 @@ namespace VRVlog.AvatarAnimator
                     animated.UnionWith(stateTargets[l][s]);
                     keepsAll |= !layer.States[s].WriteDefaults;
                 }
-                if (keepsAll) animated.UnionWith(controllerTargets);
+                if (keepsAll) animated.UnionWith(controllerTargets[c]);
+                animated.RemoveWhere(t => Masked(c, layer, t));
                 var list = new List<int>(animated);
                 list.Sort();
                 entries += list.Count;
                 var keys = new int[layer.States.Count][];
+                var found = new List<int>();
                 for (var s = 0; s < keys.Length; s++)
                 {
-                    keys[s] = new int[stateTargets[l][s].Length];
-                    for (var i = 0; i < keys[s].Length; i++) keys[s][i] = list.BinarySearch(stateTargets[l][s][i]);
+                    // A target the mask keeps the layer off is not among Animated.
+                    found.Clear();
+                    foreach (var t in stateTargets[l][s])
+                    {
+                        var k = list.BinarySearch(t);
+                        if (k >= 0) found.Add(k);
+                    }
+                    keys[s] = found.ToArray();
                 }
+                var first = l == controllerStart[c];
                 layers[l] = new LayerRun
                 {
-                    Layer = layer, Index = l, Source = layer.SyncedLayer, Animated = list.ToArray(),
+                    Layer = layer, Index = l, Source = layer.SyncedLayer >= 0 ? controllerStart[c] + layer.SyncedLayer : -1,
+                    Controller = c, First = first, AnimatesAll = list.Count == controllerTargets[c].Count, Animated = list.ToArray(),
                     Out = new double[list.Count], Snapshot = new double[list.Count], Held = new double[list.Count], Own = new double[list.Count],
                     OutWritten = new bool[list.Count], SnapshotWritten = new bool[list.Count],
-                    Weight = l == 0 ? 1 : layer.Weight, StateKeys = keys
+                    Weight = first ? 1 : layer.Weight, StateKeys = keys
                 };
                 // Sized for every transition of the layer, so Settles never grows them.
                 var transitions = layer.Machines.Count > 0 ? layer.Machines[0].AnyStateTransitions.Count : 0;
@@ -515,15 +680,27 @@ namespace VRVlog.AvatarAnimator
         public double NormalizedTime(int layer) => layers[layer].Time;
         public double NextNormalizedTime(int layer) => layers[layer].Transitioning ? layers[layer].NextTime : 0;
         public double LayerWeight(int layer) => layers[layer].Weight;
-        public double FxWeight => fxWeight;
+        // The FX's playable weight (Playable Layer Control); 1 without an FX.
+        public double FxWeight => playableWeight.Length > 0 ? playableWeight[0] : 1;
+        // Per controller of Data.Controllers: its playable weight, why the
+        // evaluator skips it (null when it plays), and the index above
+        // (State, LayerWeight...) of one of its layers, or -1 when it is
+        // skipped. The FX's layers keep their own indexes.
+        public double PlayableWeight(int controller) => playableWeight[controller];
+        public string SkipReason(int controller) => skipReasons[controller];
+        public int LayerIndex(int controller, int layer)
+        {
+            if (layer < 0 || layer >= data.Controllers[controller].Layers.Count) throw new ArgumentOutOfRangeException(nameof(layer));
+            return skipReasons[controller] != null ? -1 : controllerStart[controller] + layer;
+        }
 
         // As Unity's Animator.SetLayerWeight: from the next Advance, ending a
-        // Layer Control blend. The base layer stays at 1. The comparison with
+        // Layer Control blend. A controller's base layer stays at 1. The comparison with
         // Unity drives weights through this.
         public void SetLayerWeight(int layer, double weight)
         {
             if (double.IsNaN(weight) || double.IsInfinity(weight)) throw new ArgumentOutOfRangeException(nameof(weight));
-            if (layer == 0) return;
+            if (layers[layer].First) return;
             settled = false;
             layers[layer].WeightBlending = false;
             layers[layer].Weight = weight;
@@ -561,28 +738,16 @@ namespace VRVlog.AvatarAnimator
             logCount = 0;
             // M10: a weight blend started by a behaviour moves from the next frame on.
             foreach (var layer in layers) BlendWeight(layer, deltaTime);
-            if (fxBlending)
+            for (var c = 0; c < playableBlending.Length; c++)
             {
+                if (!playableBlending[c]) continue;
                 moved = true;
-                fxElapsed += deltaTime;
-                var t = fxDuration > 0 ? Math.Min(1, fxElapsed / fxDuration) : 1;
-                fxWeight = fxFrom + (fxGoal - fxFrom) * t;
-                if (t >= 1) fxBlending = false;
+                playableElapsed[c] += deltaTime;
+                var t = playableDuration[c] > 0 ? Math.Min(1, playableElapsed[c] / playableDuration[c]) : 1;
+                playableWeight[c] = playableFrom[c] + (playableGoal[c] - playableFrom[c]) * t;
+                if (t >= 1) playableBlending[c] = false;
             }
-            foreach (var layer in layers)
-            {
-                if (layer.Source >= 0) Sync(layer);
-                else Step(layer, deltaTime);
-                Output(layer);
-            }
-            if (animatedWritten)
-            {
-                animatedWritten = false;
-                for (var t = 0; t < written.Length; t++) written[t] |= isAnimated[t];
-            }
-            if (fxWeight < 1)
-                for (var t = 0; t < values.Length; t++)
-                    if (written[t]) values[t] = Blend(t, rest[t], values[t], Math.Max(0, fxWeight));
+            foreach (var c in played) Play(c, deltaTime);
             for (var p = 0; p < spent.Length; p++)
                 if (spent[p])
                 {
@@ -656,7 +821,7 @@ namespace VRVlog.AvatarAnimator
         // Whether the next frame would repeat this one (see Advance).
         bool Settles()
         {
-            if (moved || fxBlending) return false;
+            if (moved || Array.IndexOf(playableBlending, true) >= 0) return false;
             for (var p = 0; p < parameters.Length; p++)
                 if (parameters[p] != startParameters[p]) return false;
             for (var t = 0; t < values.Length; t++)
@@ -1087,9 +1252,11 @@ namespace VRVlog.AvatarAnimator
                     drivers.Add(behaviour);
                     break;
                 case "layerControl":
-                    if (behaviour.Playable == "fx" && behaviour.Layer < layers.Length)
+                    var controller = Controller(behaviour.Playable);
+                    // A controller's base layer stays at 1, as with SetLayerWeight.
+                    if (controller >= 0 && behaviour.Layer > 0 && behaviour.Layer < controllerEnd[controller] - controllerStart[controller])
                     {
-                        var target = layers[behaviour.Layer];
+                        var target = layers[controllerStart[controller] + behaviour.Layer];
                         // M10: a 0 s blend takes the goal at once.
                         target.WeightBlending = behaviour.BlendDuration > 0;
                         target.WeightFrom = target.Weight;
@@ -1105,17 +1272,90 @@ namespace VRVlog.AvatarAnimator
                     }
                     break;
                 case "playableLayerControl":
-                    if (behaviour.Playable == "fx")
+                    // The weight of a skipped controller moves too, unseen.
+                    var playable = -1;
+                    for (var c = 0; c < data.Controllers.Count; c++)
+                        if (data.Controllers[c].Playable == behaviour.Playable) playable = c;
+                    if (playable >= 0)
                     {
-                        fxBlending = behaviour.BlendDuration > 0;
-                        fxFrom = fxWeight;
-                        fxGoal = behaviour.GoalWeight;
-                        fxDuration = behaviour.BlendDuration;
-                        fxElapsed = 0;
-                        if (!fxBlending) fxWeight = behaviour.GoalWeight;
+                        playableBlending[playable] = behaviour.BlendDuration > 0;
+                        playableFrom[playable] = playableWeight[playable];
+                        playableGoal[playable] = behaviour.GoalWeight;
+                        playableDuration[playable] = behaviour.BlendDuration;
+                        playableElapsed[playable] = 0;
+                        if (!playableBlending[playable])
+                        {
+                            // A controller that has already played this frame plays the new weight from the next.
+                            if (playableWeight[playable] != behaviour.GoalWeight) moved = true;
+                            playableWeight[playable] = behaviour.GoalWeight;
+                        }
                     }
                     break;
                 // trackingControl moves nothing the targets show.
+            }
+        }
+
+        // The index in Data.Controllers of the playing controller of the playable, or -1.
+        int Controller(string playable)
+        {
+            foreach (var c in played)
+                if (data.Controllers[c].Playable == playable) return c;
+            return -1;
+        }
+
+        // M15: one controller's layers, each over the ones below it in the
+        // controller (M6, M7), and then the controller over what the
+        // controllers below it left, by its playable weight: a target it
+        // writes takes its value, blended at a weight under 1 from what
+        // the controllers below left, or from the rest when none wrote it;
+        // a target it does not write keeps theirs. Its own layers do not see
+        // the controllers below: there, a target none of its layers wrote
+        // is the rest, or the last frame's value (M6).
+        void Play(int c, double dt)
+        {
+            // A single controller has nothing below: it plays over the rest as before.
+            var stacked = below != null;
+            isAnimated = controllerAnimated[c];
+            if (stacked)
+            {
+                // Its layers start from the last frame's values, as a single
+                // controller does, not from what the controllers below left.
+                Array.Copy(values, below, values.Length);
+                Array.Copy(previous, values, values.Length);
+                Array.Copy(written, belowWritten, written.Length);
+                Array.Clear(written, 0, written.Length);
+            }
+            for (var l = controllerStart[c]; l < controllerEnd[c]; l++)
+            {
+                var layer = layers[l];
+                if (layer.Source >= 0) Sync(layer);
+                else Step(layer, dt);
+                Output(layer);
+            }
+            if (animatedWritten)
+            {
+                animatedWritten = false;
+                for (var t = 0; t < written.Length; t++) written[t] |= isAnimated[t];
+            }
+            var weight = Math.Max(0, playableWeight[c]);
+            if (!stacked)
+            {
+                if (weight < 1)
+                    for (var t = 0; t < values.Length; t++)
+                        if (written[t]) values[t] = Blend(t, rest[t], values[t], weight);
+                return;
+            }
+            for (var t = 0; t < values.Length; t++)
+            {
+                if (written[t])
+                {
+                    if (weight < 1) values[t] = Blend(t, belowWritten[t] ? below[t] : rest[t], values[t], weight);
+                }
+                else
+                {
+                    values[t] = below[t];
+                    written[t] = belowWritten[t];
+                }
             }
         }
 
@@ -1474,7 +1714,7 @@ namespace VRVlog.AvatarAnimator
             }
             if (!layer.Frozen) Evaluate(sideA, layer, layer.State, layer.Time);
             if (layer.Transitioning) Evaluate(sideB, layer, layer.Next, layer.NextTime);
-            var weight = layer.Index == 0 ? 1 : layer.Weight;
+            var weight = layer.First ? 1 : layer.Weight;
             var states = layer.Layer.States;
             // A layer resting in a motion state without Write Defaults at full weight passes
             // every target its motion does not write through unchanged: the value stays what
@@ -1483,12 +1723,13 @@ namespace VRVlog.AvatarAnimator
             // visit layers × targets every frame (#3664), so such a layer only visits its
             // motion's targets, marks the rest written at once, and rebuilds its own values
             // from the last frame's log in the first frame it stops passing.
-            var passes = !layer.Transitioning && !layer.Frozen && weight >= 1
+            var passes = !layer.Transitioning && !layer.Frozen && weight >= 1 && layer.AnimatesAll
                 && states[layer.State].Motion >= 0 && !states[layer.State].WriteDefaults;
             if (layer.Passed >= 0 && !passes) Rebuild(layer);
             if (passes)
             {
-                // Such a state is without Write Defaults, so Animated holds every animated target.
+                // Such a state is without Write Defaults and no mask leaves a target out,
+                // so Animated holds every target the controller animates.
                 animatedWritten = true;
                 if (layer.Passed != layer.State) moved = true;
                 layer.Passed = layer.State;
@@ -1514,7 +1755,8 @@ namespace VRVlog.AvatarAnimator
         bool Wrote(int t) => written[t] || (animatedWritten && isAnimated[t]);
 
         // A passing layer's own value of a target its motion did not write, as
-        // of the last frame: what the layers below it left then.
+        // of the last frame: what the layers below it in its controller left
+        // then (the value at the start of that frame when none wrote it).
         void Rebuild(LayerRun layer)
         {
             var animated = layer.Animated;
@@ -1527,7 +1769,7 @@ namespace VRVlog.AvatarAnimator
                 if (j < own.Length && own[j] == k) { j++; continue; }
                 var t = animated[k];
                 var e = lastHead[t];
-                while (e >= 0 && lastLayer[e] >= layer.Index) e = lastEarlier[e];
+                while (e >= 0 && (lastLayer[e] >= layer.Index || layers[lastLayer[e]].Controller != layer.Controller)) e = lastEarlier[e];
                 var kept = e >= 0 ? lastValue[e] : lastPrevious[t];
                 layer.Out[k] = kept;
                 layer.OutWritten[k] = true;

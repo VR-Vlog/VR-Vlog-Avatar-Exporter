@@ -79,7 +79,9 @@ public static class AvatarAnimatorSettledCheck
                 return "layer " + l + " normalized time skipping " + a.NormalizedTime(l) + " every frame " + b.NormalizedTime(l);
             if (!Same(a.LayerWeight(l), b.LayerWeight(l))) return "layer " + l + " weight";
         }
-        return Same(a.FxWeight, b.FxWeight) ? null : "FX weight";
+        for (var c = 0; c < a.Data.Controllers.Count; c++)
+            if (!Same(a.PlayableWeight(c), b.PlayableWeight(c))) return "controller " + c + " playable weight";
+        return null;
     }
 
     // Each parameter changed alone, held for 3 seconds and set back, then
