@@ -11,7 +11,9 @@ namespace VRVlog.AvatarContacts
     // Receivers, with the shape, tags and parameter the app needs to solve
     // their overlaps and feed the Receivers' parameters. Each entry is one
     // VRCContactSender or VRCContactReceiver component, enabled or not, in
-    // hierarchy order.
+    // hierarchy order. Active tells whether it is on as exported (its object
+    // active and its component enabled); an inactive contact neither touches
+    // nor is touched until something turns it on.
     //
     // Node is the glTF node the contact hangs from: the node of its Root
     // Transform (its own object when none is set) or, when the export left
@@ -56,6 +58,7 @@ namespace VRVlog.AvatarContacts
             public double[] Position = { 0, 0, 0 };
             public double[] Rotation = { 0, 0, 0, 1 };
             public readonly List<string> Tags = new List<string>();
+            public bool Active = true;
             // Receivers only.
             public string Type = "constant";
             public string Parameter = "";
@@ -69,7 +72,7 @@ namespace VRVlog.AvatarContacts
             public int Count;
         }
 
-        static readonly string[] SenderKeys = { "node", "shape", "radius", "height", "position", "rotation", "tags" };
+        static readonly string[] SenderKeys = { "node", "shape", "radius", "height", "position", "rotation", "tags", "active" };
         static readonly string[] ReceiverKeys = SenderKeys.Concat(new[] { "type", "parameter", "allowSelf", "allowOthers", "localOnly", "minVelocity" }).ToArray();
 
         public static Dictionary<string, object> Write(AvatarContactsData data)
@@ -93,7 +96,7 @@ namespace VRVlog.AvatarContacts
             {
                 ["node"] = (long)c.Node, ["shape"] = c.Shape, ["radius"] = c.Radius, ["height"] = c.Height,
                 ["position"] = c.Position.Select(v => (object)v).ToList(), ["rotation"] = c.Rotation.Select(v => (object)v).ToList(),
-                ["tags"] = c.Tags.Select(t => (object)t).ToList(),
+                ["tags"] = c.Tags.Select(t => (object)t).ToList(), ["active"] = c.Active,
             };
             if (receiver)
             {
@@ -136,6 +139,7 @@ namespace VRVlog.AvatarContacts
                 Position = Numbers(o["position"], 3), Rotation = Numbers(o["rotation"], 4),
             };
             foreach (var tag in Json.Arr(o["tags"], 0, MaximumTags)) c.Tags.Add(Json.Text(tag));
+            c.Active = Flag(o["active"]);
             if (receiver)
             {
                 c.Type = Choice(o["type"], ReceiverTypes);

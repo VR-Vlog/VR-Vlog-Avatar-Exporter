@@ -94,7 +94,11 @@ namespace VRVlog.LilToonExporter
         {
             var shape = Member(component, "shapeType") is Enum shapeType ? Lower(shapeType.ToString()) : "sphere";
             if (Array.IndexOf(AvatarContactsData.Shapes, shape) < 0) return false;
-            var values = new AvatarContactsData.Contact { Shape = shape };
+            var values = new AvatarContactsData.Contact
+            {
+                Shape = shape,
+                Active = component.gameObject.activeInHierarchy && (!(component is Behaviour behaviour) || behaviour.enabled),
+            };
             if (entry.Receiver)
             {
                 var type = Member(component, "receiverType") is Enum receiverType ? Lower(receiverType.ToString()) : "constant";
@@ -121,14 +125,53 @@ namespace VRVlog.LilToonExporter
             // Below the diameter VRChat solves a capsule as the sphere it is.
             entry.Height = shape == "capsule" ? Mathf.Max(0, (float)Number(Member(component, "height"))) : 0;
             entry.World = at.localToWorldMatrix * Matrix4x4.TRS(position, rotation, Vector3.one);
+            entry.Ancestors = Walk(at, component.transform.root, ref entry.World).ToArray();
+            return true;
+        }
+
+        // The object and each ancestor up to stop. A gimmick the export
+        // removes before the build never moves, so from an object that holds
+        // Modular Avatar's Bone Proxy the walk goes on from its target, and
+        // world (a pose under the object) goes where the build would move it.
+        static List<Transform> Walk(Transform from, Transform stop, ref Matrix4x4 world)
+        {
             var chain = new List<Transform>();
-            for (var ancestor = at; ancestor != null; ancestor = ancestor.parent)
+            for (var ancestor = from; ancestor != null; ancestor = ancestor.parent)
             {
                 chain.Add(ancestor);
-                if (ancestor == component.transform.root) break;
+                if (ancestor == stop) break;
+                // Proxies that hang from each other end the walk instead of looping.
+                if (!(Proxied(ancestor) is (Transform target, Matrix4x4 moved)) || chain.Contains(target)) continue;
+                world = moved * ancestor.worldToLocalMatrix * world;
+                chain.Add(target);
+                ancestor = target;
+                if (ancestor == stop) break;
             }
-            entry.Ancestors = chain.ToArray();
-            return true;
+            return chain;
+        }
+
+        // The target of a Bone Proxy on the object and the object's world pose
+        // once the build has moved it there, as MA's BoneProxyProcessor does:
+        // it reparents keeping the world pose, then zeroes the position and
+        // rotation the mode does not keep (Unset as AsChildAtRoot) and resets
+        // the scale with matchScale.
+        static (Transform, Matrix4x4)? Proxied(Transform transform)
+        {
+            var proxy = transform.GetComponents<Component>().FirstOrDefault(c => IsType(c, ExportGimmickRules.BoneProxy));
+            if (proxy == null) return null;
+            Transform target;
+            try { target = NdmfExportPreparation.FollowingTarget(proxy); }
+            catch (Exception) { return null; }
+            if (target == null || target == transform || target.IsChildOf(transform)) return null;
+            var mode = Member(proxy, "attachmentMode") is Enum value ? value.ToString() : "";
+            var keepPosition = mode == "AsChildKeepWorldPose" || mode == "AsChildKeepPosition";
+            var keepRotation = mode == "AsChildKeepWorldPose" || mode == "AsChildKeepRotation";
+            var kept = target.worldToLocalMatrix * transform.localToWorldMatrix;
+            var local = Matrix4x4.TRS(
+                keepPosition ? (Vector3)kept.GetColumn(3) : Vector3.zero,
+                keepRotation ? Quaternion.Inverse(target.rotation) * transform.rotation : Quaternion.identity,
+                Member(proxy, "matchScale") is bool match && match ? Vector3.one : kept.lossyScale);
+            return (target, target.localToWorldMatrix * local);
         }
 
         // Reads again the contacts the build kept and measures each, as
@@ -144,13 +187,10 @@ namespace VRVlog.LilToonExporter
             {
                 if (entry.Component != null && entry.Component.transform.IsChildOf(root)) Read(entry, entry.Component);
                 // The build may move an object under another parent: from the
-                // nearest object still there, walk the parents as they are now.
-                var chain = new List<Transform>();
-                for (var ancestor = entry.Ancestors.FirstOrDefault(a => a != null); ancestor != null; ancestor = ancestor.parent)
-                {
-                    chain.Add(ancestor);
-                    if (ancestor == root) break;
-                }
+                // nearest object still there, walk the parents as they are now
+                // (through a Bone Proxy the build has not processed yet).
+                var world = entry.World;
+                var chain = Walk(entry.Ancestors.FirstOrDefault(a => a != null), root, ref world);
                 if (chain.Count == 0 || chain[chain.Count - 1] != root) chain.Add(root);
                 entry.Ancestors = chain.ToArray();
                 entry.Offsets = entry.Ancestors.Select(ancestor => ancestor == root
@@ -191,7 +231,7 @@ namespace VRVlog.LilToonExporter
                     Position = new[] { Number(position.x), Number(position.y), Number(position.z) },
                     Rotation = new[] { Number(rotation.x), Number(rotation.y), Number(rotation.z), Number(rotation.w) },
                     Type = values.Type, Parameter = values.Parameter, AllowSelf = values.AllowSelf, AllowOthers = values.AllowOthers,
-                    LocalOnly = values.LocalOnly, MinVelocity = values.MinVelocity,
+                    LocalOnly = values.LocalOnly, MinVelocity = values.MinVelocity, Active = values.Active,
                 };
                 contact.Tags.AddRange(values.Tags);
                 (entry.Receiver ? data.Receivers : data.Senders).Add(contact);

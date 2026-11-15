@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         static AvatarContactsData Data()
         {
             var data = new AvatarContactsData();
-            var sender = new AvatarContactsData.Contact { Node = -1, Radius = .05 };
+            var sender = new AvatarContactsData.Contact { Node = -1, Radius = .05, Active = false };
             sender.Tags.Add("Hand");
             data.Senders.Add(sender);
             var receiver = Receiver();
@@ -39,12 +39,13 @@ namespace VRVlog.LilToonExporter.Tests
             var json = AvatarContactsData.Write(Data());
             Assert.That(json["schemaVersion"], Is.EqualTo(1L));
             Assert.That(((Dictionary<string, object>)((List<object>)json["senders"])[0]).Keys,
-                Is.EquivalentTo(new[] { "node", "shape", "radius", "height", "position", "rotation", "tags" }), "A Sender has no Receiver keys.");
+                Is.EquivalentTo(new[] { "node", "shape", "radius", "height", "position", "rotation", "tags", "active" }), "A Sender has no Receiver keys.");
 
             var read = AvatarContactsData.Read(json);
             var sender = read.Senders.Single();
             Assert.That((sender.Node, sender.Shape, sender.Radius, sender.Height), Is.EqualTo((-1, "sphere", .05, 0d)));
             Assert.That(sender.Tags, Is.EqualTo(new[] { "Hand" }));
+            Assert.That((sender.Active, read.Receivers.Single().Active), Is.EqualTo((false, true)));
             var receiver = read.Receivers.Single();
             Assert.That((receiver.Node, receiver.Shape, receiver.Radius, receiver.Height, receiver.Type, receiver.Parameter),
                 Is.EqualTo((2, "capsule", .1, .3, "proximity", "Pat")));
@@ -72,6 +73,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(() => AvatarContactsData.Read(Written(j => Entry(j)["rotation"] = new List<object> { 0d, 0d, 1d })), Throws.InvalidOperationException);
             Assert.That(() => AvatarContactsData.Read(Written(j => Entry(j)["tags"] = new List<object> { "" })), Throws.InvalidOperationException);
             Assert.That(() => AvatarContactsData.Read(Written(j => Entry(j).Remove("minVelocity"))), Throws.InvalidOperationException);
+            Assert.That(() => AvatarContactsData.Read(Written(j => Entry(j).Remove("active"))), Throws.InvalidOperationException);
+            Assert.That(() => AvatarContactsData.Read(Written(j => Entry(j)["active"] = 1L)), Throws.InvalidOperationException);
             Assert.That(() => AvatarContactsData.Read(Written(j => ((Dictionary<string, object>)((List<object>)j["senders"])[0])["parameter"] = "Pat")),
                 Throws.InvalidOperationException, "A Sender has no parameter.");
             Assert.That(() => AvatarContactsData.Read(Written(j => j["receivers"] = Enumerable.Repeat(Entry(j), AvatarContactsData.MaximumReceivers + 1).Cast<object>().ToList())),
@@ -139,6 +142,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Set(hand, "rootTransform", head);
                 Set(hand, "radius", .1f);
                 Set(hand, "collisionTags", new List<string> { "Head" });
+                // Its object is off: written with active false, as the disabled Receiver.
+                holder.gameObject.SetActive(false);
                 // On the root itself: the model space.
                 Set(root.AddComponent(senderType), "radius", .2f);
                 var editorOnly = Child(root.transform, "Editor only");
@@ -158,6 +163,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(data.Senders[1].Radius, Is.EqualTo(.1).Within(1e-6), "On Head's own units: its Root Transform is Head.");
                 Assert.That(data.Senders[1].Tags, Is.EqualTo(new[] { "Head" }));
                 Assert.That(data.Senders[1].Position, Is.EqualTo(new[] { 0d, 0d, 0d }).Within(1e-6));
+                Assert.That(data.Senders.Select(c => c.Active), Is.EqualTo(new[] { true, false }), "An inactive object's contact is not active.");
+                Assert.That(data.Receivers.Single().Active, Is.False, "A disabled component is not active.");
 
                 var pad = data.Receivers.Single();
                 Assert.That((pad.Node, pad.Shape, pad.Type, pad.Parameter, pad.AllowSelf, pad.AllowOthers, pad.LocalOnly),
@@ -209,6 +216,57 @@ namespace VRVlog.LilToonExporter.Tests
                 var data = capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1);
                 Assert.That(data.Receivers.Select(r => (r.Node, r.Parameter)), Is.EqualTo(new[] { (1, "After"), (1, "Gone") }));
                 Assert.That(data.Receivers[1].Position, Is.EqualTo(new[] { 0, .2, 0 }).Within(1e-6));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        // A gimmick at the avatar root that MA's Bone Proxy hangs from Head is
+        // removed before the build: its contacts are placed where the build
+        // would have moved them, under Head, keeping the gimmick's scale of 2
+        // unless Match Scale resets it.
+        [TestCase("AsChildAtRoot", false, .2f, .2f)]
+        [TestCase("Unset", false, .2f, .2f)]
+        [TestCase("AsChildKeepWorldPose", false, .4f, .2f)]
+        [TestCase("AsChildAtRoot", true, .1f, .1f)]
+        public void ContactsOfARemovedBoneProxyHangFromItsTarget(string mode, bool matchScale, float y, float radius)
+        {
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            // MA finds the avatar root by its descriptor to resolve the target.
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (proxyType == null || descriptorType == null) Assert.Ignore("Requires installed Modular Avatar and the VRChat avatar SDK in Unity.");
+            var root = new GameObject("Avatar");
+            try
+            {
+                root.AddComponent(descriptorType);
+                Transform Child(Transform parent, string name) { var t = new GameObject(name).transform; t.SetParent(parent, false); return t; }
+                var head = Child(root.transform, "Head");
+                head.localPosition = new Vector3(0, 1.4f, 0);
+                var gimmick = Child(root.transform, "Gimmick");
+                gimmick.localPosition = new Vector3(0, 1.6f, 0);
+                gimmick.localScale = Vector3.one * 2;
+                var proxy = gimmick.gameObject.AddComponent(proxyType);
+                // The path MA stores for a target that is not a humanoid bone.
+                proxyType.GetField("subPath").SetValue(proxy, "Head");
+                var field = proxyType.GetField("attachmentMode");
+                field.SetValue(proxy, Enum.Parse(field.FieldType, mode));
+                proxyType.GetField("matchScale").SetValue(proxy, matchScale);
+                var pat = Child(gimmick, "Pat");
+                pat.localPosition = new Vector3(0, .1f, 0);
+                var pad = pat.gameObject.AddComponent(receiverType);
+                Set(pad, "parameter", "HeadPat");
+                Set(pad, "radius", .1f);
+
+                Assert.That(proxyType.GetProperty("target").GetValue(proxy), Is.EqualTo(head), "MA resolves the target.");
+                Assert.That(NdmfExportPreparation.FollowingTarget(proxy), Is.EqualTo(head), "The export reads the target.");
+                var capture = AvatarContactsExport.Capture(root);
+                Object.DestroyImmediate(gimmick.gameObject);
+                capture.Rebind();
+                var nodes = new Dictionary<GameObject, int> { [head.gameObject] = 1 };
+                var receiver = capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1).Receivers.Single();
+                Assert.That(receiver.Node, Is.EqualTo(1));
+                Assert.That(receiver.Position, Is.EqualTo(new[] { 0, (double)y, 0 }).Within(1e-5));
+                Assert.That(receiver.Radius, Is.EqualTo(radius).Within(1e-5));
             }
             finally { Object.DestroyImmediate(root); }
         }
