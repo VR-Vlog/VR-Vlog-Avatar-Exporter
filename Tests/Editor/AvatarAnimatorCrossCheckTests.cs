@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 using UnityEngine.TestTools;
 using VRVlog.AvatarAnimator;
 using VRVlog.Expressions;
@@ -463,6 +466,144 @@ namespace VRVlog.LilToonExporter.Tests
             changed.Clips[3].Tracks.Single(t => t.Target == 3).Curves[0].Keys.ForEach(key => key.Value = -key.Value);
             var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
             Assert.That(AvatarAnimatorCrossCheck.Run(root, controller, changed, all, null).Mismatches.Select(m => (m.Input, m.Target)), Is.EqualTo(new[] { (fist, 3) }));
+        }
+
+        // An Action-like input writing every muscle of the body at a partial
+        // weight over a Gesture-like one moving a finger, on a rig with Unity's
+        // default twist distribution. Unity mixes the muscles linearly but reads
+        // them back off by up to about 1.5e-3, by as much as the linear pose put
+        // on the bones with SetHumanPose: the cross check puts the evaluator's
+        // muscles through the same read back (MuscleReader) before comparing.
+        [Test]
+        public void MusclesReadBackAsAPosePutOnTheBones()
+        {
+            var root = new GameObject("Rig");
+            owned.Add(root);
+            var avatar = HumanoidRig(root);
+            owned.Add(avatar);
+            var animator = root.AddComponent<Animator>();
+            animator.avatar = avatar;
+            const int body = 55;
+            var data = new AvatarAnimatorData();
+            for (var m = 0; m < body; m++) data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "muscle", Muscle = m, Rest = 0 });
+            var muscles = Enumerable.Range(0, body).ToList();
+            var pose = Enumerable.Range(0, body).Select(m => .3f * Mathf.Sin(m * 1.7f + .3f)).ToArray();
+            var action = MuscleClip("Action", Enumerable.Range(0, body).Select(m => (HumanTrait.MuscleName[m], pose[m])));
+            var gesture = MuscleClip("Gesture", new[] { ("LeftHand.Index.1 Stretched", .4f) });
+            var graph = PlayableGraph.Create("Read back");
+            var hands = new AvatarMask();
+            for (var part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+                hands.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, part == (int)AvatarMaskBodyPart.LeftFingers || part == (int)AvatarMaskBodyPart.RightFingers);
+            owned.Add(hands);
+            using (var reader = new AvatarAnimatorCrossCheck.MuscleReader(animator, root.transform))
+            {
+                try
+                {
+                    graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+                    var mixer = AnimationLayerMixerPlayable.Create(graph, 2);
+                    graph.Connect(AnimatorControllerPlayable.Create(graph, gesture), 0, mixer, 0);
+                    graph.Connect(AnimatorControllerPlayable.Create(graph, action), 0, mixer, 1);
+                    mixer.SetLayerMaskFromAvatarMask(0, hands);
+                    mixer.SetInputWeight(0, 1);
+                    AnimationPlayableOutput.Create(graph, "Animator", animator).SetSourcePlayable(mixer);
+                    var unity = new HumanPose();
+                    var linear = new double[body];
+                    double direct = 0, through = 0;
+                    foreach (var weight in new[] { 1f / 30, 2f / 30, 4f / 30, .5f, 1 })
+                    {
+                        mixer.SetInputWeight(1, weight);
+                        graph.Evaluate(1f / 60);
+                        reader.Read(ref unity);
+                        for (var m = 0; m < body; m++) linear[m] = weight * pose[m];
+                        var bones = root.GetComponentsInChildren<Transform>();
+                        var before = bones.Select(b => (b.localPosition, b.localRotation)).ToArray();
+                        var read = reader.ReadBack(unity, data, muscles, linear);
+                        // Setting a rotation back may round its last bit.
+                        for (var b = 0; b < bones.Length; b++)
+                        {
+                            Assert.That(Vector3.Distance(bones[b].localPosition, before[b].localPosition), Is.LessThan(1e-6f), $"{bones[b].name} is put back where Unity left it");
+                            Assert.That(Quaternion.Angle(bones[b].localRotation, before[b].localRotation), Is.LessThan(1e-3f), $"{bones[b].name} is turned back as Unity left it");
+                        }
+                        for (var m = 0; m < body; m++)
+                        {
+                            direct = Math.Max(direct, Math.Abs(unity.muscles[m] - linear[m]));
+                            through = Math.Max(through, Math.Abs(unity.muscles[m] - read[m]));
+                        }
+                    }
+                    Assert.That(direct, Is.GreaterThan(AvatarAnimatorCrossCheck.MuscleTolerance), "read back as is, the linear muscles would differ");
+                    Assert.That(through, Is.LessThan(1e-4));
+                }
+                finally
+                {
+                    graph.Destroy();
+                }
+            }
+        }
+
+        RuntimeAnimatorController MuscleClip(string name, IEnumerable<(string Curve, float Value)> curves)
+        {
+            var clip = new AnimationClip { name = name };
+            foreach (var (curve, value) in curves)
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), curve), AnimationCurve.Constant(0, 1, value));
+            AssetDatabase.CreateAsset(clip, folder.Path + "/" + name + ".anim");
+            return AnimatorController.CreateAnimatorControllerAtPathWithClip(folder.Path + "/" + name + ".controller", clip);
+        }
+
+        // A humanoid rig in a T-pose with every bone of HumanTrait and Unity's
+        // default HumanDescription (twist distribution 0.5), and its Avatar.
+        static Avatar HumanoidRig(GameObject root)
+        {
+            var bones = new Transform[HumanTrait.BoneCount];
+            Transform Bone(int i)
+            {
+                if (bones[i] != null) return bones[i];
+                var parent = HumanTrait.GetParentBone(i);
+                var bone = new GameObject("Bone " + i).transform;
+                bone.SetParent(parent < 0 ? root.transform : Bone(parent), false);
+                bone.localPosition = Offset(HumanTrait.BoneName[i]);
+                return bones[i] = bone;
+            }
+            var human = new List<HumanBone>();
+            for (var i = 0; i < bones.Length; i++)
+                human.Add(new HumanBone { humanName = HumanTrait.BoneName[i], boneName = Bone(i).name, limit = new HumanLimit { useDefaultValues = true } });
+            var skeleton = new List<SkeletonBone> { new SkeletonBone { name = root.name, rotation = Quaternion.identity, scale = Vector3.one } };
+            skeleton.AddRange(bones.Select(bone => new SkeletonBone { name = bone.name, position = bone.localPosition, rotation = bone.localRotation, scale = bone.localScale }));
+            var description = new HumanDescription
+            {
+                human = human.ToArray(), skeleton = skeleton.ToArray(),
+                upperArmTwist = .5f, lowerArmTwist = .5f, upperLegTwist = .5f, lowerLegTwist = .5f,
+                armStretch = .05f, legStretch = .05f, feetSpacing = 0, hasTranslationDoF = false,
+            };
+            var avatar = AvatarBuilder.BuildHumanAvatar(root, description);
+            Assert.That(avatar.isValid && avatar.isHuman, "the rig's Avatar");
+            return avatar;
+        }
+
+        // A bone's place from its parent, facing +z with the left side at -x.
+        static Vector3 Offset(string bone)
+        {
+            var side = bone.StartsWith("Left", StringComparison.Ordinal) ? -1f : bone.StartsWith("Right", StringComparison.Ordinal) ? 1f : 0f;
+            switch (bone.Replace("Left", "").Replace("Right", "").Replace(" ", ""))
+            {
+                case "Hips": return new Vector3(0, 1, 0);
+                case "Spine": case "Chest": case "UpperChest": return new Vector3(0, .12f, 0);
+                case "Neck": return new Vector3(0, .1f, 0);
+                case "Head": return new Vector3(0, .08f, 0);
+                case "Eye": return new Vector3(side * .03f, .06f, .08f);
+                case "Jaw": return new Vector3(0, -.01f, .03f);
+                case "UpperLeg": return new Vector3(side * .1f, -.05f, 0);
+                case "LowerLeg": case "Foot": return new Vector3(0, -.42f, 0);
+                case "Toes": return new Vector3(0, -.06f, .12f);
+                case "Shoulder": return new Vector3(side * .04f, .1f, 0);
+                case "UpperArm": return new Vector3(side * .1f, 0, 0);
+                case "LowerArm": case "Hand": return new Vector3(side * .26f, 0, 0);
+                case "ThumbProximal": return new Vector3(side * .02f, -.01f, .03f);
+                case "IndexProximal": return new Vector3(side * .08f, 0, .025f);
+                case "MiddleProximal": return new Vector3(side * .085f, 0, .008f);
+                case "RingProximal": return new Vector3(side * .08f, 0, -.01f);
+                case "LittleProximal": return new Vector3(side * .07f, 0, -.028f);
+                default: return new Vector3(side * .025f, 0, 0);
+            }
         }
 
         // The face Smile is the fist's state: the evaluator shows its weight
