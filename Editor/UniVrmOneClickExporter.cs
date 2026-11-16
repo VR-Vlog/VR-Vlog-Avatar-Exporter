@@ -519,6 +519,7 @@ namespace VRVlog.LilToonExporter
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
+            VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -673,6 +674,7 @@ namespace VRVlog.LilToonExporter
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // Viseme Parameter Only reads the merged FX. A failure only warns.
                     lipSync = LipSyncCapture.Capture(clone, warnings);
+                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -1050,6 +1052,7 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
+                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
