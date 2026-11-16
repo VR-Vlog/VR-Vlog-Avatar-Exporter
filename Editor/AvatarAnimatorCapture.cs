@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter
         internal const string TooDeepReason = "BlendTreeの入れ子が上限の{0}階層を超えています。";
         internal const string TooManyMotionsReason = "BlendTreeに含まれるモーションが上限の{0}個を超えています。";
 
-        internal const string JsonTooLargeReason = "VRM全体のデータがアプリで読める上限の{0}MBを超えています。";
+        internal const string JsonTooLargeReason = "VRMのJSON部分がアプリで読める上限の{0}MBを超えています。";
 
         // The largest extension JSON (UTF-8 bytes) written. Tests lower it.
         internal const int MaximumMegabytes = 16;
@@ -1247,11 +1247,12 @@ namespace VRVlog.LilToonExporter
         }
 
         // Run on the finished file: a JSON chunk the app would not read is an
-        // error, and the caller leaves the stage out with Remove.
+        // error, and the caller leaves the stage out with Remove. The app reads
+        // the chunk's length from its header, padding included, as here.
         internal static byte[] RequireJsonWithinApp(byte[] bytes)
         {
-            var length = Encoding.UTF8.GetByteCount(JsonDom.Serialize(GlbDocument.Read(bytes).Json));
-            if ((length + 3L & ~3L) > AppJsonBytes) throw new InvalidOperationException(JsonTooLarge);
+            if (bytes.Length < 20) throw new InvalidOperationException("GLB is truncated.");
+            if (BitConverter.ToUInt32(bytes, 12) > AppJsonBytes) throw new InvalidOperationException(JsonTooLarge);
             return bytes;
         }
 

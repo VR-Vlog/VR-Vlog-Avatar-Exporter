@@ -2098,9 +2098,9 @@ namespace VRVlog.LilToonExporter.Tests
             int Size() => System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
             AvatarAnimatorData.Clip Long()
             {
-                var curve = new ExpressionAnimationData.Curve();
+                var curve = new VRVlog.Expressions.ExpressionAnimationData.Curve();
                 for (var i = 0; i < AvatarAnimatorData.MaximumKeysPerClip; i++)
-                    curve.Keys.Add(new ExpressionAnimationData.Key { Time = i / 60.0, Value = i % 2, InTangent = 0, OutTangent = 0 });
+                    curve.Keys.Add(new VRVlog.Expressions.ExpressionAnimationData.Key { Time = i / 60.0, Value = i % 2, InTangent = 0, OutTangent = 0 });
                 var clip = new AvatarAnimatorData.Clip { Name = "Long", Duration = (AvatarAnimatorData.MaximumKeysPerClip - 1) / 60.0 };
                 var track = new AvatarAnimatorData.Track { Target = target };
                 track.Curves.Add(curve);
