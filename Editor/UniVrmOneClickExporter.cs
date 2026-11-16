@@ -661,6 +661,7 @@ namespace VRVlog.LilToonExporter
             AvatarEffectsExport animatorEffects = null;
             AvatarContactsExport animatorContacts = null;
             Func<VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
+            VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -826,6 +827,7 @@ namespace VRVlog.LilToonExporter
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // Viseme Parameter Only reads the merged FX. A failure only warns.
                     lipSync = LipSyncCapture.Capture(clone, warnings);
+                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -1387,6 +1389,7 @@ namespace VRVlog.LilToonExporter
                 // nothing reads after this; the file is already made.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator))
                     AvatarAnimatorCrossCheck.Check(clone, avatarAnimator, avatarAnimatorData, warnings);
+                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,

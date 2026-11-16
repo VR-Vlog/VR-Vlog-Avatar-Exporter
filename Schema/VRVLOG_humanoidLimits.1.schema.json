@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_humanoidLimits/1/schema.json",
+  "title": "VRVLOG_humanoidLimits 1",
+  "description": "The value of glTF asset.extras.VRVLOG_humanoidLimits: the muscle limits (Unity's HumanLimit) the avatar's humanoid set for its own bones, keyed by VRM 1.0 humanoid bone name. Angles are in degrees about the bone's muscle axes. A player that drives the avatar by muscles builds its humanoid with these limits; bones the file leaves out keep Unity's defaults, and a file without the key is played as before. The exporter writes only the shoulders and arms whose limits are not the defaults. The shared reader (HumanoidLimitData.Read) rejects the whole value when anything is outside this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "bones"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "bones": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "enum": [
+          "hips",
+          "spine",
+          "chest",
+          "upperChest",
+          "neck",
+          "head",
+          "leftEye",
+          "rightEye",
+          "jaw",
+          "leftUpperLeg",
+          "leftLowerLeg",
+          "leftFoot",
+          "leftToes",
+          "rightUpperLeg",
+          "rightLowerLeg",
+          "rightFoot",
+          "rightToes",
+          "leftShoulder",
+          "leftUpperArm",
+          "leftLowerArm",
+          "leftHand",
+          "rightShoulder",
+          "rightUpperArm",
+          "rightLowerArm",
+          "rightHand",
+          "leftThumbMetacarpal",
+          "leftThumbProximal",
+          "leftThumbDistal",
+          "leftIndexProximal",
+          "leftIndexIntermediate",
+          "leftIndexDistal",
+          "leftMiddleProximal",
+          "leftMiddleIntermediate",
+          "leftMiddleDistal",
+          "leftRingProximal",
+          "leftRingIntermediate",
+          "leftRingDistal",
+          "leftLittleProximal",
+          "leftLittleIntermediate",
+          "leftLittleDistal",
+          "rightThumbMetacarpal",
+          "rightThumbProximal",
+          "rightThumbDistal",
+          "rightIndexProximal",
+          "rightIndexIntermediate",
+          "rightIndexDistal",
+          "rightMiddleProximal",
+          "rightMiddleIntermediate",
+          "rightMiddleDistal",
+          "rightRingProximal",
+          "rightRingIntermediate",
+          "rightRingDistal",
+          "rightLittleProximal",
+          "rightLittleIntermediate",
+          "rightLittleDistal"
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/limit"
+      }
+    }
+  },
+  "$defs": {
+    "limit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max",
+        "center",
+        "axisLength"
+      ],
+      "properties": {
+        "min": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 0
+          }
+        },
+        "max": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 180
+          }
+        },
+        "center": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          }
+        },
+        "axisLength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    }
+  }
+}
