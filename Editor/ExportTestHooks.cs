@@ -14,6 +14,10 @@ namespace VRVlog.LilToonExporter
         // outside every stage, does not stop a lenient export.
         internal static Action<GameObject> ConversionFaultInjection;
 
+        // Tests throw here, with the extension's name, to prove that a table
+        // the export cannot write is not named by the FX.
+        internal static Action<string> TableFaultInjection;
+
         // The packages that export an NDMF plugin, in place of the installed ones.
         internal static ISet<string> PluginPackagesOverride;
 
