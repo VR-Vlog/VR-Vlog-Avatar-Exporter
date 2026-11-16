@@ -237,22 +237,6 @@ namespace VRVlog.LilToonExporter
                 return (-1, -1);
             };
 
-        // Whether inject wrote its table into bytes; a failure is logged and
-        // leaves bytes as they were.
-        static bool Written(ref byte[] bytes, Func<byte[], byte[]> inject)
-        {
-            try
-            {
-                bytes = inject(bytes);
-                return true;
-            }
-            catch (Exception error) when (!(error is OperationCanceledException))
-            {
-                Debug.LogException(error);
-                return false;
-            }
-        }
-
         // Authored VRM clips and generated shapes that the build passes moved
         // or removed (lenient exports only).
         // The shapes each output shape the FX moves was made from. An output
@@ -1162,10 +1146,9 @@ namespace VRVlog.LilToonExporter
                         try { physBonesData = AvatarPhysBonesExport.Checked(physBones?.Resolve(OutputNode), model.Nodes.Count); }
                         catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                         // The effects and contacts too, whose enabled curves name their entries.
-                        try { effectsData = effects?.Resolve(OutputNode); }
-                        catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
-                        try { contactsData = AvatarContactsExport.Checked(contacts?.Resolve(OutputNode), model.Nodes.Count); }
-                        catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                        effectsData = effects == null ? null : guard.Optional(ExportStage.AvatarEffects, () => effects.Resolve(OutputNode), () => null);
+                        contactsData = contacts == null ? null : guard.Optional(ExportStage.AvatarContacts,
+                            () => AvatarContactsExport.Checked(contacts.Resolve(OutputNode), model.Nodes.Count), () => null);
                         if (avatarAnimator != null)
                         {
                             animatorConstraints = avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null;
@@ -1363,33 +1346,30 @@ namespace VRVlog.LilToonExporter
                 }
                 // The FX, then the effects and contacts whose entries its
                 // enabled targets name. A table that cannot be written must not
-                // be named: the FX is built again without it and the three are
-                // written again on the bytes before them (once; the FX goes
-                // first so the file keeps its extension order).
+                // be named: it is left out, the FX is built again without it and
+                // the three are written again on the bytes before them, until
+                // every table the FX names is written (each pass leaves one more
+                // out, so at most three). The FX goes first so the file keeps
+                // its extension order.
                 var withoutAnimator = exported;
-                var effectsWritten = false;
-                var contactsWritten = false;
-                void WriteAnimatorAndTables()
+                while (true)
                 {
                     exported = withoutAnimator;
                     if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, avatarAnimator.FaceClips), () => exported);
-                    effectsWritten = effectsData != null && Written(ref exported, bytes => AvatarEffectsExport.Inject(bytes, effectsData));
-                    contactsWritten = contactsData != null && Written(ref exported, bytes => AvatarContactsExport.Inject(bytes, contactsData));
-                }
-                WriteAnimatorAndTables();
-                var unwrittenEffects = effectsData != null && !effectsWritten && animatorEffects != null;
-                var unwrittenContacts = contactsData != null && !contactsWritten && animatorContacts != null;
-                if ((unwrittenEffects || unwrittenContacts) && avatarAnimatorData != null && resolveAnimator != null)
-                {
-                    if (unwrittenEffects) { animatorEffects = null; effectsData = null; }
-                    if (unwrittenContacts) { animatorContacts = null; contactsData = null; }
+                    if (effectsData != null) exported = guard.Optional(ExportStage.AvatarEffects, () => AvatarEffectsExport.Inject(exported, effectsData), () => exported);
+                    if (contactsData != null) exported = guard.Optional(ExportStage.AvatarContacts, () => AvatarContactsExport.Inject(exported, contactsData), () => exported);
+                    var unwrittenEffects = animatorEffects != null && guard.IsOmitted(ExportStage.AvatarEffects);
+                    var unwrittenContacts = animatorContacts != null && guard.IsOmitted(ExportStage.AvatarContacts);
+                    if (!unwrittenEffects && !unwrittenContacts || avatarAnimatorData == null || resolveAnimator == null) break;
+                    if (unwrittenEffects) animatorEffects = null;
+                    if (unwrittenContacts) animatorContacts = null;
                     avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
-                    WriteAnimatorAndTables();
                 }
-                if (effectsWritten && effects.LeftOut is string effectsLeftOut) warnings?.Add(effectsLeftOut);
-                // Nothing written: still say what was left out.
-                if (effectsData == null && !unwrittenEffects && effects?.LeftOut is string effectsNoneWritten) warnings?.Add(effectsNoneWritten);
-                if (contacts?.LeftOut is string contactsLeftOut) warnings?.Add(contactsLeftOut);
+                // What was left out of a written table, or of one with nothing
+                // to write; a table left out whole is told by its stage.
+                if (!guard.IsOmitted(ExportStage.AvatarEffects) && effects?.LeftOut is string effectsLeftOut) warnings?.Add(effectsLeftOut);
+                if (!guard.IsOmitted(ExportStage.AvatarContacts) && contacts != null)
+                    foreach (var line in contacts.LeftOut) warnings?.Add(line);
                 // The app does not read a file whose JSON is over its limit. The
                 // extension is the stage that grows with the FX, so it goes, as
                 // when it is over its own limit. The check reads the finished

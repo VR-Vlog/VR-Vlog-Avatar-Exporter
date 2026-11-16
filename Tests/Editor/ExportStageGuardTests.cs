@@ -29,6 +29,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                AddTableEntry(fixture.Source, stage);
                 var roots = SceneManager.GetActiveScene().rootCount;
                 var children = fixture.Source.GetComponentsInChildren<Transform>(true).Length;
                 var fired = 0;
@@ -71,9 +72,26 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
-        // AvatarAnimator only adds data that earlier files did not have, so a
-        // strict export leaves it out instead of stopping (ExportStageGuard.Optional).
-        static IEnumerable<string> StagesThatStopAStrictExport => Stages.Where(name => name != nameof(ExportStage.AvatarAnimator));
+        // A table stage is only reached when the avatar has something to put
+        // in the table: a realtime light for the effects, a Receiver for the contacts.
+        static void AddTableEntry(GameObject avatar, ExportStage stage)
+        {
+            if (stage == ExportStage.AvatarEffects)
+            {
+                var light = new GameObject("Lamp").AddComponent<Light>();
+                light.lightmapBakeType = LightmapBakeType.Realtime;
+                light.transform.SetParent(avatar.transform, false);
+            }
+            if (stage == ExportStage.AvatarContacts)
+                new GameObject("Pad").AddComponent(OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test."))
+                    .transform.SetParent(avatar.transform, false);
+        }
+
+        // AvatarAnimator and the tables its targets name only add data that
+        // earlier files did not have, so a strict export leaves them out
+        // instead of stopping (ExportStageGuard.Optional).
+        static readonly string[] OptionalStages = { nameof(ExportStage.AvatarAnimator), nameof(ExportStage.AvatarEffects), nameof(ExportStage.AvatarContacts) };
+        static IEnumerable<string> StagesThatStopAStrictExport => Stages.Where(name => !OptionalStages.Contains(name));
 
         [Test]
         public void AStrictExportLeavesOutAStageThatOnlyAddsData()

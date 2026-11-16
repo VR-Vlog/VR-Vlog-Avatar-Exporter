@@ -1364,8 +1364,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(PartTargets(written).Select(p => p.Item1), Has.Some.EqualTo("light"));
 
             ExportTestHooks.TableFaultInjection = name => { if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects"); };
-            UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new Regex("injected effects"));
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            // Before, the failure was only in the console.
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects)) && warning.Contains("injected effects")), Is.EqualTo(1), string.Join("\n", warnings));
             var extensions = (Dictionary<string, object>)json["extensions"];
             Assert.That(extensions.ContainsKey(AvatarEffectsExport.Extension), Is.False);
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarEffectsExport.Extension), Is.False);
@@ -1389,13 +1391,53 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(PartTargets(written).Select(p => p.Item1), Has.Some.EqualTo("contact"));
 
             ExportTestHooks.TableFaultInjection = name => { if (name == VRVlog.AvatarContacts.AvatarContactsData.Extension) throw new InvalidOperationException("injected contacts"); };
-            UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new Regex("injected contacts"));
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
             var extensions = (Dictionary<string, object>)json["extensions"];
             Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
             var data = Read(json);
             Assert.That(PartTargets(data), Is.Empty);
             Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(written, "enabled") + 1), "The Receiver's own curve counts as before the table.");
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts)) && warning.Contains("injected contacts")), Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
+        // A table that fails only when written again, after another table
+        // was left out, is left out too and the FX built once more: no FX
+        // target names a table the file does not have. Before, the FX was
+        // built again once, and the second failure left (contact, 0, …) in it.
+        [Test]
+        public void ATableThatFailsOnTheSecondWriteIsNotNamed()
+        {
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            using var avatar = new AnimatorAvatar();
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            var lampClip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(lampClip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", lampClip);
+            Child(avatar.Source.transform, "Pad").AddComponent(receiverType);
+            var padClip = avatar.Clip("Pad");
+            AnimationUtility.SetEditorCurve(padClip, EditorCurveBinding.FloatCurve("Pad", receiverType, "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Pad", padClip);
+            var written = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            Assert.That(PartTargets(written).Select(p => p.Item1), Is.SupersetOf(new[] { "light", "contact" }));
+
+            var contactWrites = 0;
+            ExportTestHooks.TableFaultInjection = name =>
+            {
+                if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects");
+                if (name == VRVlog.AvatarContacts.AvatarContactsData.Extension && ++contactWrites == 2) throw new InvalidOperationException("injected contacts");
+            };
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var extensions = (Dictionary<string, object>)json["extensions"];
+            Assert.That(extensions.ContainsKey(AvatarEffectsExport.Extension), Is.False);
+            Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
+            var data = Read(json);
+            Assert.That(PartTargets(data), Is.Empty);
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects))), Is.EqualTo(1), string.Join("\n", warnings));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts))), Is.EqualTo(1), string.Join("\n", warnings));
         }
 
         // The activeSelf curve of an object the file has no node for, removed

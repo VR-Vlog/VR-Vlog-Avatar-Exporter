@@ -43,6 +43,10 @@ namespace VRVlog.LilToonExporter
         ExpressionGestures,
         FxRest,
         AvatarAnimator,
+        // The tables the FX's enabled targets name; left out, the FX is built
+        // again without the targets that name them.
+        AvatarEffects,
+        AvatarContacts,
     }
 
     // The steps a user sees. Each stage belongs to one phase; the stages stay
@@ -229,6 +233,9 @@ namespace VRVlog.LilToonExporter
                 [ExportStage.FxRest] = ("FXの通常時の顔・体形", ExportPhase.Expressions, ExportOutcome.Approximated),
                 // Left out, the file has no copy of the FX controller and menus.
                 [ExportStage.AvatarAnimator] = ("FXとメニューの動き", ExportPhase.Expressions, ExportOutcome.Omitted),
+                // Left out, the app does not move the avatar's particles and lights, or read its Contacts.
+                [ExportStage.AvatarEffects] = ("アプリで動かすエフェクト", ExportPhase.Expressions, ExportOutcome.Omitted),
+                [ExportStage.AvatarContacts] = ("アプリで動かすContact", ExportPhase.Expressions, ExportOutcome.Omitted),
             };
 
         internal static string Label(ExportStage stage) => Stages.TryGetValue(stage, out var row) ? row.Label : stage.ToString();

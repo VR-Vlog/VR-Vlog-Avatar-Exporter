@@ -26,6 +26,9 @@ namespace VRVlog.LilToonExporter
         internal const string SenderType = ExportGimmickRules.ContactSender;
         internal const string ReceiverType = ExportGimmickRules.ContactReceiver;
         internal const string LimitNote = "Contact Receiverが上限の{1}個を超えたため、{0}個をアプリで動かしません";
+        internal const string SenderLimitNote = "Contact Senderが上限の{1}個を超えたため、{0}個をアプリで動かしません";
+        // A shape or Receiver Type of a newer SDK.
+        internal const string UnknownNote = "このバージョンのExporterが対応していないContact {0}個をアプリで動かしません。ALCOMでExporterを更新すると動く場合があります";
 
         sealed class Entry
         {
@@ -61,9 +64,21 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<int, (int Index, int Node)> tableIndex = new Dictionary<int, (int, int)>();
         internal (int Index, int Node) IndexOf(Component component) =>
             component is object && tableIndex.TryGetValue(component.GetInstanceID(), out var at) ? at : (-1, -1);
-        // The result line: null when no Receiver was left out.
-        internal string LeftOut => limited == 0 ? null
-            : ExporterLocalization.Format(LimitNote, limited, AvatarContactsData.MaximumReceivers);
+        // The result lines for the contacts left out whole, empty when none
+        // was. What an entry could not carry (tags, a long parameter) is only
+        // counted in the file.
+        internal IReadOnlyList<string> LeftOut
+        {
+            get
+            {
+                var lines = new List<string>();
+                if (limited > 0) lines.Add(ExporterLocalization.Format(LimitNote, limited, AvatarContactsData.MaximumReceivers));
+                if (skipped.TryGetValue("senderLimit", out var senders)) lines.Add(ExporterLocalization.Format(SenderLimitNote, senders, AvatarContactsData.MaximumSenders));
+                var unknown = (skipped.TryGetValue("unknownShape", out var shapes) ? shapes : 0) + (skipped.TryGetValue("unknownReceiverType", out var types) ? types : 0);
+                if (unknown > 0) lines.Add(ExporterLocalization.Format(UnknownNote, unknown));
+                return lines;
+            }
+        }
 
         // Reads every Sender and Receiver under root (the export copy),
         // enabled or not, in hierarchy order, skipping those under EditorOnly
