@@ -1387,6 +1387,16 @@ namespace VRVlog.LilToonExporter
                 // Nothing written: still say what was left out.
                 if (effectsData == null && !unwrittenEffects && effects?.LeftOut is string effectsNoneWritten) warnings?.Add(effectsNoneWritten);
                 if (contacts?.LeftOut is string contactsLeftOut) warnings?.Add(contactsLeftOut);
+                // The app does not read a file whose JSON is over its limit. The
+                // extension is the stage that grows with the FX, so it goes, as
+                // when it is over its own limit. The check reads the finished
+                // file, the required app versions written.
+                if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator))
+                {
+                    var finished = AvatarFormatRequirements.Write(exported);
+                    exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.RequireJsonWithinApp(finished),
+                        () => AvatarAnimatorCapture.Remove(finished));
+                }
                 // The curves the written extension left out, by kind.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
                     warnings?.Add(leftOut);

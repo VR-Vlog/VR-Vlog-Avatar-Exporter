@@ -24,9 +24,15 @@ namespace VRVlog.LilToonExporter
         internal const string TooDeepReason = "BlendTreeの入れ子が上限の{0}階層を超えています。";
         internal const string TooManyMotionsReason = "BlendTreeに含まれるモーションが上限の{0}個を超えています。";
 
+        internal const string JsonTooLargeReason = "VRMのJSON部分がアプリで読める上限の{0}MBを超えています。";
+
         // The largest extension JSON (UTF-8 bytes) written. Tests lower it.
-        internal const int MaximumMegabytes = 4;
+        internal const int MaximumMegabytes = 16;
         internal static int MaximumBytes = MaximumMegabytes * 1024 * 1024;
+        // The largest JSON chunk the app reads (its LilToonGlbDocument.
+        // MaximumJsonChunkBytes, padding included). Tests lower it.
+        internal const int AppJsonMegabytes = 32;
+        internal static int AppJsonBytes = AppJsonMegabytes * 1024 * 1024;
 
         // The result line of the curves left out, {0} the kinds with their counts.
         internal const string OmittedCurvesNote = "アプリに渡すFXの動きに入れなかったアニメーションの曲線: {0}";
@@ -43,6 +49,7 @@ namespace VRVlog.LilToonExporter
             ("humanoidRoot", "Humanoidのルートの位置と回転・手足のIK"),
         };
         internal static string TooLarge => ExporterLocalization.Format(TooLargeReason, MaximumMegabytes);
+        internal static string JsonTooLarge => ExporterLocalization.Format(JsonTooLargeReason, AppJsonMegabytes);
         internal static string TooDeep => ExporterLocalization.Format(TooDeepReason, AvatarAnimatorData.MaximumBlendTreeDepth);
         internal static string TooManyMotions => ExporterLocalization.Format(TooManyMotionsReason, AvatarAnimatorData.MaximumExpandedMotions);
 
@@ -1237,6 +1244,26 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("Avatar animator material slot is out of range.");
             document.PlaceExtension(AvatarAnimatorData.Extension, extension);
             return document.Write();
+        }
+
+        // Run on the finished file: a JSON chunk the app would not read is an
+        // error, and the caller leaves the stage out with Remove. The app reads
+        // the chunk's length from its header, padding included, as here.
+        internal static byte[] RequireJsonWithinApp(byte[] bytes)
+        {
+            if (bytes.Length < 20) throw new InvalidOperationException("GLB is truncated.");
+            if (BitConverter.ToUInt32(bytes, 12) > AppJsonBytes) throw new InvalidOperationException(JsonTooLarge);
+            return bytes;
+        }
+
+        // The file as written without the extension: its entry in extensions
+        // and in extensionsUsed go, the rest stays as it is.
+        internal static byte[] Remove(byte[] bytes)
+        {
+            var document = GlbDocument.Read(bytes);
+            var removed = document.Find("extensions")?.Remove(AvatarAnimatorData.Extension) == true;
+            removed |= document.Json.TryGetValue("extensionsUsed", out var used) && used is List<object> names && names.Remove(AvatarAnimatorData.Extension);
+            return removed ? document.Write() : bytes;
         }
 
         // The value each target of the extension takes when the VRM custom
