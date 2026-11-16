@@ -515,7 +515,15 @@ namespace VRVlog.LilToonExporter.Tests
                         graph.Evaluate(1f / 60);
                         reader.Read(ref unity);
                         for (var m = 0; m < body; m++) linear[m] = weight * pose[m];
+                        var bones = root.GetComponentsInChildren<Transform>();
+                        var before = bones.Select(b => (b.localPosition, b.localRotation)).ToArray();
                         var read = reader.ReadBack(unity, data, muscles, linear);
+                        // Setting a rotation back may round its last bit.
+                        for (var b = 0; b < bones.Length; b++)
+                        {
+                            Assert.That(Vector3.Distance(bones[b].localPosition, before[b].localPosition), Is.LessThan(1e-6f), $"{bones[b].name} is put back where Unity left it");
+                            Assert.That(Quaternion.Angle(bones[b].localRotation, before[b].localRotation), Is.LessThan(1e-3f), $"{bones[b].name} is turned back as Unity left it");
+                        }
                         for (var m = 0; m < body; m++)
                         {
                             direct = Math.Max(direct, Math.Abs(unity.muscles[m] - linear[m]));

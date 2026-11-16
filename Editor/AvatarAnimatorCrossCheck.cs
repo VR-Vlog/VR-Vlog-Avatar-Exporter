@@ -122,6 +122,8 @@ namespace VRVlog.LilToonExporter
         {
             internal string Input;
             internal int Frame, Target;
+            // For a muscle, both are read back from the bones (MuscleReader), so
+            // Evaluator is not the evaluator's own value.
             internal double Unity, Evaluator;
             // The layers whose state or weight differs at that frame, for the log.
             internal string Layers;
@@ -589,8 +591,11 @@ namespace VRVlog.LilToonExporter
             internal void Read(ref HumanPose pose) => handler.GetHumanPose(ref pose);
 
             // The muscles HumanPoseHandler reads back with the evaluator's muscle
-            // targets on the bones, the other muscles at 0 and the body where
-            // Unity's pose has it.
+            // targets on the bones and the other muscles and the body where
+            // Unity's pose has them: the read back of a muscle depends on the
+            // other muscles of its bone, and the muscles the evaluator does not
+            // play (additive clips, clips over the track limit) still move in
+            // Unity. The array is reused by the next call.
             internal float[] ReadBack(HumanPose unity, AvatarAnimatorData data, List<int> muscles, IReadOnlyList<double> values)
             {
                 for (var i = 0; i < skeleton.Length; i++)
@@ -600,7 +605,7 @@ namespace VRVlog.LilToonExporter
                     scales[i] = skeleton[i].localScale;
                 }
                 if (evaluated.muscles == null || evaluated.muscles.Length != unity.muscles.Length) evaluated.muscles = new float[unity.muscles.Length];
-                else Array.Clear(evaluated.muscles, 0, evaluated.muscles.Length);
+                Array.Copy(unity.muscles, evaluated.muscles, unity.muscles.Length);
                 evaluated.bodyPosition = unity.bodyPosition;
                 evaluated.bodyRotation = unity.bodyRotation;
                 foreach (var t in muscles) evaluated.muscles[data.Targets[t].Muscle] = (float)values[t];
