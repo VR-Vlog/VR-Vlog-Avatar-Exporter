@@ -31,10 +31,7 @@ namespace VRVlog.LilToonExporter
             // Parent first: raising the upper arm carries the forearm with it. The upper
             // arm goes even when only the forearm is past, or the elbow would bend backwards.
             AlignBone(upperBone, lowerBone, outward);
-            // The forearm goes straight too. A humanoid measures the elbow from a straight
-            // arm, but the app adds a motion onto the rest, so a bend left here would stay
-            // in every motion; the lowered arm's bend is not one the author set for a T-pose.
-            AlignBone(lowerBone, handBone, outward);
+            if (IsPast(lowerBone, handBone, outward)) AlignBone(lowerBone, handBone, outward);
         }
 
         static bool IsPast(Transform bone, Transform child, Vector3 outward)

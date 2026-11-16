@@ -63,24 +63,8 @@ namespace VRVlog.LilToonExporter.Tests
             AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
 
             Assert.That(AngleFrom(Vector3.left, upper, lower), Is.LessThan(.1f));
-            Assert.That(AngleFrom(Vector3.left, lower, hand), Is.LessThan(.1f));
-        }
-
-        [Test]
-        public void AnElbowBentWithinTheLimitIsStraightenedWithTheLoweredArm()
-        {
-            using var f = new AttachmentConnectionTests.Fixture();
-            var upper = Bone(f.Source, HumanBodyBones.LeftUpperArm); var lower = Bone(f.Source, HumanBodyBones.LeftLowerArm);
-            var hand = Bone(f.Source, HumanBodyBones.LeftHand);
-            LowerArms(f.Source, 40);
-            // A lowered arm whose elbow bends towards the body, less than the limit.
-            lower.Rotate(Vector3.forward, -12, Space.World);
-            Assert.That(Vector3.Angle(lower.position - upper.position, hand.position - lower.position), Is.EqualTo(12f).Within(.1f));
-
-            AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
-
-            Assert.That(AngleFrom(Vector3.left, upper, lower), Is.LessThan(.1f));
-            Assert.That(AngleFrom(Vector3.left, lower, hand), Is.LessThan(.1f));
+            Assert.That(AngleFrom(Vector3.left, lower, hand), Is.EqualTo(10f).Within(.1f));
+            Assert.That(hand.position.y, Is.LessThan(lower.position.y), "the forearm keeps bending down");
         }
 
         [Test]
