@@ -25,6 +25,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             ExportTestHooks.FaultInjection = null;
             AvatarAnimatorCapture.MaximumBytes = AvatarAnimatorCapture.MaximumMegabytes * 1024 * 1024;
+            AvatarAnimatorCapture.AppJsonBytes = AvatarAnimatorCapture.AppJsonMegabytes * 1024 * 1024;
             AvatarAnimatorCrossCheck.HookBehaviours = true;
         }
 
@@ -1993,10 +1994,11 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Without shapes to keep, the extension only adds: without it, its
         // extensionsUsed entry and its required version, the file is the one
-        // written when the stage fails. The stage runs seven times (activeSelf
+        // written when the stage fails. The stage runs eight times (activeSelf
         // and BlendShape snapshots, the shapes the FX moves, read, node
-        // mapping, the morph targets the file has, injection); a failure in
-        // any of them is left out, in strict mode too.
+        // mapping, the morph targets the file has, injection, the size of the
+        // finished file's JSON); a failure in any of them is left out, in
+        // strict mode too.
         [TestCase(1, true)]
         [TestCase(2, true)]
         [TestCase(3, true)]
@@ -2004,6 +2006,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(5, true)]
         [TestCase(6, true)]
         [TestCase(7, true)]
+        [TestCase(8, true)]
         [TestCase(1, false)]
         [TestCase(2, false)]
         [TestCase(3, false)]
@@ -2011,6 +2014,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(5, false)]
         [TestCase(6, false)]
         [TestCase(7, false)]
+        [TestCase(8, false)]
         public void TheExtensionLeavesTheRestOfTheFileAsItIs(int failingCall, bool continueOnStageFailure)
         {
             using var avatar = new AnimatorAvatar();
@@ -2018,7 +2022,7 @@ namespace VRVlog.LilToonExporter.Tests
             var calls = 0;
             ExportTestHooks.FaultInjection = stage => { if (stage == ExportStage.AvatarAnimator) calls++; };
             var normal = avatar.Export(new List<string>(), null);
-            Assert.That(calls, Is.EqualTo(7), "Each of the seven runs once.");
+            Assert.That(calls, Is.EqualTo(8), "Each of the eight runs once.");
 
             calls = 0;
             ExportTestHooks.FaultInjection = stage =>
@@ -2077,6 +2081,84 @@ namespace VRVlog.LilToonExporter.Tests
             AvatarAnimatorCapture.MaximumBytes = size - 1;
             Assert.That(() => AvatarAnimatorCapture.Inject(exported, data),
                 Throws.InvalidOperationException.With.Message.EqualTo(AvatarAnimatorCapture.TooLarge));
+        }
+
+        // The limit is 16MB: an extension past the former 4MB is written, one
+        // past 16MB is not. The added clips are long curves on a target the
+        // file has.
+        [Test]
+        public void AnExtensionOver4MBIsWrittenAndOneOver16MBIsNot()
+        {
+            Assert.That(AvatarAnimatorCapture.MaximumBytes, Is.EqualTo(16 * 1024 * 1024));
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), new ExportRecoveryReport());
+            var data = Read(GlbDocument.Read(exported).Json);
+            var target = data.Targets.FindIndex(t => t.Property == "active");
+            Assert.That(target, Is.GreaterThanOrEqualTo(0));
+            int Size() => System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+            AvatarAnimatorData.Clip Long()
+            {
+                var curve = new ExpressionAnimationData.Curve();
+                for (var i = 0; i < AvatarAnimatorData.MaximumKeysPerClip; i++)
+                    curve.Keys.Add(new ExpressionAnimationData.Key { Time = i / 60.0, Value = i % 2, InTangent = 0, OutTangent = 0 });
+                var clip = new AvatarAnimatorData.Clip { Name = "Long", Duration = (AvatarAnimatorData.MaximumKeysPerClip - 1) / 60.0 };
+                var track = new AvatarAnimatorData.Track { Target = target };
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+                return clip;
+            }
+            void GrowPast(int bytes)
+            {
+                var before = Size();
+                data.Clips.Add(Long());
+                var each = Size() - before;
+                for (var more = (bytes - before) / each; more > 0; more--) data.Clips.Add(Long());
+                while (Size() <= bytes) data.Clips.Add(Long());
+            }
+
+            GrowPast(4 * 1024 * 1024);
+            var withFive = GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data));
+            var written = (Dictionary<string, object>)withFive.Find("extensions")[AvatarAnimatorData.Extension];
+            Assert.That(((List<object>)written["clips"]).Count, Is.EqualTo(data.Clips.Count));
+            Assert.That(Size(), Is.GreaterThan(4 * 1024 * 1024).And.LessThanOrEqualTo(AvatarAnimatorCapture.MaximumBytes));
+
+            GrowPast(AvatarAnimatorCapture.MaximumBytes);
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data),
+                Throws.InvalidOperationException.With.Message.EqualTo(AvatarAnimatorCapture.TooLarge));
+            Assert.That(AvatarAnimatorCapture.TooLarge, Does.Contain("16MB"));
+        }
+
+        // The app reads a JSON chunk of up to 32MB. A file whose JSON chunk is
+        // exactly that is written as it is; one byte less of room leaves the
+        // extension out, with the reason, and the file is the one written
+        // without it.
+        [Test]
+        public void AFileWhoseJsonIsOverTheAppLimitLeavesTheExtensionOut()
+        {
+            Assert.That(AvatarAnimatorCapture.AppJsonBytes, Is.EqualTo(32 * 1024 * 1024));
+            using var avatar = new AnimatorAvatar();
+            var normal = avatar.Export(new List<string>(), new ExportRecoveryReport());
+            var chunk = (int)BitConverter.ToUInt32(normal, 12);
+
+            AvatarAnimatorCapture.AppJsonBytes = chunk;
+            Assert.That(avatar.Export(new List<string>(), new ExportRecoveryReport()), Is.EqualTo(normal));
+
+            AvatarAnimatorCapture.AppJsonBytes = chunk - 1;
+            var warnings = new List<string>();
+            var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+            var without = avatar.Export(warnings, report);
+            var json = GlbDocument.Read(without).Json;
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+            var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+            Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+            Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.JsonTooLarge));
+            Assert.That(entry.Reason, Does.Contain(AvatarAnimatorCapture.AppJsonMegabytes + "MB"));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+            Assert.That(Strip(GlbDocument.Read(normal).Json), Is.EqualTo(JsonDom.Serialize(json)));
+            Assert.That(GlbDocument.Read(without).Binary, Is.EqualTo(GlbDocument.Read(normal).Binary));
         }
 
         // Trees nested as deep as the format allows are written; one level more
