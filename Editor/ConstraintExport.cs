@@ -356,10 +356,13 @@ namespace VRVlog.LilToonExporter
             var scale = parent.lossyScale;
             // The source must not move along its arm, nor the target sit in a
             // spring chain, where the new nodes would come between two joints.
-            if (arm == null || source.IsChildOf(node) || node.IsChildOf(source) || relays.Animated(source) ||
+            if (arm == null || source.IsChildOf(node) || node.IsChildOf(source) || relays.Animated(source) || relays.Animated(node) ||
                 node.TryGetComponent<VRM10SpringBoneJoint>(out _) && parent.TryGetComponent<VRM10SpringBoneJoint>(out _) ||
                 !(scale.x > 0 && scale.y > 0 && scale.z > 0) || Mathf.Abs(scale.x - scale.y) > 1e-3f * scale.y || Mathf.Abs(scale.z - scale.y) > 1e-3f * scale.y)
                 return (ExportOutcome.Omitted, OmittedReparent);
+            // A joint at or above the target's parent: the share is not a swing
+            // about it, and nothing under it moves the target's parent.
+            if (parent.IsChildOf(arm)) return (ExportOutcome.Omitted, OmittedReparent);
             var shared = parent;
             while (!arm.IsChildOf(shared)) shared = shared.parent;
             for (var between = arm.parent; between != shared; between = between.parent)

@@ -884,17 +884,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The arm stays put only where nothing between the source's parent and
-        // the target's parent turns; a source on its joint never moves.
+        // the target's parent turns; a source on its joint never moves. A joint
+        // at or above the target's parent, or an animated target, is left too.
         [TestCase("turning bone")][TestCase("source on the joint")][TestCase("animated source")]
+        [TestCase("sibling source")][TestCase("animated target")]
         public void APartialPositionConstraintThatAnArmWouldNotMatchKeepsThePose(string condition)
         {
             using var f = new Fixture();
-            var source = Fixture.Child(f.A, "Hand", new Vector3(0, -.2f, 0));
+            var source = Fixture.Child(condition == "sibling source" ? f.Other.parent : f.A, "Hand", new Vector3(0, -.2f, 0));
             if (condition == "source on the joint") source.localPosition = Vector3.zero;
             if (condition == "turning bone") f.Constraint<RotationConstraint>(f.Parent, 1, Fixture.Child(f.Copy.transform, "Driver", Vector3.up));
             var constraint = f.Constraint<PositionConstraint>(f.Other, .2f, source);
             var world = f.Other.localToWorldMatrix;
-            if (condition == "animated source") f.Convert(source); else f.Convert();
+            if (condition == "animated source") f.Convert(source);
+            else if (condition == "animated target") f.Convert(f.Other);
+            else f.Convert();
             Assert.That(f.Other.parent.name, Is.EqualTo("Other parent"));
             Assert.That(SameMatrix(f.Other.localToWorldMatrix, world), Is.True);
             Assert.That(f.Copy.GetComponentsInChildren<Transform>(true).Select(t => t.name), Has.None.Contains(ConstraintExport.CarryName));
