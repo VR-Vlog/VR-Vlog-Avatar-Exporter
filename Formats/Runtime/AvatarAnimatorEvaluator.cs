@@ -1748,7 +1748,9 @@ namespace VRVlog.AvatarAnimator
             }
             foreach (var t in targets)
             {
-                var fallback = s.WriteDefaults || (isMuscle[t] && side.Muscles) ? rest[t] : previous[t];
+                // Without Write Defaults, a child that does not write the target
+                // gives what the layers below leave this frame (measured in treeFallback).
+                var fallback = s.WriteDefaults || (isMuscle[t] && side.Muscles) ? rest[t] : Wrote(t) ? values[t] : previous[t];
                 // The motions that do not write a stepped target give the
                 // fallback with their weight together.
                 side.Value[t] = stepped[t] ? (side.Best[t] >= side.Total - side.AccumulatedWeight[t] ? side.Accumulated[t] : fallback)

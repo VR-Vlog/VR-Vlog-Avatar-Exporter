@@ -265,6 +265,9 @@ namespace VRVlog.AvatarAnimator.Comparison
             yield return HandsOverEmpty("handsOverEmpty", true);
             yield return HandsOverEmpty("handsOverNoMotion", false);
             yield return HandsUnderThumb();
+            yield return HandsUnderThumbHalf();
+            yield return TreeFallback();
+            yield return FrozenMuscles();
         }
 
         public static Case Find(string name) => Cases().Single(c => c.Name == name);
@@ -1264,6 +1267,86 @@ namespace VRVlog.AvatarAnimator.Comparison
             top.States[thumb].Transitions.Add(To(defaults, duration: .17).When(go, "if"));
             top.States[defaults].Transitions.Add(To(empty, duration: .17).When(go, "ifNot"));
             c.Input(.4, go, 1).Input(.85, go, 0);
+            return c.Case;
+        }
+
+        // HandsUnderThumb with the upper layer at a weight below 1, lowered
+        // again on the way: the finger its clips do not write is the rest of
+        // that layer, blended over the lower layer's by the weight.
+        static Case HandsUnderThumbHalf()
+        {
+            var c = new Builder("handsUnderThumbHalf", 1.4);
+            var go = c.Parameter("Go", "bool");
+            var leftThumb = c.Muscle(55);
+            var leftIndex = c.Muscle(59);
+            c.Controller("fx");
+            c.Controller("gesture");
+            c.Layer("AllParts", mask: Mask(new[] { 7 }));
+            c.State(c.Layer("Left Hand", mask: Mask(new[] { 7 })), "Idle", c.Constant(1, true, (leftThumb, -1.5), (leftIndex, .4)), writeDefaults: false);
+            var top = c.Layer("Thumb", weight: .5, mask: Mask(new[] { 7 }));
+            var thumb = c.State(top, "Thumb", c.Constant(1, true, (leftThumb, .6)), writeDefaults: false);
+            var defaults = c.State(top, "Defaults", c.Constant(1, true, (leftThumb, -.3)));
+            var empty = c.State(top, "Empty", c.Constant(1, true), writeDefaults: false);
+            top.States[thumb].Transitions.Add(To(defaults, duration: .17).When(go, "if"));
+            top.States[defaults].Transitions.Add(To(empty, duration: .17).When(go, "ifNot"));
+            c.Input(.4, go, 1).Input(.85, go, 0);
+            c.Weight(.6, 2, .25);
+            return c.Case;
+        }
+
+        // A 1D tree whose children write different targets, without Write
+        // Defaults and then with: what a child that does not write a target
+        // gives, over the FX's ramp and under a half weight layer writing the
+        // same position. On the hand, a tree of a clip writing the thumb and
+        // an empty clip.
+        static Case TreeFallback()
+        {
+            var c = new Builder("treeFallback", 1.6);
+            var go = c.Parameter("Go", "bool");
+            var mix = c.Parameter("Mix", "float", .5);
+            var shared = c.Position(1);
+            var other = c.Position(2);
+            var leftThumb = c.Muscle(55);
+            var leftIndex = c.Muscle(59);
+            c.Controller("fx");
+            c.State(c.Layer("Bottom"), "Ramp", c.Ramp(1, true, shared, 0, 2));
+            var tree = c.Layer("Tree");
+            var off = c.State(tree, "Off", c.Tree("1d", mix, (c.Constant(1, true, (shared, 5)), 0, 1), (c.Constant(1, true, (other, 7)), 1, 1)), writeDefaults: false);
+            var on = c.State(tree, "On", c.Tree("1d", mix, (c.Constant(1, true, (shared, 5)), 0, 1), (c.Constant(1, true, (other, 7)), 1, 1)));
+            tree.States[off].Transitions.Add(To(on).When(go, "if"));
+            c.State(c.Layer("Above", weight: .5), "Shared", c.Constant(1, true, (shared, 9)), writeDefaults: false);
+            c.Controller("gesture");
+            c.Layer("AllParts", mask: Mask(new[] { 7 }));
+            c.State(c.Layer("Left Hand", mask: Mask(new[] { 7 })), "Idle", c.Constant(1, true, (leftThumb, -1.5), (leftIndex, .4)), writeDefaults: false);
+            var hand = c.Layer("Tree Hand", mask: Mask(new[] { 7 }));
+            c.State(hand, "Thumb", c.Tree("1d", mix, (c.Constant(1, true, (leftThumb, .6)), 0, 1), (c.Constant(1, true), 1, 1)), writeDefaults: false);
+            c.Input(.4, mix, .25).Input(.8, go, 1).Input(1.2, mix, .75);
+            return c.Case;
+        }
+
+        // A transition from a clip writing the thumb to an empty clip,
+        // interrupted by the destination's transition to another empty clip
+        // (all without Write Defaults): the frozen blend's muscles and the
+        // ones it did not write, while no side that plays writes a muscle.
+        static Case FrozenMuscles()
+        {
+            var c = new Builder("frozenMuscles", 1.4);
+            var go = c.Parameter("Go", "int");
+            var leftThumb = c.Muscle(55);
+            var leftIndex = c.Muscle(59);
+            c.Controller("fx");
+            c.Controller("gesture");
+            c.Layer("AllParts", mask: Mask(new[] { 7 }));
+            c.State(c.Layer("Left Hand", mask: Mask(new[] { 7 })), "Idle", c.Constant(1, true, (leftThumb, -1.5), (leftIndex, .4)), writeDefaults: false);
+            var top = c.Layer("Control", mask: Mask(new[] { 7 }));
+            var a = c.State(top, "Thumb", c.Constant(1, true, (leftThumb, .6)), writeDefaults: false);
+            var b = c.State(top, "Empty", c.Constant(1, true), writeDefaults: false);
+            var d = c.State(top, "Other", c.Constant(1, true), writeDefaults: false);
+            var slow = To(b, duration: .47).When(go, "equals", 1);
+            slow.InterruptionSource = "destination";
+            top.States[a].Transitions.Add(slow);
+            top.States[b].Transitions.Add(To(d, duration: .28).When(go, "equals", 2));
+            c.Input(.2, go, 1).Input(.45, go, 2);
             return c.Case;
         }
 
