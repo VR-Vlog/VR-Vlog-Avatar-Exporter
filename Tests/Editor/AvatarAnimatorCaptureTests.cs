@@ -1367,7 +1367,7 @@ namespace VRVlog.LilToonExporter.Tests
             var warnings = new List<string>();
             var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
             // Before, the failure was only in the console.
-            Assert.That(warnings, Has.One.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects)).And.Contains("injected effects"));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects)) && warning.Contains("injected effects")), Is.EqualTo(1), string.Join("\n", warnings));
             var extensions = (Dictionary<string, object>)json["extensions"];
             Assert.That(extensions.ContainsKey(AvatarEffectsExport.Extension), Is.False);
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarEffectsExport.Extension), Is.False);
@@ -1398,7 +1398,7 @@ namespace VRVlog.LilToonExporter.Tests
             var data = Read(json);
             Assert.That(PartTargets(data), Is.Empty);
             Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(written, "enabled") + 1), "The Receiver's own curve counts as before the table.");
-            Assert.That(warnings, Has.One.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts)).And.Contains("injected contacts"));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts)) && warning.Contains("injected contacts")), Is.EqualTo(1), string.Join("\n", warnings));
         }
 
         // A table that fails only when written again, after another table
@@ -1436,8 +1436,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
             var data = Read(json);
             Assert.That(PartTargets(data), Is.Empty);
-            Assert.That(warnings, Has.One.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects)));
-            Assert.That(warnings, Has.One.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts)));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects))), Is.EqualTo(1), string.Join("\n", warnings));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts))), Is.EqualTo(1), string.Join("\n", warnings));
         }
 
         // The activeSelf curve of an object the file has no node for, removed
