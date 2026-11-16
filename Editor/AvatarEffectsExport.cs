@@ -518,6 +518,7 @@ namespace VRVlog.LilToonExporter
         internal static byte[] Inject(byte[] bytes, Dictionary<string, object> extension)
         {
             if (extension == null) return bytes;
+            ExportTestHooks.TableFaultInjection?.Invoke(Extension);
             var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list.Count : 0;
             var materialCount = ((List<object>)extension["materials"]).Count;

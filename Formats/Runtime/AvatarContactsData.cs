@@ -30,7 +30,13 @@ namespace VRVlog.AvatarContacts
     // the app's to write before each Advance.
     //
     // Omitted counts what the exporter left out: contactLimit, Receivers
-    // past the first MaximumReceivers in hierarchy order.
+    // past the first MaximumReceivers in hierarchy order; senderLimit,
+    // Senders past the first MaximumSenders; unknownShape, contacts of a
+    // shape this exporter does not know, and unknownReceiverType, Receivers
+    // of a Receiver Type it does not know, both left out whole; tagLimit,
+    // tags past the first MaximumTags of a contact or longer than
+    // MaximumTagLength; parameterLength, Receivers written with an empty
+    // Parameter because theirs was longer than MaximumParameterLength.
     public sealed class AvatarContactsData
     {
         public const string Extension = "VRVLOG_avatar_contacts";
@@ -39,12 +45,16 @@ namespace VRVlog.AvatarContacts
         public const int MaximumReceivers = 64;
         public const int MaximumSenders = 4096;
         public const int MaximumTags = 64;
+        public const int MaximumTagLength = 1024;
         // The longest parameter read, as other contracts limit their strings.
         public const int MaximumParameterLength = 1024;
         public static readonly string[] Shapes = { "sphere", "capsule" };
         public static readonly string[] ReceiverTypes = { "constant", "onEnter", "proximity" };
-        // The order the omitted kinds are written in.
-        public static readonly string[] OmittedKinds = { "contactLimit" };
+        // The order the omitted kinds are written in. A newer exporter adds
+        // kinds at the end; a reader keeps those it does not know (see Read).
+        public static readonly string[] OmittedKinds = { "contactLimit", "senderLimit", "unknownShape", "unknownReceiverType", "tagLimit", "parameterLength" };
+        // The omitted kinds a reader takes, those it does not know included.
+        public const int MaximumOmittedKinds = 64;
 
         public readonly List<Contact> Senders = new List<Contact>();
         public readonly List<Contact> Receivers = new List<Contact>();
@@ -113,17 +123,20 @@ namespace VRVlog.AvatarContacts
             var data = new AvatarContactsData();
             foreach (var raw in Json.Arr(root["senders"], 0, MaximumSenders)) data.Senders.Add(ReadContact(raw, false));
             foreach (var raw in Json.Arr(root["receivers"], 0, MaximumReceivers)) data.Receivers.Add(ReadContact(raw, true));
-            var next = 0;
-            foreach (var raw in Json.Arr(root["omitted"], 0, OmittedKinds.Length))
+            // Each kind once with a count: the known kinds in OmittedKinds
+            // order, then the kinds a newer exporter added.
+            var known = -1;
+            var newer = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var raw in Json.Arr(root["omitted"], 0, MaximumOmittedKinds))
             {
                 var o = Json.Obj(raw, "kind", "count");
-                var kind = Array.IndexOf(OmittedKinds, o["kind"] as string);
-                // Each kind once, in OmittedKinds order, with a count.
-                if (kind < next) throw Json.Bad();
-                next = kind + 1;
+                var kind = Json.Text(o["kind"]);
                 var count = Json.NonNegative(o["count"]);
                 if (count == 0) throw Json.Bad();
-                data.Omitted.Add(new Omission { Kind = OmittedKinds[kind], Count = count });
+                var at = Array.IndexOf(OmittedKinds, kind);
+                if (at < 0 ? !newer.Add(kind) : at <= known || newer.Count > 0) throw Json.Bad();
+                known = Math.Max(known, at);
+                data.Omitted.Add(new Omission { Kind = kind, Count = count });
             }
             return data;
         }
