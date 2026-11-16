@@ -40,6 +40,10 @@ namespace VRVlog.LilToonExporter
             // In the root object's units, before its scale.
             internal float Radius, Height;
             internal AvatarContactsData.Contact Values;
+            // What the last Read left out of Values: tags (tagLimit) and a
+            // Parameter too long to write (parameterLength).
+            internal int DroppedTags;
+            internal bool LongParameter;
             // The part FX's enabled targets name (AvatarAnimatorParts.cs).
             internal AvatarAnimatorCapture.Part Part;
         }
@@ -47,6 +51,8 @@ namespace VRVlog.LilToonExporter
         Transform root;
         readonly List<Entry> entries = new List<Entry>();
         int limited;
+        // Contacts Capture left out whole, by omitted kind.
+        readonly Dictionary<string, int> skipped = new Dictionary<string, int>(StringComparer.Ordinal);
 
         internal int Count => entries.Count;
         // The contacts read, as the parts FX may turn (AvatarAnimatorParts.cs).
@@ -62,30 +68,38 @@ namespace VRVlog.LilToonExporter
         // Reads every Sender and Receiver under root (the export copy),
         // enabled or not, in hierarchy order, skipping those under EditorOnly
         // (VRChat removes them at upload) and those excluded (objects the user
-        // left out of the export). Receivers past the limit are counted.
-        // Null when there is nothing to write or to tell.
+        // left out of the export). Receivers and Senders past their limits,
+        // and contacts of a shape or Receiver Type this exporter does not
+        // know, are counted. Null when there is nothing to write or to tell.
         internal static AvatarContactsExport Capture(GameObject root, Func<Transform, bool> excluded = null)
         {
             if (root == null) throw new ArgumentNullException(nameof(root));
             var capture = new AvatarContactsExport { root = root.transform };
-            var receivers = 0;
+            int receivers = 0, senders = 0;
             foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
                 var receiver = IsType(component, ReceiverType);
                 if (!receiver && !IsType(component, SenderType)) continue;
                 if (EditorOnly(component.transform, root.transform) || excluded != null && excluded(component.transform)) continue;
                 var entry = new Entry { Receiver = receiver, Component = component, Part = AvatarAnimatorCapture.ReadPart("contact", component, root.transform) };
-                if (!Read(entry, component)) continue;
+                if (Read(entry, component) is string unknown) { capture.Skip(unknown); continue; }
                 if (receiver && receivers++ >= AvatarContactsData.MaximumReceivers)
                 {
                     capture.limited++;
                     continue;
                 }
+                if (!receiver && senders++ >= AvatarContactsData.MaximumSenders)
+                {
+                    capture.Skip("senderLimit");
+                    continue;
+                }
                 capture.entries.Add(entry);
             }
             capture.Rebind();
-            return capture.entries.Count == 0 && capture.limited == 0 ? null : capture;
+            return capture.entries.Count == 0 && capture.limited == 0 && capture.skipped.Count == 0 ? null : capture;
         }
+
+        void Skip(string kind) => skipped[kind] = (skipped.TryGetValue(kind, out var count) ? count : 0) + 1;
 
         static bool IsType(Component component, string fullName) => component != null && component.GetType().FullName == fullName;
 
@@ -96,12 +110,13 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        // The settings and pose of a live component; false for a shape or
-        // Receiver Type this exporter does not know (a newer SDK).
-        static bool Read(Entry entry, Component component)
+        // The settings and pose of a live component; for a shape or Receiver
+        // Type this exporter does not know (a newer SDK), the omitted kind it
+        // is left out as instead, else null.
+        static string Read(Entry entry, Component component)
         {
             var shape = Member(component, "shapeType") is Enum shapeType ? Lower(shapeType.ToString()) : "sphere";
-            if (Array.IndexOf(AvatarContactsData.Shapes, shape) < 0) return false;
+            if (Array.IndexOf(AvatarContactsData.Shapes, shape) < 0) return "unknownShape";
             var values = new AvatarContactsData.Contact
             {
                 Shape = shape,
@@ -110,19 +125,26 @@ namespace VRVlog.LilToonExporter
             if (entry.Receiver)
             {
                 var type = Member(component, "receiverType") is Enum receiverType ? Lower(receiverType.ToString()) : "constant";
-                if (Array.IndexOf(AvatarContactsData.ReceiverTypes, type) < 0) return false;
+                if (Array.IndexOf(AvatarContactsData.ReceiverTypes, type) < 0) return "unknownReceiverType";
                 values.Type = type;
                 var parameter = Member(component, "parameter") as string ?? "";
-                values.Parameter = parameter.Length <= AvatarContactsData.MaximumParameterLength ? parameter : "";
+                entry.LongParameter = parameter.Length > AvatarContactsData.MaximumParameterLength;
+                values.Parameter = entry.LongParameter ? "" : parameter;
                 values.AllowSelf = Member(component, "allowSelf") is bool self && self;
                 values.AllowOthers = Member(component, "allowOthers") is bool others && others;
                 values.LocalOnly = Member(component, "localOnly") is bool local && local;
                 values.MinVelocity = Math.Max(0, Number(Member(component, "minVelocity")));
             }
+            // An empty tag matches nothing and is not written; one past the
+            // limit or too long is counted.
+            entry.DroppedTags = 0;
             if (Member(component, "collisionTags") is IEnumerable tags)
                 foreach (var tag in tags)
-                    if (tag is string text && text.Length > 0 && text.Length <= 1024 && values.Tags.Count < AvatarContactsData.MaximumTags)
-                        values.Tags.Add(text);
+                {
+                    if (!(tag is string text) || text.Length == 0) continue;
+                    if (text.Length <= AvatarContactsData.MaximumTagLength && values.Tags.Count < AvatarContactsData.MaximumTags) values.Tags.Add(text);
+                    else entry.DroppedTags++;
+                }
             var at = Member(component, "rootTransform") as Transform;
             // Unity's missing-object sentinel is not CLR null.
             if (at == null) at = component.transform;
@@ -134,7 +156,7 @@ namespace VRVlog.LilToonExporter
             entry.Height = shape == "capsule" ? Mathf.Max(0, (float)Number(Member(component, "height"))) : 0;
             entry.World = at.localToWorldMatrix * Matrix4x4.TRS(position, rotation, Vector3.one);
             entry.Ancestors = Walk(at, component.transform.root, ref entry.World).ToArray();
-            return true;
+            return null;
         }
 
         // The object and each ancestor up to stop. A gimmick the export
@@ -263,13 +285,21 @@ namespace VRVlog.LilToonExporter
                 var written = entry.Receiver ? data.Receivers[index - data.Senders.Count] : data.Senders[index];
                 if (entry.Part?.Source is object) tableIndex[entry.Part.Source.GetInstanceID()] = (index, written.Node);
             }
-            if (limited > 0) data.Omitted.Add(new AvatarContactsData.Omission { Kind = "contactLimit", Count = limited });
+            var counts = new Dictionary<string, int>(skipped, StringComparer.Ordinal)
+            {
+                ["contactLimit"] = limited,
+                ["tagLimit"] = entries.Sum(entry => entry.DroppedTags),
+                ["parameterLength"] = entries.Count(entry => entry.LongParameter),
+            };
+            foreach (var kind in AvatarContactsData.OmittedKinds)
+                if (counts.TryGetValue(kind, out var count) && count > 0) data.Omitted.Add(new AvatarContactsData.Omission { Kind = kind, Count = count });
             return data.Senders.Count == 0 && data.Receivers.Count == 0 ? null : data;
         }
 
         internal static byte[] Inject(byte[] bytes, AvatarContactsData data)
         {
             if (data == null || data.Senders.Count == 0 && data.Receivers.Count == 0) return bytes;
+            ExportTestHooks.TableFaultInjection?.Invoke(AvatarContactsData.Extension);
             var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list.Count : 0;
             Checked(data, nodes);

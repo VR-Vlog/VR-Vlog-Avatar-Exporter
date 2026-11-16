@@ -81,10 +81,29 @@ namespace VRVlog.LilToonExporter.Tests
                 Throws.InvalidOperationException, "The app solves at most 64 Receivers.");
             Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = new List<object> { new Dictionary<string, object> { ["kind"] = "contactLimit", ["count"] = 0L } })),
                 Throws.InvalidOperationException);
-            Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = new List<object> { new Dictionary<string, object> { ["kind"] = "other", ["count"] = 1L } })),
-                Throws.InvalidOperationException);
+            List<object> Omitted(params string[] kinds) => kinds.Select(kind => (object)new Dictionary<string, object> { ["kind"] = kind, ["count"] = 1L }).ToList();
+            Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = Omitted("senderLimit", "contactLimit"))),
+                Throws.InvalidOperationException, "Known kinds in OmittedKinds order.");
+            Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = Omitted("tagLimit", "tagLimit"))), Throws.InvalidOperationException);
+            Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = Omitted("newer", "newer"))), Throws.InvalidOperationException);
+            Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = Omitted("newer", "contactLimit"))),
+                Throws.InvalidOperationException, "A newer kind comes after the known ones.");
+            Assert.That(() => AvatarContactsData.Read(Written(j => j["omitted"] = Omitted(""))), Throws.InvalidOperationException);
             Assert.That(() => AvatarContactsData.Read(Written(j => j["schemaVersion"] = 2L)), Throws.InvalidOperationException);
             Assert.That(() => AvatarContactsData.Read(Written(j => j.Remove("omitted"))), Throws.InvalidOperationException);
+        }
+
+        // A newer exporter adds kinds after the known ones; the reader keeps
+        // them, so the table still reads.
+        [Test]
+        public void SharedReaderKeepsTheOmittedKindsANewerExporterAdds()
+        {
+            var json = AvatarContactsData.Write(Data());
+            json["omitted"] = new[] { ("contactLimit", 2L), ("tagLimit", 3L), ("newerKind", 1L), ("otherNewerKind", 4L) }
+                .Select(o => (object)new Dictionary<string, object> { ["kind"] = o.Item1, ["count"] = o.Item2 }).ToList();
+            var read = AvatarContactsData.Read(json);
+            Assert.That(read.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("contactLimit", 2), ("tagLimit", 3), ("newerKind", 1), ("otherNewerKind", 4) }));
+            Assert.That(read.Receivers.Count, Is.EqualTo(1));
         }
 
         [Test]
@@ -335,6 +354,100 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(root); }
         }
 
+        [Test]
+        public void SendersPastTheLimitAreCounted()
+        {
+            var senderType = OptionalTools.Require(AvatarContactsExport.SenderType, "Real VRChat SDK integration test.");
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            var root = new GameObject("Avatar");
+            try
+            {
+                for (var i = 0; i < AvatarContactsData.MaximumSenders + 3; i++)
+                {
+                    var t = new GameObject("Sender" + i).transform;
+                    t.SetParent(root.transform, false);
+                    t.gameObject.AddComponent(senderType);
+                }
+                var pat = new GameObject("Pat");
+                pat.transform.SetParent(root.transform, false);
+                var receiver = pat.AddComponent(receiverType);
+                Set(receiver, "parameter", "Pat");
+                var capture = AvatarContactsExport.Capture(root);
+                // Before the limit, Write threw and the whole table was lost.
+                var data = AvatarContactsData.Read(AvatarContactsData.Write(capture.Resolve(_ => -1)));
+                Assert.That(data.Senders.Count, Is.EqualTo(AvatarContactsData.MaximumSenders));
+                Assert.That(data.Receivers.Single().Parameter, Is.EqualTo("Pat"), "A Receiver after them is still written.");
+                Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("senderLimit", 3) }));
+                Assert.That(capture.IndexOf(receiver), Is.EqualTo((AvatarContactsData.MaximumSenders, -1)));
+                Assert.That(capture.LeftOut, Is.Null, "Only the Receiver limit has a result line.");
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        // A shape or Receiver Type the exporter does not know leaves the
+        // contact out; tags past 64 or longer than 1024 characters, and a
+        // parameter longer than 1024, are left out of the entry. Each is
+        // counted by kind; an empty tag matches nothing and is not.
+        [Test]
+        public void WhatAnEntryCannotCarryIsCounted()
+        {
+            var senderType = OptionalTools.Require(AvatarContactsExport.SenderType, "Real VRChat SDK integration test.");
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            var root = new GameObject("Avatar");
+            try
+            {
+                Component Add(string name, Type type)
+                {
+                    var t = new GameObject(name).transform;
+                    t.SetParent(root.transform, false);
+                    return t.gameObject.AddComponent(type);
+                }
+                var tags = Enumerable.Range(0, AvatarContactsData.MaximumTags + 2).Select(i => "T" + i).ToList();
+                tags.Insert(1, new string('x', AvatarContactsData.MaximumTagLength + 1));
+                tags.Insert(2, "");
+                Set(Add("Tagged", senderType), "collisionTags", tags);
+                Unknown(Add("NewShape", senderType), "shapeType");
+                Unknown(Add("NewShapeReceiver", receiverType), "shapeType");
+                Unknown(Add("NewType", receiverType), "receiverType");
+                var longName = Add("LongName", receiverType);
+                Set(longName, "parameter", new string('p', AvatarContactsData.MaximumParameterLength + 1));
+                Set(Add("Pat", receiverType), "parameter", "Pat");
+
+                var capture = AvatarContactsExport.Capture(root);
+                var data = AvatarContactsData.Read(AvatarContactsData.Write(capture.Resolve(_ => -1)));
+                Assert.That(data.Senders.Single().Tags, Is.EqualTo(Enumerable.Range(0, AvatarContactsData.MaximumTags).Select(i => "T" + i)));
+                Assert.That(data.Receivers.Select(r => r.Parameter), Is.EqualTo(new[] { "", "Pat" }));
+                Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[]
+                {
+                    ("unknownShape", 2), ("unknownReceiverType", 1), ("tagLimit", 3), ("parameterLength", 1),
+                }));
+                Assert.That(capture.IndexOf(longName), Is.EqualTo((1, -1)), "The contacts left out take no index.");
+
+                // Rebind reads the kept contacts again without counting them twice.
+                capture.Rebind();
+                Assert.That(capture.Resolve(_ => -1).Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(data.Omitted.Select(o => (o.Kind, o.Count))));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        // Only contacts left out: nothing to write, but the capture still tells.
+        [Test]
+        public void ACaptureOfOnlyUnknownContactsWritesNothing()
+        {
+            var senderType = OptionalTools.Require(AvatarContactsExport.SenderType, "Real VRChat SDK integration test.");
+            var root = new GameObject("Avatar");
+            try
+            {
+                var t = new GameObject("NewShape").transform;
+                t.SetParent(root.transform, false);
+                Unknown(t.gameObject.AddComponent(senderType), "shapeType");
+                var capture = AvatarContactsExport.Capture(root);
+                Assert.That(capture, Is.Not.Null);
+                Assert.That(capture.Resolve(_ => -1), Is.Null);
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         // FX's enabled targets of component contact count the senders, then
         // the receivers (#3667), whatever order the hierarchy has them in.
         [Test]
@@ -386,6 +499,16 @@ namespace VRVlog.LilToonExporter.Tests
                 field = type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             Assert.That(field, Is.Not.Null, name);
             field.SetValue(component, value is string text && field.FieldType.IsEnum ? Enum.Parse(field.FieldType, text) : value);
+        }
+
+        // An enum field set to a value its type does not name, as a newer SDK's would read.
+        static void Unknown(Component component, string name)
+        {
+            FieldInfo field = null;
+            for (var type = component.GetType(); type != null && field == null; type = type.BaseType)
+                field = type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            Assert.That(field != null && field.FieldType.IsEnum, Is.True, name);
+            field.SetValue(component, Enum.ToObject(field.FieldType, 99));
         }
     }
 }

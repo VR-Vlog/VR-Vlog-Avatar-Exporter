@@ -30,9 +30,9 @@
       }
     },
     "omitted": {
-      "description": "What the exporter left out, each kind at most once. contactLimit: Receivers past the first 64 in hierarchy order.",
+      "description": "What the exporter left out, each kind at most once. contactLimit: Receivers past the first 64 in hierarchy order. senderLimit: Senders past the first 4096. unknownShape: contacts of a shape the exporter does not know, left out whole. unknownReceiverType: Receivers of a Receiver Type it does not know, left out whole. tagLimit: tags past the first 64 of a contact or longer than 1024 characters (an empty tag is not written and not counted). parameterLength: Receivers written with an empty parameter because theirs was longer than 1024 characters.",
       "type": "array",
-      "maxItems": 1,
+      "maxItems": 64,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -42,9 +42,10 @@
         ],
         "properties": {
           "kind": {
-            "enum": [
-              "contactLimit"
-            ]
+            "description": "One of contactLimit, senderLimit, unknownShape, unknownReceiverType, tagLimit and parameterLength, in that order. A kind a newer exporter adds comes after them, each once; a reader keeps it.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
           },
           "count": {
             "type": "integer",
