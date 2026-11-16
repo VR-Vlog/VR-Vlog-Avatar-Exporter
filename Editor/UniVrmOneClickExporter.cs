@@ -1372,6 +1372,8 @@ namespace VRVlog.LilToonExporter
                 if (!guard.IsOmitted(ExportStage.AvatarEffects) && effects?.LeftOut is string effectsLeftOut) warnings?.Add(effectsLeftOut);
                 if (!guard.IsOmitted(ExportStage.AvatarContacts) && contacts != null)
                     foreach (var line in contacts.LeftOut) warnings?.Add(line);
+                // Before the size check below, which measures the finished file.
+                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 // The app does not read a file whose JSON is over its limit. The
                 // extension is the stage that grows with the FX, so it goes, as
                 // when it is over its own limit. The check reads the finished
@@ -1389,7 +1391,6 @@ namespace VRVlog.LilToonExporter
                 // nothing reads after this; the file is already made.
                 if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator))
                     AvatarAnimatorCrossCheck.Check(clone, avatarAnimator, avatarAnimatorData, warnings);
-                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
