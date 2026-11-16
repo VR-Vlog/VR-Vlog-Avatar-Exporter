@@ -173,7 +173,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var capture = AvatarContactsExport.Capture(root, t => t == excluded);
                 Assert.That(capture.Count, Is.EqualTo(3));
-                Assert.That(capture.LeftOut, Is.Null);
+                Assert.That(capture.LeftOut, Is.Empty);
                 var nodes = new Dictionary<GameObject, int> { [head.gameObject] = 5 };
                 var data = AvatarContactsData.Read(AvatarContactsData.Write(capture.Resolve(go => nodes.TryGetValue(go, out var node) ? node : -1)));
 
@@ -349,7 +349,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(data.Receivers.Count, Is.EqualTo(AvatarContactsData.MaximumReceivers));
                 Assert.That(data.Receivers.Last().Parameter, Is.EqualTo("P63"), "The first 64 in hierarchy order.");
                 Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("contactLimit", 2) }));
-                Assert.That(capture.LeftOut, Is.EqualTo(ExporterLocalization.Format(AvatarContactsExport.LimitNote, 2, AvatarContactsData.MaximumReceivers)));
+                Assert.That(capture.LeftOut, Is.EqualTo(new[] { ExporterLocalization.Format(AvatarContactsExport.LimitNote, 2, AvatarContactsData.MaximumReceivers) }));
             }
             finally { Object.DestroyImmediate(root); }
         }
@@ -379,7 +379,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(data.Receivers.Single().Parameter, Is.EqualTo("Pat"), "A Receiver after them is still written.");
                 Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("senderLimit", 3) }));
                 Assert.That(capture.IndexOf(receiver), Is.EqualTo((AvatarContactsData.MaximumSenders, -1)));
-                Assert.That(capture.LeftOut, Is.Null, "Only the Receiver limit has a result line.");
+                // Before, only the Receiver limit had a result line.
+                Assert.That(capture.LeftOut, Is.EqualTo(new[] { ExporterLocalization.Format(AvatarContactsExport.SenderLimitNote, 3, AvatarContactsData.MaximumSenders) }));
             }
             finally { Object.DestroyImmediate(root); }
         }
@@ -422,6 +423,8 @@ namespace VRVlog.LilToonExporter.Tests
                     ("unknownShape", 2), ("unknownReceiverType", 1), ("tagLimit", 3), ("parameterLength", 1),
                 }));
                 Assert.That(capture.IndexOf(longName), Is.EqualTo((1, -1)), "The contacts left out take no index.");
+                // Contacts left out whole have a result line; what an entry could not carry is only in the file.
+                Assert.That(capture.LeftOut, Is.EqualTo(new[] { ExporterLocalization.Format(AvatarContactsExport.UnknownNote, 3) }));
 
                 // Rebind reads the kept contacts again without counting them twice.
                 capture.Rebind();
@@ -430,7 +433,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(root); }
         }
 
-        // Only contacts left out: nothing to write, but the capture still tells.
+        // Only contacts left out: nothing to write, but the capture still
+        // tells. Before, the count was in no file and no result line.
         [Test]
         public void ACaptureOfOnlyUnknownContactsWritesNothing()
         {
@@ -444,6 +448,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var capture = AvatarContactsExport.Capture(root);
                 Assert.That(capture, Is.Not.Null);
                 Assert.That(capture.Resolve(_ => -1), Is.Null);
+                Assert.That(capture.LeftOut, Is.EqualTo(new[] { ExporterLocalization.Format(AvatarContactsExport.UnknownNote, 1) }));
             }
             finally { Object.DestroyImmediate(root); }
         }
