@@ -49,6 +49,6 @@ VRChatのContact Receiverは、Contact Senderなどの形と重なるとParamete
 - アプリが表を読み、重なりを解いてReceiverのパラメーターに値を入れる（アプリ側の単位）
 - FXでContactの有効無効を切る曲線（`enabled`の`component`が`contact`）は段6の後の単位で足す
 - 書き出したときに無効になっているContactは`active`で見分ける（2026-11-16にEpicで決めて足した）。FXで有効無効を切る`enabled`は上のとおり後の単位
-- Bone ProxyのAsChildKeepWorldPoseが入れ子になったとき（取り付け先が別のBone Proxyの下にある）、MAは子のワールドの位置を戻すが、ここでは親と一緒に動かす。取り付け先が見つからないときは移さずに元の場所に置く（MAはその場で位置と回転を0にする）
+- Bone ProxyのAsChildKeepWorldPoseが入れ子になったとき（取り付け先が別のBone Proxyの下にある）、MAは子のワールドの位置を戻すが、ここでは親と一緒に動かす。取り付け先が見つからないときは移さずに元の場所に置く（MAはその場で位置と回転を0にする）。A1〜A11で起きないので今は直さない（`2026-11-16-exporter-leftovers-check.md`）
 - ビルドの前に外したContactのパラメーターの名前は、Modular Avatarが後で変えても追わない
 - VRChatがカプセルの`height`を半球を含む全長として扱うこと、スケールを一番大きい成分で掛けることは、SDKの説明に合わせた前提で、VRChatの中で測っていない
