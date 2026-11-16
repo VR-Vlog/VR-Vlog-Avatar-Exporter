@@ -1012,7 +1012,8 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
                 // below would hide which materials had lost their shader.
-                RecordMissingShaders(clone, warnings, recoveryReport);                // Unsupported shaders become official lilToon approximations so
+                RecordMissingShaders(clone, warnings, recoveryReport);
+                // Unsupported shaders become official lilToon approximations so
                 // they follow the ordinary lilToon route instead of stopping.
                 if (exporterVersion != null) guard.Step(ExportStage.LilToonSnapshot, () => UnsupportedShaderSubstitution.Apply(clone, temporaryMaterials, warnings, recoveryReport.Fallbacks, (copy, original) =>
                 {
