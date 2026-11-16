@@ -47,6 +47,11 @@ FX・エフェクトの表・Contactの表の順に書き、書けなかった�
 
 書き出すファイルの形（`Formats/`）は変えていない。表を書けたときのVRMは変わらない。変わるのは、表を書けなかったときに注意と結果一覧に行が増えること、FXがその表を指さないこと、Senderの上限と対応していないContactの行が注意に出ることだけ。アプリの読み手の固定を上げる必要はない。
 
+## 残したこと
+
+- 書き出しを最初からやり直したとき（ビルドの処理の失敗で、その処理を省いてやり直すとき）、前の試行で書けなかった表は、やり直しでも試さずに省いたままにする。段階の省略は書き出し全体で1回と決まっているため（「FXとメニューの動き」と同じ）。ファイルの中身は食い違わない。
+- PhysBoneとConstraintの表は、今も書けなくてもコンソールにしか出ない。同じ段階の扱いにそろえるのは別の作業にする。
+
 ## 採らなかったこと
 
 - 作り直しを2回までに増やす: 回数に根拠が無く、表を足したら直す場所が増える。
@@ -58,6 +63,8 @@ FX・エフェクトの表・Contactの表の順に書き、書けなかった�
 Unity 2022.3.22f1・EditMode・batchmodeで回した。
 
 - 変えた・足したテストは修正前に失敗する: 修正前のコードに新しいテスト（足した定数は同じ文字列に置き換え）を入れて`AvatarAnimatorCaptureTests`と`AvatarContactsExportTests`を回すと、116件のうち変えた・足した8件だけが失敗した。`ATableThatFailsOnTheSecondWriteIsNotNamed`は、FXの対象に`(contact, 0, 1, 25)`が残って失敗した（レビューの指摘どおり）。
+- パッケージのEditModeテストを全件回した（VRChat SDK入りのプロジェクト）。Exporterのテストで失敗したのは、`ExportStageGuardTests`の新しい段階の4件（fixtureが段階に届いていなかった。下の「新しいテスト」で直した）と、ウィンドウを開くテスト61件だけ。61件は、修正前のコードで同じクラスを回しても同じ名前の61件が失敗した。ウィンドウを出せないセッションから回したためで、この変更とは関係しない。
+- fixtureを直したあと、`ExportStageGuardTests`・`AvatarAnimatorCaptureTests`・`AvatarContactsExportTests`と上の61件のクラスを回し直した。749件のうち失敗は同じ61件だけ。
 - 新しいテスト:
   - `AvatarAnimatorCaptureTests.ATableThatFailsOnTheSecondWriteIsNotNamed`: エフェクトの表は毎回、Contactの表は2回目だけ書けないとき、どちらの表も無く、FXがどちらも指さず、2つの段階の注意が1行ずつ出る。
   - `AnEffectsTableTheExportCannotWriteIsNotNamed`・`AContactsTableTheExportCannotWriteIsNotNamed`: コンソールの例外を期待する代わりに、段階の注意が1行出ることを確かめる。
