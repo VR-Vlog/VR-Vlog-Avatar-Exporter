@@ -82,7 +82,7 @@ namespace VRVlog.LilToonExporter
                 var finding = ExportGimmickDetection.Inspect(renderer);
                 if (finding == null) continue;
                 var path = AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
-                var message = ExportGimmickDetection.WarningKind(finding) + ": " + path + " — " + finding.Reason;
+                var message = (finding.Unit == GimmickExclusionUnit.Renderer ? "補助Rendererを省略: " : "自動除外せず保持: ") + path + " — " + finding.Reason;
                 if (reported.Add(message)) warnings?.Add(message);
                 if (finding.Unit == GimmickExclusionUnit.Renderer) removed.Add(renderer);
             }

@@ -1075,7 +1075,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 5, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
 def table_cases():

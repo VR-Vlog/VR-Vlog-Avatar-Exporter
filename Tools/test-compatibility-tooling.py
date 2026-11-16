@@ -85,7 +85,7 @@ class UnityResultTests(unittest.TestCase):
             'DependencyEnvironmentTests': ('ActualInstalledPackagesMatchRequestedTestEnvironment', 1),
             'DependencyStartupTests': ('MenuResolvesBackendWithoutInitializationRegistration', 1),
             'DependencyRoundTripTests': ('SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport', 2),
-            'RendererSelectionTests': ('RendererCase', 4),
+            'RendererSelectionTests': ('RendererCase', 5),
             'SkinnedMeshFallbackWeightTests': ('SkinCase', 17),
             'LilToonStructureCheckTests': ('StructureCase', 11),
         }
@@ -99,7 +99,7 @@ class UnityResultTests(unittest.TestCase):
         return unity_runner.validate_result(self.xml)
 
     def test_all_required_suites_pass(self):
-        self.assertEqual(len(self.check()), 36)
+        self.assertEqual(len(self.check()), 37)
 
     def test_no_suite_can_disappear_from_a_passing_result(self):
         for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests']:
@@ -147,7 +147,7 @@ class ExporterProfileResultTests(unittest.TestCase):
         return removed
 
     def test_all_required_suites_pass(self):
-        expected = 36 + sum(sum(methods.values()) for methods in
+        expected = 37 + sum(sum(methods.values()) for methods in
                             [*unity_runner.BEHAVIOR_CASES.values(), *unity_runner.INTEGRATION_CASES.values()])
         self.assertEqual(len(self.check()), expected)
 
