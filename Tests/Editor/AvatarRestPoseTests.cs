@@ -186,6 +186,38 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(avatar); }
         }
 
+        // The humanoid's T-pose bends both elbows; a forearm it cannot name
+        // once is raised straight as before, the other takes the bend.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AForearmTheHumanoidDoesNotNameOnceIsRaisedStraightAsBefore(bool twice)
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var left = (Bone(f.Source, HumanBodyBones.LeftLowerArm), Bone(f.Source, HumanBodyBones.LeftHand));
+            var right = (Bone(f.Source, HumanBodyBones.RightLowerArm), Bone(f.Source, HumanBodyBones.RightHand));
+            var avatar = BendHumanoidElbows(f.Source, 10);
+            Avatar named = null;
+            try
+            {
+                if (twice)
+                    named = Rebuild(f.Source, description =>
+                    {
+                        var copy = description.skeleton.First(bone => bone.name == left.Item1.name);
+                        copy.rotation = Quaternion.identity;
+                        description.skeleton = description.skeleton.Append(copy).ToArray();
+                        return description;
+                    });
+                LowerArms(f.Source, 40);
+                if (!twice) left.Item1.name = "Renamed forearm";
+
+                AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
+
+                Assert.That(AngleFrom(Vector3.left, left.Item1, left.Item2), Is.LessThan(.1f));
+                Assert.That(AngleFrom(Vector3.right, right.Item1, right.Item2), Is.EqualTo(10).Within(.1f));
+            }
+            finally { Object.DestroyImmediate(avatar); if (named != null) Object.DestroyImmediate(named); }
+        }
+
         [Test]
         public void ArmsWithinTheLimitStayExactlyAsAuthored()
         {
