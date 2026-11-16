@@ -40,7 +40,7 @@ Contactの表とFXの部品の`enabled`を足したときに、次の4つを「�
 - 今の振る舞い: `Capture`がビルドの前に、階層の順に64個まで表に入れる。外したギミックのReceiverも数えるので、そのパラメーターを読む層が残っていなくても枠を使い、後ろのReceiverが`contactLimit`で外れる
 - 起きたときの違い: 外れたReceiverのギミックがアプリで動かない。外したギミックのReceiverは、読む層が無いのでアプリで動いても何も変わらない
 - 結果: 外したギミックの読み手の無いReceiverは、7体のうち5体に1〜4個あった。Receiverは多くて8個で、枠を使い切ったアバターは無い
-- 直すときの形: Epicで決めたとおり、枠を数える前に、外したギミックのReceiverで残ったFXのどの層も読まないパラメーターを書くものを表から除く。FXはビルドのあとにしか分からないので、上限で切るのを`Capture`から`Rebind`のあとへ移す。除いた数は`contactLimit`とは別に数える
+- 直すときの形: Epicで決めたとおり、枠を数える前に、外したギミックのReceiverで残ったFXのどの層も読まないパラメーターを書くものを表から除く。FXはビルドのあとにしか分からないので、上限で切るのを`Capture`から`Rebind`のあとへ移す。除いた数を`contactLimit`と分けて出すなら、`AvatarContactsData.OmittedKinds`に種類を足すことになり、アプリの読み手は知らない値を読めないので、Formatsの変更とアプリの対応が要る。「読む」には遷移の条件だけでなくBlend Treeのパラメーターも入れる
 
 ### 2. 入れ子のBone Proxy・取り付け先が見つからないBone Proxy
 
@@ -49,6 +49,7 @@ MAの`BoneProxyProcessor`は、すべてのBone Proxyのワールドの位置と
 - 起きる条件: 外したギミックの中にContactがあり、その上のBone Proxyが次のどちらか
   - 保つモード（AsChildKeepWorldPose・AsChildKeepPosition・AsChildKeepRotation）で、取り付け先が別のBone Proxyの下にある。MAは位置や回転を覚えた値に戻すので、取り付け先が親のBone Proxyと一緒に動いても付いていかない。ここでは取り付け先と一緒に動かす
   - 取り付け先が見つからない。MAは移さずにその場で、保たない位置と回転を0にし、Match Scaleならスケールを1にする。ここでは元の場所に置く
+  - 取り付け先がアバターの外にある、またはBone Proxy自身の下にある。MAは移さないが、ここでは前者は取り付け先へ付いていき、後者は付いていかない
 - ビルドで残るContactはビルドのあとに読み直すので、MAが置いた場所になる。違うのは外したギミックのContactだけ
 - 起きたときの違い: アプリでContactの当たる場所がずれる。外したギミックのReceiverは読む層が無いことが多く（上の1）、その場合は動きが変わらない
 - 結果: 入れ子や取り付け先の無いBone Proxyは、18体のどれにも無かった
@@ -57,20 +58,20 @@ MAの`BoneProxyProcessor`は、すべてのBone Proxyのワールドの位置と
 ### 3. ビルドが部品の祖先を動かしたとき・根に付いた部品
 
 - 起きる条件: FXが部品の自分の`enabled`の曲線か、ノードの無い祖先の`activeSelf`の曲線を持ち、さらに次のどちらか
-  - ビルド（Bone ProxyやMerge Armature）がエフェクトかContactの祖先を別の場所へ動かした。エフェクトとContactのパスはビルドの前に読むので、ビルドが書き換えたFXの曲線のパスと合わない。PhysBoneはビルドのあとに読むので起きない
+  - ビルド（Bone ProxyやMerge Armature）がエフェクトかContactの祖先か自分自身を別の場所へ動かした、または名前を変えた（Merge Armatureは既定で残す骨の名前を変える）。エフェクトとContactのパスはビルドの前に読むので、ビルドが書き換えたFXの曲線のパスと合わない。PhysBoneはビルドのあとに読むので起きない
   - 部品がアバターの根に付いている。部品は根から下のパスしか持たないので、根の曲線と合わない
 - 今の振る舞い: その曲線は今までどおり`enabled`・`other`・`missingNode`で数え、部品の`enabled`の対象は作らない
 - 起きたときの違い: アプリで、その部品がメニューで切り替わらず、書き出したときの状態のままになる
 - 結果: Bone Proxyで頭へ動いたContactが1体に1つあったが、そのパスを動かす曲線はFXに無かった。根に付いた部品は無かった
-- 直すときの形: FXを読むとき、ビルドのあとも残っているエフェクトとContactは今のパスで読み直す。根に付いた部品は空のパスを持たせる
+- 直すときの形: FXを読むとき、ビルドのあとも残っているエフェクトとContactは今のパスで読み直す。根に付いた部品は空のパスを持たせる。読み直すのはパスだけにし、ビルドの前に読んだ`enabled`などの値は残す（ビルドは書き出す複製の上でオブジェクトを切り替えるため）
 
 ### 4. VRCFuryがビルドで足したContact・Merge Armatureで動くギミックのContact
 
-- 今の振る舞い: Contactはビルドの前に読み、ビルドのあとは読んだものだけを読み直す。VRCFuryがビルドで足したContactは表に入らない。Merge Armatureの下のContactは、ビルドで残ればMerge Armatureが動かしたあとの場所で読み直す。書き出しで外したギミックの中にあれば、Merge Armatureの移動を追わず、ビルドの前の場所から一番近い書き出すノードに付ける
-- 起きる条件: VRCFuryでContactを足すアバター。外したギミックの中のMerge Armatureの下にContactがあり、衣装の骨とアバターの骨がずれている
-- 起きたときの違い: VRCFuryで足したContactはアプリで動かない。Merge Armatureの場合は、衣装の骨とアバターの骨のずれだけContactの場所がずれる。骨がそろった衣装ではずれない
+- 今の振る舞い: Contactはビルドの前に読み、ビルドのあとは読んだものだけを読み直す。VRCFuryがビルドで足したContactは表に入らない。Merge Armatureの下のContactは、ビルドで残ればMerge Armatureが動かしたあとの場所で読み直す。書き出しで外したギミックの中にあれば、ビルドの前の場所はそのまま使い（MAはワールドの姿勢を保って付け替えるので場所はずれない）、ビルドの前の祖先のうち残ったノードに付ける。衣装の骨は統合されて消えることがあり、そのときは衣装の根かアバターの根に付く
+- 起きる条件: VRCFuryでContactを足すアバター。衣装のMerge Armatureの下に外したギミックがあり、その中にContactがある（Merge Armatureを含むギミックの根は書き出しで外さないので、外れるのはその下のギミック）
+- 起きたときの違い: VRCFuryで足したContactはアプリで動かない。Merge Armatureの場合は、置く場所は合うが付くノードが根になることがあり、アプリで体が動いてもContactが骨に付いていかない
 - 結果: 18体のどれにもVRCFuryのコンポーネントも、Merge Armatureの下のContactも無かった
-- 直すときの形: VRCFuryで足したContactは、ビルドのあとに表に無いContactを読み足す。Merge Armatureは、Bone Proxyと同じく`Walk`で取り付け先の骨へたどる
+- 直すときの形: VRCFuryで足したContactは、ビルドのあと、FXを読む（`AvatarAnimatorCapture.Capture`）より前に、表に無いContactを読み足す（そうしないとFXの`enabled`の曲線が指せない）。Merge Armatureは、`Walk`で祖先をたどるときに統合先の骨へ付け替える。ワールドの姿勢は変えない
 
 ## 古い出力との関係
 
