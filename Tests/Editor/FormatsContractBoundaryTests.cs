@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using VRVlog.AvatarFormats;
 using VRVlog.Expressions;
 using VRVlog.ObjectToggles;
 
@@ -12,6 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
     // here changes which avatars the app loads.
     public sealed class FormatsContractBoundaryTests
     {
+        const string LimitInvalid = "Humanoid limit data is invalid or exceeds the supported limits.";
         const string LipSyncInvalid = "Lip sync data is invalid or exceeds the supported limits.";
         const string GestureInvalid = "Expression gesture data is invalid or exceeds the supported limits.";
         const string ToggleInvalid = "Object toggle data is invalid or exceeds the supported limits.";
@@ -57,6 +59,44 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(LipSyncInvalid, () => LipSyncData.Read(Lip(r => r["extra"] = 1L)));
             Rejects(LipSyncInvalid, () => LipSyncData.Read(Lip(r => r.Remove("dominantViseme"))));
             Rejects(LipSyncInvalid, () => LipSyncData.Read(new List<object>()));
+        }
+
+        static Dictionary<string, object> Limits(Action<Dictionary<string, object>, Dictionary<string, object>> change = null)
+        {
+            var bone = new Dictionary<string, object>
+            {
+                ["min"] = new List<object> { -60.0, -45L, -90.0 }, ["max"] = new List<object> { 60.0, 80.0, 90.0 },
+                ["center"] = new List<object> { 0.0, 0.0, 0.0 }, ["axisLength"] = .3
+            };
+            var root = new Dictionary<string, object> { ["schemaVersion"] = 1L, ["bones"] = new Dictionary<string, object> { ["leftUpperArm"] = bone } };
+            change?.Invoke(root, bone);
+            return root;
+        }
+
+        [Test]
+        public void HumanoidLimitBoundaries()
+        {
+            Assert.That(HumanoidLimitData.Read(Limits()).Bones["leftUpperArm"].Min[1], Is.EqualTo(-45));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => { b["min"] = new List<object> { -180.0, 0L, 0L }; b["max"] = new List<object> { 180.0, 0L, 0L }; })));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => b["axisLength"] = HumanoidLimitData.MaximumAxisLength)));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => b["center"] = new List<object> { -180.0, 180.0, 0L })));
+            Assert.That(HumanoidLimitData.BoneNames.Count, Is.EqualTo(55));
+
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["min"] = new List<object> { 1.0, 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["max"] = new List<object> { -1.0, 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["min"] = new List<object> { -180.001, 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["center"] = new List<object> { 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["center"] = new List<object> { 0L, 0L, double.NaN })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["axisLength"] = -.001)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["axisLength"] = HumanoidLimitData.MaximumAxisLength + .001)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b.Remove("center"))));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["extra"] = 1L)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => ((Dictionary<string, object>)r["bones"])["LeftUpperArm"] = b)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["bones"] = new Dictionary<string, object>())));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["schemaVersion"] = 2L)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["extra"] = 1L)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(new List<object>()));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Write(new HumanoidLimitData()));
         }
 
         static Dictionary<string, object> Gestures(Action<Dictionary<string, object>, List<object>> change = null)

@@ -661,6 +661,7 @@ namespace VRVlog.LilToonExporter
             AvatarEffectsExport animatorEffects = null;
             AvatarContactsExport animatorContacts = null;
             Func<VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
+            VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -826,6 +827,7 @@ namespace VRVlog.LilToonExporter
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // Viseme Parameter Only reads the merged FX. A failure only warns.
                     lipSync = LipSyncCapture.Capture(clone, warnings);
+                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -1370,6 +1372,8 @@ namespace VRVlog.LilToonExporter
                 if (!guard.IsOmitted(ExportStage.AvatarEffects) && effects?.LeftOut is string effectsLeftOut) warnings?.Add(effectsLeftOut);
                 if (!guard.IsOmitted(ExportStage.AvatarContacts) && contacts != null)
                     foreach (var line in contacts.LeftOut) warnings?.Add(line);
+                // Before the size check below, which measures the finished file.
+                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 // The app does not read a file whose JSON is over its limit. The
                 // extension is the stage that grows with the FX, so it goes, as
                 // when it is over its own limit. The check reads the finished
