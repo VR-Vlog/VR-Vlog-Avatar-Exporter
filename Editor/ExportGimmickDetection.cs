@@ -55,6 +55,16 @@ namespace VRVlog.LilToonExporter
         internal static bool HiddenFallback(Material material) => material != null && material.shader != null &&
             !Portable(material) && string.Equals(material.GetTag("VRCFallback", true, "").Trim(), "Hidden", StringComparison.OrdinalIgnoreCase);
 
+        internal const string MissingMeshKind = "メッシュが見つからず省略";
+        internal const string MissingMeshReason = "メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。";
+
+        // The kind before ": " of the export warning for a renderer finding. A missing mesh is a
+        // part the VRM loses, so it is a note of its own rather than the record of a kept object.
+        internal static string WarningKind(ExportGimmickFinding finding) =>
+            finding.Unit == GimmickExclusionUnit.Renderer ? "補助Rendererを省略"
+            : finding.Reason == MissingMeshReason ? MissingMeshKind
+            : "自動除外せず保持";
+
         // avatarRoot: activity is judged inside the avatar (see ExportRendererSelection.ActiveUnder).
         internal static ExportGimmickFinding Inspect(Renderer renderer, Transform avatarRoot = null)
         {
@@ -65,7 +75,9 @@ namespace VRVlog.LilToonExporter
             var mesh = skin != null ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
             var materials = renderer.sharedMaterials;
             var finding = new ExportGimmickFinding { Target = renderer.gameObject, Renderer = renderer };
-            if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
+            // Without its mesh asset the renderer leaves only an empty node in the VRM.
+            if (mesh == null) finding.Reason = MissingMeshReason;
+            else if (mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
                 materials.Length == 0 || materials.Any(m => m == null || m.shader == null))
                 finding.Reason = "メッシュまたはマテリアルが不足しているため自動判定できません。";
             else if (materials.All(Portable)) return null;

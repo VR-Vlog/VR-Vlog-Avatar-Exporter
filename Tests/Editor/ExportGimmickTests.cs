@@ -97,9 +97,34 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => findings = ExportGimmickDetection.Analyze(avatar));
             var finding = findings.Single(f => f.Renderer == renderer);
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
-            Assert.That(finding.Reason, Is.EqualTo("メッシュまたはマテリアルが不足しているため自動判定できません。"));
+            Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.MissingMeshReason));
             Assert.That(ExportGimmickDetection.PettingSystemUnsafeReason(avatar, renderer.transform, _ => false),
                 Is.EqualTo("メッシュまたはマテリアルが不足しているため、システム全体は残します。"));
+        }
+
+        [Test] public void SkinWithoutMeshAssetWarnsThatThePartIsLeftOut()
+        {
+            var body = Skin("Body", normal); body.sharedMesh = null;
+            var finding = ExportGimmickDetection.Inspect(body);
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.MissingMeshReason));
+            var clone = Own(Object.Instantiate(avatar));
+            var warnings = new List<string>();
+            using (var session = new ExportGimmickSession(avatar, clone, null)) session.Apply(null, null, warnings);
+            var expected = "メッシュが見つからず省略: Body — メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。";
+            Assert.That(warnings, Is.EqualTo(new[] { expected }));
+            // The VRM loses the part, so the result lists it among the changes to the look.
+            Assert.That(ExportAppearanceReport.Changes(warnings), Is.EqualTo(new[] { expected }));
+        }
+
+        [Test] public void MissingMaterialKeepsTheReviewWarning()
+        {
+            var hair = Skin("Hair", normal); hair.sharedMaterials = new Material[] { null };
+            Assert.That(ExportGimmickDetection.Inspect(hair).Reason, Is.EqualTo("メッシュまたはマテリアルが不足しているため自動判定できません。"));
+            var clone = Own(Object.Instantiate(avatar));
+            var warnings = new List<string>();
+            using (var session = new ExportGimmickSession(avatar, clone, null)) session.Apply(null, null, warnings);
+            Assert.That(warnings, Is.EqualTo(new[] { "自動除外せず保持: Hair — メッシュまたはマテリアルが不足しているため自動判定できません。" }));
         }
 
         [Test] public void InactiveAndDisabledRenderersAreNotCandidates()
