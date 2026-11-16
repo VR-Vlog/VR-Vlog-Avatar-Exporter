@@ -88,18 +88,45 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportGimmickDetection.Inspect(renderer).Unit, Is.EqualTo(GimmickExclusionUnit.Review));
         }
 
-        [Test] public void MeshRendererWithoutMeshFilterIsReviewedAsMissingMesh()
+        [Test] public void MeshRendererWithoutMeshFilterIsLeftToTheMissingMeshNote()
         {
             // In the Editor, GetComponent returns a fake null for the absent
             // MeshFilter; ?. on it threw MissingComponentException.
             var renderer = Child("MeshRendererOnly").AddComponent<MeshRenderer>(); renderer.sharedMaterial = hidden;
             List<ExportGimmickFinding> findings = null;
             Assert.DoesNotThrow(() => findings = ExportGimmickDetection.Analyze(avatar));
-            var finding = findings.Single(f => f.Renderer == renderer);
-            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
-            Assert.That(finding.Reason, Is.EqualTo("メッシュまたはマテリアルが不足しているため自動判定できません。"));
+            Assert.That(findings.Any(f => f.Renderer == renderer), Is.False);
             Assert.That(ExportGimmickDetection.PettingSystemUnsafeReason(avatar, renderer.transform, _ => false),
                 Is.EqualTo("メッシュまたはマテリアルが不足しているため、システム全体は残します。"));
+        }
+
+        // A part without its mesh asset is reported once, on the final copy, as lost from the VRM.
+        // The gimmick check has nothing to judge on it: a build pass may still make its mesh.
+        [Test] public void SkinWithoutMeshAssetIsANoteThatThePartIsLeftOut()
+        {
+            var body = Skin("Body", normal); body.sharedMesh = null;
+            var off = Skin("Off", normal); off.sharedMesh = null; off.enabled = false;
+            var inactive = Skin("Inactive", normal); inactive.sharedMesh = null; inactive.gameObject.SetActive(false);
+            Skin("Face", normal);
+            Assert.That(ExportGimmickDetection.Inspect(body), Is.Null);
+            var clone = Own(Object.Instantiate(avatar));
+            var warnings = new List<string>();
+            using (var session = new ExportGimmickSession(avatar, clone, null)) session.Apply(null, null, warnings);
+            Assert.That(warnings, Is.Empty);
+            var expected = "メッシュが見つからず省略: Body — メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。";
+            Assert.That(UniVrmOneClickExporter.MissingMeshKind + ": Body — " + UniVrmOneClickExporter.MissingMeshReason, Is.EqualTo(expected));
+            // The result lists it among the changes to the look.
+            Assert.That(ExportAppearanceReport.Changes(new[] { expected }), Is.EqualTo(new[] { expected }));
+        }
+
+        [Test] public void MissingMaterialKeepsTheReviewWarning()
+        {
+            var hair = Skin("Hair", normal); hair.sharedMaterials = new Material[] { null };
+            Assert.That(ExportGimmickDetection.Inspect(hair).Reason, Is.EqualTo("メッシュまたはマテリアルが不足しているため自動判定できません。"));
+            var clone = Own(Object.Instantiate(avatar));
+            var warnings = new List<string>();
+            using (var session = new ExportGimmickSession(avatar, clone, null)) session.Apply(null, null, warnings);
+            Assert.That(warnings, Is.EqualTo(new[] { "自動除外せず保持: Hair — メッシュまたはマテリアルが不足しているため自動判定できません。" }));
         }
 
         [Test] public void InactiveAndDisabledRenderersAreNotCandidates()
@@ -870,6 +897,21 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(kept, Has.Member("empty branch").And.Member("empty holder"));
             Assert.That(kept, Is.SupersetOf(pruned));
             Assert.That(f.Source.transform.Find("empty branch/empty holder"), Is.Not.Null);
+        }
+
+        [Test] public void ExportWarnsWhenAPartHasNoMeshAsset([Values] bool automatic)
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            using var f = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = shader;
+            var body = Child("Body", f.Source.transform).AddComponent<SkinnedMeshRenderer>();
+            body.sharedMaterial = f.Source.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial;
+            var warnings = new List<string>();
+            UniVrmOneClickExporter.Export(f.Source, "Missing mesh", "Tests", exporterVersion: "0.11.5", warnings: warnings, lilToonVersion: "2.3.4",
+                gimmickOptions: new ExportGimmickOptions { AutoExclude = automatic }, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+            // One note from the final copy, whether or not the gimmick pass ran, and no other line for the omitted renderer.
+            Assert.That(warnings.Where(w => w.Contains("Body") && !w.StartsWith("本体のボーンと独立したパーツ", StringComparison.Ordinal)), Is.EqualTo(new[] { UniVrmOneClickExporter.MissingMeshKind + ": Body — " + UniVrmOneClickExporter.MissingMeshReason }));
         }
 
         [Test] public void EmptyObjectPruningKeepsEverythingTheVrmWrites()

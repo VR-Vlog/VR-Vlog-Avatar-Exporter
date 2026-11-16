@@ -520,6 +520,9 @@ namespace VRVlog.LilToonExporter
             else warnings?.Add(warning);
         }
 
+        internal const string MissingMeshKind = "メッシュが見つからず省略";
+        internal const string MissingMeshReason = "メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。";
+
         // A strict attempt's list holds the caller's warnings too, and may have
         // put a warning before them, so it replaces the caller's list.
         static void CopyWarnings(List<string> attempt, bool replace, ICollection<string> warnings)
@@ -1578,21 +1581,26 @@ namespace VRVlog.LilToonExporter
         // logs keep the warnings that matter. Their nodes and bones are still
         // written; a material used only by such a renderer no longer is.
         // When no mesh renderer has geometry, leave the copy as it is.
+        // A renderer without any mesh asset, as when an outfit prefab is in the
+        // project without its model, loses a visible part, so it gets its own
+        // note per renderer in the "<kind>: <path> — <reason>" form that the
+        // transfer result counts. A mesh that is there but empty keeps the one line.
         internal static void DisableEmptyMeshRenderers(GameObject clone, ICollection<string> warnings)
         {
             if (clone == null || UnityEditor.EditorUtility.IsPersistent(clone))
                 throw new ArgumentException("An independent export copy is required.", nameof(clone));
             var renderers = ExportRendererSelection.Enumerate(clone).Where(renderer => renderer is SkinnedMeshRenderer || renderer is MeshRenderer).ToArray();
-            var empty = renderers.Where(renderer =>
-            {
-                var filter = renderer is MeshRenderer ? renderer.GetComponent<MeshFilter>() : null;
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
-                return !ExportRendererSelection.HasGeometry(mesh);
-            }).ToArray();
+            Mesh MeshOf(Renderer renderer) => renderer is SkinnedMeshRenderer skin ? skin.sharedMesh
+                : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
+            var empty = renderers.Where(renderer => !ExportRendererSelection.HasGeometry(MeshOf(renderer))).ToArray();
             if (empty.Length == 0 || empty.Length == renderers.Length) return;
             foreach (var renderer in empty) renderer.enabled = false;
-            warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", empty.Select(renderer =>
-                renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform))));
+            string PathOf(Renderer renderer) => renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
+            foreach (var renderer in empty.Where(renderer => MeshOf(renderer) == null))
+                warnings?.Add(MissingMeshKind + ": " + PathOf(renderer) + " — " + MissingMeshReason);
+            var withoutGeometry = empty.Where(renderer => MeshOf(renderer) != null).ToArray();
+            if (withoutGeometry.Length > 0)
+                warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", withoutGeometry.Select(PathOf)));
         }
 
         // UniVRM 0.131 looks up every bone and root bone among the avatar's own

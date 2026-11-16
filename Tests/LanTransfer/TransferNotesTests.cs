@@ -41,6 +41,26 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(notes.Records[1].Items.Single().Target, Is.EqualTo("ボーンが見つからないため、揺れものを書き出しませんでした。"));
         }
 
+        // A part whose mesh asset is missing is not in the VRM, so it is a note the count holds,
+        // unlike an object the gimmick check only kept.
+        [Test]
+        public void TransferNotesCountAMissingMeshAsANote()
+        {
+            var notes = TransferNotes.Build(new[]
+            {
+                "メッシュが見つからず省略: Body — メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。",
+                "メッシュが見つからず省略: Hair — メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。",
+                "自動除外せず保持: Ribbon — メッシュまたはマテリアルが不足しているため自動判定できません。",
+            });
+
+            Assert.That(notes.NoteCount, Is.EqualTo(2));
+            var missing = notes.Notes.Single();
+            Assert.That(missing.Kind, Is.EqualTo("メッシュが見つからず省略"));
+            Assert.That(missing.CommonReason, Is.EqualTo("メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。"));
+            Assert.That(missing.Items.Select(item => item.Target), Is.EqualTo(new[] { "Body", "Hair" }));
+            Assert.That(notes.Records.Select(group => group.Kind), Is.EqualTo(new[] { "自動除外せず保持" }));
+        }
+
         [Test]
         public void TransferNotesAreEmptyWithoutLines()
         {
