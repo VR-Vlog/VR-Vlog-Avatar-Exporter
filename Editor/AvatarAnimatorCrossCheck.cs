@@ -23,7 +23,8 @@ namespace VRVlog.LilToonExporter
     // shows it, the material of each materialSlot target's slot and the
     // local channel of each translation, rotation and scale target, and the
     // muscle of each muscle target as HumanPoseHandler reads the copy's
-    // humanoid pose back. The inputs are the start alone, each menu control and
+    // humanoid pose back, against the evaluator's muscles put on the bones and
+    // read back the same way (MuscleReader). The inputs are the start alone, each menu control and
     // each hand gesture. Each input starts from the rest: SettleFrames without
     // input, then InputFrames with it.
     //
@@ -262,7 +263,7 @@ namespace VRVlog.LilToonExporter
                 .Select(c => c < controllers.Count && probe.SkipReason(c) == null ? controllers[c] : null).ToList();
             var graph = muscles.Count > 0 || played.Skip(1).Any(c => c != null);
             var player = new UnityPlayer(animator, data, readBehaviour, graph ? played : null);
-            var poses = muscles.Count > 0 ? new HumanPoseHandler(animator.avatar, root.transform) : null;
+            var poses = muscles.Count > 0 ? new MuscleReader(animator, root.transform) : null;
             using (HookBehaviours ? new Hooks(player) : null)
             {
                 try
@@ -506,7 +507,7 @@ namespace VRVlog.LilToonExporter
         }
 
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, List<int> muscles,
-            HumanPoseHandler poses, int[] shapes, Dictionary<int, int[]> quaternions, UnityPlayer player, out bool skipped)
+            MuscleReader poses, int[] shapes, Dictionary<int, int[]> quaternions, UnityPlayer player, out bool skipped)
         {
             var pose = new HumanPose();
             // Both draw the same sequence; a different order of behaviours shows as a difference.
@@ -540,17 +541,81 @@ namespace VRVlog.LilToonExporter
                     break;
                 }
                 if (first != null || muscles.Count == 0) continue;
-                poses.GetHumanPose(ref pose);
+                poses.Read(ref pose);
+                var read = poses.ReadBack(pose, data, muscles, evaluator.Values);
                 foreach (var t in muscles)
                 {
                     var unity = (double)pose.muscles[data.Targets[t].Muscle];
-                    if (!Differs(data.Targets[t], evaluator.Values[t], unity)) continue;
-                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = evaluator.Values[t], Layers = Layers(data, player, evaluator) };
+                    var value = (double)read[data.Targets[t].Muscle];
+                    if (!Differs(data.Targets[t], value, unity)) continue;
+                    first = new Mismatch { Input = input.Name, Frame = frame, Target = t, Unity = unity, Evaluator = value, Layers = Layers(data, player, evaluator) };
                     break;
                 }
             }
             skipped = false;
             return first;
+        }
+
+        // Reads the copy's muscles back from its bones. HumanPoseHandler does not
+        // give back exactly the muscles put on the bones: a pose put with
+        // SetHumanPose reads back up to about 1.5e-3 off on the twist muscles of
+        // the legs, the feet and the arms, as the Animator's pose does, by the same
+        // amount (Unity mixes the muscles of its layers linearly; measured in
+        // AvatarAnimatorCrossCheckTests.MusclesReadBackAsAPosePutOnTheBones). So
+        // the evaluator's muscles are put on the bones and read back the same way
+        // before they are compared, and the bones are put back as Unity left them.
+        internal sealed class MuscleReader : IDisposable
+        {
+            readonly HumanPoseHandler handler;
+            // The humanoid bones and every transform above them up to the root:
+            // what SetHumanPose can move.
+            readonly Transform[] skeleton;
+            readonly Vector3[] positions, scales;
+            readonly Quaternion[] rotations;
+            HumanPose evaluated = new HumanPose();
+
+            internal MuscleReader(Animator animator, Transform root)
+            {
+                handler = new HumanPoseHandler(animator.avatar, root);
+                var moved = new HashSet<Transform>();
+                for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+                    for (var t = animator.GetBoneTransform(bone); t != null && t != root && moved.Add(t); t = t.parent) { }
+                skeleton = moved.ToArray();
+                positions = new Vector3[skeleton.Length];
+                scales = new Vector3[skeleton.Length];
+                rotations = new Quaternion[skeleton.Length];
+            }
+
+            internal void Read(ref HumanPose pose) => handler.GetHumanPose(ref pose);
+
+            // The muscles HumanPoseHandler reads back with the evaluator's muscle
+            // targets on the bones, the other muscles at 0 and the body where
+            // Unity's pose has it.
+            internal float[] ReadBack(HumanPose unity, AvatarAnimatorData data, List<int> muscles, IReadOnlyList<double> values)
+            {
+                for (var i = 0; i < skeleton.Length; i++)
+                {
+                    positions[i] = skeleton[i].localPosition;
+                    rotations[i] = skeleton[i].localRotation;
+                    scales[i] = skeleton[i].localScale;
+                }
+                if (evaluated.muscles == null || evaluated.muscles.Length != unity.muscles.Length) evaluated.muscles = new float[unity.muscles.Length];
+                else Array.Clear(evaluated.muscles, 0, evaluated.muscles.Length);
+                evaluated.bodyPosition = unity.bodyPosition;
+                evaluated.bodyRotation = unity.bodyRotation;
+                foreach (var t in muscles) evaluated.muscles[data.Targets[t].Muscle] = (float)values[t];
+                handler.SetHumanPose(ref evaluated);
+                handler.GetHumanPose(ref evaluated);
+                for (var i = 0; i < skeleton.Length; i++)
+                {
+                    skeleton[i].localPosition = positions[i];
+                    skeleton[i].localRotation = rotations[i];
+                    skeleton[i].localScale = scales[i];
+                }
+                return evaluated.muscles;
+            }
+
+            public void Dispose() => handler.Dispose();
         }
 
         // Each layer where Unity and the evaluator are in a different state or
