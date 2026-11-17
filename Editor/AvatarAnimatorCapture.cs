@@ -350,6 +350,12 @@ namespace VRVlog.LilToonExporter
 
         // Whether an FX curve turns this renderer on and off: an enabled target
         // when the renderer is also a mesh in the file (see Resolve).
+        // The material floats an FX curve moves, by name on any renderer: a lilToon
+        // feature switch among them is drawn on in the app when the menu turns it on,
+        // so 自動で軽量化する keeps the texture slots it samples (LilToonInactiveSlots).
+        internal HashSet<string> MovedMaterialFloats() =>
+            new HashSet<string>(clipMaterialTracks.SelectMany(tracks => tracks).Where(track => track.Moves.Property == "materialFloat").Select(track => track.Moves.Name), StringComparer.Ordinal);
+
         internal bool Switches(Renderer renderer) =>
             renderer != null && rendererIndex.ContainsKey(renderer) && renderer.enabled && renderer.gameObject.activeInHierarchy;
 

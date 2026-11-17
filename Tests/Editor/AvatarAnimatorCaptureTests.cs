@@ -1842,6 +1842,8 @@ namespace VRVlog.LilToonExporter.Tests
             Set("material._Main2ndDissolveParams.x", 1);
             AddLayer(avatar, "Tint", clip);
 
+            // 自動で軽量化する keeps the texture slots of the switch the menu turns on.
+            Assert.That(AvatarAnimatorCapture.Capture(avatar.Source, null).MovedMaterialFloats(), Is.EquivalentTo(new[] { "_Cutoff", "_UseEmission" }));
             var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
             var kinds = data.Targets.Select(t => t.Property).ToList();
             Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");

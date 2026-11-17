@@ -1,7 +1,7 @@
 # マテリアルの機能のオン・オフの曲線を書く
 
 - 日付: 2026-11-17
-- 対象: `Editor/AvatarAnimatorCapture.cs`、`Formats/Runtime/LilToonFullContract.cs`（コメントだけ）、`Formats/README.md`
+- 対象: `Editor/AvatarAnimatorCapture.cs`、`Editor/LilToonInactiveSlots.cs`・`Editor/LilToonFullSnapshot.cs`・`Editor/TexelDensity.cs`・`Editor/UniVrmOneClickExporter.cs`（自動で軽量化する）、`Formats/Runtime/LilToonFullContract.cs`（コメントだけ）、`Formats/README.md`、`Schema/VRVLOG_avatar_animator.1.schema.json`（説明だけ）
 
 ## 背景
 
@@ -20,16 +20,24 @@ FXのメニューでlilToonの機能を入れ切りするアバターがある�
 - `materialSwitch`は`AvatarAnimatorData.OmittedKinds`に残す。前の書き出しのファイルを読むため。この書き出しはもう数えない
 - `LilToonFullContract.Switches`と`IsSwitch`は残す。アプリが固定するスイッチの一覧という意味は変わらない
 
+## 自動で軽量化する
+
+「自動で軽量化する」（既定でオン）は、スイッチが0の機能の画像の欄を書かない（`LilToonInactiveSlots`）。曲線を書くだけだと、メニューでスイッチを1にしたときに、その機能が画像なしで付く。たとえば`_UseEmission`が0で`_EmissionMap`に発光のマスクを持つマテリアルでは、マスクが無いまま全体が光る。今のアプリでも、特殊化しないiOSと、グループのコードが残っているマテリアルで起きる。
+
+そこで、FXのどれかの曲線が動かすマテリアルのfloatの名前（`AvatarAnimatorCapture.MovedMaterialFloats`）を軽量化に渡し、その名前のスイッチで読まれる画像の欄は、スイッチが0でも書く。テクセル密度の計測（`TexelDensity.Measure`）も同じ名前を使い、書く欄だけを数える。
+
+名前だけで見るので、あるメッシュのマテリアルの`_UseBacklight`を動かす曲線があると、ほかのマテリアルの逆光ライトの画像も書く。マテリアルを特定するには、FXを読んだあとに最適化でマテリアルが差し替わるのを追う必要がある。そのぶん軽量化の効き目は少し下がるが、画像が欠けることはない。
+
 ## アプリ側
 
-アプリの`AvatarAnimatorPlayer.BindMaterials`が、`materialFloat`の対象のうちスイッチの名前のもの（アプリの`LilToonFeatureSpecialization.Controls`）をマテリアルごとに集め、そのスイッチを「使っている」として特殊化をかけ直す。GLES3のテクスチャの上限（`GlesSamplerLimit`）を、ほかの機能を切らずに収まらないときは、読み込んだときのコードのままにする（そのマテリアルではスイッチが効かない。今と同じ）。iOSはもともと特殊化しないので、書き出しを変えるだけでスイッチが効く。
+アプリは、FXのコントローラーが動かすスイッチを持つマテリアルについて、そのスイッチのグループのコードを読み込み時に落としたままにせず戻す。テクスチャの数が端末の上限を超えるときは戻さない（そのマテリアルではスイッチが効かない。今と同じ）。iOSのアプリはもともと特殊化しないので、書き出しを変えるだけでスイッチが効く。
 
 ## 古いアプリと今の出力
 
-- この書き出しのファイルを今のアプリ（スイッチを残す変更の前）が読むと、スイッチの曲線は`materialFloat`として当たる。グループのコードが落ちているマテリアルでは何も出ず、今と同じ。グループのほかのスイッチが読み込み時に1のマテリアル（リムが付いているなど）では、コードが残っているのでスイッチが効く。これはUnityに近づく変化で、見た目が壊れる方向の差ではない
-- フラグ（`avatar_vrchat_reproduction`）がオフのアプリは拡張を読まないので、今と同じ
-- 拡張の差は、スイッチの曲線を持つアバターで`targets`・`tracks`が増え、`omitted`の`materialSwitch`が消えることだけ。マテリアル・メッシュ・画像は変わらない
+- この書き出しのファイルを今のアプリ（スイッチのコードを戻す変更の前）が読むと、スイッチの曲線は`materialFloat`として当たる。グループのコードが落ちているマテリアルでは何も出ず、今と同じ。グループのほかのスイッチが読み込み時に1のマテリアル（リムが付いているなど）とiOSでは、スイッチが効く。これはUnityに近づく変化で、見た目が壊れる方向の差ではない。画像の欄は上のとおり書くので、画像なしで機能が付くことはない
+- 再現の機能をオフにしているアプリは拡張を読まないので、今と同じ
+- 拡張の差は、スイッチの曲線を持つアバターで`targets`・`tracks`が増え、`omitted`の`materialSwitch`が消えること。軽量化がオンのときは、FXが動かすスイッチの機能の画像も書くので、そのぶんファイルが大きくなる
 
 ## 直していないこと
 
-- 「自動で軽量化する」をオンにすると、スイッチが0の機能の画像の欄を書かない（`LilToonInactiveSlots`）。このときは、メニューでスイッチを1にしても、その機能の画像（逆光ライトの`_BacklightColorTex`など）が無いまま付く。FXが動かすスイッチの画像の欄を残すかは、軽量化の効き目と合わせて別に決める
+- lilToonMultiは機能をシェーダーのキーワードで選ぶので、Unityでは`_UseBacklight`などを曲線で動かしても変わらない。アプリはMultiをlilToonに変換したあと`_Use*`で見るので、この書き出しのファイルでは曲線で付く。Multiでスイッチを動かすアバターは珍しいので、見つかったら書き出しかアプリで除く
