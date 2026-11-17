@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -110,67 +111,125 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(avatar); }
         }
 
-        // A player drives the arm by muscles measured from the VRM's rest, so
-        // the elbow keeps the bend of the humanoid's T-pose, not the one the
-        // lowered arm was authored with.
+        // Turns the arms from the rest by the recorded T-pose as a muscle player
+        // does with a humanoid built from it (UniVRM's ControlRig: each bone turns
+        // in the animator's axes by its normalized rotation and its parents').
+        static void TakeTPose(GameObject avatar, IReadOnlyDictionary<HumanBodyBones, Quaternion> tPose)
+        {
+            var root = avatar.transform.rotation;
+            foreach (var arm in new[]
+            {
+                new[] { HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand },
+                new[] { HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand }
+            })
+            {
+                var bones = arm.Select(bone => Bone(avatar, bone)).ToArray();
+                var rest = bones.Select(bone => bone.rotation).ToArray();
+                var turn = Quaternion.identity;
+                for (var i = 0; i < arm.Length; i++)
+                {
+                    if (tPose.TryGetValue(arm[i], out var rotation)) turn *= rotation;
+                    bones[i].rotation = root * turn * Quaternion.Inverse(root) * rest[i];
+                }
+            }
+        }
+
+        static Dictionary<HumanBodyBones, Quaternion> AlignArms(GameObject avatar)
+        {
+            var tPose = new Dictionary<HumanBodyBones, Quaternion>();
+            AvatarRestPose.AlignArms(avatar.GetComponent<Animator>(), tPose);
+            return tPose;
+        }
+
+        // The rest stays a plain T-pose for players that copy rotations; a
+        // player that drives the arm by muscles builds its humanoid from the
+        // recorded T-pose, which gives the elbow the bend of the humanoid's
+        // T-pose, not the one the lowered arm was authored with.
         [TestCase(0f, 12f)]
         [TestCase(7f, 12f)]
         [TestCase(7f, 2f)]
-        public void ARaisedForearmTakesTheBendOfTheHumanoidsTPose(float humanoid, float authored)
+        public void ARaisedArmKeepsItsRestAndRecordsTheBendOfTheHumanoidsTPose(float humanoid, float authored)
         {
             using var f = new AttachmentConnectionTests.Fixture();
+            var upper = Bone(f.Source, HumanBodyBones.LeftUpperArm);
             var lower = Bone(f.Source, HumanBodyBones.LeftLowerArm); var hand = Bone(f.Source, HumanBodyBones.LeftHand);
             var rightLower = Bone(f.Source, HumanBodyBones.RightLowerArm); var rightHand = Bone(f.Source, HumanBodyBones.RightHand);
+            var straight = (lower.localRotation, rightLower.localRotation);
             var avatar = BendHumanoidElbows(f.Source, humanoid);
             try
             {
+                (lower.localRotation, rightLower.localRotation) = straight;
+                lower.Rotate(Vector3.forward, authored, Space.World);
+                rightLower.Rotate(Vector3.forward, -authored, Space.World);
                 LowerArms(f.Source, 40);
-                lower.Rotate(Vector3.forward, authored - humanoid, Space.World);
-                rightLower.Rotate(Vector3.forward, humanoid - authored, Space.World);
 
-                AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
+                var tPose = AlignArms(f.Source);
 
+                Assert.That(AngleFrom(Vector3.left, upper, lower), Is.LessThan(.1f));
+                Assert.That(AngleFrom(Vector3.left, lower, hand), Is.EqualTo(authored).Within(.1f), "the rest keeps the authored bend under the limit");
+                Assert.That(tPose.Keys, Is.EquivalentTo(new[]
+                {
+                    HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand,
+                    HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand
+                }));
+                TakeTPose(f.Source, tPose);
                 Assert.That(AngleFrom(Vector3.left, lower, hand), Is.EqualTo(humanoid).Within(.1f));
                 Assert.That(AngleFrom(Vector3.right, rightLower, rightHand), Is.EqualTo(humanoid).Within(.1f));
                 if (humanoid > 0) Assert.That(hand.position.y, Is.LessThan(lower.position.y), "the forearm bends down as in the humanoid");
+                foreach (var bone in new[] { upper, lower, hand })
+                    Assert.That(Quaternion.Angle(bone.localRotation, avatar.humanDescription.skeleton.First(b => b.name == bone.name).rotation), Is.LessThan(.1f), bone.name);
             }
             finally { Object.DestroyImmediate(avatar); }
         }
 
-        // The upper arm takes the humanoid's T-pose too, its slope and its twist,
-        // so a muscle value turns the shoulder as far as it did on the avatar.
+        // The recorded T-pose has the upper arm's slope and twist too, so a
+        // muscle value turns the shoulder as far as it did on the avatar. The
+        // forearm's and the hand's rotations are from the upper arm's, so the
+        // twist is not added again below the elbow. The rotations are in the
+        // animator's axes, whichever way it faces.
         [Test]
-        public void ARaisedUpperArmTakesTheSlopeAndTwistOfTheHumanoidsTPose()
+        public void TheRecordedTPoseHasTheSlopeAndTwistOfTheHumanoidsUpperArm()
         {
             using var f = new AttachmentConnectionTests.Fixture();
             var upper = Bone(f.Source, HumanBodyBones.LeftUpperArm); var lower = Bone(f.Source, HumanBodyBones.LeftLowerArm);
+            var hand = Bone(f.Source, HumanBodyBones.LeftHand);
+            var straight = (upper.localRotation, lower.localRotation);
             upper.Rotate(Vector3.forward, 3, Space.World);
             upper.Rotate(Vector3.right, 30, Space.World);
-            var humanoid = upper.localRotation;
+            lower.Rotate(Vector3.forward, 10, Space.World);
+            var humanoid = (upper: upper.localRotation, lower: lower.localRotation, hand: hand.localRotation);
             var avatar = Rebuild(f.Source, description =>
             {
                 description.skeleton = description.skeleton.Select(bone =>
                 {
-                    if (bone.name == upper.name) bone.rotation = humanoid;
+                    if (bone.name == upper.name) bone.rotation = humanoid.upper;
+                    if (bone.name == lower.name) bone.rotation = humanoid.lower;
                     return bone;
                 }).ToArray();
                 return description;
             });
             try
             {
-                upper.Rotate(Vector3.right, -30, Space.World);
+                (upper.localRotation, lower.localRotation) = straight;
+                upper.Rotate(Vector3.forward, 3, Space.World);
                 LowerArms(f.Source, 40);
+                f.Source.transform.rotation = Quaternion.Euler(0, 50, 0);
+                var left = f.Source.transform.rotation * Vector3.left;
 
-                AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
+                var tPose = AlignArms(f.Source);
 
-                Assert.That(Quaternion.Angle(upper.localRotation, humanoid), Is.LessThan(.1f));
-                Assert.That(AngleFrom(Vector3.left, upper, lower), Is.EqualTo(3f).Within(.1f));
+                Assert.That(AngleFrom(left, upper, lower), Is.LessThan(.1f));
+                TakeTPose(f.Source, tPose);
+                Assert.That(Quaternion.Angle(upper.localRotation, humanoid.upper), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(lower.localRotation, humanoid.lower), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(hand.localRotation, humanoid.hand), Is.LessThan(.1f));
+                Assert.That(AngleFrom(left, upper, lower), Is.EqualTo(3f).Within(.1f));
             }
             finally { Object.DestroyImmediate(avatar); }
         }
 
         [Test]
-        public void AHumanoidElbowBentPastTheLimitIsStraightenedAsBefore()
+        public void AHumanoidElbowBentPastTheLimitRecordsNoTPose()
         {
             using var f = new AttachmentConnectionTests.Fixture();
             var lower = Bone(f.Source, HumanBodyBones.LeftLowerArm); var hand = Bone(f.Source, HumanBodyBones.LeftHand);
@@ -179,18 +238,19 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 LowerArms(f.Source, 40);
 
-                AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
+                var tPose = AlignArms(f.Source);
 
                 Assert.That(AngleFrom(Vector3.left, lower, hand), Is.LessThan(.1f));
+                Assert.That(tPose, Is.Empty);
             }
             finally { Object.DestroyImmediate(avatar); }
         }
 
-        // The humanoid's T-pose bends both elbows; a forearm it cannot name
-        // once is raised straight as before, the other takes the bend.
+        // The humanoid's T-pose bends both elbows; an arm whose forearm it
+        // cannot name once records nothing, the other records the bend.
         [TestCase(false)]
         [TestCase(true)]
-        public void AForearmTheHumanoidDoesNotNameOnceIsRaisedStraightAsBefore(bool twice)
+        public void AnArmTheHumanoidDoesNotNameOnceRecordsNoTPose(bool twice)
         {
             using var f = new AttachmentConnectionTests.Fixture();
             var left = (Bone(f.Source, HumanBodyBones.LeftLowerArm), Bone(f.Source, HumanBodyBones.LeftHand));
@@ -210,12 +270,29 @@ namespace VRVlog.LilToonExporter.Tests
                 LowerArms(f.Source, 40);
                 if (!twice) left.Item1.name = "Renamed forearm";
 
-                AvatarRestPose.AlignArms(f.Source.GetComponent<Animator>());
+                var tPose = AlignArms(f.Source);
 
+                Assert.That(tPose.Keys, Is.EquivalentTo(new[] { HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand }));
+                TakeTPose(f.Source, tPose);
                 Assert.That(AngleFrom(Vector3.left, left.Item1, left.Item2), Is.LessThan(.1f));
                 Assert.That(AngleFrom(Vector3.right, right.Item1, right.Item2), Is.EqualTo(10).Within(.1f));
             }
             finally { Object.DestroyImmediate(avatar); if (named != null) Object.DestroyImmediate(named); }
+        }
+
+        // Arms that are not raised keep their rest and need no T-pose.
+        [Test]
+        public void ArmsWithinTheLimitRecordNoTPose()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var avatar = BendHumanoidElbows(f.Source, 10);
+            try
+            {
+                LowerArms(f.Source, AvatarRestPose.MaximumArmAngle - 1);
+
+                Assert.That(AlignArms(f.Source), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(avatar); }
         }
 
         [Test]

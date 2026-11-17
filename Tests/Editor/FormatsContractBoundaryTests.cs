@@ -99,6 +99,37 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(LimitInvalid, () => HumanoidLimitData.Write(new HumanoidLimitData()));
         }
 
+        static List<object> Rotation(params double[] values) => values.Select(value => (object)value).ToList();
+
+        // tPose is optional next to bones, and either one alone is a value.
+        [Test]
+        public void HumanoidTPoseBoundaries()
+        {
+            var half = Math.Sqrt(.5);
+            var both = HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftLowerArm"] = Rotation(0, 0, half, half) }));
+            Assert.That(both.Bones.Keys, Is.EqualTo(new[] { "leftUpperArm" }));
+            Assert.That(both.TPose["leftLowerArm"], Is.EqualTo(new[] { 0, 0, half, half }));
+            var alone = HumanoidLimitData.Read(Limits((r, b) => { r.Remove("bones"); r["tPose"] = new Dictionary<string, object> { ["rightHand"] = Rotation(0, 0, 0, 1) }; }));
+            Assert.That(alone.Bones, Is.Empty);
+            Assert.That(alone.TPose.Keys, Is.EqualTo(new[] { "rightHand" }));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 0, 1 + HumanoidLimitData.RotationLengthTolerance * .9) })));
+            var written = new HumanoidLimitData();
+            written.TPose["leftUpperArm"] = new[] { 0, .0000001, half, half };
+            var value = HumanoidLimitData.Write(written);
+            Assert.That(value.Keys, Is.EquivalentTo(new[] { "schemaVersion", "tPose" }), "no empty bones");
+            Assert.That(((Dictionary<string, object>)value["tPose"])["leftUpperArm"], Is.EqualTo(Rotation(0, 0, Math.Round(half, 6), Math.Round(half, 6))));
+            Assert.That(HumanoidLimitData.Write(HumanoidLimitData.Read(Limits())).ContainsKey("tPose"), Is.False, "a file with limits alone is as before");
+
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object>())));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 0, 1.01) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 1) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 0, double.NaN) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["LeftHand"] = Rotation(0, 0, 0, 1) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new List<object>())));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r.Remove("bones"))));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r.Remove("schemaVersion"))));
+        }
+
         static Dictionary<string, object> Gestures(Action<Dictionary<string, object>, List<object>> change = null)
         {
             var cells = Enumerable.Repeat<object>(null, ExpressionGestureData.CellCount).ToList();

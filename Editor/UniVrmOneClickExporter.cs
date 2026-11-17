@@ -520,6 +520,7 @@ namespace VRVlog.LilToonExporter
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
             VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
+            var armTPose = new Dictionary<HumanBodyBones, Quaternion>();
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -636,7 +637,7 @@ namespace VRVlog.LilToonExporter
                     }
                     // After the build passes, which match clothing to the bones as
                     // authored, and before anything below reads the rest pose.
-                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>());
+                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>(), armTPose);
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     // The faces are the board's list: its clips are read as the
@@ -674,7 +675,7 @@ namespace VRVlog.LilToonExporter
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // Viseme Parameter Only reads the merged FX. A failure only warns.
                     lipSync = LipSyncCapture.Capture(clone, warnings);
-                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), warnings);
+                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), armTPose, warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
