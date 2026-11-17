@@ -1094,10 +1094,9 @@ namespace VRVlog.LilToonExporter
                 // The root scale RootScaleBake moves into the VRM model space.
                 var rootScale = clone.transform.localScale;
                 // The particles hang from what the build left, as it stands now.
-                try { effects?.Rebind(); }
-                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); effects = null; }
-                try { contacts?.Rebind(); }
-                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); contacts = null; }
+                // A table that cannot be measured again is left out by its stage.
+                if (effects != null) effects = guard.Optional(ExportStage.AvatarEffects, () => { effects.Rebind(); return effects; }, () => null);
+                if (contacts != null) contacts = guard.Optional(ExportStage.AvatarContacts, () => { contacts.Rebind(); return contacts; }, () => null);
                 // Every capture above is taken; objects with nothing to write
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)

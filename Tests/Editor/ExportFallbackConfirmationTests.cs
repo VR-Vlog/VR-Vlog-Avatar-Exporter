@@ -80,6 +80,7 @@ namespace VRVlog.LilToonExporter.Tests
                     ExportResultList.StageOmittedContent, ExportResultList.StageApproximatedContent }
                 .Concat(ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome)))
                 .Concat(((ExportPhase[])Enum.GetValues(typeof(ExportPhase))).Select(ExportStageGuard.PhaseLabel))
+                .Concat(((ExportStage[])Enum.GetValues(typeof(ExportStage))).Select(ExportStageGuard.Label))
                 .Concat(new[] { "基準形評価" })
                 .Concat(((ExportFallbackKind[])Enum.GetValues(typeof(ExportFallbackKind))).SelectMany(kind =>
                     new[] { ExportFallbackConfirmation.Failure(kind), ExportFallbackConfirmation.Feature(kind) })).Distinct().ToArray();

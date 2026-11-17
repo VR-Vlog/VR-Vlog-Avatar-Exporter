@@ -1,7 +1,7 @@
 # PhysBoneとConstraintの表も、書けなかったら段階の省略として伝える
 
 - 日付: 2026-11-17
-- 対象: `Editor/UniVrmOneClickExporter.cs`・`Editor/ExportStageGuard.cs`・`Editor/AvatarConstraintsExport.cs`・`Editor/AvatarPhysBonesExport.cs`・`Editor/Locales/ExporterLocale_*.json`・`Tests/Editor/ExportStageGuardTests.cs`・`Tests/Editor/AvatarAnimatorCaptureTests.cs`・`CHANGELOG.md`
+- 対象: `Tests/Editor/ExportFallbackConfirmationTests.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/ExportStageGuard.cs`・`Editor/AvatarConstraintsExport.cs`・`Editor/AvatarPhysBonesExport.cs`・`Editor/Locales/ExporterLocale_*.json`・`Tests/Editor/ExportStageGuardTests.cs`・`Tests/Editor/AvatarAnimatorCaptureTests.cs`・`CHANGELOG.md`
 - 前の記録: `2026-11-16-avatar-table-failure.md`・`2026-11-16-missing-mesh-warning.md`
 
 ## 背景
@@ -29,7 +29,7 @@
 
 ### 4つの表の読み取りも段階を通す
 
-エフェクト・Contact・PhysBoneの表を読み取る`Capture`も`guard.Optional`を通す。読み取りで失敗したら、その段階を省略して、表の無いファイルを書く。Constraintの表は`ConstraintExport.Convert`の中で読むので、今までどおり「コンストレイントの変換」の段階が受け持つ。
+エフェクト・Contact・PhysBoneの表を読み取る`Capture`も`guard.Optional`を通す。エフェクトとContactの表が、ビルドの処理のあとに残ったオブジェクトを読み直す`Rebind`も同じ段階を通す（今まではコンソールに出して表を外すだけだった）。読み取りで失敗したら、その段階を省略して、表の無いファイルを書く。Constraintの表は`ConstraintExport.Convert`の中で読むので、今までどおり「コンストレイントの変換」の段階が受け持つ。
 
 段階の省略は書き出し全体で1回なので、読み取りで省略した表は、そのあとの組み立てと書き込みも試さない。
 
@@ -43,6 +43,7 @@
 - `ExportStageGuardTests.AStrictExportLeavesOutAStageThatOnlyAddsData`: `AvatarAnimator`だけだったのを、表の4つの段階にも広げた（5件）。
 - `ExportStageGuardTests.EveryStageCanFailAndTheFileIsStillWritten`: 段階の一覧から作るので、新しい2つの段階も入る。
 - `AvatarAnimatorCaptureTests.ATableTellsWhatItLeftOutOnlyWhenWritten`: 書き出し全体で、ライトが上限を1つ超えるとエフェクトの注意が、Receiverが上限を1つ超えるとContactの注意が1行出て、段階の注意は出ない。表の書き込みが失敗すると、表の注意は出ず、段階の注意が1行出る。
+- `ExportFallbackConfirmationTests.EveryShippedLocaleTranslatesTheResultWords`: 段階のラベルもすべて4言語に訳があるかを見る。段階を足して訳し忘れると落ちる。
 - `AvatarAnimatorCaptureTests.AConstraintsTableTheExportCannotWriteIsNotNamed`・`APhysBonesTableTheExportCannotWriteIsNotNamed`: 表を書けなかったとき、拡張が無く、FXがConstraintを指さず（PhysBoneのパラメーターは`animator`に戻り）、段階の注意が1行出る。
 
 ## 採らなかったこと
