@@ -2,18 +2,21 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using VRVlog.AvatarFormats;
 using VRVlog.ObjectToggles;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
 {
-    // VRVLOG_object_toggles: the data contract, the capture from the menu and
-    // FX of a VRChat avatar, and the extension in a real export. The capture
+    // VRVLOG_object_toggles and VRVLOG_object_toggle_transforms: the data
+    // contract, the capture from the menu and FX of a VRChat avatar, and the
+    // extensions in a real export. The capture
     // tests use the real SDK types through reflection and skip without them.
     public sealed class ObjectToggleCaptureTests
     {
@@ -439,6 +442,168 @@ namespace VRVlog.LilToonExporter.Tests
             finally { AssetDatabase.DeleteAsset(directory); }
         }
 
+        const string HairPath = "Hips/Spine/Chest/Neck/Head/HairBone";
+
+        static string Values(double[] values) => values == null ? "-" : string.Join(",", values.Select(value => value.ToString("0.###")));
+
+        // The hat's clip shrinks the hair bone under it and lowers it a little;
+        // the bone is not humanoid and has no mesh.
+        [Test]
+        public void AToggleWritesTheBonesItsClipsMoveAsTransforms()
+        {
+            using var avatar = new ToggleAvatar();
+            var clone = Object.Instantiate(avatar.Source);
+            try
+            {
+                var warnings = new List<string>();
+                var capture = ObjectToggleCapture.Capture(clone, null, warnings);
+                Assert.That(capture, Is.Not.Null, string.Join("\n", warnings));
+                Assert.That(capture.MovedTargets.Select(bone => bone.name), Is.EqualTo(new[] { "HairBone" }));
+                var nodes = clone.GetComponentsInChildren<Transform>(true).Select(transform => transform.gameObject).ToList();
+                var data = capture.Resolve(nodes.IndexOf, warnings);
+                // Samples after the hat's start from the rest pose again: a
+                // bone left shrunk would read as switched by the next groups.
+                Assert.That(warnings, Has.None.EndsWith("HairBone"));
+                var transforms = capture.Transforms;
+                Assert.That(transforms.Groups.Select(group => group.Parameter), Is.EqualTo(new[] { "Hat" }));
+                var hat = transforms.GroupFor("Hat");
+                Assert.That(hat.Targets.Select(target => nodes[target.Node].name), Is.EqualTo(new[] { "HairBone" }));
+                Assert.That(hat.Targets[0].Properties, Is.EqualTo(new[] { ObjectToggleTransformData.Translation, ObjectToggleTransformData.Scale }));
+                Assert.That(hat.States.Select(state => state.Value + ":" + Values(state.Transforms[0].Translation) + "/" + Values(state.Transforms[0].Rotation) + "/" + Values(state.Transforms[0].Scale)),
+                    Is.EqualTo(new[] { "0:0,0.1,0/0,0,0,1/1,1,1", "1:0,0.08,0/0,0,0,1/0.01,0.01,0.01" }));
+                // The data keeps to the contract with the toggles.
+                var read = ObjectToggleTransformData.Read(ObjectToggleTransformData.Write(transforms, data), data);
+                Assert.That(read.GroupFor("Hat").States.Select(state => Values(state.Transforms[0].Rotation)), Is.EqualTo(new[] { "-", "-" }));
+                Assert.That(read.GroupFor("Hat").States.Select(state => Values(state.Transforms[0].Scale)), Is.EqualTo(new[] { "1,1,1", "0.01,0.01,0.01" }));
+
+                // A bone the export left out only drops its transforms.
+                warnings.Clear();
+                var withoutBone = capture.Resolve(target => target.name == "HairBone" ? -1 : nodes.IndexOf(target), warnings);
+                Assert.That(withoutBone.GroupFor("Hat"), Is.Not.Null);
+                Assert.That(capture.Transforms, Is.Null);
+                Assert.That(warnings.Single(), Does.EndWith(HairPath));
+
+                // A bone a constraint moved under another parent keeps its pose:
+                // its values are local to the parent it was sampled under.
+                warnings.Clear();
+                var hair = clone.transform.Find(HairPath);
+                var head = hair.parent;
+                hair.SetParent(clone.transform, true);
+                Assert.That(capture.Resolve(nodes.IndexOf, warnings).GroupFor("Hat"), Is.Not.Null);
+                Assert.That(capture.Transforms, Is.Null);
+                Assert.That(warnings.Single(), Does.StartWith(ExporterLocalization.T(ObjectToggleCapture.ReparentedWarning)).And.EndWith(HairPath));
+                hair.SetParent(head, true);
+                warnings.Clear();
+
+                // Leaving out empty objects keeps the bones the toggles move.
+                var pruned = Object.Instantiate(clone);
+                try
+                {
+                    var moved = capture.MovedTargets.Select(bone => pruned.transform.Find(HairPath).gameObject).ToArray();
+                    ExportEmptyNodes.Prune(pruned, moved);
+                    Assert.That(pruned.transform.Find(HairPath), Is.Not.Null);
+                    ExportEmptyNodes.Prune(pruned);
+                    Assert.That(pruned.transform.Find(HairPath), Is.Null);
+                }
+                finally { Object.DestroyImmediate(pruned); }
+            }
+            finally { Object.DestroyImmediate(clone); }
+        }
+
+        // Both extensions go into the file; transforms that cannot be written
+        // are left out without losing the toggles.
+        [Test]
+        public void InjectPlacesTheTransformsNextToTheToggles()
+        {
+            var nodes = Enumerable.Range(0, 10).Select(i => (object)new Dictionary<string, object> { ["name"] = "n" + i }).ToList();
+            var bytes = GlbDocument.Create(new Dictionary<string, object>
+            {
+                ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" }, ["nodes"] = nodes
+            }, Array.Empty<byte>()).Write();
+            var data = Data();
+            ObjectToggleTransformData Transforms(int node)
+            {
+                var transforms = new ObjectToggleTransformData();
+                var group = new ObjectToggleTransformData.Group { Parameter = "Hat" };
+                group.Targets.Add(new ObjectToggleTransformData.Target { Node = node, Properties = { ObjectToggleTransformData.Scale } });
+                foreach (var (value, scale) in new[] { (0, 1.0), (1, .01) })
+                    group.States.Add(new ObjectToggleTransformData.State { Value = value, Transforms = { new ObjectToggleTransformData.Transform { Scale = new[] { scale, scale, scale } } } });
+                transforms.Groups.Add(group);
+                return transforms;
+            }
+            Dictionary<string, object> Extensions(byte[] written) => (Dictionary<string, object>)GlbDocument.Read(written).Json["extensions"];
+
+            var both = Extensions(ObjectToggleCapture.Inject(bytes, data, Transforms(3)));
+            Assert.That(ObjectToggleData.Read(both[ObjectToggleData.Extension]).Groups.Count, Is.EqualTo(2));
+            Assert.That(ObjectToggleTransformData.Read(both[ObjectToggleTransformData.Extension], data).GroupFor("Hat").StateFor(1).Transforms[0].Scale,
+                Is.EqualTo(new[] { .01, .01, .01 }));
+            LogAssert.Expect(LogType.Warning, new Regex("left the bones the toggles move out"));
+            var outOfRange = Extensions(ObjectToggleCapture.Inject(bytes, data, Transforms(10)));
+            Assert.That(outOfRange.Keys, Is.EqualTo(new[] { ObjectToggleData.Extension }));
+        }
+
+        // Only bones a clip of the FX moves are compared: not the root, not
+        // humanoid bones, not the root's children while the root is scaled,
+        // and nothing for a path that matches no object.
+        [Test]
+        public void HumanoidBonesAndUnmovedNodesAreNotTransformTargets()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var directory = TempAssetFolder.Create("__VRVlogObjectToggleBones_");
+            try
+            {
+                var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+                foreach (var name in new[] { "HairBone", "Still" }) new GameObject(name).transform.SetParent(head, false);
+                var fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
+                var clip = new AnimationClip();
+                foreach (var (path, property) in new[]
+                         {
+                             ("", "m_LocalScale.x"), ("Hips/Spine/Chest/Neck/Head", "m_LocalScale.x"), (HairPath, "m_LocalPosition.y"),
+                             ("Independent hair", "m_LocalPosition.y"), ("Missing/Bone", "m_LocalScale.x")
+                         })
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), property), AnimationCurve.Constant(0, 1f / 60, 1));
+                AssetDatabase.CreateAsset(clip, directory + "/Clip.anim");
+                fx.AddLayer("Bones");
+                fx.layers[0].stateMachine.AddState("Bones").motion = clip;
+                string[] Moving()
+                {
+                    var transforms = fixture.Source.GetComponentsInChildren<Transform>(true);
+                    return ObjectToggleCapture.MovingCandidates(fixture.Source, fx, transforms).Select(i => transforms[i].name).ToArray();
+                }
+
+                Assert.That(Moving(), Is.EquivalentTo(new[] { "Independent hair", "HairBone" }));
+                fixture.Source.transform.localScale = Vector3.one * 2;
+                Assert.That(Moving(), Is.EqualTo(new[] { "HairBone" }), "RootScaleBake rewrites the root's children.");
+            }
+            finally { AssetDatabase.DeleteAsset(directory); }
+        }
+
+        // A layer whose clips only move a bone a toggle may write is played,
+        // like a layer that switches objects.
+        [Test]
+        public void ALayerThatOnlyMovesABoneIsPlayed()
+        {
+            var directory = TempAssetFolder.Create("__VRVlogObjectToggleBoneLayer_");
+            try
+            {
+                var fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
+                var clip = new AnimationClip();
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Head/HairBone", typeof(Transform), "m_LocalScale.x"), AnimationCurve.Constant(0, 1f / 60, .01f));
+                AssetDatabase.CreateAsset(clip, directory + "/Clip.anim");
+                fx.AddParameter("Bone", AnimatorControllerParameterType.Bool);
+                fx.AddLayer("Bone");
+                var machine = fx.layers.Last().stateMachine;
+                machine.AddState("Off");
+                machine.AddAnyStateTransition(machine.AddState("On")).AddCondition(AnimatorConditionMode.If, 0, "Bone");
+                machine.states.Single(state => state.state.name == "On").state.motion = clip;
+
+                Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(fx), Is.Empty);
+                Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(fx, path => path == "Head/HairBone"), Is.EqualTo(new[] { "Bone" }));
+                Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(fx, path => false), Is.Empty);
+            }
+            finally { AssetDatabase.DeleteAsset(directory); }
+        }
+
         [Test]
         public void ExportWritesTheTogglesAndTheMeshesThatAreOffByDefault()
         {
@@ -460,7 +625,15 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var name in new[] { "Hat", "Dress", "Suit", "Glasses", "Ribbon" })
                     Assert.That(nodes.Single(node => Name(nodes.IndexOf(node)) == name).ContainsKey("mesh"), Is.True, name + " must be written with its mesh.");
                 var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
-                Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey])[ObjectToggleData.Extension], Is.EqualTo("1.0.8"));
+                var required = (Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey];
+                Assert.That(required[ObjectToggleData.Extension], Is.EqualTo("1.0.8"));
+                // The hair bone the hat shrinks, in its own extension.
+                Assert.That((List<object>)json["extensionsUsed"], Has.Member(ObjectToggleTransformData.Extension));
+                var transforms = ObjectToggleTransformData.Read(((Dictionary<string, object>)json["extensions"])[ObjectToggleTransformData.Extension], data);
+                Assert.That(transforms.Groups.Select(group => group.Parameter + ":" + string.Join(",", group.Targets.Select(target => Name(target.Node)))),
+                    Is.EqualTo(new[] { "Hat:HairBone" }));
+                Assert.That(transforms.GroupFor("Hat").StateFor(1).Transforms[0].Scale, Is.EqualTo(new[] { .01, .01, .01 }).Within(1e-6));
+                Assert.That(required[ObjectToggleTransformData.Extension], Is.EqualTo("1.2.9"));
                 foreach (var path in new[] { "Hat", "Clothes/Suit", "Glasses", "Ribbon" })
                     Assert.That(avatar.Source.transform.Find(path).gameObject.activeSelf, Is.False, path);
             }
@@ -510,6 +683,7 @@ namespace VRVlog.LilToonExporter.Tests
         //   Hat (bool, off by default), Clothes/Dress and Clothes/Suit (one int
         //   parameter, Dress by default), Nothing (moves a blend shape only),
         //   Glasses (bool) and Accessory (bool, switches Ribbon and Glasses).
+        //   Hat on also shrinks and lowers HairBone under the head.
         sealed class ToggleAvatar : IDisposable
         {
             internal readonly AttachmentConnectionTests.Fixture Avatar;
@@ -553,6 +727,9 @@ namespace VRVlog.LilToonExporter.Tests
                     Part("Suit", clothes, false);
                     Part("Glasses", Source.transform, false);
                     Part("Ribbon", Source.transform, false);
+                    var hair = new GameObject("HairBone").transform;
+                    hair.SetParent(Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head), false);
+                    hair.localPosition = new Vector3(0, .1f, 0);
 
                     var root = Menu();
                     Control(root, "Hat", "Toggle", "Hat", 1);
@@ -583,7 +760,9 @@ namespace VRVlog.LilToonExporter.Tests
 
                     fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
                     owned.Add(fx);
-                    Layer("Hat", AnimatorControllerParameterType.Bool, 0, (0, Active(("Hat", false))), (1, Active(("Hat", true))));
+                    var hatOn = Active(("Hat", true));
+                    Pose(hatOn, HairPath, new Vector3(0, .08f, 0), Vector3.one * .01f);
+                    Layer("Hat", AnimatorControllerParameterType.Bool, 0, (0, Active(("Hat", false))), (1, hatOn));
                     Layer("Outfit", AnimatorControllerParameterType.Int, 1,
                         (0, Active(("Clothes/Dress", false), ("Clothes/Suit", false))),
                         (1, Active(("Clothes/Dress", true), ("Clothes/Suit", false))),
@@ -650,6 +829,14 @@ namespace VRVlog.LilToonExporter.Tests
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive"),
                         AnimationCurve.Constant(0, 1f / 60, active ? 1 : 0));
                 return Save(clip);
+            }
+
+            static void Pose(AnimationClip clip, string path, Vector3 position, Vector3 scale)
+            {
+                foreach (var (property, value) in new[] { ("m_LocalPosition", position), ("m_LocalScale", scale) })
+                    for (var axis = 0; axis < 3; axis++)
+                        AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), property + "." + "xyz"[axis]),
+                            AnimationCurve.Constant(0, 1f / 60, value[axis]));
             }
 
             AnimationClip Shape(float weight)

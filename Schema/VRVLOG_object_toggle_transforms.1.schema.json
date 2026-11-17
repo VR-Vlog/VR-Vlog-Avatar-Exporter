@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_object_toggle_transforms/1/schema.json",
+  "title": "VRVLOG_object_toggle_transforms 1",
+  "description": "Local transforms of the nodes (bones) that the avatar's VRChat Expression Menu toggles move, sampled like VRVLOG_object_toggles with every other parameter at its default. Each group extends the VRVLOG_object_toggles group with the same parameter. Each state gives, for one value of the parameter, the transform of every target node: Unity local values (not converted to glTF space), absolute rather than relative to the written rest pose. A target lists the properties the toggle moves, and its transforms carry exactly those. Rules that span objects are validated by the shared reader (ObjectToggleTransformData.Read): the extension is read only with a valid VRVLOG_object_toggles; every group names a VRVLOG_object_toggles group and parameters are unique (ordinal); a group's state values are unique and are exactly the state values of that VRVLOG_object_toggles group; a node index appears at most once over all groups and the whole extension has at most 4096 targets; every transforms array has as many entries as the group's targets; properties are in the order translation, rotation, scale; a rotation has length 1 within 0.001. Node indices must be less than the glTF node count.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "groups"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/group"
+      }
+    }
+  },
+  "$defs": {
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parameter",
+        "targets",
+        "states"
+      ],
+      "properties": {
+        "parameter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "states": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/state"
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "properties"
+      ],
+      "properties": {
+        "node": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "properties": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "translation",
+              "rotation",
+              "scale"
+            ]
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "transforms"
+      ],
+      "properties": {
+        "value": {
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "transforms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/transform"
+          }
+        }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "translation": {
+          "$ref": "#/$defs/vector3"
+        },
+        "rotation": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "scale": {
+          "$ref": "#/$defs/vector3"
+        }
+      }
+    }
+  }
+}

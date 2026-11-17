@@ -519,6 +519,8 @@ namespace VRVlog.LilToonExporter
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
+            VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
+            var armTPose = new Dictionary<HumanBodyBones, Quaternion>();
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -635,7 +637,7 @@ namespace VRVlog.LilToonExporter
                     }
                     // After the build passes, which match clothing to the bones as
                     // authored, and before anything below reads the rest pose.
-                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>());
+                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>(), armTPose);
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     // The faces are the board's list: its clips are read as the
@@ -673,6 +675,7 @@ namespace VRVlog.LilToonExporter
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // Viseme Parameter Only reads the merged FX. A failure only warns.
                     lipSync = LipSyncCapture.Capture(clone, warnings);
+                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), armTPose, warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -863,7 +866,9 @@ namespace VRVlog.LilToonExporter
                 var animated = (expressions ?? new List<VrmMenuExpressions.Expression>()).Concat(presetExpressions)
                     .SelectMany(expression => expression.Transforms)
                     .Where(track => track.Property != VRVlog.Expressions.ExpressionTransformAnimation.Active)
-                    .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform).ToArray();
+                    .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform)
+                    // The bones the toggles move are written by local values too.
+                    .Concat((objectToggles?.MovedTargets ?? Enumerable.Empty<GameObject>()).Select(bone => bone.transform)).ToArray();
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles, animated), () => null);
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
@@ -890,7 +895,7 @@ namespace VRVlog.LilToonExporter
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)
                 {
-                    var pruned = ExportEmptyNodes.Prune(clone);
+                    var pruned = ExportEmptyNodes.Prune(clone, objectToggles?.MovedTargets);
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
@@ -1047,9 +1052,10 @@ namespace VRVlog.LilToonExporter
                 }
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
-                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
+                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData, objectToggles.Transforms), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
+                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
