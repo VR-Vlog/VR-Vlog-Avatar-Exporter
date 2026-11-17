@@ -84,14 +84,14 @@ namespace VRVlog.LilToonExporter
         // succeeded, leaves out only that phase: the retry keeps the outfit and
         // mesh edits. A pass that NDMF records as failed earlier is left out alone
         // by the preparation; any other build failure leaves out every build pass.
-        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<T> prepare)
+        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<bool> merged, Func<T> prepare)
         {
             try { return prepare(); }
             catch (Exception error) when (guard.ContinueOnFailure && !guard.IsOmitted(ExportStage.Optimizing) &&
                                           !ExportStageGuard.IsCancellation(error) && ExportStageFailure.Find(error) == null &&
                                           NdmfExportPreparation.FailedInOptimizing(error))
             {
-                throw new ExportStageFailure(ExportStage.Optimizing, error);
+                throw new ExportStageFailure(merged() ? ExportStage.MeshMerge : ExportStage.Optimizing, error);
             }
         }
 
@@ -140,7 +140,7 @@ namespace VRVlog.LilToonExporter
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
             IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null,
             IReadOnlyCollection<AnimationClip> gestureFaces = null, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones = null,
-            GazeRangeOptions gazeRange = null)
+            GazeRangeOptions gazeRange = null, bool mergeMeshes = false)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -170,7 +170,7 @@ namespace VRVlog.LilToonExporter
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
                     authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces,
-                    presetBones, gazeRange);
+                    presetBones, gazeRange, mergeMeshes);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -453,7 +453,7 @@ namespace VRVlog.LilToonExporter
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces,
             IReadOnlyCollection<AnimationClip> gestureFaces, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones,
-            GazeRangeOptions gazeRange)
+            GazeRangeOptions gazeRange, bool mergeMeshes)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -572,7 +572,11 @@ namespace VRVlog.LilToonExporter
                 // optimizer would have broken leaves out the build passes.
                 var optimizes = !guard.IsOmitted(ExportStage.BuildProcess) && !guard.IsOmitted(ExportStage.Optimizing);
                 var optimizerStage = optimizes ? ExportStage.Optimizing : ExportStage.BuildProcess;
-                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
+                // Set when the automatic mesh merge was added for AAO. A failure
+                // of the optimizer or of a later check then leaves out the merge
+                // first and Optimizing only if the export fails again.
+                var merged = false;
+                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => merged, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
@@ -752,8 +756,11 @@ namespace VRVlog.LilToonExporter
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
+                    if (mergeMeshes && optimizes && optimizerBindings != null)
+                        merged = guard.Step(ExportStage.MeshMerge, () => ExportMeshMerge.Apply(clone, optimizerBindings.RoutedRenderers), () => false);
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
                     stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing), tolerateFailedPasses: guard.ContinueOnFailure)));
+                if (merged) optimizerStage = ExportStage.MeshMerge;
                 if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.

@@ -26,6 +26,10 @@ namespace VRVlog.LilToonExporter
         // 自動で軽量化する: textures more detailed than the screen shows are
         // written smaller (TexelDensity). On unless the avatar saved it off.
         internal bool AutoLightweight = true;
+        // メッシュをまとめて表示を速くする: for an avatar that uses Avatar
+        // Optimizer, the meshes no animation switches and that hold no face
+        // shape become one (ExportMeshMerge). On unless the avatar saved it off.
+        internal bool MergeMeshes = true;
         // 視線の動く範囲. Its default keeps the avatar's own range.
         internal GazeRangeOptions Gaze = new GazeRangeOptions();
         internal AvatarLicenseOptions License = new AvatarLicenseOptions();
@@ -47,6 +51,7 @@ namespace VRVlog.LilToonExporter
                 Blink = (Blink ?? new BlinkExportOptions()).Copy(),
                 Poses = (Poses ?? new PoseExportOptions()).Copy(),
                 AutoLightweight = AutoLightweight,
+                MergeMeshes = MergeMeshes,
                 Gaze = (Gaze ?? new GazeRangeOptions()).Copy(),
                 License = (License ?? new AvatarLicenseOptions()).Copy()
             };
@@ -71,6 +76,7 @@ namespace VRVlog.LilToonExporter
             Poses.Excluded.Clear(); Poses.Excluded.UnionWith(other.Poses.Excluded);
             Poses.Names.Clear(); foreach (var item in other.Poses.Names) Poses.Names[item.Key] = item.Value;
             AutoLightweight = other.AutoLightweight;
+            MergeMeshes = other.MergeMeshes;
             Gaze = other.Gaze;
             License = other.License;
         }
@@ -107,6 +113,7 @@ namespace VRVlog.LilToonExporter
             text.Append('|').Append(string.Join("\u001f", poses.Excluded.OrderBy(item => item, StringComparer.Ordinal)));
             text.Append('|').Append(string.Join("\u001f", poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "\u001e" + item.Value)));
             text.Append('|').Append(AutoLightweight);
+            text.Append('|').Append(MergeMeshes);
             text.Append('|').Append((Gaze ?? new GazeRangeOptions()).Key());
             text.Append('|').Append(JsonUtility.ToJson(License ?? new AvatarLicenseOptions()));
             return text.ToString();

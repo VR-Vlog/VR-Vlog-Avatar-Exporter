@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Anatawa12.AvatarOptimizer.API;
 using UnityEditor;
 using UnityEngine;
@@ -11,6 +12,18 @@ namespace VRVlog.LilToonExporter
         static ExportAvatarOptimizerAdapter()
         {
             ExportOptimizationMarker.AvatarOptimizerAdapterAvailable = true;
+            ExportOptimizationMarker.AddMergeComponent = AddMerge;
+        }
+
+        // Version 1 renames clashing shapes on every supported AAO version.
+        // Merging same-named shapes fails on avatars whose animations move the
+        // body's and an outfit's shape of one name separately.
+        static void AddMerge(GameObject host, IReadOnlyList<SkinnedMeshRenderer> sources)
+        {
+            var merge = host.AddComponent<Anatawa12.AvatarOptimizer.MergeSkinnedMesh>();
+            merge.Initialize(1);
+            merge.RemoveEmptyRendererObject = true;
+            foreach (var source in sources) merge.SourceSkinnedMeshRenderers.Add(source);
         }
     }
 

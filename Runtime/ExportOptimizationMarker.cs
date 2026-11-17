@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -11,6 +12,9 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportOptimizationMarker : MonoBehaviour
     {
         internal static bool AvatarOptimizerAdapterAvailable;
+        // Set by the same adapter: adds an AAO MergeSkinnedMesh to the host that
+        // merges the sources (see the editor's ExportMeshMerge).
+        internal static Action<GameObject, IReadOnlyList<SkinnedMeshRenderer>> AddMergeComponent;
         [NonSerialized] internal OptimizationMorphRoute[] Morphs = Array.Empty<OptimizationMorphRoute>();
         [NonSerialized] internal OptimizationMaterialRoute[] Materials = Array.Empty<OptimizationMaterialRoute>();
         [NonSerialized] internal Component[] Dependencies = Array.Empty<Component>();
