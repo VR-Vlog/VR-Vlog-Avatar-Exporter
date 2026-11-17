@@ -20,6 +20,9 @@ namespace VRVlog.LilToonExporter
     // activeSelf differs between the values are the group's targets. Targets
     // that are off by default are turned on in the copy so their meshes are
     // written; the extension's default state hides them again in the app.
+    // VRVLOG_object_toggle_transforms: in the same samples, the bones the FX's
+    // clips move whose local transform differs between the values (a hat that
+    // shrinks the hair under it) get the transform of every value.
     internal sealed class ObjectToggleCapture
     {
         internal const string NonIntegralWarning = "値が整数でないメニュー項目は、表示切り替えに含めませんでした: ";
@@ -43,6 +46,29 @@ namespace VRVlog.LilToonExporter
             internal readonly List<GameObject> Targets = new List<GameObject>();
             internal readonly List<string> Paths = new List<string>();
             internal readonly List<(int Value, bool[] Active)> States = new List<(int, bool[])>();
+            // The bones the values move, the properties that differ, and the
+            // transforms of every value in the order of States.
+            internal readonly List<GameObject> Moved = new List<GameObject>();
+            internal readonly List<string> MovedPaths = new List<string>();
+            internal readonly List<string[]> MovedProperties = new List<string[]>();
+            internal readonly List<Local[]> Poses = new List<Local[]>();
+        }
+
+        // A Transform's local values as Unity holds them.
+        internal struct Local
+        {
+            internal Vector3 Position, Scale;
+            internal Quaternion Rotation;
+
+            internal static Local Of(Transform transform) =>
+                new Local { Position = transform.localPosition, Rotation = transform.localRotation, Scale = transform.localScale };
+
+            internal void ApplyTo(Transform transform)
+            {
+                transform.localPosition = Position;
+                transform.localRotation = Rotation;
+                transform.localScale = Scale;
+            }
         }
 
         sealed class Item
@@ -55,6 +81,9 @@ namespace VRVlog.LilToonExporter
 
         readonly List<Group> groups = new List<Group>();
         readonly List<Item> items = new List<Item>();
+
+        // What the last Resolve mapped of the moved bones, or null.
+        internal ObjectToggleTransformData Transforms { get; private set; }
 
         // Returns null when there is nothing to write (no VRChat SDK, no menu,
         // no FX or no toggle that switches an object).
@@ -76,29 +105,33 @@ namespace VRVlog.LilToonExporter
                     for (var at = renderer.transform; at != null && at != clone.transform && withMesh.Add(at); at = at.parent) { }
             var candidates = Enumerable.Range(1, transforms.Length - 1).Where(i => withMesh.Contains(transforms[i])).ToArray();
             if (candidates.Length == 0) return null;
+            var moving = MovingCandidates(clone, menu.Controller, transforms);
+            var movingPaths = new HashSet<string>(moving.Select(i => PathOf(clone, transforms[i])), StringComparer.Ordinal);
             var result = new ObjectToggleCapture();
             // A parameter no object-switching layer reads leaves every object
             // as its default does, so it is not played; an FX without such a
             // layer is never played at all.
-            var switching = ParametersThatSwitchObjects(menu.Controller);
-            using var sampler = new Sampler(clone, menu.Controller);
-            var samples = new Dictionary<(string, int), bool[]>();
-            bool[] atDefaults = null;
-            bool[] Sample(string parameter, int value, int defaultValue)
+            var switching = ParametersThatSwitchObjects(menu.Controller, movingPaths.Contains);
+            using var sampler = new Sampler(clone, menu.Controller, moving);
+            var samples = new Dictionary<(string, int), (bool[] Active, Local[] Poses)>();
+            (bool[] Active, Local[] Poses)? atDefaults = null;
+            (bool[] Active, Local[] Poses) Sample(string parameter, int value, int defaultValue)
             {
                 // A parameter at its own default leaves every parameter at its
                 // default, so all of them share one sample. Each sample costs a
                 // new graph played for two seconds, the bulk of this stage.
-                if (value == defaultValue && atDefaults != null) return atDefaults;
-                if (samples.TryGetValue((parameter, value), out var active)) return active;
+                if (value == defaultValue && atDefaults != null) return atDefaults.Value;
+                if (samples.TryGetValue((parameter, value), out var sample)) return sample;
                 var values = new Dictionary<string, float>(menu.Defaults, StringComparer.Ordinal) { [parameter] = value };
-                var all = sampler.Sample(values);
-                active = samples[(parameter, value)] = candidates.Select(i => all[i]).ToArray();
-                if (value == defaultValue) atDefaults = active;
-                return active;
+                var (all, poses) = sampler.Sample(values);
+                sample = samples[(parameter, value)] = (candidates.Select(i => all[i]).ToArray(), poses);
+                if (value == defaultValue) atDefaults = sample;
+                return sample;
             }
             var claimed = new HashSet<int>();
+            var claimedMoves = new HashSet<int>();
             var targetCount = 0;
+            var movedCount = 0;
             foreach (var parameterEntries in toggles.GroupBy(pair => pair.Entry.ControlParameter, StringComparer.Ordinal))
             {
                 var parameter = parameterEntries.Key;
@@ -129,19 +162,30 @@ namespace VRVlog.LilToonExporter
                 }
                 if (groupItems.Count == 0 || switching != null && !switching.Contains(parameter)) continue;
                 var values = new[] { 0, defaultValue }.Concat(groupItems.Select(item => item.Value)).Distinct().OrderBy(value => value).ToList();
-                var states = values.ToDictionary(value => value, value => Sample(parameter, value, defaultValue));
+                var sampled = values.ToDictionary(value => value, value => Sample(parameter, value, defaultValue));
+                var states = sampled.ToDictionary(pair => pair.Key, pair => pair.Value.Active);
                 // A node is a target when the values disagree on it; one that
                 // an earlier group already switches stays with that group.
                 var columns = Enumerable.Range(0, candidates.Length).Where(column => states.Values.Any(state => state[column] != states[0][column])).ToList();
                 foreach (var column in columns.Where(claimed.Contains))
                     warnings?.Add(ExporterLocalization.T(ConflictWarning) + PathOf(clone, transforms[candidates[column]]));
                 columns.RemoveAll(claimed.Contains);
-                // Turning an item on or off must change something.
-                groupItems.RemoveAll(item => columns.All(column => states[item.Value][column] == states[0][column]));
-                if (groupItems.Count == 0) continue;
+                // The same for the bones the values move, by property.
+                var moves = Enumerable.Range(0, moving.Length)
+                    .Select(column => (Column: column, Properties: Differs(transforms[moving[column]], sampled.Values.Select(sample => sample.Poses[column]), sampled[0].Poses[column])))
+                    .Where(move => move.Properties.Length > 0).ToList();
+                foreach (var move in moves.Where(move => claimedMoves.Contains(move.Column)))
+                    warnings?.Add(ExporterLocalization.T(ConflictWarning) + PathOf(clone, transforms[moving[move.Column]]));
+                moves.RemoveAll(move => claimedMoves.Contains(move.Column));
+                // Turning an item on or off must change something. The bones
+                // ride on VRVLOG_object_toggles, so a group must show or hide
+                // something as well.
+                groupItems.RemoveAll(item => columns.All(column => states[item.Value][column] == states[0][column]) &&
+                                             moves.All(move => Differs(transforms[moving[move.Column]], new[] { sampled[item.Value].Poses[move.Column] }, sampled[0].Poses[move.Column]).Length == 0));
+                if (groupItems.Count == 0 || columns.Count == 0) continue;
                 values.RemoveAll(value => value != 0 && value != defaultValue && groupItems.All(item => item.Value != value));
                 if (result.groups.Count >= 256 || columns.Count > MaximumGroupTargets || targetCount + columns.Count > MaximumTargets || values.Count > 256 ||
-                    result.items.Count + groupItems.Count > 512)
+                    moves.Count > MaximumGroupTargets || movedCount + moves.Count > MaximumTargets || result.items.Count + groupItems.Count > 512)
                 {
                     warnings?.Add(ExporterLocalization.T(LimitWarning) + parameter);
                     continue;
@@ -153,8 +197,17 @@ namespace VRVlog.LilToonExporter
                     group.Paths.Add(PathOf(clone, transforms[candidates[column]]));
                 }
                 foreach (var value in values) group.States.Add((value, columns.Select(column => states[value][column]).ToArray()));
+                foreach (var move in moves)
+                {
+                    group.Moved.Add(transforms[moving[move.Column]].gameObject);
+                    group.MovedPaths.Add(PathOf(clone, transforms[moving[move.Column]]));
+                    group.MovedProperties.Add(move.Properties);
+                }
+                foreach (var value in values) group.Poses.Add(moves.Select(move => sampled[value].Poses[move.Column]).ToArray());
                 claimed.UnionWith(columns);
+                claimedMoves.UnionWith(moves.Select(move => move.Column));
                 targetCount += columns.Count;
+                movedCount += moves.Count;
                 result.groups.Add(group);
                 result.items.AddRange(groupItems);
             }
@@ -169,6 +222,49 @@ namespace VRVlog.LilToonExporter
 
         // The objects the toggles show and hide.
         internal IEnumerable<GameObject> Targets => groups.SelectMany(group => group.Targets);
+
+        // The bones the toggles move.
+        internal IEnumerable<GameObject> MovedTargets => groups.SelectMany(group => group.Moved);
+
+        // The bones of the avatar (indices into its transforms) that a clip of
+        // the FX moves: only these are compared between samples, so floating
+        // noise of other bones is never read as a toggle. Not the root (no
+        // node), not humanoid bones (the app's poses drive them), and not the
+        // root's children when the root is scaled (RootScaleBake rewrites
+        // their position and scale while exporting).
+        internal static int[] MovingCandidates(GameObject clone, RuntimeAnimatorController controller, Transform[] transforms)
+        {
+            var root = clone.transform;
+            var byPath = SelectedExpressionAppearance.TransformsByPath(clone);
+            var humanoid = ExpressionTransformCurves.HumanoidTransforms(clone);
+            var moved = new HashSet<Transform>();
+            foreach (var clip in controller.animationClips.Where(clip => clip != null).Distinct())
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    if (ExpressionTransformCurves.IsTransformBinding(binding) && byPath.TryGetValue(binding.path, out var matches) && matches.Length == 1)
+                        moved.Add(matches[0]);
+            moved.RemoveWhere(transform => transform == root || humanoid.Contains(transform) || transform.parent == root && root.localScale != Vector3.one);
+            return Enumerable.Range(1, transforms.Length - 1).Where(i => moved.Contains(transforms[i])).ToArray();
+        }
+
+        // The properties in which any of the poses differs from first, within
+        // the tolerances of the expression transforms.
+        static string[] Differs(Transform target, IEnumerable<Local> poses, Local first)
+        {
+            var reach = ExpressionTransformCurves.PositionTolerance / ExpressionTransformCurves.ParentScale(target);
+            bool Far(Vector3 a, Vector3 b, double tolerance) => Math.Abs(a.x - b.x) > tolerance || Math.Abs(a.y - b.y) > tolerance || Math.Abs(a.z - b.z) > tolerance;
+            bool translation = false, rotation = false, scale = false;
+            foreach (var pose in poses)
+            {
+                translation |= Far(pose.Position, first.Position, reach);
+                rotation |= ExpressionTransformCurves.Angle(pose.Rotation, first.Rotation) > ExpressionTransformCurves.AngleTolerance;
+                scale |= Far(pose.Scale, first.Scale, ExpressionTransformCurves.PositionTolerance);
+            }
+            var result = new List<string>();
+            if (translation) result.Add(ObjectToggleTransformData.Translation);
+            if (rotation) result.Add(ObjectToggleTransformData.Rotation);
+            if (scale) result.Add(ObjectToggleTransformData.Scale);
+            return result.ToArray();
+        }
 
         // Whether the groups of these leaders, one target each, stay within
         // the limits of the extension.
@@ -196,9 +292,12 @@ namespace VRVlog.LilToonExporter
         // export removed is left out with a warning; an item that no longer
         // changes any kept target is left out, and so is a group left without
         // targets or items.
+        // The moved bones are mapped the same way into Transforms; a bone left
+        // out only drops its transforms.
         internal ObjectToggleData Resolve(Func<GameObject, int> node, ICollection<string> warnings)
         {
             var data = new ObjectToggleData();
+            var moved = new ObjectToggleTransformData();
             var kept = new List<Item>();
             foreach (var group in groups)
             {
@@ -212,19 +311,38 @@ namespace VRVlog.LilToonExporter
                     columns.Add(i);
                 }
                 if (output.Targets.Count == 0) continue;
+                var transforms = new ObjectToggleTransformData.Group { Parameter = group.Parameter };
+                var movedColumns = new List<int>();
+                for (var i = 0; i < group.Moved.Count; i++)
+                {
+                    var index = group.Moved[i] != null ? node(group.Moved[i]) : -1;
+                    if (index < 0) { warnings?.Add(ExporterLocalization.T(MissingWarning) + group.MovedPaths[i]); continue; }
+                    var target = new ObjectToggleTransformData.Target { Node = index };
+                    target.Properties.AddRange(group.MovedProperties[i]);
+                    transforms.Targets.Add(target);
+                    movedColumns.Add(i);
+                }
                 bool[] ActiveAt(int value) => group.States.First(state => state.Value == value).Active;
+                Local[] PosesAt(int value) => group.Poses[group.States.FindIndex(state => state.Value == value)];
+                bool Moves(int value) => movedColumns.Any(column =>
+                    Differs(group.Moved[column].transform, new[] { PosesAt(value)[column] }, PosesAt(0)[column]).Intersect(group.MovedProperties[column]).Any());
                 // Turning an item on or off must still change a kept target.
                 var groupItems = items.Where(item => item.Parameter == group.Parameter &&
-                                                     columns.Any(column => ActiveAt(item.Value)[column] != ActiveAt(0)[column])).ToList();
+                                                     (columns.Any(column => ActiveAt(item.Value)[column] != ActiveAt(0)[column]) || Moves(item.Value))).ToList();
                 if (groupItems.Count == 0) continue;
-                foreach (var (value, active) in group.States)
+                for (var s = 0; s < group.States.Count; s++)
                 {
+                    var (value, active) = group.States[s];
                     if (value != 0 && value != group.DefaultValue && groupItems.All(item => item.Value != value)) continue;
                     var state = new ObjectToggleData.State { Value = value };
                     state.Active.AddRange(columns.Select(column => active[column]));
                     output.States.Add(state);
+                    var pose = new ObjectToggleTransformData.State { Value = value };
+                    foreach (var column in movedColumns) pose.Transforms.Add(Written(group.Poses[s][column]));
+                    transforms.States.Add(pose);
                 }
                 data.Groups.Add(output);
+                if (transforms.Targets.Count > 0) moved.Groups.Add(transforms);
                 kept.AddRange(groupItems);
             }
             foreach (var item in items.Where(kept.Contains))
@@ -233,12 +351,30 @@ namespace VRVlog.LilToonExporter
                 output.Path.AddRange(item.Path);
                 data.Items.Add(output);
             }
+            Transforms = data.Groups.Count == 0 || moved.Groups.Count == 0 ? null : moved;
             return data.Groups.Count == 0 ? null : data;
+        }
+
+        // Every property is written; ObjectToggleTransformData.Write keeps the
+        // target's. The rotation is normalized in double.
+        static ObjectToggleTransformData.Transform Written(Local local)
+        {
+            var r = local.Rotation;
+            var length = Math.Sqrt((double)r.x * r.x + (double)r.y * r.y + (double)r.z * r.z + (double)r.w * r.w);
+            if (length < 1e-6) length = 1;
+            return new ObjectToggleTransformData.Transform
+            {
+                Translation = new double[] { local.Position.x, local.Position.y, local.Position.z },
+                Rotation = new[] { r.x / length, r.y / length, r.z / length, r.w / length },
+                Scale = new double[] { local.Scale.x, local.Scale.y, local.Scale.z }
+            };
         }
 
         // Adds the extension to the root of the finished GLB. Nothing to write
         // keeps the bytes unchanged.
-        internal static byte[] Inject(byte[] bytes, ObjectToggleData data)
+        // The moved bones go to their own extension, which readers of
+        // VRVLOG_object_toggles 1 do not know and leave alone.
+        internal static byte[] Inject(byte[] bytes, ObjectToggleData data, ObjectToggleTransformData transforms = null)
         {
             if (data == null) return bytes;
             var extension = ObjectToggleData.Write(data);
@@ -246,7 +382,21 @@ namespace VRVlog.LilToonExporter
             var nodeCount = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> nodes ? nodes.Count : 0;
             if (data.Groups.Any(group => group.Targets.Any(target => target >= nodeCount)))
                 throw new InvalidOperationException("Object toggle target node is out of range.");
+            // Bones that cannot be written only lose their transforms; the
+            // toggles stay.
+            Dictionary<string, object> moved = null;
+            try
+            {
+                if (transforms != null && transforms.Groups.Any(group => group.Targets.Any(target => target.Node >= nodeCount)))
+                    throw new InvalidOperationException("Object toggle transform target node is out of range.");
+                if (transforms != null) moved = ObjectToggleTransformData.Write(transforms, data);
+            }
+            catch (Exception error) when (!(error is OperationCanceledException))
+            {
+                Debug.LogWarning("VR Vlog: left the bones the toggles move out of the VRM: " + error.Message);
+            }
             document.PlaceExtension(ObjectToggleData.Extension, extension);
+            if (moved != null) document.PlaceExtension(ObjectToggleTransformData.Extension, moved);
             return document.Write();
         }
 
@@ -257,19 +407,22 @@ namespace VRVlog.LilToonExporter
         // write-defaults state there resets what the layers below set; the
         // others leave it). Any other layer adds the same to every object in
         // every state. Null stands for every parameter, for controllers this
-        // does not read (override controllers and synced layers).
-        internal static HashSet<string> ParametersThatSwitchObjects(RuntimeAnimatorController runtime)
+        // does not read (override controllers and synced layers). A clip that
+        // moves a bone whose path `moves` accepts counts as setting m_IsActive.
+        internal static HashSet<string> ParametersThatSwitchObjects(RuntimeAnimatorController runtime, Func<string, bool> moves = null)
         {
             var clips = new Dictionary<AnimationClip, (bool SetsActive, bool DrivesParameters)>();
+            bool Switches(EditorCurveBinding binding) => IsActiveBinding(binding) ||
+                moves != null && ExpressionTransformCurves.IsTransformBinding(binding) && moves(binding.path);
             if (!(runtime is AnimatorController controller) || controller.layers.Any(layer => layer.syncedLayerIndex >= 0))
-                return runtime.animationClips.Any(clip => clip != null && AnimationUtility.GetCurveBindings(clip).Any(IsActiveBinding)) ? null : new HashSet<string>(StringComparer.Ordinal);
+                return runtime.animationClips.Any(clip => clip != null && AnimationUtility.GetCurveBindings(clip).Any(Switches)) ? null : new HashSet<string>(StringComparer.Ordinal);
             AnimatorNesting.Check(controller);
             var parameterNames = new HashSet<string>(controller.parameters.Select(parameter => parameter.name), StringComparer.Ordinal);
             (bool SetsActive, bool DrivesParameters) Read(AnimationClip clip)
             {
                 if (clips.TryGetValue(clip, out var known)) return known;
                 var bindings = AnimationUtility.GetCurveBindings(clip);
-                return clips[clip] = (bindings.Any(IsActiveBinding),
+                return clips[clip] = (bindings.Any(Switches),
                     bindings.Any(binding => binding.type == typeof(Animator) && parameterNames.Contains(binding.propertyName)));
             }
             var layers = controller.layers.Select(layer =>
@@ -383,14 +536,18 @@ namespace VRVlog.LilToonExporter
             readonly GameObject avatar;
             readonly RuntimeAnimatorController controller;
             readonly Dictionary<string, AnimatorControllerParameter> parameters = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
+            readonly int[] moving;
             AnimatorProbe probe;
             Transform[] transforms;
             bool[] rest;
+            Local[] restPoses;
 
-            internal Sampler(GameObject avatar, RuntimeAnimatorController controller)
+            // moving: indices of the bones whose transforms are read.
+            internal Sampler(GameObject avatar, RuntimeAnimatorController controller, int[] moving)
             {
                 this.avatar = avatar;
                 this.controller = controller;
+                this.moving = moving;
             }
 
             void Open()
@@ -403,6 +560,7 @@ namespace VRVlog.LilToonExporter
                     // same object in the avatar and in this copy.
                     transforms = probe.Copy.GetComponentsInChildren<Transform>(true);
                     rest = transforms.Select(transform => transform.gameObject.activeSelf).ToArray();
+                    restPoses = moving.Select(i => Local.Of(transforms[i])).ToArray();
                     var graph = PlayableGraph.Create("VR Vlog object toggle parameters");
                     try
                     {
@@ -436,11 +594,14 @@ namespace VRVlog.LilToonExporter
                 }
             }
 
-            // activeSelf of every object of the avatar, in hierarchy order.
-            internal bool[] Sample(Dictionary<string, float> values)
+            // activeSelf of every object of the avatar, in hierarchy order, and
+            // the local transforms of the moving bones. The transforms stay
+            // in the copy after a graph is gone, so they are reset too.
+            internal (bool[] Active, Local[] Poses) Sample(Dictionary<string, float> values)
             {
                 Open();
                 for (var i = 0; i < transforms.Length; i++) transforms[i].gameObject.SetActive(rest[i]);
+                for (var i = 0; i < moving.Length; i++) restPoses[i].ApplyTo(transforms[moving[i]]);
                 var graph = probe.Play("VR Vlog object toggle sampling", controller, "Object toggles", out var playable);
                 try
                 {
@@ -449,7 +610,7 @@ namespace VRVlog.LilToonExporter
                     graph.Play();
                     graph.Evaluate(0f);
                     for (var frame = 0; frame < Frames; frame++) graph.Evaluate(FrameStep);
-                    return transforms.Select(transform => transform.gameObject.activeSelf).ToArray();
+                    return (transforms.Select(transform => transform.gameObject.activeSelf).ToArray(), moving.Select(i => Local.Of(transforms[i])).ToArray());
                 }
                 finally { graph.Destroy(); }
             }

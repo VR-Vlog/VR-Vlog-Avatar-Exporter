@@ -219,6 +219,89 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(ToggleInvalid, () => ObjectToggleData.Read(Toggles((r, g, i) => r["groups"] = "groups")));
         }
 
+        const string TransformInvalid = "Object toggle transform data is invalid or exceeds the supported limits.";
+
+        // A transform group for the group "P" of Toggles(), whose states are 0 and 1.
+        static Dictionary<string, object> Moves(Action<Dictionary<string, object>, Dictionary<string, object>, Dictionary<string, object>> change = null)
+        {
+            Dictionary<string, object> Transform(double scale) => new Dictionary<string, object>
+            {
+                ["translation"] = new List<object> { 0.0, .1, 0.0 }, ["scale"] = new List<object> { scale, scale, scale }
+            };
+            var target = new Dictionary<string, object> { ["node"] = 3L, ["properties"] = new List<object> { "translation", "scale" } };
+            var group = new Dictionary<string, object>
+            {
+                ["parameter"] = "P", ["targets"] = new List<object> { target },
+                ["states"] = new List<object>
+                {
+                    new Dictionary<string, object> { ["value"] = 0L, ["transforms"] = new List<object> { Transform(1) } },
+                    new Dictionary<string, object> { ["value"] = 1L, ["transforms"] = new List<object> { Transform(.01) } }
+                }
+            };
+            var root = new Dictionary<string, object> { ["schemaVersion"] = 1L, ["groups"] = new List<object> { group } };
+            change?.Invoke(root, group, target);
+            return root;
+        }
+
+        static Dictionary<string, object> FirstTransform(Dictionary<string, object> group) =>
+            (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)((List<object>)group["states"])[0])["transforms"])[0];
+
+        [Test]
+        public void ObjectToggleTransformBoundaries()
+        {
+            var toggles = ObjectToggleData.Read(Toggles());
+            var read = ObjectToggleTransformData.Read(Moves(), toggles);
+            Assert.That(read.Groups.Single().Targets.Single().Node, Is.EqualTo(3));
+            Assert.That(read.Groups[0].Targets[0].Properties, Is.EqualTo(new[] { "translation", "scale" }));
+            Assert.That(read.Groups[0].StateFor(1).Transforms[0].Scale, Is.EqualTo(new[] { .01, .01, .01 }));
+            Assert.That(read.Groups[0].StateFor(1).Transforms[0].Rotation, Is.Null);
+            Assert.DoesNotThrow(() => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+            {
+                t["properties"] = new List<object> { "rotation" };
+                foreach (Dictionary<string, object> state in (List<object>)g["states"])
+                    state["transforms"] = new List<object> { new Dictionary<string, object> { ["rotation"] = new List<object> { 0.0, 0.0, 0.0, 1.0005 } } };
+            }), toggles), "A rotation of length 1 within 0.001 is read.");
+
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves(), null));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => g["parameter"] = "Q"), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => r["schemaVersion"] = 2L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => r["extra"] = 1L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["extra"] = 1L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["node"] = -1L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object>()), toggles));
+            // Properties keep their order.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object> { "scale", "translation" }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object> { "translation", "translation" }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object> { "translation", "skew" }), toggles));
+            // Too few states.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => ((List<object>)g["states"]).RemoveAt(1)), toggles));
+            // A value the toggle group does not have.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((Dictionary<string, object>)((List<object>)g["states"])[1])["value"] = 2L), toggles));
+            // A repeated value.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((Dictionary<string, object>)((List<object>)g["states"])[1])["value"] = 0L), toggles));
+            // A missing property.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g).Remove("scale")), toggles));
+            // A property the target does not list.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g)["rotation"] = new List<object> { 0.0, 0.0, 0.0, 1.0 }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g)["scale"] = new List<object> { 1.0, 1.0 }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g)["scale"] = new List<object> { 1.0, double.NaN, 1.0 }), toggles));
+            // A rotation that is not a unit quaternion.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+            {
+                t["properties"] = new List<object> { "rotation" };
+                foreach (Dictionary<string, object> state in (List<object>)g["states"])
+                    state["transforms"] = new List<object> { new Dictionary<string, object> { ["rotation"] = new List<object> { 0.0, 0.0, 0.0, 2.0 } } };
+            }), toggles));
+            // Two groups for one parameter.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((List<object>)r["groups"]).Add(Moves()["groups"] is List<object> more ? more[0] : null)), toggles));
+            // A node twice.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((List<object>)g["targets"]).Add(new Dictionary<string, object> { ["node"] = 3L, ["properties"] = new List<object> { "scale" } })), toggles));
+        }
+
         static List<object> Keys() => new List<object>
         {
             new List<object> { 0.0, 0.0, 1.0, 1.0, 1.0 / 3, 1.0 / 3 },
