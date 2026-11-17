@@ -2332,9 +2332,10 @@ namespace VRVlog.LilToonExporter
         // with the kind it is counted as in omitted, or null when it is not a
         // mesh renderer's material curve. The app's lilToon material keeps
         // the contract's properties under the same names: a name it does not
-        // keep with that type is counted as materialProperty, and a feature
-        // switch the app fixes on loading as materialSwitch. A vector channel
-        // (material._Vector.x) is counted as material.
+        // keep with that type is counted as materialProperty. A feature switch
+        // (LilToonFullContract.Switches) is a materialFloat like the others:
+        // the app keeps the code of a switch the controller moves. A vector
+        // channel (material._Vector.x) is counted as material.
         internal static (string Property, string Name, string Channel)? MaterialCurve(EditorCurveBinding binding, out string omitted)
         {
             omitted = null;
@@ -2359,7 +2360,6 @@ namespace VRVlog.LilToonExporter
             else { kind = null; type = "vector"; }
             if (name.Length == 0) return null;
             if (LilToonFullContract.RuntimeType(name) != type) { omitted = "materialProperty"; return null; }
-            if (LilToonFullContract.IsSwitch(name)) { omitted = "materialSwitch"; return null; }
             if (kind == null) return null;
             omitted = null;
             return (kind, name, channel);
