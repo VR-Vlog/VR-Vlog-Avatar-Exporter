@@ -428,6 +428,18 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(capture.Transforms, Is.Null);
                 Assert.That(warnings.Single(), Does.EndWith(HairPath));
 
+                // A bone a constraint moved under another parent keeps its pose:
+                // its values are local to the parent it was sampled under.
+                warnings.Clear();
+                var hair = clone.transform.Find(HairPath);
+                var head = hair.parent;
+                hair.SetParent(clone.transform, true);
+                Assert.That(capture.Resolve(nodes.IndexOf, warnings).GroupFor("Hat"), Is.Not.Null);
+                Assert.That(capture.Transforms, Is.Null);
+                Assert.That(warnings.Single(), Does.StartWith(ExporterLocalization.T(ObjectToggleCapture.ReparentedWarning)).And.EndWith(HairPath));
+                hair.SetParent(head, true);
+                warnings.Clear();
+
                 // Leaving out empty objects keeps the bones the toggles move.
                 var pruned = Object.Instantiate(clone);
                 try

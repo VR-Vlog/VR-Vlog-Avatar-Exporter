@@ -29,6 +29,7 @@ namespace VRVlog.LilToonExporter
         internal const string ConflictWarning = "複数のパラメーターが切り替えるオブジェクトは、メニューで先の項目だけに含めました: ";
         internal const string LimitWarning = "表示切り替えの上限を超えたため、次のパラメーターを含めませんでした: ";
         internal const string MissingWarning = "書き出しで無くなったオブジェクトを、表示切り替えから除きました: ";
+        internal const string ReparentedWarning = "書き出しで親が変わったボーンは、表示切り替えで形を変えないようにしました: ";
 
         // Seconds of FX played per sample, in fixed steps, so transitions and
         // short default states settle before activeSelf is read.
@@ -51,6 +52,8 @@ namespace VRVlog.LilToonExporter
             internal readonly List<GameObject> Moved = new List<GameObject>();
             internal readonly List<string> MovedPaths = new List<string>();
             internal readonly List<string[]> MovedProperties = new List<string[]>();
+            // The parent each moved bone had when it was sampled.
+            internal readonly List<Transform> MovedParents = new List<Transform>();
             internal readonly List<Local[]> Poses = new List<Local[]>();
         }
 
@@ -202,6 +205,7 @@ namespace VRVlog.LilToonExporter
                     group.Moved.Add(transforms[moving[move.Column]].gameObject);
                     group.MovedPaths.Add(PathOf(clone, transforms[moving[move.Column]]));
                     group.MovedProperties.Add(move.Properties);
+                    group.MovedParents.Add(transforms[moving[move.Column]].parent);
                 }
                 foreach (var value in values) group.Poses.Add(moves.Select(move => sampled[value].Poses[move.Column]).ToArray());
                 claimed.UnionWith(columns);
@@ -413,6 +417,10 @@ namespace VRVlog.LilToonExporter
                 {
                     var index = group.Moved[i] != null ? node(group.Moved[i]) : -1;
                     if (index < 0) { warnings?.Add(ExporterLocalization.T(MissingWarning) + group.MovedPaths[i]); continue; }
+                    // The values are local to the parent at the sample; a
+                    // constraint the export turned into a new parent changes
+                    // what they mean, so the bone keeps its exported pose.
+                    if (group.Moved[i].transform.parent != group.MovedParents[i]) { warnings?.Add(ExporterLocalization.T(ReparentedWarning) + group.MovedPaths[i]); continue; }
                     var target = new ObjectToggleTransformData.Target { Node = index };
                     target.Properties.AddRange(group.MovedProperties[i]);
                     transforms.Targets.Add(target);
