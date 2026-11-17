@@ -109,6 +109,24 @@ namespace VRVlog.LilToonExporter.Tests
             return (imported, report);
         }
 
+        static IEnumerable<ExportStage?> Stages(ExportRecoveryReport report) =>
+            report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage);
+
+        // AAO reads the vertex buffers back from the GPU (MeshInfo2), so
+        // without one Optimizing fails: the export leaves it out, and with it
+        // the merge, and still succeeds.
+        static void IgnoreWithoutGraphics(params (Vrm10Instance Imported, ExportRecoveryReport Report)[] exports)
+        {
+            if (!NoGraphicsDevice.Missing) return;
+            foreach (var (imported, report) in exports)
+            {
+                Assert.That(report.Succeeded, Is.True);
+                Assert.That(Stages(report), Does.Contain(ExportStage.Optimizing));
+                Assert.That(Renderers(imported), Does.Not.Contain(ExportMeshMerge.MergedName));
+            }
+            Assert.Ignore("Avatar Optimizer reads the vertex buffers back from the GPU; without one Optimizing is left out.");
+        }
+
         static string[] Renderers(Vrm10Instance imported) =>
             imported.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
@@ -151,9 +169,9 @@ namespace VRVlog.LilToonExporter.Tests
                 ExportRecoveryReport separateReport, mergedReport;
                 (separate, separateReport) = await Export(fixture, false);
                 (merged, mergedReport) = await Export(fixture, true);
+                IgnoreWithoutGraphics((separate, separateReport), (merged, mergedReport));
                 foreach (var report in new[] { separateReport, mergedReport })
-                    Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage), Is.Empty,
-                        "Both exports keep the optimizer.");
+                    Assert.That(Stages(report), Is.Empty, "Both exports keep the optimizer.");
                 Assert.That(Renderers(separate), Is.EqualTo(new[] { "Back", "Face", "Front", "Hat" }));
                 Assert.That(Renderers(merged), Is.EqualTo(new[] { "Face", "Hat", ExportMeshMerge.MergedName }));
                 SameShape(Triangles(merged), Triangles(separate), "The merge must not move any vertex");
@@ -196,9 +214,9 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExportRecoveryReport report;
                 (imported, report) = await Export(fixture, true);
+                IgnoreWithoutGraphics((imported, report));
                 Assert.That(report.Succeeded, Is.True);
-                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
-                    Is.EqualTo(new ExportStage?[] { ExportStage.MeshMerge }));
+                Assert.That(Stages(report), Is.EqualTo(new ExportStage?[] { ExportStage.MeshMerge }));
                 Assert.That(Renderers(imported), Is.EqualTo(new[] { "Back", "Face", "Front", "Hat" }));
             }
             finally
