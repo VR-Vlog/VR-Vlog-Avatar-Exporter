@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var warnings = new List<string>();
-                var data = HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), warnings);
+                var data = HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), null, warnings);
 
                 Assert.That(warnings, Is.Empty);
                 Assert.That(data.Bones.Keys, Is.EquivalentTo(new[] { "leftUpperArm", "rightUpperArm" }), "legs and default limits are left out");
@@ -58,8 +58,8 @@ namespace VRVlog.LilToonExporter.Tests
             using var f = new AttachmentConnectionTests.Fixture();
             var warnings = new List<string>();
 
-            Assert.That(HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), warnings), Is.Null);
-            Assert.That(HumanoidLimitCapture.Capture(null, warnings), Is.Null);
+            Assert.That(HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), null, warnings), Is.Null);
+            Assert.That(HumanoidLimitCapture.Capture(null, null, warnings), Is.Null);
             Assert.That(warnings, Is.Empty);
         }
 
@@ -73,10 +73,32 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var warnings = new List<string>();
 
-                Assert.That(HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), warnings), Is.Null);
+                Assert.That(HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), null, warnings), Is.Null);
                 Assert.That(warnings.Single(), Does.StartWith(HumanoidLimitCapture.FailureWarning));
             }
             finally { Object.DestroyImmediate(avatar); }
+        }
+
+        // The arms' T-pose rotations are written in glTF axes (X mirrored), with
+        // or without limits next to them.
+        [Test]
+        public void TheArmsTPoseIsWrittenInGltfAxes()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var turn = Quaternion.Euler(10, 20, 30);
+            var tPose = new Dictionary<HumanBodyBones, Quaternion> { [HumanBodyBones.LeftLowerArm] = turn };
+            var warnings = new List<string>();
+
+            var data = HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), tPose, warnings);
+
+            Assert.That(warnings, Is.Empty);
+            Assert.That(data.Bones, Is.Empty, "the fixture has the default limits");
+            Assert.That(data.TPose.Keys, Is.EqualTo(new[] { "leftLowerArm" }));
+            var written = data.TPose["leftLowerArm"];
+            var mirrored = new Quaternion((float)written[0], (float)written[1], (float)written[2], (float)written[3]);
+            turn.ToAngleAxis(out var angle, out var axis);
+            Assert.That(Quaternion.Angle(mirrored, Quaternion.AngleAxis(-angle, new Vector3(-axis.x, axis.y, axis.z))), Is.LessThan(.01f), "as UniVRM's ReverseX");
+            Assert.That(HumanoidLimitCapture.Capture(f.Source.GetComponent<Animator>(), new Dictionary<HumanBodyBones, Quaternion>(), warnings), Is.Null);
         }
 
         [Test]
@@ -88,6 +110,7 @@ namespace VRVlog.LilToonExporter.Tests
             }, Array.Empty<byte>()).Write();
             var data = new HumanoidLimitData();
             data.Bones["leftShoulder"] = new HumanoidLimitData.Limit { Min = new[] { -15.0, -15, 0 }, Max = new[] { 15.0, 30, 0 }, AxisLength = .1 };
+            data.TPose["leftHand"] = new[] { 0, 0, .6, .8 };
             Assert.That(HumanoidLimitCapture.Inject(bytes, null), Is.SameAs(bytes));
 
             var json = GlbDocument.Read(AvatarFormatRequirements.Write(HumanoidLimitCapture.Inject(bytes, data))).Json;
@@ -95,6 +118,7 @@ namespace VRVlog.LilToonExporter.Tests
             var read = HumanoidLimitData.FromGltf(json);
             Assert.That(read.Bones.Keys, Is.EqualTo(new[] { "leftShoulder" }));
             Assert.That(read.Bones["leftShoulder"].Max, Is.EqualTo(new[] { 15.0, 30, 0 }));
+            Assert.That(read.TPose["leftHand"], Is.EqualTo(new[] { 0, 0, .6, .8 }));
             var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
             Assert.That(extras["other"], Is.EqualTo(1L));
             Assert.That(extras.ContainsKey(AvatarFormatVersions.RequiredAppVersionsKey), Is.False, "a player that ignores the key still plays the file");
