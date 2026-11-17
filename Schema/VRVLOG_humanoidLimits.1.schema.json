@@ -2,12 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vrvlog.app/schema/VRVLOG_humanoidLimits/1/schema.json",
   "title": "VRVLOG_humanoidLimits 1",
-  "description": "The value of glTF asset.extras.VRVLOG_humanoidLimits: the muscle limits (Unity's HumanLimit) the avatar's humanoid set for its own bones, keyed by VRM 1.0 humanoid bone name. Angles are in degrees about the bone's muscle axes. A player that drives the avatar by muscles builds its humanoid with these limits; bones the file leaves out keep Unity's defaults, and a file without the key is played as before. The exporter writes only the shoulders and arms whose limits are not the defaults. The shared reader (HumanoidLimitData.Read) rejects the whole value when anything is outside this schema.",
+  "description": "The value of glTF asset.extras.VRVLOG_humanoidLimits: what the avatar's own humanoid set for its bones, keyed by VRM 1.0 humanoid bone name. bones holds the muscle limits (Unity's HumanLimit); angles are in degrees about the bone's muscle axes. tPose holds the rotation each bone takes in the humanoid's T-pose where it differs from the VRM's rest, as a VRM 1.0 normalized pose: from the bone's humanoid parent, in glTF axes, a unit quaternion x, y, z, w. A player that drives the avatar by muscles builds its humanoid with these limits and this T-pose; bones the file leaves out keep Unity's default limits and take their rest, and a file without the key is played as before. The exporter writes the shoulders and arms whose limits are not the defaults, and the arms whose rest it raised to a T-pose; each part only when it has a bone. The shared reader (HumanoidLimitData.Read) rejects the whole value when anything is outside this schema or a tPose rotation's length is more than 0.001 from 1.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion",
-    "bones"
+    "schemaVersion"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "bones"
+      ]
+    },
+    {
+      "required": [
+        "tPose"
+      ]
+    }
   ],
   "properties": {
     "schemaVersion": {
@@ -17,70 +28,83 @@
       "type": "object",
       "minProperties": 1,
       "propertyNames": {
-        "enum": [
-          "hips",
-          "spine",
-          "chest",
-          "upperChest",
-          "neck",
-          "head",
-          "leftEye",
-          "rightEye",
-          "jaw",
-          "leftUpperLeg",
-          "leftLowerLeg",
-          "leftFoot",
-          "leftToes",
-          "rightUpperLeg",
-          "rightLowerLeg",
-          "rightFoot",
-          "rightToes",
-          "leftShoulder",
-          "leftUpperArm",
-          "leftLowerArm",
-          "leftHand",
-          "rightShoulder",
-          "rightUpperArm",
-          "rightLowerArm",
-          "rightHand",
-          "leftThumbMetacarpal",
-          "leftThumbProximal",
-          "leftThumbDistal",
-          "leftIndexProximal",
-          "leftIndexIntermediate",
-          "leftIndexDistal",
-          "leftMiddleProximal",
-          "leftMiddleIntermediate",
-          "leftMiddleDistal",
-          "leftRingProximal",
-          "leftRingIntermediate",
-          "leftRingDistal",
-          "leftLittleProximal",
-          "leftLittleIntermediate",
-          "leftLittleDistal",
-          "rightThumbMetacarpal",
-          "rightThumbProximal",
-          "rightThumbDistal",
-          "rightIndexProximal",
-          "rightIndexIntermediate",
-          "rightIndexDistal",
-          "rightMiddleProximal",
-          "rightMiddleIntermediate",
-          "rightMiddleDistal",
-          "rightRingProximal",
-          "rightRingIntermediate",
-          "rightRingDistal",
-          "rightLittleProximal",
-          "rightLittleIntermediate",
-          "rightLittleDistal"
-        ]
+        "$ref": "#/$defs/boneName"
       },
       "additionalProperties": {
         "$ref": "#/$defs/limit"
       }
+    },
+    "tPose": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/boneName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/rotation"
+      }
     }
   },
   "$defs": {
+    "boneName": {
+      "enum": [
+        "hips",
+        "spine",
+        "chest",
+        "upperChest",
+        "neck",
+        "head",
+        "leftEye",
+        "rightEye",
+        "jaw",
+        "leftUpperLeg",
+        "leftLowerLeg",
+        "leftFoot",
+        "leftToes",
+        "rightUpperLeg",
+        "rightLowerLeg",
+        "rightFoot",
+        "rightToes",
+        "leftShoulder",
+        "leftUpperArm",
+        "leftLowerArm",
+        "leftHand",
+        "rightShoulder",
+        "rightUpperArm",
+        "rightLowerArm",
+        "rightHand",
+        "leftThumbMetacarpal",
+        "leftThumbProximal",
+        "leftThumbDistal",
+        "leftIndexProximal",
+        "leftIndexIntermediate",
+        "leftIndexDistal",
+        "leftMiddleProximal",
+        "leftMiddleIntermediate",
+        "leftMiddleDistal",
+        "leftRingProximal",
+        "leftRingIntermediate",
+        "leftRingDistal",
+        "leftLittleProximal",
+        "leftLittleIntermediate",
+        "leftLittleDistal",
+        "rightThumbMetacarpal",
+        "rightThumbProximal",
+        "rightThumbDistal",
+        "rightIndexProximal",
+        "rightIndexIntermediate",
+        "rightIndexDistal",
+        "rightMiddleProximal",
+        "rightMiddleIntermediate",
+        "rightMiddleDistal",
+        "rightRingProximal",
+        "rightRingIntermediate",
+        "rightRingDistal",
+        "rightLittleProximal",
+        "rightLittleIntermediate",
+        "rightLittleDistal"
+      ]
+    },
     "limit": {
       "type": "object",
       "additionalProperties": false,
@@ -126,6 +150,16 @@
           "minimum": 0,
           "maximum": 1000
         }
+      }
+    },
+    "rotation": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "number",
+        "minimum": -1.001,
+        "maximum": 1.001
       }
     }
   }
