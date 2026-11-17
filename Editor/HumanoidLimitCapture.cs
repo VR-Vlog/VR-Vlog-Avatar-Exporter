@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter
     // Documentation~/decisions/2026-11-17-arm-t-pose-in-extras.md.
     internal static class HumanoidLimitCapture
     {
-        internal const string FailureWarning = "VR Vlog: 腕の動く範囲を書き出しませんでした: ";
+        internal const string FailureWarning = "VR Vlog: 腕の動く範囲と T ポーズを書き出しませんでした: ";
 
         static readonly HumanBodyBones[] Arms =
         {
