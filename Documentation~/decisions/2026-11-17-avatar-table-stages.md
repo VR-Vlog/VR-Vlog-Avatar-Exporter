@@ -66,4 +66,4 @@
 ## 確かめたこと
 
 - `Tools/test-compatibility-tooling.py`が通る（75件）。
-- EditModeテスト（Unity 2022.3）はこの記録を書いた時点で結果が出ていない。結果はPRの本文に書く。
+- EditModeテスト（Unity 2022.3.22f1）: `ExportStageGuardTests`・`AvatarAnimatorCaptureTests`・`AvatarConstraintsExportTests`・`AvatarPhysBonesExportTests`・`AvatarContactsExportTests`・`ExportFallbackConfirmationTests`の234件が通る。`AvatarAnimatorCaptureTests`は、テストに使ったプロジェクトにある別のパッケージの`package.json`をVRChatのパッケージ管理が読めずに出すエラーのログで、最初の10件ほどが落ちた。Exporterとは関係が無いので、そのファイルを直したプロジェクトでこのクラスだけを流し直して103件が通った。
