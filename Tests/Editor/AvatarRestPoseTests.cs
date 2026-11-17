@@ -184,27 +184,34 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The recorded T-pose has the upper arm's slope and twist too, so a
         // muscle value turns the shoulder as far as it did on the avatar. The
-        // rotations are in the animator's axes, whichever way it faces.
+        // forearm's and the hand's rotations are from the upper arm's, so the
+        // twist is not added again below the elbow. The rotations are in the
+        // animator's axes, whichever way it faces.
         [Test]
         public void TheRecordedTPoseHasTheSlopeAndTwistOfTheHumanoidsUpperArm()
         {
             using var f = new AttachmentConnectionTests.Fixture();
             var upper = Bone(f.Source, HumanBodyBones.LeftUpperArm); var lower = Bone(f.Source, HumanBodyBones.LeftLowerArm);
+            var hand = Bone(f.Source, HumanBodyBones.LeftHand);
+            var straight = (upper.localRotation, lower.localRotation);
             upper.Rotate(Vector3.forward, 3, Space.World);
             upper.Rotate(Vector3.right, 30, Space.World);
-            var humanoid = upper.localRotation;
+            lower.Rotate(Vector3.forward, 10, Space.World);
+            var humanoid = (upper: upper.localRotation, lower: lower.localRotation, hand: hand.localRotation);
             var avatar = Rebuild(f.Source, description =>
             {
                 description.skeleton = description.skeleton.Select(bone =>
                 {
-                    if (bone.name == upper.name) bone.rotation = humanoid;
+                    if (bone.name == upper.name) bone.rotation = humanoid.upper;
+                    if (bone.name == lower.name) bone.rotation = humanoid.lower;
                     return bone;
                 }).ToArray();
                 return description;
             });
             try
             {
-                upper.Rotate(Vector3.right, -30, Space.World);
+                (upper.localRotation, lower.localRotation) = straight;
+                upper.Rotate(Vector3.forward, 3, Space.World);
                 LowerArms(f.Source, 40);
                 f.Source.transform.rotation = Quaternion.Euler(0, 50, 0);
                 var left = f.Source.transform.rotation * Vector3.left;
@@ -213,7 +220,9 @@ namespace VRVlog.LilToonExporter.Tests
 
                 Assert.That(AngleFrom(left, upper, lower), Is.LessThan(.1f));
                 TakeTPose(f.Source, tPose);
-                Assert.That(Quaternion.Angle(upper.localRotation, humanoid), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(upper.localRotation, humanoid.upper), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(lower.localRotation, humanoid.lower), Is.LessThan(.1f));
+                Assert.That(Quaternion.Angle(hand.localRotation, humanoid.hand), Is.LessThan(.1f));
                 Assert.That(AngleFrom(left, upper, lower), Is.EqualTo(3f).Within(.1f));
             }
             finally { Object.DestroyImmediate(avatar); }

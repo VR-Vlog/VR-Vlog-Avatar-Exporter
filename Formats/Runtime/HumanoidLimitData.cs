@@ -13,13 +13,14 @@ namespace VRVlog.AvatarFormats
     // about the bone's muscle axes, as in HumanLimit; Min is 0 or less, Max 0
     // or more. See Documentation~/decisions/2026-11-16-arm-rest-and-limits.md.
     //
-    // TPose: the rotation each bone takes in the avatar's own humanoid T-pose
-    // where it differs from the VRM's rest, as a VRM 1.0 normalized pose: from
+    // TPose: the rotation each bone of an arm whose rest the exporter raised
+    // takes in the avatar's own humanoid T-pose, as a VRM 1.0 normalized pose: from
     // the bone's humanoid parent, in glTF axes, quaternion x, y, z, w. A player
     // that drives the avatar by muscles builds its humanoid from this pose, so a
     // muscle value gives the bone the same pose it gave on the avatar while the
     // rest stays a plain T-pose for players that copy rotations. Bones the file
-    // leaves out take their rest. See
+    // leaves out take their rest. A file may have only one of Bones and TPose,
+    // so Read returns the other empty. See
     // Documentation~/decisions/2026-11-17-arm-t-pose-in-extras.md.
     public sealed class HumanoidLimitData
     {
