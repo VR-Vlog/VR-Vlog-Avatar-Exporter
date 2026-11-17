@@ -997,11 +997,13 @@ namespace VRVlog.LilToonExporter
                 // texture is read. Off, nothing is measured and every size stays;
                 // a measurement that fails also keeps every size.
                 TexelDensity.Plan lightweight = null;
+                // A feature switch an FX curve turns on keeps its texture slots.
+                var movedFloats = avatarAnimator?.MovedMaterialFloats();
                 if (autoLightweight)
-                    try { lightweight = TexelDensity.Measure(clone); }
+                    try { lightweight = TexelDensity.Measure(clone, movedFloats); }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
-                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight), () => null) : null;
+                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight, movedFloats: movedFloats), () => null) : null;
                 // The lilToon materials only slot curves set, which no mesh draws
                 // with: the file adds them at the end of the glTF materials. A
                 // failure here adds none; their curves are then counted as material.

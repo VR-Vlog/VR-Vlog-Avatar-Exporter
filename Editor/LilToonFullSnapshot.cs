@@ -55,14 +55,15 @@ namespace VRVlog.LilToonExporter
         // 自動で軽量化する: write a slot whose feature is switched off as
         // unassigned. The references left out, by texture key; false when off.
         bool omitInactiveSlots;
+        ICollection<string> movedFloats;
         readonly HashSet<(Texture, bool)> inactiveReferences = new HashSet<(Texture, bool)>();
         readonly string sourceColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear ? "linear" : "gamma";
 
         internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null,
-            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false)
+            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false, ICollection<string> movedFloats=null)
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
-                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots};
+                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots, movedFloats=movedFloats};
             var selected = new List<(Renderer renderer, Material[] materials)>();
             // Materials of renderers UniVRM does not write as meshes must not
             // create bindings to absent glTF meshes. Their transforms and bones
@@ -169,8 +170,9 @@ namespace VRVlog.LilToonExporter
                         warnings?.Add(source.name + ": 無効なlilToonレイヤーで使われない動的画像の参照を省略しました: " + name);
                     }
                     // 自動で軽量化する: the shader never samples this slot. A
-                    // texture another slot samples is still written once.
-                    if (texture != null && omitInactiveSlots && !LilToonInactiveSlots.Sampled(source, name))
+                    // texture another slot samples is still written once. A
+                    // switch an FX curve moves keeps its slots.
+                    if (texture != null && omitInactiveSlots && !LilToonInactiveSlots.Sampled(source, name, movedFloats))
                     {
                         inactiveReferences.Add((texture, normal));
                         texture = null;

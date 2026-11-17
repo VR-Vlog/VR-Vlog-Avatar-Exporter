@@ -52,7 +52,9 @@ namespace VRVlog.LilToon
         // The feature switches the app fixes when it loads a material: it turns
         // off the shader code of a group whose switches are all 0
         // (LilToonFeatureSpecialization), so an animation that moves one shows
-        // nothing there. The exporter leaves curves on them out (materialSwitch).
+        // nothing there, unless the avatar's controller moves the switch: the
+        // exporter writes such a curve as a materialFloat target and the app
+        // keeps that group's code. An older exporter left it out (materialSwitch).
         // The 2nd layer's dissolve mode, the x of the vector
         // _Main2ndDissolveParams, is one too; vector curves are not carried.
         public static readonly string[] Switches =
