@@ -107,6 +107,7 @@ namespace VRVlog.LilToonExporter
         internal static byte[] Inject(byte[] bytes, AvatarPhysBonesData data)
         {
             if (data == null || data.PhysBones.Count == 0) return bytes;
+            ExportTestHooks.TableFaultInjection?.Invoke(AvatarPhysBonesData.Extension);
             var document = GlbDocument.Read(bytes);
             var nodes = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> list ? list.Count : 0;
             Checked(data, nodes);

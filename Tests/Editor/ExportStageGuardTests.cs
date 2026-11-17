@@ -3,8 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.Animations;
 using UnityEngine.SceneManagement;
 using VRVlog.AvatarAnimator;
+using VRVlog.AvatarConstraints;
+using VRVlog.AvatarContacts;
+using VRVlog.AvatarPhysBones;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.Poses;
 using Object = UnityEngine.Object;
@@ -14,7 +18,11 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ExportStageGuardTests
     {
         [TearDown]
-        public void ResetFaultInjection() => ExportTestHooks.FaultInjection = null;
+        public void ResetFaultInjection()
+        {
+            ExportTestHooks.FaultInjection = null;
+            ExportTestHooks.TableFaultInjection = null;
+        }
 
         // Stage names, since the internal enum cannot be a public test parameter.
         static IEnumerable<string> Stages => Enum.GetNames(typeof(ExportStage));
@@ -72,10 +80,29 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
-        // A table stage is only reached when the avatar has something to put
-        // in the table: a realtime light for the effects, a Receiver for the contacts.
+        // Something for the table of a stage to write: a constraint left in its
+        // pose, a PhysBone, a realtime light, a Receiver.
         static void AddTableEntry(GameObject avatar, ExportStage stage)
         {
+            var animator = avatar.GetComponent<Animator>();
+            if (stage == ExportStage.AvatarConstraints)
+            {
+                // Scale has no VRM constraint, so ConstraintExport keeps it in its pose.
+                var constraint = animator.GetBoneTransform(HumanBodyBones.Neck).gameObject.AddComponent<ScaleConstraint>();
+                constraint.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = animator.GetBoneTransform(HumanBodyBones.Chest), weight = 1 });
+                constraint.weight = 1; constraint.locked = true; constraint.constraintActive = true;
+            }
+            if (stage == ExportStage.AvatarPhysBones)
+            {
+                var tail = new GameObject("Tail").transform;
+                tail.SetParent(animator.GetBoneTransform(HumanBodyBones.Head), false);
+                tail.position = new Vector3(0, 1.75f, -.1f);
+                var tip = new GameObject("Tail tip").transform;
+                tip.SetParent(tail, false);
+                tip.position = new Vector3(0, 1.6f, -.15f);
+                var physBone = tail.gameObject.AddComponent(OptionalTools.Require(PhysBoneSpringExport.PhysBoneType, "Install the real VRChat SDK for PhysBones."));
+                AvatarPhysBonesExportTests.Set(physBone, "parameter", "Tail");
+            }
             if (stage == ExportStage.AvatarEffects)
             {
                 var light = new GameObject("Lamp").AddComponent<Light>();
@@ -87,25 +114,31 @@ namespace VRVlog.LilToonExporter.Tests
                     .transform.SetParent(avatar.transform, false);
         }
 
-        // AvatarAnimator and the tables its targets name only add data that
-        // earlier files did not have, so a strict export leaves them out
-        // instead of stopping (ExportStageGuard.Optional).
-        static readonly string[] OptionalStages = { nameof(ExportStage.AvatarAnimator), nameof(ExportStage.AvatarEffects), nameof(ExportStage.AvatarContacts) };
+        // AvatarAnimator and the tables its targets and parameters name only
+        // add data that earlier files did not have, so a strict export leaves
+        // them out instead of stopping (ExportStageGuard.Optional).
+        static readonly string[] OptionalStages =
+        {
+            nameof(ExportStage.AvatarAnimator), nameof(ExportStage.AvatarConstraints), nameof(ExportStage.AvatarPhysBones),
+            nameof(ExportStage.AvatarEffects), nameof(ExportStage.AvatarContacts),
+        };
         static IEnumerable<string> StagesThatStopAStrictExport => Stages.Where(name => !OptionalStages.Contains(name));
 
-        [Test]
-        public void AStrictExportLeavesOutAStageThatOnlyAddsData()
+        [TestCaseSource(nameof(OptionalStages))]
+        public void AStrictExportLeavesOutAStageThatOnlyAddsData(string stageName)
         {
             NoGraphicsDevice.AllowErrorLogs();
+            var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Strict optional" };
             try
             {
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                AddTableEntry(fixture.Source, stage);
                 var fired = 0;
                 ExportTestHooks.FaultInjection = current =>
                 {
-                    if (current != ExportStage.AvatarAnimator) return;
+                    if (current != stage) return;
                     fired++;
                     throw new InvalidOperationException("injected " + current);
                 };
@@ -116,11 +149,58 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fired, Is.EqualTo(1), "The fixture must reach the stage, and a left-out stage must not run again.");
                 Assert.That(report.Succeeded, Is.True);
                 Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes), "The save check must accept the file.");
-                Assert.That(((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+                if (stage == ExportStage.AvatarAnimator)
+                    Assert.That(((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
                 var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
-                Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
-                Assert.That(entry.Reason, Is.EqualTo("injected AvatarAnimator"));
-                Assert.That(warnings.Count(warning => warning.Contains("injected AvatarAnimator")), Is.EqualTo(1));
+                Assert.That(entry.Stage, Is.EqualTo(stage));
+                Assert.That(entry.Reason, Is.EqualTo("injected " + stage));
+                Assert.That(warnings.Count(warning => warning.Contains("injected " + stage)), Is.EqualTo(1));
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        // A table a strict export writes, failing when written, is left out on
+        // its own: the export succeeds without its extension, and its stage
+        // is the one line in the result list.
+        static readonly object[] Tables =
+        {
+            new object[] { nameof(ExportStage.AvatarConstraints), AvatarConstraintsData.Extension },
+            new object[] { nameof(ExportStage.AvatarPhysBones), AvatarPhysBonesData.Extension },
+            new object[] { nameof(ExportStage.AvatarEffects), AvatarEffectsExport.Extension },
+            new object[] { nameof(ExportStage.AvatarContacts), AvatarContactsData.Extension },
+        };
+
+        [TestCaseSource(nameof(Tables))]
+        public void AStrictExportLeavesOutATableItCannotWrite(string stageName, string extension)
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon")) { name = "Strict table" };
+            try
+            {
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                AddTableEntry(fixture.Source, stage);
+                Dictionary<string, object> Extensions(byte[] bytes) => (Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                Assert.That(Extensions(Export(fixture.Source, new ExportRecoveryReport(), new List<string>())).ContainsKey(extension), Is.True,
+                    "The fixture must give the table something to write.");
+
+                ExportTestHooks.TableFaultInjection = name => { if (name == extension) throw new InvalidOperationException("injected " + name); };
+                var report = new ExportRecoveryReport();
+                var warnings = new List<string>();
+                var written = Export(fixture.Source, report, warnings);
+
+                Assert.That(report.Succeeded, Is.True);
+                Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(written), "The save check must accept the file.");
+                Assert.That(Extensions(written).ContainsKey(extension), Is.False);
+                Assert.That(Extensions(written).ContainsKey("VRMC_vrm"), Is.True);
+                var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                Assert.That(entry.Stage, Is.EqualTo(stage));
+                Assert.That(entry.Reason, Is.EqualTo("injected " + extension));
+                Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(stage)) && warning.Contains("injected " + extension)), Is.EqualTo(1),
+                    string.Join("\n", warnings));
+                var list = ExportResultList.Build(report.Fallbacks, warnings);
+                Assert.That(list.Rows.Single(row => row.Stage == stage).Group, Is.EqualTo(ExportStageGuard.DisplayName(stage)));
             }
             finally { Object.DestroyImmediate(material); }
         }
