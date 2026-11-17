@@ -195,7 +195,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Extensions(written).ContainsKey(extension), Is.False);
                 Assert.That(Extensions(written).ContainsKey("VRMC_vrm"), Is.True);
                 var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
-                Assert.That((entry.Stage, entry.Reason), Is.EqualTo((stage, "injected " + extension)));
+                Assert.That(entry.Stage, Is.EqualTo(stage));
+                Assert.That(entry.Reason, Is.EqualTo("injected " + extension));
                 Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(stage)) && warning.Contains("injected " + extension)), Is.EqualTo(1),
                     string.Join("\n", warnings));
                 var list = ExportResultList.Build(report.Fallbacks, warnings);
