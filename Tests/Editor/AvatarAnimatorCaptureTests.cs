@@ -1440,6 +1440,108 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts))), Is.EqualTo(1), string.Join("\n", warnings));
         }
 
+        // Through the exporter, a table tells what it left out only when it is
+        // written: past the light limit, the effects line; past the Receiver
+        // limit, the contacts line. A table that cannot be written is told by
+        // its stage alone, without the line, which would name a table the file
+        // does not have.
+        [TestCase("effects")]
+        [TestCase("contacts")]
+        public void ATableTellsWhatItLeftOutOnlyWhenWritten(string table)
+        {
+            using var avatar = new AnimatorAvatar();
+            string extension, note;
+            ExportStage stage;
+            if (table == "effects")
+            {
+                for (var i = 0; i <= AvatarEffectsExport.MaximumLights; i++)
+                    Child(avatar.Source.transform, "Lamp " + i).AddComponent<Light>().lightmapBakeType = LightmapBakeType.Realtime;
+                (extension, stage) = (AvatarEffectsExport.Extension, ExportStage.AvatarEffects);
+                note = ExporterLocalization.Format(AvatarEffectsExport.LimitCount, 1);
+            }
+            else
+            {
+                var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+                for (var i = 0; i <= VRVlog.AvatarContacts.AvatarContactsData.MaximumReceivers; i++)
+                    Child(avatar.Source.transform, "Pad " + i).AddComponent(receiverType);
+                (extension, stage) = (VRVlog.AvatarContacts.AvatarContactsData.Extension, ExportStage.AvatarContacts);
+                note = ExporterLocalization.Format(AvatarContactsExport.LimitNote, 1, VRVlog.AvatarContacts.AvatarContactsData.MaximumReceivers);
+            }
+
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(extension), Is.True);
+            Assert.That(warnings.Count(warning => warning.Contains(note)), Is.EqualTo(1), string.Join("\n", warnings));
+            Assert.That(warnings.Any(warning => warning.Contains(ExportStageGuard.DisplayName(stage))), Is.False);
+
+            ExportTestHooks.TableFaultInjection = name => { if (name == extension) throw new InvalidOperationException("injected " + name); };
+            warnings.Clear();
+            json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(extension), Is.False);
+            Assert.That(warnings.Any(warning => warning.Contains(note)), Is.False, string.Join("\n", warnings));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(stage)) && warning.Contains("injected " + extension)), Is.EqualTo(1));
+        }
+
+        // The constraints and PhysBones tables are left out like the others
+        // when they cannot be written: the warnings name their stage and the
+        // FX is built again without what names them (the constraint's enabled
+        // target, the PhysBone parameters' builtin origin). Before, the failure
+        // was only in the console.
+        [Test]
+        public void AConstraintsTableTheExportCannotWriteIsNotNamed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var constraint = glasses.AddComponent<UnityEngine.Animations.ScaleConstraint>();
+            constraint.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = avatar.Source.transform.Find("Hat"), weight = 1 });
+            constraint.weight = 1; constraint.locked = true; constraint.constraintActive = true;
+            var clip = avatar.Clip("Switch");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(UnityEngine.Animations.ScaleConstraint), "m_Enabled"),
+                AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+            var written = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            Assert.That(((Dictionary<string, object>)written["extensions"]).ContainsKey(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.True);
+            Assert.That(Read(written).Targets.Count(t => t.Component == "constraint"), Is.EqualTo(1));
+
+            ExportTestHooks.TableFaultInjection = name =>
+            {
+                if (name == VRVlog.AvatarConstraints.AvatarConstraintsData.Extension) throw new InvalidOperationException("injected constraints");
+            };
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.False);
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.False);
+            var data = Read(json);
+            Assert.That(data.Targets.Any(t => t.Component == "constraint"), Is.False);
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(Read(written), "enabled") + 1), "The constraint's curve counts as before the table.");
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarConstraints)) && warning.Contains("injected constraints")),
+                Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
+        [Test]
+        public void APhysBonesTableTheExportCannotWriteIsNotNamed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var physBoneType = OptionalTools.Require(PhysBoneSpringExport.PhysBoneType, "Install the real VRChat SDK for PhysBones.");
+            var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var tail = new GameObject("Tail").transform;
+            tail.SetParent(head, false); tail.position = new Vector3(0, 1.75f, -.1f);
+            var tip = new GameObject("Tail tip").transform;
+            tip.SetParent(tail, false); tip.position = new Vector3(0, 1.6f, -.15f);
+            AvatarPhysBonesExportTests.Set(tail.gameObject.AddComponent(physBoneType), "parameter", "Tail");
+            avatar.Fx.AddParameter("Tail_Angle", AnimatorControllerParameterType.Float);
+            Assert.That(Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("builtin"));
+
+            ExportTestHooks.TableFaultInjection = name => { if (name == AvatarPhysBonesData.Extension) throw new InvalidOperationException("injected physbones"); };
+            var warnings = new List<string>();
+            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarPhysBonesData.Extension), Is.False);
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarPhysBonesData.Extension), Is.False);
+            Assert.That(Read(json).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("animator"), "As before the table.");
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarPhysBones)) && warning.Contains("injected physbones")),
+                Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
         // The activeSelf curve of an object the file has no node for, removed
         // or not, turns every part under it: one enabled target per part a
         // table writes, resting at the object's activeSelf, separate from the

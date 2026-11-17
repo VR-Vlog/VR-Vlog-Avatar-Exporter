@@ -43,8 +43,10 @@ namespace VRVlog.LilToonExporter
         ExpressionGestures,
         FxRest,
         AvatarAnimator,
-        // The tables the FX's enabled targets name; left out, the FX is built
-        // again without the targets that name them.
+        // The tables the FX's targets and parameters name; left out, the FX
+        // is built again without the targets that name them.
+        AvatarConstraints,
+        AvatarPhysBones,
         AvatarEffects,
         AvatarContacts,
     }
@@ -233,7 +235,10 @@ namespace VRVlog.LilToonExporter
                 [ExportStage.FxRest] = ("FXの通常時の顔・体形", ExportPhase.Expressions, ExportOutcome.Approximated),
                 // Left out, the file has no copy of the FX controller and menus.
                 [ExportStage.AvatarAnimator] = ("FXとメニューの動き", ExportPhase.Expressions, ExportOutcome.Omitted),
-                // Left out, the app does not move the avatar's particles and lights, or read its Contacts.
+                // Left out, the app does not move the constraints kept in their pose,
+                // fill the PhysBone parameters, move the particles and lights, or read the Contacts.
+                [ExportStage.AvatarConstraints] = ("アプリで動かすConstraint", ExportPhase.Skeleton, ExportOutcome.Omitted),
+                [ExportStage.AvatarPhysBones] = ("アプリで動かすPhysBoneのパラメーター", ExportPhase.Springs, ExportOutcome.Omitted),
                 [ExportStage.AvatarEffects] = ("アプリで動かすエフェクト", ExportPhase.Expressions, ExportOutcome.Omitted),
                 [ExportStage.AvatarContacts] = ("アプリで動かすContact", ExportPhase.Expressions, ExportOutcome.Omitted),
             };
