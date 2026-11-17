@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -14,56 +15,75 @@ namespace VRVlog.LilToonExporter
         // relaxed elbows reach about 16 degrees, well under a lowered A-pose arm.
         internal const float MaximumArmAngle = 20f;
 
-        internal static void AlignArms(Animator animator)
+        // tPose, when given, gets the rotation each raised bone takes in the
+        // humanoid's own T-pose, as a normalized pose in the animator's axes (see
+        // HumanoidTPose). The rest itself stays a plain T-pose.
+        internal static void AlignArms(Animator animator, IDictionary<HumanBodyBones, Quaternion> tPose = null)
         {
             if (animator == null || !animator.isHuman) return;
             var outward = animator.transform.right;
-            AlignArm(animator, -outward, HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand);
-            AlignArm(animator, outward, HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand);
+            AlignArm(animator, -outward, tPose, HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand);
+            AlignArm(animator, outward, tPose, HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand);
         }
 
-        static void AlignArm(Animator animator, Vector3 outward, HumanBodyBones upper, HumanBodyBones lower, HumanBodyBones hand)
+        static void AlignArm(Animator animator, Vector3 outward, IDictionary<HumanBodyBones, Quaternion> tPose, params HumanBodyBones[] arm)
         {
-            var upperBone = HumanoidBones.Resolve(animator, upper);
-            var lowerBone = HumanoidBones.Resolve(animator, lower);
-            var handBone = HumanoidBones.Resolve(animator, hand);
-            if (upperBone == null || lowerBone == null || handBone == null) return;
+            var bones = arm.Select(bone => HumanoidBones.Resolve(animator, bone)).ToArray();
+            if (bones.Any(bone => bone == null)) return;
+            Transform upperBone = bones[0], lowerBone = bones[1], handBone = bones[2];
             if (!IsPast(upperBone, lowerBone, outward) && !IsPast(lowerBone, handBone, outward)) return;
-            // The arm takes the pose the humanoid's own T-pose gives it, from the
-            // shoulder down: a player drives the arm by muscles measured from the
-            // VRM's rest, so any difference from the humanoid's T-pose stays in every
-            // motion. See Documentation~/decisions/2026-11-16-arm-rest-and-limits.md.
-            if (TakeHumanoidPose(animator, outward, upperBone, lowerBone, handBone)) return;
+            var humanoid = tPose == null ? null : HumanoidTPose(animator, outward, bones);
             // Parent first: raising the upper arm carries the forearm with it. The upper
             // arm goes even when only the forearm is past, or the elbow would bend backwards.
             AlignBone(upperBone, lowerBone, outward);
             if (IsPast(lowerBone, handBone, outward)) AlignBone(lowerBone, handBone, outward);
+            if (humanoid == null) return;
+            // Each bone's turn from the raised rest to the humanoid's T-pose, in the
+            // animator's axes, and from it the turn of each bone from its parent's.
+            // The shoulder above does not move, so the upper arm's turn is its own.
+            var root = Quaternion.Inverse(animator.transform.rotation);
+            var parent = Quaternion.identity;
+            for (var i = 0; i < bones.Length; i++)
+            {
+                var turn = humanoid[i] * Quaternion.Inverse(root * bones[i].rotation);
+                tPose[arm[i]] = Quaternion.Inverse(parent) * turn;
+                parent = turn;
+            }
         }
 
-        // Gives the upper arm, the forearm and the hand their rotations in the
-        // humanoid's T-pose, each from its parent. Leaves them as they were and
-        // returns false when the humanoid does not name each of them once or its
-        // T-pose would itself leave the arm past the limit.
-        static bool TakeHumanoidPose(Animator animator, Vector3 outward, Transform upper, Transform lower, Transform hand)
+        // The rotations, in the animator's axes, the upper arm, the forearm and
+        // the hand have when each takes its rotation from its parent in the
+        // humanoid's T-pose, or null when the humanoid does not name each of them
+        // once or its T-pose would itself leave the arm past the limit. A muscle
+        // player that builds its humanoid from this pose gives the arm the pose a
+        // muscle value gave it on the avatar, with its slope, elbow bend and twist.
+        // See Documentation~/decisions/2026-11-17-arm-t-pose-in-extras.md.
+        static Quaternion[] HumanoidTPose(Animator animator, Vector3 outward, Transform[] bones)
         {
             var avatar = animator.avatar;
-            if (avatar == null || !avatar.isHuman) return false;
+            if (avatar == null || !avatar.isHuman) return null;
             // A name the skeleton has twice does not say which bone it is.
             var skeleton = new Dictionary<string, SkeletonBone?>();
             foreach (var bone in avatar.humanDescription.skeleton ?? System.Array.Empty<SkeletonBone>())
                 if (!string.IsNullOrEmpty(bone.name)) skeleton[bone.name] = skeleton.ContainsKey(bone.name) ? (SkeletonBone?)null : bone;
-            var bones = new[] { upper, lower, hand };
             var rotations = new Quaternion[bones.Length];
             for (var i = 0; i < bones.Length; i++)
             {
-                if (!skeleton.TryGetValue(bones[i].name, out var found) || !(found is SkeletonBone rest)) return false;
+                if (!skeleton.TryGetValue(bones[i].name, out var found) || !(found is SkeletonBone rest)) return null;
                 rotations[i] = rest.rotation;
             }
-            var before = new Quaternion[bones.Length];
-            for (var i = 0; i < bones.Length; i++) { before[i] = bones[i].localRotation; bones[i].localRotation = rotations[i]; }
-            if (!IsPast(upper, lower, outward) && !IsPast(lower, hand, outward)) return true;
-            for (var i = 0; i < bones.Length; i++) bones[i].localRotation = before[i];
-            return false;
+            var before = bones.Select(bone => bone.localRotation).ToArray();
+            try
+            {
+                for (var i = 0; i < bones.Length; i++) bones[i].localRotation = rotations[i];
+                if (IsPast(bones[0], bones[1], outward) || IsPast(bones[1], bones[2], outward)) return null;
+                var root = Quaternion.Inverse(animator.transform.rotation);
+                return bones.Select(bone => root * bone.rotation).ToArray();
+            }
+            finally
+            {
+                for (var i = 0; i < bones.Length; i++) bones[i].localRotation = before[i];
+            }
         }
 
         static bool IsPast(Transform bone, Transform child, Vector3 outward)

@@ -9,10 +9,13 @@ namespace VRVlog.LilToonExporter
     // humanoid sets for its shoulders and arms. UniVRM rebuilds the humanoid of
     // a loaded VRM with Unity's default limits, so a motion played by muscles
     // turns an avatar whose own limits are narrower further than on the avatar.
-    // See Documentation~/decisions/2026-11-16-arm-rest-and-limits.md.
+    // With them, the arms' rotations in the humanoid's own T-pose that
+    // AvatarRestPose found differ from the rest (tPose).
+    // See Documentation~/decisions/2026-11-16-arm-rest-and-limits.md and
+    // Documentation~/decisions/2026-11-17-arm-t-pose-in-extras.md.
     internal static class HumanoidLimitCapture
     {
-        internal const string FailureWarning = "VR Vlog: 腕の動く範囲を書き出しませんでした: ";
+        internal const string FailureWarning = "VR Vlog: 腕の動く範囲と T ポーズを書き出しませんでした: ";
 
         static readonly HumanBodyBones[] Arms =
         {
@@ -20,9 +23,11 @@ namespace VRVlog.LilToonExporter
             HumanBodyBones.RightShoulder, HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand
         };
 
-        // The arm bones whose limits are not Unity's defaults, or null when
-        // there are none. A failure adds a warning and also returns null.
-        internal static HumanoidLimitData Capture(Animator animator, ICollection<string> warnings)
+        // The arm bones whose limits are not Unity's defaults and the given
+        // T-pose rotations (in the animator's axes, see AvatarRestPose.AlignArms),
+        // or null when there are neither. A failure adds a warning and also
+        // returns null.
+        internal static HumanoidLimitData Capture(Animator animator, IReadOnlyDictionary<HumanBodyBones, Quaternion> tPose, ICollection<string> warnings)
         {
             try
             {
@@ -40,7 +45,9 @@ namespace VRVlog.LilToonExporter
                         Min = Vector(limit.min), Max = Vector(limit.max), Center = Vector(limit.center), AxisLength = limit.axisLength
                     };
                 }
-                if (data.Bones.Count == 0) return null;
+                foreach (var pair in tPose ?? new Dictionary<HumanBodyBones, Quaternion>())
+                    data.TPose[VrmName(pair.Key)] = Gltf(pair.Value);
+                if (data.IsEmpty) return null;
                 HumanoidLimitData.Write(data); // Out-of-contract values fail here, not in Inject.
                 return data;
             }
@@ -73,5 +80,8 @@ namespace VRVlog.LilToonExporter
         }
 
         static double[] Vector(Vector3 value) => new double[] { value.x, value.y, value.z };
+
+        // glTF mirrors Unity's X axis, as UniVRM's ReverseX.
+        static double[] Gltf(Quaternion value) => new double[] { value.x, -value.y, -value.z, value.w };
     }
 }
