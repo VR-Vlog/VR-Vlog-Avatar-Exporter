@@ -194,6 +194,22 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected), "Saving again does not change it.");
         }
 
+        // メッシュをまとめて表示を速くする: on unless saved off, and an entry from
+        // before the option takes the default.
+        [TestCase(",\"MergeMeshes\":false", false)]
+        [TestCase("", true)]
+        public void MergeMeshesIsOnUnlessSavedOff(string field, bool expected)
+        {
+            using var fixture = new SavedAvatar();
+            Assert.That(new ExportSettings().MergeMeshes, Is.True);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).MergeMeshes, Is.True);
+            var key = ExpressionPresetStore.KeyFor(fixture.Avatar);
+            File.WriteAllText(storePath, "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"" + key + "\",\"AutoExcludeGimmicks\":true,\"TransferName\":\"Avatar\"" + field + "}]}", Encoding.UTF8);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).MergeMeshes, Is.EqualTo(expected));
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { MergeMeshes = !expected });
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).MergeMeshes, Is.EqualTo(!expected), "The choice is written and comes back.");
+        }
+
         [Test]
         public void AFileThatCannotBeReadIsNeverOverwritten()
         {

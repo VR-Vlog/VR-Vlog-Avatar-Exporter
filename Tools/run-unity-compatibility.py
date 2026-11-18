@@ -928,6 +928,7 @@ BEHAVIOR_CASES = {
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'TheSavedLightweightChoiceMatches': 1,
         'LightweightStartsOnUnlessSavedOff': 1,
+        'MergeMeshesStartsOnUnlessSavedOff': 1,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
         'TheSavedGazeRangeMatches': 1,
@@ -1001,6 +1002,15 @@ BEHAVIOR_CASES = {
         'TheExportListsTheLineOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
+    # メッシュをまとめて表示を速くする: which renderers the AAO merge takes.
+    'ExportMeshMergeTests': {
+        'TheFaceAndEveryRendererAnAnimationSwitchesStaySeparate': 1,
+        'ShapesTheExporterGeneratedAndRoutedRenderersStaySeparate': 1,
+        'HiddenClothAndEmptyRenderersAreNotMerged': 1,
+        'OneRendererLeftIsNotAMerge': 1,
+        'AnAvatarWithoutAvatarOptimizerIsNotMerged': 1,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
 }
 INTEGRATION_CASES = {
     'NdmfLostMorphFollowTests': {
@@ -1044,6 +1054,10 @@ INTEGRATION_CASES = {
     },
     'InstalledAaoNeutralEndpointExportTests': {
         'MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink': 3,
+    },
+    'InstalledAaoMeshMergeExportTests': {
+        'TheFaceAndTheToggledHatStaySeparateAndTheRestBecomesOne': 1,
+        'AFailureAfterTheMergeLeavesOutOnlyTheMerge': 1,
     },
     'NdmfAnimationModeSamplingTests': {
         'ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode': 1,

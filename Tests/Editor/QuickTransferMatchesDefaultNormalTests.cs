@@ -266,6 +266,24 @@ namespace VRVlog.LilToonExporter.Tests
             AssertSame(quick, normal);
         }
 
+        // メッシュをまとめて表示を速くする starts on; saved off, both boards start
+        // from off. The fixture has no AAO, so the file is the same either way.
+        [Test]
+        public void MergeMeshesStartsOnUnlessSavedOff()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("mergeMeshes True")); }
+            finally { Object.DestroyImmediate(hidden); }
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { MergeMeshes = false });
+            hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("mergeMeshes False")); }
+            finally { Object.DestroyImmediate(hidden); }
+            var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
+        }
+
         // 視線の動く範囲 saved for the avatar: both boards start from it and
         // both write it into the VRM look-at range.
         [Test]
@@ -438,6 +456,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 "page " + window.Page,
                 "autoLightweight " + Board.GetField("autoLightweight", Flags).GetValue(window),
+                "mergeMeshes " + Board.GetField("mergeMeshes", Flags).GetValue(window),
                 "gaze " + ((GazeRangeOptions)Board.GetField("gazeRange", Flags).GetValue(window)).Key(),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),

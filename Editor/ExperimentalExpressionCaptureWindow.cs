@@ -45,6 +45,10 @@ namespace VRVlog.LilToonExporter
         float distance = 1, yaw, zoom = 1;
         // 自動で軽量化する: on for a new board and for another avatar; the avatar's saved choice applies on preparing.
         bool autoLightweight = true;
+        bool mergeMeshes = true;
+        // Whether the avatar uses Avatar Optimizer: the merge option is shown
+        // and applied only then. Read once when the avatar is prepared.
+        bool usesAvatarOptimizer;
         // 視線の動く範囲 the export writes; the section edits it and saves it for the avatar.
         GazeRangeOptions gazeRange = new GazeRangeOptions();
         readonly GazeRangeSection gazeSection = new GazeRangeSection();
@@ -714,6 +718,7 @@ namespace VRVlog.LilToonExporter
                                 DrawBlink();
                                 EditorGUILayout.Space(8);
                                 DrawLightweight();
+                                if (usesAvatarOptimizer) { EditorGUILayout.Space(4); DrawMeshMerge(); }
                                 EditorGUILayout.Space(12);
                                 DrawPoseInputs();
                             }
@@ -842,6 +847,8 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode != BlinkExportMode.Auto) configuredBlink = storedBlink.Copy();
                 autoLightweight = stored.AutoLightweight;
+                mergeMeshes = stored.MergeMeshes;
+                usesAvatarOptimizer = ExportMeshMerge.UsesAvatarOptimizer(source);
                 gazeRange = (stored.Gaze ?? new GazeRangeOptions()).Copy();
                 session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
@@ -2247,6 +2254,28 @@ namespace VRVlog.LilToonExporter
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
         }
 
+        internal const string MergeMeshesLabel = "メッシュをまとめて表示を速くする";
+        internal const string MergeMeshesNote = "切り替える服と顔のほかをAvatar Optimizerで1つにします";
+
+        // Shown only for an avatar that uses Avatar Optimizer; saved at once
+        // like the lightweight option above.
+        void DrawMeshMerge()
+        {
+            var label = ExporterLocalization.T(MergeMeshesLabel);
+            var width = Mathf.Max(0, position.width - 32);
+            var on = EditorGUILayout.ToggleLeft(new GUIContent(Fit(label, EditorStyles.label, width), label), mergeMeshes);
+            if (on != mergeMeshes)
+            {
+                mergeMeshes = on;
+                var settings = ExportSettingsStore.Load(source);
+                settings.MergeMeshes = on;
+                ExportSettingsStore.Save(source, settings);
+            }
+            var note = ExporterLocalization.T(MergeMeshesNote);
+            var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
+            GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+        }
+
         // 視線の動く範囲: the previews draw the neutral face on the board's copy and
         // put back the face it showed. A moved slider saves for the avatar.
         void DrawGazeRange()
@@ -2615,6 +2644,7 @@ namespace VRVlog.LilToonExporter
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
             var lightweight = autoLightweight;
+            var merge = mergeMeshes;
             var gaze = gazeRange.Copy();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
@@ -2701,7 +2731,7 @@ namespace VRVlog.LilToonExporter
                 var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
                     from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight, gaze));
+                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight, gaze, merge));
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
@@ -2851,6 +2881,8 @@ namespace VRVlog.LilToonExporter
             SaveGazeRange();
             Cleanup(); CloseChildWindows();
             autoLightweight = true;
+            mergeMeshes = true;
+            usesAvatarOptimizer = false;
             gazeRange = new GazeRangeOptions();
             licenseOptions = new AvatarLicenseOptions();
             status = null;
