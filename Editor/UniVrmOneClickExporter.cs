@@ -873,7 +873,9 @@ namespace VRVlog.LilToonExporter
                 var animated = (expressions ?? new List<VrmMenuExpressions.Expression>()).Concat(presetExpressions)
                     .SelectMany(expression => expression.Transforms)
                     .Where(track => track.Property != VRVlog.Expressions.ExpressionTransformAnimation.Active)
-                    .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform).ToArray();
+                    .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform)
+                    // The bones the toggles move are written by local values too.
+                    .Concat((objectToggles?.MovedTargets ?? Enumerable.Empty<GameObject>()).Select(bone => bone.transform)).ToArray();
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles, animated), () => null);
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
@@ -900,7 +902,7 @@ namespace VRVlog.LilToonExporter
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)
                 {
-                    var pruned = ExportEmptyNodes.Prune(clone);
+                    var pruned = ExportEmptyNodes.Prune(clone, objectToggles?.MovedTargets);
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
@@ -1057,7 +1059,7 @@ namespace VRVlog.LilToonExporter
                 }
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
-                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
+                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData, objectToggles.Transforms), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
                 if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
