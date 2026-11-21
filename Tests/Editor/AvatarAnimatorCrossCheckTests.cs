@@ -734,6 +734,8 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     new Dictionary<string, object> { ["primitives"] = new List<object> { new Dictionary<string, object> { ["targets"] = new List<object> { new Dictionary<string, object>() } } } },
                 },
+                // Inject packs the table into the one buffer of the GLB.
+                ["buffers"] = new List<object> { new Dictionary<string, object> { ["byteLength"] = 0L } },
                 ["extensions"] = extensions,
             }, System.Array.Empty<byte>()).Write();
         }

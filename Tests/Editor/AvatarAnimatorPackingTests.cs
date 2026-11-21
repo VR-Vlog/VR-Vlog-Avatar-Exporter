@@ -37,7 +37,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(JsonDom.Serialize(read.Find("extensions")[AvatarAnimatorData.Extension]), Is.EqualTo("{\"schemaVersion\":2,\"bufferView\":2}"));
             Assert.That(((List<object>)read.Json["extensionsUsed"]).Last(), Is.EqualTo(AvatarAnimatorData.Extension));
             var view = (Dictionary<string, object>)((List<object>)read.Json["bufferViews"])[2];
-            Assert.That((view["buffer"], view["byteOffset"]), Is.EqualTo((0L, 12L)), "After the binary, on four bytes.");
+            Assert.That((Convert.ToInt64(view["buffer"]), Convert.ToInt64(view["byteOffset"])), Is.EqualTo((0L, 12L)), "After the binary, on four bytes.");
             Assert.That(((Dictionary<string, object>)((List<object>)read.Json["buffers"])[0])["byteLength"], Is.EqualTo((long)glb.Binary.Length));
             Assert.That(JsonDom.Serialize(AvatarAnimatorPacking.Document(read)), Is.EqualTo(JsonDom.Serialize(Document())));
         }

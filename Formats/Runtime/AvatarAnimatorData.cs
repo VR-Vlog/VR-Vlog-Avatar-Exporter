@@ -487,7 +487,8 @@ namespace VRVlog.AvatarAnimator
                     return new UTF8Encoding(false, true).GetString(output.GetBuffer(), 0, (int)output.Length);
                 }
             }
-            catch (Exception error) when (error is InvalidDataException || error is ArgumentException) { throw Json.Bad(); }
+            // Mono reports a broken stream as IOException, .NET as InvalidDataException.
+            catch (Exception error) when (error is InvalidDataException || error is IOException || error is ArgumentException) { throw Json.Bad(); }
         }
 
         static List<object> WriteOmitted(List<Omission> omitted) =>
