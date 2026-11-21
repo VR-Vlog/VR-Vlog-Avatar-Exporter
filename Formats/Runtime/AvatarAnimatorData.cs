@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using VRVlog.AvatarFormats;
 using VRVlog.Expressions;
 
@@ -17,7 +21,12 @@ namespace VRVlog.AvatarAnimator
     public sealed class AvatarAnimatorData
     {
         public const string Extension = "VRVLOG_avatar_animator";
-        public const int SchemaVersion = 1;
+        // 2: the glTF holds the document packed (Pack), and a clip may name an
+        // earlier clip whose tracks it plays (sameTracks). Read takes a
+        // document of schema 1 or 2.
+        public const int SchemaVersion = 2;
+        // The packed document's bytes, compressed and as UTF-8 JSON (Unpack).
+        public const int MaximumDocumentBytes = 32 * 1024 * 1024;
         // The keys of all the curves of one clip, the limit the shared key reader counts to.
         public const int MaximumKeysPerClip = 16384;
         // The tracks of one clip.
@@ -341,19 +350,144 @@ namespace VRVlog.AvatarAnimator
                     return (object)controller;
                 }).ToList(),
                 ["motions"] = data.Motions.Select(m => (object)WriteMotion(m)).ToList(),
-                ["clips"] = data.Clips.Select(c => (object)new Dictionary<string, object>
-                {
-                    ["name"] = c.Name, ["duration"] = c.Duration, ["loop"] = c.Loop, ["cycleOffset"] = c.CycleOffset,
-                    ["tracks"] = c.Tracks.Select(t => (object)new Dictionary<string, object>
-                    {
-                        ["target"] = (long)t.Target, ["curves"] = t.Curves.Select(curve => (object)ExpressionAnimationData.WriteCurve(curve)).ToList()
-                    }).ToList()
-                }).ToList(),
+                ["clips"] = WriteClips(data.Clips),
                 ["targets"] = data.Targets.Select(t => (object)WriteTarget(t)).ToList(),
                 ["omitted"] = WriteOmitted(data.Omitted)
             };
             Read(result); // The exporter and runtime enforce the same contract.
             return result;
+        }
+
+        // A clip with the same tracks as an earlier one names that clip in
+        // sameTracks instead: a controller often plays one animation under
+        // several names, and its keys are most of the document.
+        static List<object> WriteClips(List<Clip> clips)
+        {
+            var result = new List<object>(clips.Count);
+            var first = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < clips.Count; i++)
+            {
+                var c = clips[i];
+                var clip = new Dictionary<string, object> { ["name"] = c.Name, ["duration"] = c.Duration, ["loop"] = c.Loop, ["cycleOffset"] = c.CycleOffset };
+                var tracks = c.Tracks.Select(t => (object)new Dictionary<string, object>
+                {
+                    ["target"] = (long)t.Target, ["curves"] = t.Curves.Select(curve => (object)ExpressionAnimationData.WriteCurve(curve)).ToList()
+                }).ToList();
+                var key = tracks.Count == 0 ? null : Canonical(tracks);
+                if (key != null && first.TryGetValue(key, out var same)) clip["sameTracks"] = (long)same;
+                else
+                {
+                    clip["tracks"] = tracks;
+                    if (key != null) first[key] = i;
+                }
+                result.Add(clip);
+            }
+            return result;
+        }
+
+        // The written value as text, equal for two values exactly when their JSON is.
+        static string Canonical(object value)
+        {
+            var text = new StringBuilder();
+            Append(text, value);
+            return text.ToString();
+        }
+
+        static void Append(StringBuilder text, object value)
+        {
+            switch (value)
+            {
+                case Dictionary<string, object> map:
+                    text.Append('{');
+                    foreach (var pair in map) { Append(text, pair.Key); text.Append(':'); Append(text, pair.Value); text.Append(','); }
+                    text.Append('}');
+                    break;
+                case List<object> list:
+                    text.Append('[');
+                    foreach (var item in list) { Append(text, item); text.Append(','); }
+                    text.Append(']');
+                    break;
+                case string s: text.Append('"').Append(s.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append('"'); break;
+                case double d: text.Append(d.ToString("R", CultureInfo.InvariantCulture)); break;
+                case float f: text.Append(((double)f).ToString("R", CultureInfo.InvariantCulture)); break;
+                case long l: text.Append(l.ToString(CultureInfo.InvariantCulture)); break;
+                case int n: text.Append(n.ToString(CultureInfo.InvariantCulture)); break;
+                case bool b: text.Append(b ? "true" : "false"); break;
+                case null: text.Append("null"); break;
+                default: throw Json.Bad();
+            }
+        }
+
+        // The extension in the glTF (schema 2): {"schemaVersion": 2,
+        // "bufferView": n}, the bufferView holding the document (Write) as
+        // UTF-8 JSON compressed with gzip (Pack). A reader of schema 1 finds
+        // neither its version nor its tables and leaves the extension out.
+        public static Dictionary<string, object> Packed(int bufferView) =>
+            bufferView >= 0 ? new Dictionary<string, object> { ["schemaVersion"] = (long)SchemaVersion, ["bufferView"] = (long)bufferView } : throw Json.Bad();
+
+        // Whether the extension's value is packed; a document written in the
+        // JSON (schema 1, or what Write returns) is not.
+        public static bool IsPacked(object value) => value is Dictionary<string, object> map && map.ContainsKey("bufferView");
+
+        // The bufferView of a packed extension.
+        public static int PackedView(object value)
+        {
+            var root = Json.Obj(value, "schemaVersion", "bufferView");
+            if (Json.Integer(root["schemaVersion"]) != SchemaVersion) throw Json.Bad();
+            return Json.NonNegative(root["bufferView"]);
+        }
+
+        // The byte range of a bufferView in the GLB binary chunk (buffer 0).
+        public static (int Offset, int Length) BufferViewRange(Dictionary<string, object> gltf, int bufferView)
+        {
+            var views = Json.Arr(gltf == null ? null : JsonAccess.Get(gltf, "bufferViews"));
+            if (bufferView < 0 || bufferView >= views.Count) throw Json.Bad();
+            var view = Json.Obj(views[bufferView]);
+            if (Json.NonNegative(JsonAccess.Get(view, "buffer")) != 0 || view.ContainsKey("byteStride")) throw Json.Bad();
+            var offset = view.ContainsKey("byteOffset") ? Json.NonNegative(view["byteOffset"]) : 0;
+            var length = Json.NonNegative(JsonAccess.Get(view, "byteLength"));
+            if (length == 0 || length > MaximumDocumentBytes) throw Json.Bad();
+            return (offset, length);
+        }
+
+        // The document as JSON text, compressed with gzip.
+        public static byte[] Pack(string document)
+        {
+            var bytes = new UTF8Encoding(false).GetBytes(document ?? throw Json.Bad());
+            if (bytes.Length > MaximumDocumentBytes) throw Json.Bad();
+            using (var output = new MemoryStream())
+            {
+                using (var gzip = new GZipStream(output, CompressionLevel.Optimal, true)) gzip.Write(bytes, 0, bytes.Length);
+                return output.ToArray();
+            }
+        }
+
+        // The JSON text of a packed document, at most MaximumDocumentBytes.
+        public static string Unpack(byte[] packed)
+        {
+            if (packed == null || packed.Length == 0 || packed.Length > MaximumDocumentBytes) throw Json.Bad();
+            try
+            {
+                using (var gzip = new GZipStream(new MemoryStream(packed, false), CompressionMode.Decompress))
+                using (var output = new MemoryStream())
+                {
+                    var buffer = new byte[81920];
+                    int read;
+                    while ((read = gzip.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if (output.Length + read > MaximumDocumentBytes) throw Json.Bad();
+                        output.Write(buffer, 0, read);
+                    }
+                    // A cut stream ends early without an error on some
+                    // runtimes: its last four bytes are then not the length
+                    // gzip writes there (ISIZE).
+                    if (packed.Length < 18) throw Json.Bad();
+                    var size = (uint)(packed[packed.Length - 4] | packed[packed.Length - 3] << 8 | packed[packed.Length - 2] << 16 | packed[packed.Length - 1] << 24);
+                    if (size != (uint)output.Length) throw Json.Bad();
+                    return new UTF8Encoding(false, true).GetString(output.GetBuffer(), 0, (int)output.Length);
+                }
+            }
+            catch (Exception error) when (error is InvalidDataException || error is ArgumentException) { throw Json.Bad(); }
         }
 
         static List<object> WriteOmitted(List<Omission> omitted) =>
@@ -525,7 +659,8 @@ namespace VRVlog.AvatarAnimator
         public static AvatarAnimatorData Read(object value)
         {
             var root = Json.Obj(value, "schemaVersion", "parameters", "menus", "expressions", "controllers", "motions", "clips", "targets", "omitted");
-            if (Json.Integer(root["schemaVersion"]) != SchemaVersion) throw Json.Bad();
+            var version = Json.Integer(root["schemaVersion"]);
+            if (version != 1 && version != SchemaVersion) throw Json.Bad();
             var data = new AvatarAnimatorData();
             // Counts first: entries refer forwards as well as backwards.
             var parameters = Json.Arr(root["parameters"], 0, 8192);
@@ -703,11 +838,22 @@ namespace VRVlog.AvatarAnimator
                 }
             }
 
-            foreach (var raw in clips)
+            for (var i = 0; i < clips.Count; i++)
             {
-                var c = Json.Obj(raw, "name", "duration", "loop", "cycleOffset", "tracks");
+                // Schema 2: sameTracks in place of tracks names an earlier clip
+                // with tracks of its own, whose tracks this clip plays too.
+                var shared = version >= 2 && clips[i] is Dictionary<string, object> map && map.ContainsKey("sameTracks");
+                var c = Json.Obj(clips[i], "name", "duration", "loop", "cycleOffset", shared ? "sameTracks" : "tracks");
                 var clip = new Clip { Name = Name(c["name"]), Duration = Json.Number(c["duration"]), Loop = Flag(c["loop"]), CycleOffset = Json.Number(c["cycleOffset"]) };
                 if (clip.Duration < 0) throw Json.Bad();
+                if (shared)
+                {
+                    var same = Index(c["sameTracks"], i);
+                    if (!((Dictionary<string, object>)clips[same]).ContainsKey("tracks") || data.Clips[same].Tracks.Count == 0) throw Json.Bad();
+                    clip.Tracks.AddRange(data.Clips[same].Tracks);
+                    data.Clips.Add(clip);
+                    continue;
+                }
                 var keyCount = 0;
                 var seen = new HashSet<int>();
                 foreach (var rawTrack in Json.Arr(c["tracks"], 0, MaximumTracksPerClip))

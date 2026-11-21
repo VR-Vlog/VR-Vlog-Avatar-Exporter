@@ -25,7 +25,8 @@ public static class AvatarAnimatorComparisonReplay
             var parts = file.Split('.');
             var c = AvatarAnimatorComparison.Find(parts[0]);
             var recording = (Dictionary<string, object>)JsonDom.Parse(File.ReadAllText(Path.Combine(folder, file)));
-            if (AvatarAnimatorComparison.Serialize(recording["data"]) != AvatarAnimatorComparison.Serialize(AvatarAnimatorData.Write(c.Data)))
+            // Written again, so a recording of an older schema compares by what it holds.
+            if (AvatarAnimatorComparison.Serialize(AvatarAnimatorData.Write(AvatarAnimatorData.Read(recording["data"]))) != AvatarAnimatorComparison.Serialize(AvatarAnimatorData.Write(c.Data)))
                 throw new Exception(file + " was recorded from other data: run AvatarAnimatorEvaluatorComparisonTests in Unity again.");
             var mismatch = AvatarAnimatorComparison.Mismatch(c, parts[1], Rows(recording["values"]), Rows(recording["parameters"]));
             if (mismatch != null) failures.Add(mismatch);

@@ -1,5 +1,6 @@
 import contextlib
 import copy
+import gzip
 import importlib.util
 import io
 import json
@@ -1289,6 +1290,93 @@ class AllowKeptMorphsTests(unittest.TestCase):
         code, out, err = run_main(['--runs', self.a, '1', '2', '--allow-kept-morphs'])
         self.assertEqual((2, ''), (code, out))
         self.assertIn('--allow-kept-morphs', err)
+
+
+
+def packed_animator(doc, extension, after=b'', base=BINARY):
+    """doc and its BIN with extension packed as schema 2 (a view of gzip JSON after base), and
+    after, when given, in a view past it that an image names."""
+    binary = base + b'\0' * (-len(base) % 4)
+    packed = gzip.compress(json.dumps(extension).encode('utf-8'))
+    doc['bufferViews'] = [{'buffer': 0, 'byteOffset': 0, 'byteLength': len(base)},
+                          {'buffer': 0, 'byteOffset': len(binary), 'byteLength': len(packed)}]
+    binary += packed
+    if after:
+        binary += b'\0' * (-len(binary) % 4)
+        doc['bufferViews'].append({'buffer': 0, 'byteOffset': len(binary), 'byteLength': len(after)})
+        doc['images'] = [{'bufferView': 2, 'mimeType': 'image/png'}]
+        binary += after
+    doc['buffers'] = [{'byteLength': len(binary)}]
+    doc['extensions']['VRVLOG_avatar_animator'] = {'schemaVersion': 2, 'bufferView': 1}
+    return doc, binary
+
+
+class PackedAnimatorTests(unittest.TestCase):
+    """VRVLOG_avatar_animator schema 2 is compared by the document in its bufferView."""
+
+    CLIPS = [{'name': 'On', 'duration': 1, 'loop': False, 'cycleOffset': 0, 'tracks': [{'target': 0, 'curves': []}]},
+             {'name': 'On again', 'duration': 2, 'loop': True, 'cycleOffset': 0, 'sameTracks': 0}]
+
+    def schema1(self, after=b'', base=BINARY):
+        doc = document()
+        binary = base
+        doc['bufferViews'] = [{'buffer': 0, 'byteOffset': 0, 'byteLength': len(base)}]
+        if after:
+            binary += b'\0' * (-len(binary) % 4)
+            doc['bufferViews'].append({'buffer': 0, 'byteOffset': len(binary), 'byteLength': len(after)})
+            doc['images'] = [{'bufferView': 1, 'mimeType': 'image/png'}]
+            binary += after
+        doc['buffers'] = [{'byteLength': len(binary)}]
+        clips = copy.deepcopy(self.CLIPS)
+        del clips[1]['sameTracks']
+        clips[1]['tracks'] = copy.deepcopy(clips[0]['tracks'])
+        doc['extensions']['VRVLOG_avatar_animator'] = {'schemaVersion': 1, 'clips': clips}
+        return doc, binary
+
+    def test_a_packed_file_reads_as_the_file_of_schema_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # The last two end off four bytes, before the padding the packed view goes after.
+            for after, base in ((b'', BINARY), (b'PNG!x', BINARY), (b'', BINARY + b'xy'), (b'PNG!x', BINARY + b'xy')):
+                old, old_binary = self.schema1(after, base)
+                new, new_binary = packed_animator(document(), {'schemaVersion': 2, 'clips': copy.deepcopy(self.CLIPS)}, after, base)
+                (Path(tmp) / 'a.vrm').write_bytes(pack_glb(old, old_binary))
+                (Path(tmp) / 'b.vrm').write_bytes(pack_glb(new, new_binary))
+                _, json_a, bin_a = compare.read_glb(Path(tmp) / 'a.vrm')
+                _, json_b, bin_b = compare.read_glb(Path(tmp) / 'b.vrm')
+                self.assertEqual(bin_a, bin_b, (after, base))
+                self.assertEqual(compare.diff_paths(json_a, json_b), ['/extensions/VRVLOG_avatar_animator/schemaVersion'], (after, base))
+
+    def test_two_packed_runs_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for run in (1, 2):
+                doc, binary = packed_animator(document(), {'schemaVersion': 2, 'clips': copy.deepcopy(self.CLIPS)}, b'PNG!x')
+                (root / ('A_%d.json' % run)).write_text(json.dumps(result('A', run)), encoding='utf-8')
+                (root / ('A_%d.vrm' % run)).write_bytes(pack_glb(doc, binary))
+            code, out, err = run_main(['--runs', root, '1', '2'])
+            self.assertEqual(code, 0, out + err)
+
+    def test_a_packed_extension_that_cannot_be_read_is_a_format_error(self):
+        def no_view(doc, binary):
+            doc['extensions']['VRVLOG_avatar_animator']['bufferView'] = 5
+            return binary
+
+        def past_the_chunk(doc, binary):
+            doc['bufferViews'][1]['byteLength'] = len(binary)
+            return binary
+
+        def not_gzip(doc, binary):
+            start = doc['bufferViews'][1]['byteOffset']
+            return binary[:start] + b'{}' + binary[start + 2:]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'b.vrm'
+            for change in (no_view, past_the_chunk, not_gzip):
+                doc, binary = packed_animator(document(), {'schemaVersion': 2, 'clips': []})
+                binary = change(doc, binary)
+                path.write_bytes(pack_glb(doc, binary))
+                with self.assertRaisesRegex(ValueError, 'VRVLOG_avatar_animator', msg=change.__name__):
+                    compare.read_glb(path)
 
 
 if __name__ == '__main__':

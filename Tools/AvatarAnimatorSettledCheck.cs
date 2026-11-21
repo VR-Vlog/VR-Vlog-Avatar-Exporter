@@ -181,6 +181,14 @@ public static class AvatarAnimatorSettledCheck
         var length = BitConverter.ToInt32(bytes, 12);
         var root = (Dictionary<string, object>)JsonDom.Parse(Encoding.UTF8.GetString(bytes, 20, length));
         if (!root.TryGetValue("extensions", out var extensions)) return null;
-        return ((Dictionary<string, object>)extensions).TryGetValue(AvatarAnimatorData.Extension, out var value) ? AvatarAnimatorData.Read(value) : null;
+        if (!((Dictionary<string, object>)extensions).TryGetValue(AvatarAnimatorData.Extension, out var value)) return null;
+        if (!AvatarAnimatorData.IsPacked(value)) return AvatarAnimatorData.Read(value);
+        // Schema 2: the document is in the binary chunk, after the JSON chunk.
+        var range = AvatarAnimatorData.BufferViewRange(root, AvatarAnimatorData.PackedView(value));
+        var binary = 20 + length + 8;
+        if (binary + range.Offset + range.Length > bytes.Length) throw new InvalidDataException(path + ": the packed " + AvatarAnimatorData.Extension + " is outside the file.");
+        var packed = new byte[range.Length];
+        Array.Copy(bytes, binary + range.Offset, packed, 0, range.Length);
+        return AvatarAnimatorData.Read(JsonDom.Parse(AvatarAnimatorData.Unpack(packed)));
     }
 }

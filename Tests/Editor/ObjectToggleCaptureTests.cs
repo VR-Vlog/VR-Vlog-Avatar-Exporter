@@ -685,7 +685,8 @@ namespace VRVlog.LilToonExporter.Tests
                     serialized.ApplyModifiedPropertiesWithoutUndo();
                 }
                 var warnings = new List<string>();
-                var json = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var glb = GlbDocument.Read(Export(avatar.Source, warnings, null));
+                var json = glb.Json;
 
                 var nodes = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().ToList();
                 var mergedNode = nodes.FindIndex(node => node.TryGetValue("name", out var name) && (string)name == "Merged");
@@ -695,7 +696,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (Dictionary<string, object>)json["extensions"];
                 var toggles = ObjectToggleData.Read(extensions[ObjectToggleData.Extension]);
                 Assert.That(toggles.Groups.Select(group => group.Parameter), Has.No.Member("Hat"));
-                var animator = AvatarAnimatorData.Read(extensions[AvatarAnimatorData.Extension]);
+                var animator = AvatarAnimatorData.Read(AvatarAnimatorPacking.Document(glb));
                 var enabled = animator.Targets.Where(target => target.Property == "enabled" && target.Node == mergedNode).ToList();
                 var warned = warnings.Contains(ExporterLocalization.T(ObjectToggleCapture.MissingWarning) + "Hat");
                 if (copies && !brim)

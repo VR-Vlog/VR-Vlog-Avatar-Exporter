@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using NUnit.Framework;
 using VRVlog.AvatarAnimator;
 using VRVlog.Expressions;
@@ -322,9 +323,147 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ReadRejectsOtherSchemaVersions()
         {
-            Rejects(json => json["schemaVersion"] = 2L);
+            Rejects(json => json["schemaVersion"] = 3L);
+            Rejects(json => json["schemaVersion"] = 0L);
             Rejects(json => json["schemaVersion"] = "1");
             Rejects(json => json["expressions"] = new List<object> { new Dictionary<string, object>() });
+        }
+
+        // The sample with a clip of clip 0's tracks under another name and
+        // timing (2), a second clip without tracks (3), and one whose tracks
+        // differ from clip 0's in one value (4).
+        static AvatarAnimatorData WithSharedTracks()
+        {
+            var data = Sample();
+            var again = new AvatarAnimatorData.Clip { Name = "Hat On again", Duration = 2, Loop = true, CycleOffset = .5 };
+            again.Tracks.AddRange(AvatarAnimatorData.Read(Json(Sample())).Clips[0].Tracks);
+            data.Clips.Add(again);
+            data.Clips.Add(new AvatarAnimatorData.Clip { Name = "Empty again", Duration = 0 });
+            var other = AvatarAnimatorData.Read(Json(Sample())).Clips[0];
+            other.Name = "Hat On other";
+            other.Tracks[1].Curves[0].Keys[0].Value += .5;
+            data.Clips.Add(other);
+            return data;
+        }
+
+        [Test]
+        public void AClipWithTheTracksOfAnEarlierOneNamesIt()
+        {
+            var json = Json(WithSharedTracks());
+            Assert.That(json["schemaVersion"], Is.EqualTo(2L));
+            Assert.That(At(json, "clips", 2).Keys, Is.EqualTo(new[] { "name", "duration", "loop", "cycleOffset", "sameTracks" }));
+            Assert.That(At(json, "clips", 2)["sameTracks"], Is.EqualTo(0L));
+            Assert.That(At(json, "clips", 3).ContainsKey("tracks"), Is.True, "A clip without tracks names no other.");
+            Assert.That(At(json, "clips", 4).ContainsKey("tracks"), Is.True, "Tracks that differ in one value are written.");
+
+            var read = AvatarAnimatorData.Read(json);
+            Assert.That((read.Clips[2].Name, read.Clips[2].Duration, read.Clips[2].Loop, read.Clips[2].CycleOffset), Is.EqualTo(("Hat On again", 2d, true, .5)));
+            Assert.That(read.Clips[2].Tracks, Is.EqualTo(read.Clips[0].Tracks), "It plays the tracks of the clip it names.");
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(read)), Is.EqualTo(JsonDom.Serialize(json)), "Written again, it names the same clip.");
+        }
+
+        // Schema 1, written before sameTracks, is read as before; sameTracks is not part of it.
+        [Test]
+        public void ReadTakesSchema1WithoutSameTracks()
+        {
+            var json = Json(Sample());
+            json["schemaVersion"] = 1L;
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(AvatarAnimatorData.Read(json))), Is.EqualTo(JsonDom.Serialize(Json(Sample()))));
+            var shared = Json(WithSharedTracks());
+            shared["schemaVersion"] = 1L;
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(shared)).Message, Is.EqualTo(Invalid));
+        }
+
+        [Test]
+        public void ReadRejectsSameTracksThatDoNotNameAnEarlierClipWithTracks()
+        {
+            void RejectsShared(Action<Dictionary<string, object>> change)
+            {
+                var json = Json(WithSharedTracks());
+                change(json);
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(json)).Message, Is.EqualTo(Invalid));
+            }
+            RejectsShared(json => At(json, "clips", 2)["sameTracks"] = 2L);
+            RejectsShared(json => At(json, "clips", 2)["sameTracks"] = 3L);
+            RejectsShared(json => At(json, "clips", 2)["sameTracks"] = 1L);
+            RejectsShared(json => At(json, "clips", 2)["sameTracks"] = -1L);
+            RejectsShared(json => At(json, "clips", 2)["sameTracks"] = "0");
+            RejectsShared(json => At(json, "clips", 2)["sameTracks"] = .5);
+            RejectsShared(json => At(json, "clips", 2)["tracks"] = new List<object>());
+            // A clip that names another names one with tracks of its own.
+            RejectsShared(json =>
+            {
+                At(json, "clips", 3).Remove("tracks");
+                At(json, "clips", 3)["sameTracks"] = 2L;
+            });
+        }
+
+        [Test]
+        public void PackAndUnpackGiveBackTheDocument()
+        {
+            var data = WithSharedTracks();
+            data.Clips[0].Name = "帽子 On";
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(data));
+            var packed = AvatarAnimatorData.Pack(text);
+            Assert.That((packed[0], packed[1]), Is.EqualTo(((byte)0x1f, (byte)0x8b)), "gzip");
+            Assert.That(AvatarAnimatorData.Unpack(packed), Is.EqualTo(text));
+            Assert.That(AvatarAnimatorData.Pack(text), Is.EqualTo(packed), "The same document packs to the same bytes.");
+        }
+
+        [Test]
+        public void UnpackRejectsWhatIsNotAPackedDocument()
+        {
+            void RejectsPacked(byte[] packed) =>
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Unpack(packed)).Message, Is.EqualTo(Invalid));
+            RejectsPacked(null);
+            RejectsPacked(new byte[0]);
+            RejectsPacked(new byte[] { 0x1f, 0x8b, 8 });
+            RejectsPacked(Encoding.UTF8.GetBytes("{\"schemaVersion\":2}"));
+            RejectsPacked(new byte[] { 0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff, 1, 2, 3 });
+            // gzip of bytes that are not UTF-8.
+            RejectsPacked(Gzip(new byte[] { 0x7b, 0xff, 0xfe, 0x7d }));
+            // A document one byte over the limit, as small as it compresses.
+            RejectsPacked(Gzip(new byte[AvatarAnimatorData.MaximumDocumentBytes + 1]));
+            Assert.That(AvatarAnimatorData.Unpack(Gzip(Encoding.UTF8.GetBytes(new string(' ', AvatarAnimatorData.MaximumDocumentBytes)))).Length,
+                Is.EqualTo(AvatarAnimatorData.MaximumDocumentBytes), "A document of exactly the limit is read.");
+        }
+
+        static byte[] Gzip(byte[] bytes)
+        {
+            using (var output = new System.IO.MemoryStream())
+            {
+                using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Fastest, true)) gzip.Write(bytes, 0, bytes.Length);
+                return output.ToArray();
+            }
+        }
+
+        // The extension in the glTF holds only the version and the bufferView,
+        // and Read rejects it, as a reader of schema 1 does.
+        [Test]
+        public void APackedExtensionNamesOnlyItsBufferView()
+        {
+            var packed = (Dictionary<string, object>)JsonDom.Parse(JsonDom.Serialize(AvatarAnimatorData.Packed(3)));
+            Assert.That(JsonDom.Serialize(packed), Is.EqualTo("{\"schemaVersion\":2,\"bufferView\":3}"));
+            Assert.That((AvatarAnimatorData.IsPacked(packed), AvatarAnimatorData.IsPacked(Json(Sample()))), Is.EqualTo((true, false)));
+            Assert.That(AvatarAnimatorData.PackedView(packed), Is.EqualTo(3));
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Read(packed)).Message, Is.EqualTo(Invalid));
+            Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.Packed(-1));
+            foreach (var bad in new[] { "{\"schemaVersion\":1,\"bufferView\":3}", "{\"schemaVersion\":2,\"bufferView\":-1}", "{\"schemaVersion\":2,\"bufferView\":\"3\"}",
+                         "{\"schemaVersion\":2,\"bufferView\":3,\"clips\":[]}", "{\"schemaVersion\":2}", "[]" })
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.PackedView(JsonDom.Parse(bad))).Message, Is.EqualTo(Invalid), bad);
+        }
+
+        [Test]
+        public void BufferViewRangeIsAViewOfTheBinaryChunk()
+        {
+            var gltf = (Dictionary<string, object>)JsonDom.Parse("{\"bufferViews\":[{\"buffer\":0,\"byteOffset\":8,\"byteLength\":5},{\"buffer\":0,\"byteLength\":4}," +
+                "{\"buffer\":1,\"byteLength\":4},{\"buffer\":0,\"byteLength\":4,\"byteStride\":4},{\"buffer\":0,\"byteLength\":0}," +
+                "{\"buffer\":0,\"byteLength\":" + (AvatarAnimatorData.MaximumDocumentBytes + 1) + "},{\"buffer\":0,\"byteOffset\":-4,\"byteLength\":4}]}");
+            Assert.That(AvatarAnimatorData.BufferViewRange(gltf, 0), Is.EqualTo((8, 5)));
+            Assert.That(AvatarAnimatorData.BufferViewRange(gltf, 1), Is.EqualTo((0, 4)));
+            foreach (var view in new[] { 2, 3, 4, 5, 6, 7, -1 })
+                Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.BufferViewRange(gltf, view)).Message, Is.EqualTo(Invalid), view.ToString());
+            Assert.That(Assert.Throws<InvalidOperationException>(() => AvatarAnimatorData.BufferViewRange(new Dictionary<string, object>(), 0)).Message, Is.EqualTo(Invalid));
         }
 
         [Test]

@@ -664,7 +664,7 @@ namespace VRVlog.LilToonExporter.Tests
             var faces = new (string, IReadOnlyCollection<int>)[] { ("Smile", new[] { 3 }), ("Half smile", new[] { 3 }), ("Hat", new[] { 1 }) };
 
             LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("face \"Half smile\" left out: T1 face 50 evaluator 100"));
-            var written = AvatarAnimatorData.Read(GlbDocument.Read(AvatarAnimatorCapture.Inject(bytes, data, faces)).Find("extensions", AvatarAnimatorData.Extension));
+            var written = AvatarAnimatorData.Read(AvatarAnimatorPacking.Document(GlbDocument.Read(AvatarAnimatorCapture.Inject(bytes, data, faces))));
 
             Assert.That(written.Expressions.Select(e => e.Name), Is.EqualTo(new[] { "Smile", "Hat" }));
         }

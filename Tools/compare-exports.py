@@ -12,7 +12,8 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
   compare-exports.py --diff-paths <vrmA> <vrmB>
       Prints every glb JSON path that differs between two files. Use it on two runs of the
       same package to find paths that change on every export (see VOLATILE and VOLATILE_SUB).
-      The JSON is compared as is, without removing or masking anything.
+      The JSON is compared as is, without removing or masking anything (VRVLOG_avatar_animator
+      is unpacked as below).
   --allow-added-extension NAME (repeatable, with two directories only)
       For a change that adds the root extension NAME and should change nothing else. NAME must
       start with VRVLOG_. It cannot be used with --runs: two runs of the same package must have
@@ -69,6 +70,10 @@ Checked for each pair:
      one of the two is a difference, even when the text after masking is the same. The parts
      that change only between launches of the editor (VOLATILE_SUB_BETWEEN_LAUNCHES) are masked
      when two directories are compared and compared as they are with --runs.
+VRVLOG_avatar_animator packed into the BIN chunk (schema 2) is read in its place in the JSON,
+each clip's sameTracks replaced by the tracks it names, and its bufferView and bytes are left
+out of the BIN chunk (see unpack_animator), so that a file of either schema is compared by what
+the extension holds: between the two only its schemaVersion differs.
 Whole-file byte equality is reported as information only.
 
 Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs,
@@ -76,6 +81,7 @@ Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs
 """
 import argparse
 import copy
+import gzip
 import hashlib
 import json
 import re
@@ -161,7 +167,82 @@ def read_glb(path):
         document = json.loads(chunks[JSON_CHUNK].rstrip(b" \x00").decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as error:
         raise ValueError("%s: JSON chunk is not valid UTF-8 JSON: %s" % (path, error)) from None
-    return data, document, chunks.get(BIN_CHUNK, b"")
+    try:
+        document, binary = unpack_animator(document, chunks.get(BIN_CHUNK, b""))
+    except ValueError as error:
+        raise ValueError("%s: %s" % (path, error)) from None
+    return data, document, binary
+
+
+def unpack_animator(document, binary):
+    """Return (document, binary) with VRVLOG_avatar_animator as written before it was packed.
+
+    Schema 2 puts {"schemaVersion": 2, "bufferView": n} in the JSON and the document, gzip
+    compressed UTF-8 JSON, in bufferView n. The document goes in its place, view n goes with the
+    later views and every "bufferView" key past n moving down one, and its bytes go with their
+    padding to four bytes, the later bytes and the buffer's byteLength moving down with them.
+    In either schema a clip's sameTracks becomes the tracks of the clip it names. Raises
+    ValueError for a packed extension that cannot be read."""
+    extension = _member(_member(document, "extensions"), ANIMATOR)
+    if not isinstance(extension, dict):
+        return document, binary
+    if "bufferView" in extension:
+        views = _member(document, "bufferViews")
+        index = _index(extension["bufferView"])
+        if not isinstance(views, list) or index is None or index >= len(views) or not isinstance(views[index], dict):
+            raise ValueError("%s names no bufferView" % ANIMATOR)
+        view = views[index]
+        start, length = view.get("byteOffset", 0), view.get("byteLength")
+        if _index(start) is None or _index(length) is None or start + length > len(binary):
+            raise ValueError("%s bufferView is outside the BIN chunk" % ANIMATOR)
+        try:
+            extension = json.loads(gzip.decompress(binary[start:start + length]).decode("utf-8"))
+        except (OSError, EOFError, UnicodeDecodeError, ValueError) as error:
+            raise ValueError("%s is not gzip compressed JSON: %s" % (ANIMATOR, error)) from None
+        document["extensions"][ANIMATOR] = extension
+        del views[index]
+
+        def renumber(value):
+            if isinstance(value, list):
+                for item in value:
+                    renumber(item)
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    if key == "bufferView":
+                        if _index(item) is not None and item > index:
+                            value[key] = item - 1
+                    elif key != "bufferViews":
+                        renumber(item)
+        renumber(document)
+        # The buffer's byteLength, not the chunk's padding, is where its bytes end.
+        buffer = (_member(document, "buffers") or [None])[0]
+        total = len(binary)
+        if isinstance(buffer, dict) and _index(buffer.get("byteLength")) is not None:
+            total = min(total, buffer["byteLength"])
+        end = max(start, min(total, (start + length + 3) & ~3))
+        if end == total:
+            # Last in the buffer, it was put after the padding to four bytes,
+            # which goes with it.
+            ends = [other.get("byteOffset", 0) + other["byteLength"] for other in views
+                    if isinstance(other, dict) and _index(other.get("byteOffset", 0)) is not None
+                    and _index(other.get("byteLength")) is not None]
+            if ends and start - 3 <= max(ends) <= start:
+                start = max(ends)
+        binary = binary[:start] + binary[end:total]
+        binary += b"\0" * (-len(binary) % 4)
+        for other in views:
+            if isinstance(other, dict) and _index(other.get("byteOffset")) is not None and other["byteOffset"] >= end:
+                other["byteOffset"] -= end - start
+        if isinstance(buffer, dict) and _index(buffer.get("byteLength")) is not None:
+            buffer["byteLength"] -= end - start
+    clips = _member(extension, "clips")
+    if isinstance(clips, list):
+        for clip in clips:
+            same = _index(_member(clip, "sameTracks"))
+            if same is not None and same < len(clips) and isinstance(_member(clips[same], "tracks"), list):
+                del clip["sameTracks"]
+                clip["tracks"] = copy.deepcopy(clips[same]["tracks"])
+    return document, binary
 
 
 def diff_paths(a, b, path=""):
