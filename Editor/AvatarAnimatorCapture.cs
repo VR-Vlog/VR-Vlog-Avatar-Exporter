@@ -1248,7 +1248,9 @@ namespace VRVlog.LilToonExporter
                 data.Clips.SelectMany(clip => clip.Tracks).Where(track => slotTargets.Contains(track.Target))
                     .Any(track => track.Curves.Any(curve => curve.Keys.Any(key => key.Value >= materials))))
                 throw new InvalidOperationException("Avatar animator material slot is out of range.");
-            document.PlaceExtension(AvatarAnimatorData.Extension, extension);
+            // Packed into the binary chunk (schema 2); the limit above is on
+            // the document before it is compressed.
+            AvatarAnimatorPacking.Place(document, extension);
             return document.Write();
         }
 
@@ -1263,13 +1265,12 @@ namespace VRVlog.LilToonExporter
         }
 
         // The file as written without the extension: its entry in extensions
-        // and in extensionsUsed go, the rest stays as it is.
+        // and in extensionsUsed go, and the bufferView of the packed document
+        // with its bytes (AvatarAnimatorPacking.Remove); the rest stays as it is.
         internal static byte[] Remove(byte[] bytes)
         {
             var document = GlbDocument.Read(bytes);
-            var removed = document.Find("extensions")?.Remove(AvatarAnimatorData.Extension) == true;
-            removed |= document.Json.TryGetValue("extensionsUsed", out var used) && used is List<object> names && names.Remove(AvatarAnimatorData.Extension);
-            return removed ? document.Write() : bytes;
+            return AvatarAnimatorPacking.Remove(document) ? document.Write() : bytes;
         }
 
         // The value each target of the extension takes when the VRM custom

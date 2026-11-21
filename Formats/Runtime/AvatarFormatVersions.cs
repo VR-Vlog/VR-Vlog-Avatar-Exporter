@@ -29,7 +29,9 @@ namespace VRVlog.AvatarFormats
             // Provisional: see Documentation~/decisions/2026-10-25-lipsync-dominant-viseme.md.
             [(Expressions.LipSyncData.Extension, Expressions.LipSyncData.SchemaVersion)] = "1.0.9",
             // Provisional: see Documentation~/decisions/2026-11-12-avatar-animator-extension.md.
-            [(AvatarAnimator.AvatarAnimatorData.Extension, AvatarAnimator.AvatarAnimatorData.SchemaVersion)] = "1.2.8",
+            [(AvatarAnimator.AvatarAnimatorData.Extension, 1)] = "1.2.8",
+            // Provisional: see Documentation~/decisions/2026-11-21-avatar-animator-packed.md.
+            [(AvatarAnimator.AvatarAnimatorData.Extension, AvatarAnimator.AvatarAnimatorData.SchemaVersion)] = "1.2.9",
             // Provisional: see Documentation~/decisions/2026-11-15-avatar-constraints-extension.md.
             [(AvatarConstraints.AvatarConstraintsData.Extension, AvatarConstraints.AvatarConstraintsData.SchemaVersion)] = "1.2.8",
             // Provisional: see Documentation~/decisions/2026-11-16-avatar-physbones-extension.md.

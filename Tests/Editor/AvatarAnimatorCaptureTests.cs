@@ -35,13 +35,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var avatar = new AnimatorAvatar();
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
 
             Assert.That((List<object>)json["extensionsUsed"], Has.Member(AvatarAnimatorData.Extension), string.Join("\n", warnings));
             Assert.That(json.TryGetValue("extensionsRequired", out var required) && ((List<object>)required).Contains(AvatarAnimatorData.Extension), Is.False,
                 "Apps that do not read the extension still open the file.");
             var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
-            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey])[AvatarAnimatorData.Extension], Is.EqualTo("1.2.8"));
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey])[AvatarAnimatorData.Extension], Is.EqualTo("1.2.9"));
 
             var data = Read(json);
             var nodes = Nodes(json);
@@ -104,7 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
             avatar.Fx.AddParameter("Tail_IsGrabbed", AnimatorControllerParameterType.Bool);
             avatar.Fx.AddParameter("Lone_Angle", AnimatorControllerParameterType.Float);
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
 
             var parameters = Read(json).Parameters.ToDictionary(p => p.Name);
             Assert.That(parameters["Tail_Angle"].Origin, Is.EqualTo("builtin"), string.Join("\n", warnings));
@@ -191,7 +191,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 warnings = new List<string>();
                 Application.logMessageReceived += Listen;
-                try { data = Read(GlbDocument.Read(avatar.Export(warnings, null)).Json); }
+                try { data = Read(Unpacked(GlbDocument.Read(avatar.Export(warnings, null)))); }
                 finally { Application.logMessageReceived -= Listen; }
                 return lines;
             }
@@ -218,7 +218,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ExportWritesSubMachinesAnyStateEntryBlendTreesAndDrivers()
         {
             using var avatar = new AnimatorAvatar();
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             var parameters = data.Parameters.Select(p => p.Name).ToList();
             var layers = data.Controllers.Single().Layers;
 
@@ -282,7 +282,7 @@ namespace VRVlog.LilToonExporter.Tests
             fx.layers = layers;
             foreach (var child in layers[hatIndex].stateMachine.states) fx.SetStateEffectiveMotion(child.state, synced, syncedIndex);
 
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             var written = data.Controllers.Single().Layers;
             Assert.That((written[0].Weight, written[0].Blending, written[0].SyncedLayer, written[0].SyncedLayerAffectsTiming), Is.EqualTo((1d, "override", -1, false)));
             var hat = written[hatIndex];
@@ -325,7 +325,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fx.SetStateEffectiveMotion(child.state, twice, first + 1);
             }
 
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             var written = data.Controllers.Single().Layers;
             Assert.That(written.Skip(first).Select(l => l.SyncedLayer), Is.EqualTo(new[] { hatIndex, hatIndex }));
             var copy = written[first + 1];
@@ -360,7 +360,7 @@ namespace VRVlog.LilToonExporter.Tests
             var inner = nested.stateMachines.Single().stateMachine.states.Single().state;
             ParameterDriverExpressionTests.Driver(inner, ParameterDriverExpressionTests.Op("Set", "BlendY", 1, "Stale source"));
 
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Stale source"));
             var behaviours = data.Controllers.Single().Layers.Single(l => l.Name == "Nested").States.Single().Behaviours;
             Assert.That(behaviours.Select(b => b.Operations.Single().Source), Is.EqualTo(new int?[] { null, null }));
@@ -378,7 +378,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var property in new[] { "material._NotLilToon" })
                 AnimationUtility.SetEditorCurve(hatOnClip, EditorCurveBinding.FloatCurve("Hat", typeof(MeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, 1));
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             var data = Read(json);
             var nodes = Nodes(json);
 
@@ -410,7 +410,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var avatar = new AnimatorAvatar();
             AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
             var data = Read(json);
 
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False, "Holding the weight the base shows changes nothing.");
@@ -430,7 +430,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var avatar = new AnimatorAvatar();
             avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 100);
             var glb = GlbDocument.Read(avatar.Export(new List<string>(), null));
-            var json = glb.Json;
+            var json = Unpacked(glb);
             var data = Read(json);
 
             var morph = data.Targets.Single(t => t.Property == "morph");
@@ -458,7 +458,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var avatar = new AnimatorAvatar();
             avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 100);
             AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
             var data = Read(json);
 
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
@@ -475,7 +475,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = avatar.ClipNamed("Hat on");
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Gone"), AnimationCurve.Constant(0, 1f / 60, 50));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Nowhere", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1f / 60, 50));
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
             var data = Read(json);
 
             Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1), ("missingNode", 1) }));
@@ -540,7 +540,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, null);
             AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frames"),
                 AnimationCurve.Constant(0, 1f / 60, 80));
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
 
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
             Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1) }));
@@ -560,7 +560,7 @@ namespace VRVlog.LilToonExporter.Tests
             layers[layers.Length - 1].defaultWeight = 1;
             layers[layers.Length - 1].stateMachine.AddState("On").motion = avatar.ClipNamed("Hat on");
             avatar.Fx.layers = layers;
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
 
             Assert.That(data.Controllers.Single().Layers.Last().Blending, Is.EqualTo("additive"));
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
@@ -582,7 +582,7 @@ namespace VRVlog.LilToonExporter.Tests
             var visemes = new string[15];
             visemes[10] = "Hair detail";
             type.GetField("VisemeBlendShapes").SetValue(descriptor, visemes);
-            var data = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
 
             Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
             Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1) }));
@@ -660,7 +660,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var avatar = new AnimatorAvatar();
             var exported = avatar.Export(new List<string>(), null);
-            var json = GlbDocument.Read(exported).Json;
+            var json = Unpacked(GlbDocument.Read(exported));
             var nodes = (List<object>)json["nodes"];
             Assert.That(AvatarAnimatorCapture.Inject(exported, Read(json)), Is.Not.Null);
 
@@ -680,7 +680,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var avatar = new AnimatorAvatar();
             var exported = avatar.Export(new List<string>(), null);
-            var json = GlbDocument.Read(exported).Json;
+            var json = Unpacked(GlbDocument.Read(exported));
             var front = avatar.Source.transform.Find("Front").gameObject;
             IReadOnlyList<AvatarAnimatorCapture.MorphSource> Sources(SkinnedMeshRenderer renderer, string shape) =>
                 new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
@@ -783,7 +783,7 @@ namespace VRVlog.LilToonExporter.Tests
             avatar.Fx.AddLayer("Both");
             avatar.Fx.layers.Last().stateMachine.AddState("Both").motion = clip;
 
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
             var data = Read(json);
             var nodes = Nodes(json);
             string Name(AvatarAnimatorData.Target t) => t.Property == "active" ? nodes[t.Node] : data.Parameters[t.Parameter].Name;
@@ -1323,7 +1323,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Lamp", clip);
 
-            var json = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
             var extensions = (Dictionary<string, object>)json["extensions"];
             Assert.That(((List<object>)((Dictionary<string, object>)extensions["VRVLOG_avatar_effects"])["lights"]).Count, Is.EqualTo(1));
             var data = Read(json);
@@ -1358,12 +1358,12 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = avatar.Clip("Lamp", ("Fx", true));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Lamp", clip);
-            var written = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var written = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             Assert.That(PartTargets(written).Select(p => p.Item1), Has.Some.EqualTo("light"));
 
             ExportTestHooks.TableFaultInjection = name => { if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects"); };
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             // Before, the failure was only in the console.
             Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects)) && warning.Contains("injected effects")), Is.EqualTo(1), string.Join("\n", warnings));
             var extensions = (Dictionary<string, object>)json["extensions"];
@@ -1385,12 +1385,12 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = avatar.Clip("Pad");
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Pad", receiverType, "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Pad", clip);
-            var written = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var written = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             Assert.That(PartTargets(written).Select(p => p.Item1), Has.Some.EqualTo("contact"));
 
             ExportTestHooks.TableFaultInjection = name => { if (name == VRVlog.AvatarContacts.AvatarContactsData.Extension) throw new InvalidOperationException("injected contacts"); };
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             var extensions = (Dictionary<string, object>)json["extensions"];
             Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
             var data = Read(json);
@@ -1418,7 +1418,7 @@ namespace VRVlog.LilToonExporter.Tests
             var padClip = avatar.Clip("Pad");
             AnimationUtility.SetEditorCurve(padClip, EditorCurveBinding.FloatCurve("Pad", receiverType, "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Pad", padClip);
-            var written = Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json);
+            var written = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
             Assert.That(PartTargets(written).Select(p => p.Item1), Is.SupersetOf(new[] { "light", "contact" }));
 
             var contactWrites = 0;
@@ -1428,7 +1428,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (name == VRVlog.AvatarContacts.AvatarContactsData.Extension && ++contactWrites == 2) throw new InvalidOperationException("injected contacts");
             };
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             var extensions = (Dictionary<string, object>)json["extensions"];
             Assert.That(extensions.ContainsKey(AvatarEffectsExport.Extension), Is.False);
             Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
@@ -1467,14 +1467,14 @@ namespace VRVlog.LilToonExporter.Tests
             }
 
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(extension), Is.True);
             Assert.That(warnings.Count(warning => warning.Contains(note)), Is.EqualTo(1), string.Join("\n", warnings));
             Assert.That(warnings.Any(warning => warning.Contains(ExportStageGuard.DisplayName(stage))), Is.False);
 
             ExportTestHooks.TableFaultInjection = name => { if (name == extension) throw new InvalidOperationException("injected " + name); };
             warnings.Clear();
-            json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(extension), Is.False);
             Assert.That(warnings.Any(warning => warning.Contains(note)), Is.False, string.Join("\n", warnings));
             Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(stage)) && warning.Contains("injected " + extension)), Is.EqualTo(1));
@@ -1497,7 +1497,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(UnityEngine.Animations.ScaleConstraint), "m_Enabled"),
                 AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Switch", clip);
-            var written = GlbDocument.Read(avatar.Export(new List<string>(), null)).Json;
+            var written = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
             Assert.That(((Dictionary<string, object>)written["extensions"]).ContainsKey(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.True);
             Assert.That(Read(written).Targets.Count(t => t.Component == "constraint"), Is.EqualTo(1));
 
@@ -1506,7 +1506,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (name == VRVlog.AvatarConstraints.AvatarConstraintsData.Extension) throw new InvalidOperationException("injected constraints");
             };
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.False);
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.False);
             var data = Read(json);
@@ -1528,11 +1528,11 @@ namespace VRVlog.LilToonExporter.Tests
             tip.SetParent(tail, false); tip.position = new Vector3(0, 1.6f, -.15f);
             AvatarPhysBonesExportTests.Set(tail.gameObject.AddComponent(physBoneType), "parameter", "Tail");
             avatar.Fx.AddParameter("Tail_Angle", AnimatorControllerParameterType.Float);
-            Assert.That(Read(GlbDocument.Read(avatar.Export(new List<string>(), null)).Json).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("builtin"));
+            Assert.That(Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)))).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("builtin"));
 
             ExportTestHooks.TableFaultInjection = name => { if (name == AvatarPhysBonesData.Extension) throw new InvalidOperationException("injected physbones"); };
             var warnings = new List<string>();
-            var json = GlbDocument.Read(avatar.Export(warnings, null)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
             Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarPhysBonesData.Extension), Is.False);
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarPhysBonesData.Extension), Is.False);
             Assert.That(Read(json).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("animator"), "As before the table.");
@@ -1917,7 +1917,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
             AddLayer(avatar, "Glasses fade", clip);
             var exported = avatar.Export(new List<string>(), null);
-            var json = GlbDocument.Read(exported).Json;
+            var json = Unpacked(GlbDocument.Read(exported));
             var data = Read(json);
             var materials = (List<object>)json["materials"];
             var mask = data.Targets.Single(t => t.Property == "materialFloat" && t.Name == "_AlphaMaskValue");
@@ -2158,10 +2158,10 @@ namespace VRVlog.LilToonExporter.Tests
             neutral.AddTransition(mix).AddCondition(AnimatorConditionMode.Equals, 2, "GestureLeft");
 
             var warnings = new List<string>();
-            var json = GlbDocument.Read(UniVrmOneClickExporter.Export(avatar.Source, "Avatar animator", "Tests", warnings: warnings,
+            var json = Unpacked(GlbDocument.Read(UniVrmOneClickExporter.Export(avatar.Source, "Avatar animator", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4", gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, inferEmotionPresets: false,
-                listFaces: new[] { ("Face A", smile, 0f) })).Json;
+                listFaces: new[] { ("Face A", smile, 0f) })));
             var data = Read(json);
             var custom = ((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])["VRMC_vrm"])["expressions"])["custom"]).Keys;
             var face = data.Expressions.Single();
@@ -2186,7 +2186,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
-                var json = GlbDocument.Read(Export(avatar.Source, new List<string>(), null)).Json;
+                var json = Unpacked(GlbDocument.Read(Export(avatar.Source, new List<string>(), null)));
                 Assert.That(json.TryGetValue("extensionsUsed", out var used) && ((List<object>)used).Contains(AvatarAnimatorData.Extension), Is.False);
                 Assert.That(json.TryGetValue("extensions", out var extensions) && ((Dictionary<string, object>)extensions).ContainsKey(AvatarAnimatorData.Extension), Is.False);
             }
@@ -2243,8 +2243,9 @@ namespace VRVlog.LilToonExporter.Tests
             var without = GlbDocument.Read(faulted);
             Assert.That(((List<object>)without.Json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
 
-            Assert.That(Strip(withExtension.Json), Is.EqualTo(JsonDom.Serialize(without.Json)));
-            Assert.That(withExtension.Binary, Is.EqualTo(without.Binary));
+            var stripped = Strip(withExtension);
+            Assert.That(JsonDom.Serialize(stripped.Json), Is.EqualTo(JsonDom.Serialize(without.Json)));
+            Assert.That(stripped.Binary, Is.EqualTo(without.Binary));
         }
 
         [Test]
@@ -2254,7 +2255,7 @@ namespace VRVlog.LilToonExporter.Tests
             AvatarAnimatorCapture.MaximumBytes = 64;
             var warnings = new List<string>();
             var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
-            var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
 
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
             var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
@@ -2273,11 +2274,11 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var avatar = new AnimatorAvatar();
             var exported = avatar.Export(new List<string>(), new ExportRecoveryReport());
-            var data = Read(GlbDocument.Read(exported).Json);
+            var data = Read(Unpacked(GlbDocument.Read(exported)));
             var size = System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
 
             AvatarAnimatorCapture.MaximumBytes = size;
-            var written = Read(GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data)).Json);
+            var written = Read(Unpacked(GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data))));
             Assert.That(written.Motions.Count, Is.EqualTo(data.Motions.Count));
             AvatarAnimatorCapture.MaximumBytes = size - 1;
             Assert.That(() => AvatarAnimatorCapture.Inject(exported, data),
@@ -2293,15 +2294,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(AvatarAnimatorCapture.MaximumBytes, Is.EqualTo(16 * 1024 * 1024));
             using var avatar = new AnimatorAvatar();
             var exported = avatar.Export(new List<string>(), new ExportRecoveryReport());
-            var data = Read(GlbDocument.Read(exported).Json);
+            var data = Read(Unpacked(GlbDocument.Read(exported)));
             var target = data.Targets.FindIndex(t => t.Property == "active");
             Assert.That(target, Is.GreaterThanOrEqualTo(0));
             int Size() => System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+            // Each its own (the first key's in tangent, which nothing plays),
+            // so that no clip is written as sameTracks of another.
             AvatarAnimatorData.Clip Long()
             {
                 var curve = new VRVlog.Expressions.ExpressionAnimationData.Curve();
                 for (var i = 0; i < AvatarAnimatorData.MaximumKeysPerClip; i++)
-                    curve.Keys.Add(new VRVlog.Expressions.ExpressionAnimationData.Key { Time = i / 60.0, Value = i % 2, InTangent = 0, OutTangent = 0 });
+                    curve.Keys.Add(new VRVlog.Expressions.ExpressionAnimationData.Key { Time = i / 60.0, Value = i % 2, InTangent = i == 0 ? data.Clips.Count : 0, OutTangent = 0 });
                 var clip = new AvatarAnimatorData.Clip { Name = "Long", Duration = (AvatarAnimatorData.MaximumKeysPerClip - 1) / 60.0 };
                 var track = new AvatarAnimatorData.Track { Target = target };
                 track.Curves.Add(curve);
@@ -2319,7 +2322,7 @@ namespace VRVlog.LilToonExporter.Tests
 
             GrowPast(4 * 1024 * 1024);
             var withFive = GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data));
-            var written = (Dictionary<string, object>)withFive.Find("extensions")[AvatarAnimatorData.Extension];
+            var written = (Dictionary<string, object>)AvatarAnimatorPacking.Document(withFive);
             Assert.That(((List<object>)written["clips"]).Count, Is.EqualTo(data.Clips.Count));
             Assert.That(Size(), Is.GreaterThan(4 * 1024 * 1024).And.LessThanOrEqualTo(AvatarAnimatorCapture.MaximumBytes));
 
@@ -2348,7 +2351,7 @@ namespace VRVlog.LilToonExporter.Tests
             var warnings = new List<string>();
             var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
             var without = avatar.Export(warnings, report);
-            var json = GlbDocument.Read(without).Json;
+            var json = Unpacked(GlbDocument.Read(without));
             Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
             Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
             var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
@@ -2358,8 +2361,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.JsonTooLarge));
             Assert.That(entry.Reason, Does.Contain(AvatarAnimatorCapture.AppJsonMegabytes + "MB"));
             Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
-            Assert.That(Strip(GlbDocument.Read(normal).Json), Is.EqualTo(JsonDom.Serialize(json)));
-            Assert.That(GlbDocument.Read(without).Binary, Is.EqualTo(GlbDocument.Read(normal).Binary));
+            var stripped = Strip(GlbDocument.Read(normal));
+            Assert.That(JsonDom.Serialize(stripped.Json), Is.EqualTo(JsonDom.Serialize(json)));
+            Assert.That(GlbDocument.Read(without).Binary, Is.EqualTo(stripped.Binary));
         }
 
         // Trees nested as deep as the format allows are written; one level more
@@ -2385,7 +2389,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var warnings = new List<string>();
                 var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
-                var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
                 var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
                 Assert.That(written, Is.EqualTo(depth <= AvatarAnimatorData.MaximumBlendTreeDepth), "depth " + depth);
                 if (written)
@@ -2435,7 +2439,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var warnings = new List<string>();
                 var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
-                var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
                 var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
                 Assert.That(written, Is.EqualTo(chain + 2 <= AvatarAnimatorData.MaximumBlendTreeDepth), "chain " + chain);
                 if (written)
@@ -2775,7 +2779,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var warnings = new List<string>();
                 var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
-                var json = GlbDocument.Read(avatar.Export(warnings, report)).Json;
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
                 var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
                 Assert.That(written, Is.EqualTo(clips == 1), clips + " clips");
                 if (written)
@@ -2833,6 +2837,14 @@ namespace VRVlog.LilToonExporter.Tests
         static IReadOnlyList<AvatarAnimatorCapture.MorphSource> EveryShape(SkinnedMeshRenderer renderer, string shape) =>
             new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
 
+        // The file's JSON with the extension's document unpacked in its place
+        // (AvatarAnimatorPacking.Document), so that Read below reads it.
+        static Dictionary<string, object> Unpacked(GlbDocument glb)
+        {
+            if (AvatarAnimatorPacking.Document(glb) is object document) glb.Find("extensions")[AvatarAnimatorData.Extension] = document;
+            return glb.Json;
+        }
+
         static AvatarAnimatorData Read(Dictionary<string, object> json) =>
             AvatarAnimatorData.Read(((Dictionary<string, object>)json["extensions"])[AvatarAnimatorData.Extension]);
 
@@ -2883,13 +2895,14 @@ namespace VRVlog.LilToonExporter.Tests
         static List<string> Nodes(Dictionary<string, object> json) =>
             ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().Select(node => node.TryGetValue("name", out var name) ? (string)name : null).ToList();
 
-        static string Strip(Dictionary<string, object> json)
+        // The file without the extension, its packed document's bufferView
+        // and bytes gone as well, written and read again.
+        static GlbDocument Strip(GlbDocument glb)
         {
-            ((Dictionary<string, object>)json["extensions"]).Remove(AvatarAnimatorData.Extension);
-            ((List<object>)json["extensionsUsed"]).Remove(AvatarAnimatorData.Extension);
-            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(AvatarAnimatorPacking.Remove(glb), Is.True);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["asset"])["extras"];
             ((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).Remove(AvatarAnimatorData.Extension);
-            return JsonDom.Serialize(json);
+            return GlbDocument.Read(glb.Write());
         }
 
         static byte[] Export(GameObject source, ICollection<string> warnings, ExportRecoveryReport report) =>
@@ -3377,7 +3390,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 Add("Held", animator);
                 var warnings = new List<string>();
-                var before = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var before = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
                 Assert.That(((Dictionary<string, object>)before["extensions"]).ContainsKey(LilToonFullContract.UnboundExtensionName), Is.False, string.Join("\n", warnings));
                 var count = ((List<object>)before["materials"]).Count;
 
@@ -3386,7 +3399,7 @@ namespace VRVlog.LilToonExporter.Tests
                 warnings.Clear();
                 var bytes = Export(avatar.Source, warnings, null);
                 var glb = GlbDocument.Read(bytes);
-                var json = glb.Json;
+                var json = Unpacked(glb);
                 var materials = (List<object>)json["materials"];
                 Assert.That(materials.Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
                 var added = count;
@@ -3444,7 +3457,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 Add("Held", animator);
                 var warnings = new List<string>();
-                var baseline = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var baseline = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
                 var count = ((List<object>)baseline["materials"]).Count;
                 var lostBefore = Omitted(Read(baseline), "material");
                 var mesh = glasses.GetComponent<MeshFilter>().sharedMesh;
@@ -3462,7 +3475,7 @@ namespace VRVlog.LilToonExporter.Tests
                 warnings.Clear();
                 var bytes = Export(avatar.Source, warnings, null);
                 var glb = GlbDocument.Read(bytes);
-                var json = glb.Json;
+                var json = Unpacked(glb);
                 var materials = (List<object>)json["materials"];
                 Assert.That(materials.Count, Is.EqualTo(LilToonMobileProfile.MaximumMaterials), string.Join("\n", warnings));
                 var extensions = (Dictionary<string, object>)json["extensions"];
@@ -3508,7 +3521,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 Add("Held", animator);
                 var warnings = new List<string>();
-                var baseline = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var baseline = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
                 var count = ((List<object>)baseline["materials"]).Count;
                 var lostBefore = Omitted(Read(baseline), "material");
                 Add("Loud", loud, animator);
@@ -3516,7 +3529,7 @@ namespace VRVlog.LilToonExporter.Tests
                 warnings.Clear();
                 // AddUnbound logs why the record could not be read.
                 UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new Regex("AudioLink"));
-                var json = GlbDocument.Read(Export(avatar.Source, warnings, null)).Json;
+                var json = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
                 Assert.That(((List<object>)json["materials"]).Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
                 var extensions = (Dictionary<string, object>)json["extensions"];
                 var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
