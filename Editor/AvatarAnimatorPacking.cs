@@ -56,7 +56,9 @@ namespace VRVlog.LilToonExporter
         // index, and its bytes go with their padding when no other view
         // reaches into them, the later bytes moving down by a multiple of four.
         // The binary is cut to the buffer's byteLength: a GLB read back holds
-        // the chunk's padding past it.
+        // the chunk's padding past it. When nothing comes after them, the
+        // padding Place put before them goes too, back to the end of the last
+        // other view.
         static void DropView(GlbDocument document, int view)
         {
             var named = false;
@@ -81,10 +83,17 @@ namespace VRVlog.LilToonExporter
                 if (start < end && stop > offset) return;
                 others.Add((other, start, stop));
             }
-            var cut = end - offset;
+            var from = offset;
+            if (end == total)
+            {
+                long last = 0;
+                foreach (var other in others) last = Math.Max(last, other.End);
+                from = (int)Math.Max(last, offset - 3);
+            }
+            var cut = end - from;
             var binary = new byte[total - cut];
-            Buffer.BlockCopy(document.Binary, 0, binary, 0, offset);
-            Buffer.BlockCopy(document.Binary, end, binary, offset, total - end);
+            Buffer.BlockCopy(document.Binary, 0, binary, 0, from);
+            Buffer.BlockCopy(document.Binary, end, binary, from, total - end);
             foreach (var other in others)
                 if (other.Offset >= end) other.View["byteOffset"] = other.Offset - cut;
             document.ReplaceBinary(binary);

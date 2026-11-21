@@ -86,6 +86,23 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(AvatarAnimatorPacking.Remove(read), Is.False, "Nothing is left to remove.");
         }
 
+        // Last in the binary, it goes with the padding Place put before it: the
+        // buffer ends where the last other view ends, as it did without it.
+        [Test]
+        public void RemoveTakesThePaddingBeforeTheLastView()
+        {
+            var without = Glb();
+            var with = Glb();
+            AvatarAnimatorPacking.Place(with, Document());
+            var read = GlbDocument.Read(with.Write());
+            foreach (var glb in new[] { with, read })
+            {
+                Assert.That(AvatarAnimatorPacking.Remove(glb), Is.True);
+                Assert.That(JsonDom.Serialize(glb.Json), Is.EqualTo(JsonDom.Serialize(without.Json)));
+                Assert.That(glb.Binary, Is.EqualTo(without.Binary));
+            }
+        }
+
         [Test]
         public void RemoveTakesAnExtensionWrittenInTheJson()
         {
