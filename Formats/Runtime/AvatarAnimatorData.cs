@@ -245,6 +245,7 @@ namespace VRVlog.AvatarAnimator
             public string Name;
             public double Duration, CycleOffset;
             public bool Loop;
+            // A clip read with "sameTracks" holds the same Track objects as the clip it names; do not change them.
             public readonly List<Track> Tracks = new List<Track>();
         }
 

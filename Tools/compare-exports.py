@@ -226,8 +226,9 @@ def unpack_animator(document, binary):
             ends = [other.get("byteOffset", 0) + other["byteLength"] for other in views
                     if isinstance(other, dict) and _index(other.get("byteOffset", 0)) is not None
                     and _index(other.get("byteLength")) is not None]
-            if ends and start - 3 <= max(ends) <= start:
-                start = max(ends)
+            last = max(ends, default=0)
+            if last <= start:
+                start = max(start - 3, last)
         binary = binary[:start] + binary[end:total]
         binary += b"\0" * (-len(binary) % 4)
         for other in views:

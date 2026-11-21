@@ -18,7 +18,7 @@
 
 拡張の中身は `{"schemaVersion": 2, "bufferView": n}` だけにし、文書（schema 1 と同じ表）は bufferView `n` に置く。
 
-- 今のアプリ（1.2.8）の `AvatarAnimatorData.Read` は、`schemaVersion` が 1 でないと例外を投げ、Animator を付ける処理がそれを捕まえて、Animator なしでアバターを表示する。表が 32MiB を超えて拡張を外したときと同じ見え方で、落ちない。新しい拡張名にしても古いアプリの見え方は同じなので、中身が同じ表に 2 つの名前を作らない。
+- 今のアプリ（1.2.8）の `AvatarAnimatorData.Read` は、`schemaVersion` が 1 でないと例外を投げ、Animator を付ける処理がそれを捕まえて、Animator なしでアバターを表示する。表が上限を超えて拡張を外したときと同じ見え方で、落ちない。新しい拡張名にしても古いアプリの見え方は同じなので、中身が同じ表に 2 つの名前を作らない。
 - 古いアプリでも開けるので、強制アップデートは要らない。`VRVLOG_requiredAppVersions` には、schema 2 を読むアプリの版（1.2.9、仮）を書く。アプリの版が決まったら合わせて直す。
 
 ### クリップは前のクリップのトラックを sameTracks で指せる
@@ -40,9 +40,9 @@
 
 ### 書き出しの順番と上限
 
-- 上限（32MiB）は今までどおり、圧縮する前の文書に掛ける。アプリが展開したあとに持つ量の上限なので。
+- 書き出しの上限（`AvatarAnimatorCapture` の 16MiB）は今までどおり、圧縮する前の文書に掛ける。アプリが展開したあとに持つ量の上限なので。読む側は展開後 32MiB まで受ける。
 - 表を足す段階（エフェクト・Contact など）は Animator のあとにも bufferView を足すので、Animator の bufferView は最後とは限らない。
-- 表をアプリの版に合わせて外すとき（`AvatarAnimatorCapture.Remove`）は、拡張と一緒にその bufferView とバイトも外し、あとの bufferView の番号と位置を詰める。ほかに同じ bufferView を指すもの、同じバイトに掛かる bufferView があるときは、bufferView もバイトも残す。
+- 表をアプリの版に合わせて外すとき（`AvatarAnimatorCapture.Remove`）は、拡張と一緒にその bufferView とバイトも外し、あとの bufferView の番号と位置を詰める。ほかに同じ bufferView を指すものがあるときは、bufferView もバイトも残す。同じバイトに掛かる別の bufferView があるときは、bufferView は外してバイトは残す。最後の bufferView だったときは、その前に 4 バイトに揃えるために入れた詰め物も外す。
 
 ### 比較の道具
 
