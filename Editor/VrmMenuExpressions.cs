@@ -45,6 +45,10 @@ namespace VRVlog.LilToonExporter
             // Bone and visibility curves the face plays, with the clock they
             // share with Animation. The exporter sets each Node after export.
             internal readonly List<TransformTrack> Transforms = new List<TransformTrack>();
+            // The standard expression (ExpressionAnimationData.PresetTransformNames)
+            // whose bones and visibility these Transforms are, held at time 0;
+            // null for a custom face. Name is then only the label for warnings.
+            internal string Preset = null;
             internal double TransformDuration = 0;
             internal bool TransformLoop = false;
 
@@ -161,9 +165,14 @@ namespace VRVlog.LilToonExporter
         // raw shapes do not become selectable expressions. The animation
         // extension (schema 2) lists every registered expression with its
         // source and refers to morphs by node and morph target index.
-        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null, ICollection<string> warnings = null)
+        // presets (Expression.Preset) are written under "presetTransforms": the
+        // bones and visibility of standard expressions, which a VRM expression
+        // cannot hold. Their binds stay where the export put them.
+        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null, ICollection<string> warnings = null,
+            IReadOnlyList<Expression> presets = null)
         {
-            if (expressions.Count == 0) return bytes;
+            presets = presets?.Where(preset => preset.Transforms.Count > 0).ToList() ?? new List<Expression>();
+            if (expressions.Count == 0 && presets.Count == 0) return bytes;
             var glb = GlbDocument.Read(bytes);
             var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
             var root = Object(vrm, "expressions");
@@ -265,18 +274,8 @@ namespace VRVlog.LilToonExporter
                 if (expression.Transforms.Count > 0)
                 {
                     // One clock with the BlendShape program when there is one.
-                    transforms = new ExpressionTransformAnimation
-                    {
-                        Duration = animation?.Duration ?? expression.TransformDuration, Loop = animation?.Loop ?? expression.TransformLoop
-                    };
-                    foreach (var track in expression.Transforms)
-                    {
-                        if (track.Node < 0 || track.Node >= nodes.Count)
-                            throw new InvalidOperationException("表情のボーンの出力先がありません: " + expression.Name + " / " + track.Path);
-                        var copy = new ExpressionTransformAnimation.Track { Node = track.Node, Property = track.Property };
-                        copy.Curves.AddRange(track.Curves.Select((curve, component) => Mirrored(track.Property, component) ? Negated(curve) : curve));
-                        transforms.Tracks.Add(copy);
-                    }
+                    transforms = GltfTransforms(expression, nodes.Count, null,
+                        animation?.Duration ?? expression.TransformDuration, animation?.Loop ?? expression.TransformLoop);
                     transformsOf.Add(expression, transforms);
                 }
                 if (binds.Count == 0 && transforms == null)
@@ -288,9 +287,15 @@ namespace VRVlog.LilToonExporter
                 }
                 built.Add((expression, binds, animation));
             }
+            foreach (var preset in presets)
+            {
+                if (!ExpressionAnimationData.PresetTransformNames.Contains(preset.Preset))
+                    throw new InvalidOperationException("ボーンを書き出せない標準の表情です: " + preset.Preset);
+                document.PresetTransforms.Add(GltfTransforms(preset, nodes.Count, preset.Preset, 0, false));
+            }
             // Every face lost its bones and visibility to the export: the file
             // stays as it is without the extension.
-            if (built.Count == 0) return bytes;
+            if (built.Count == 0 && document.PresetTransforms.Count == 0) return bytes;
             // Faces that write the same binds (same morphs, exactly the same
             // weights) and the same motion are one face to the app, whatever
             // their clip, label or source: the same clip under two menu items,
@@ -376,6 +381,21 @@ namespace VRVlog.LilToonExporter
             PlaceExisting();
             glb.PlaceExtension(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document), "既存の表情アニメーション拡張を上書きできません。");
             return glb.Write();
+        }
+
+        // The face's tracks on their output nodes, in glTF's space.
+        static ExpressionTransformAnimation GltfTransforms(Expression expression, int nodeCount, string name, double duration, bool loop)
+        {
+            var transforms = new ExpressionTransformAnimation { Expression = name, Duration = duration, Loop = loop };
+            foreach (var track in expression.Transforms)
+            {
+                if (track.Node < 0 || track.Node >= nodeCount)
+                    throw new InvalidOperationException("表情のボーンの出力先がありません: " + expression.Name + " / " + track.Path);
+                var copy = new ExpressionTransformAnimation.Track { Node = track.Node, Property = track.Property };
+                copy.Curves.AddRange(track.Curves.Select((curve, component) => Mirrored(track.Property, component) ? Negated(curve) : curve));
+                transforms.Tracks.Add(copy);
+            }
+            return transforms;
         }
 
         // The written order of the custom faces (ExpressionAnimationDocument.SourceOrder).

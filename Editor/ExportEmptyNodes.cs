@@ -18,8 +18,9 @@ namespace VRVlog.LilToonExporter
         // Deletes the objects of the copy whose whole hierarchy has nothing to
         // write and returns how many transforms left. Kept: the root, humanoid
         // bones, every mesh renderer (the captures bind them by object even
-        // when disabled), VRM components, and whatever these refer to.
-        internal static int Prune(GameObject copy)
+        // when disabled), VRM components, the objects of keep (bones a capture
+        // writes by node), and whatever these refer to.
+        internal static int Prune(GameObject copy, IEnumerable<GameObject> keep = null)
         {
             if (copy == null || EditorUtility.IsPersistent(copy))
                 throw new ArgumentException("An independent export copy is required.", nameof(copy));
@@ -34,6 +35,8 @@ namespace VRVlog.LilToonExporter
                 // Transform references are parent and children: hierarchy, not use.
                 if (!(component is Transform) && followed.Add(component)) pending.Push(component);
             }
+            foreach (var go in keep ?? Enumerable.Empty<GameObject>())
+                if (go != null) Keep(go.transform);
             foreach (var component in copy.GetComponentsInChildren<Component>(true))
                 if (component is MeshRenderer || component is SkinnedMeshRenderer || OfVrm(component)) Keep(component);
             var animator = copy.GetComponent<Animator>();

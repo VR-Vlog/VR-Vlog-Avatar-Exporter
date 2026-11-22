@@ -854,6 +854,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void EmptyObjectsLeaveTheVrmOnlyWithTheAutomaticOption()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var f = new AttachmentConnectionTests.Fixture();
             foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = shader;

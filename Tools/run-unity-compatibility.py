@@ -222,6 +222,8 @@ BEHAVIOR_CASES = {
     'VrmLookAtExportTests': {
         'EyesWithoutEyeLookUseTheEyeMidpointAndTheDefaultRange': 1,
         'ExistingVrmLookAtWinsOverEyesAndEyeLook': 1,
+        'AGazeRangeReplacesTheMeasuredOrTheDefaultRangeOfItsAxes': 1,
+        'InspectTellsWhetherTheGazeRangeCanChange': 1,
         'RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm': 1,
         'UnmeasurableEyeLookKeepsTheDefaultRangeAndWarns': 1,
         'UntouchedVrmLookAtDefaultsAreReplacedByTheEyeMidpoint': 1,
@@ -743,6 +745,12 @@ BEHAVIOR_CASES = {
         'UnsavedSharedAssetsAreIsolatedBeforeAnyPassCanMutateThem': 1,
         'UnvalidatedVersionsFailBeforeProcessing': 5,
         'UsesGenericOnlyWhenSourceHasNoPrimaryPlatform': 1,
+        'SdkCallbacksRunAroundTheBuildStepsInUploadOrder': 1,
+        'SdkCallbacksRunInUploadOrderWhenNothingNeedsNdmf': 1,
+        'PreviewLeavesOutTheSdkCallbacksAfterTheExportReadsTheCopy': 2,
+        'SdkCallbacksThatBracketTheUploadAreNotRun': 1,
+        'ToleratedSdkCallbackFailureLeavesOutOnlyThatCallback': 1,
+        'FailedSdkCallbackStopsAStrictExport': 2,
     },
     'DirectFxExpressionDiscoveryTests': {
         'DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone': 1,
@@ -857,6 +865,7 @@ BEHAVIOR_CASES = {
         'WhileOffNoFaceWritesBonesOrVisibility': 1,
         'FacesTakenOnlyForTheirBonesFillNoPreset': 1,
         'CustomFacesAreWrittenBySource': 1,
+        'AFaceThatAlsoDrivesAParticleIsWritten': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
@@ -918,8 +927,11 @@ BEHAVIOR_CASES = {
         'AFailingStageMatches': 1,
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'TheSavedLightweightChoiceMatches': 1,
+        'LightweightStartsOnUnlessSavedOff': 1,
+        'MergeMeshesStartsOnUnlessSavedOff': 1,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
+        'TheSavedGazeRangeMatches': 1,
     },
     # 自動で軽量化する: texture sizes from texel density; off measures nothing.
     'TexelDensityTests': {
@@ -967,6 +979,7 @@ BEHAVIOR_CASES = {
     'FallbackImageLightweightTests': {
         'OnlyImagesNothingElseUsesBecomeSmaller': 1,
         'TheMaterialsFollowTheAppsFullyBoundRule': 1,
+        'AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept': 1,
         'AFileWithoutTheExtensionOrWithAnUnknownOneIsKept': 1,
         'TheExportShrinksTheImagesOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
@@ -995,6 +1008,16 @@ BEHAVIOR_CASES = {
         'TexturesOfNonOpaqueMaterialsKeepTheirMips': 1,
         'APointFilteredTextureKeepsItsMips': 1,
         'AnImporterMipFilterOtherThanTheBoxFilterKeepsTheMips': 5,
+        'ATextureWithoutAnImporterKeepsItsMips': 1,
+    },
+    # メッシュをまとめて表示を速くする: which renderers the AAO merge takes.
+    'ExportMeshMergeTests': {
+        'TheFaceAndEveryRendererAnAnimationSwitchesStaySeparate': 1,
+        'ShapesTheExporterGeneratedAndRoutedRenderersStaySeparate': 1,
+        'HiddenClothAndEmptyRenderersAreNotMerged': 1,
+        'OneRendererLeftIsNotAMerge': 1,
+        'AnAvatarWithoutAvatarOptimizerIsNotMerged': 1,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
 }
 INTEGRATION_CASES = {
@@ -1009,6 +1032,7 @@ INTEGRATION_CASES = {
         'AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer': 1,
         'APassFailingInTransformingIsLeftOutAloneByTheBoardAndTheLenientExport': 1,
         'ThePosePreviewAndTheBlinkPreviewLeaveOutAPassFailingInTransforming': 1,
+        'ThePosePreviewAndTheBlinkPreviewDoNotRunAFailingOptimizingPass': 1,
     },
     'NdmfSharedObjectTests': {
         'ObjectsAToolKeepsAcrossBuildsSurviveEveryExport': 1,
@@ -1039,6 +1063,10 @@ INTEGRATION_CASES = {
     'InstalledAaoNeutralEndpointExportTests': {
         'MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink': 3,
     },
+    'InstalledAaoMeshMergeExportTests': {
+        'TheFaceAndTheToggledHatStaySeparateAndTheRestBecomesOne': 1,
+        'AFailureAfterTheMergeLeavesOutOnlyTheMerge': 1,
+    },
     'NdmfAnimationModeSamplingTests': {
         'ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode': 1,
         'GenericAvatarLendsAaoAControllerThatAnimationModeCanSample': 1,
@@ -1050,6 +1078,12 @@ INTEGRATION_CASES = {
     'PhysBoneSpringExportTests': {
         'InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport': 2,
         'InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid': 1,
+    },
+    'UploadedAvatarPlayablesTests': {
+        'PlayablesAreTheCustomLayersAndTheExpressionsTheDescriptorGivesVrchat': 1,
+        'FinalFxPointsAtTheShapesOfTheMeshTheExportWrites': 1,
+        'EditorOnlyObjectsAreRemovedBeforeTheExportReadsTheCopy': 2,
+        'EditorOnlyObjectsStayOnAnAvatarWithoutTheVrchatDescriptor': 1,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real

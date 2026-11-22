@@ -21,6 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCaseSource(nameof(Stages))]
         public void EveryStageCanFailAndTheFileIsStillWritten(string stageName)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Guarded" };
@@ -72,6 +73,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCaseSource(nameof(Stages))]
         public void StrictExportsStillStopAtTheFirstFailure(string stageName)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Strict" };
@@ -101,6 +103,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(nameof(ExportStage.ObjectToggles))]
         public void AFailureInsideTheBuildCallbackKeepsTheBuildPasses(string stageName)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Callback" };
@@ -167,6 +170,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AnExpressionLostByTheOptimizerLeavesOutOnlyOptimizing()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Lost" };
             var authored = new List<Object>();
@@ -223,6 +227,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void CancellationIsNeverLeftOut()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             try
@@ -344,6 +349,6 @@ namespace VRVlog.LilToonExporter.Tests
         static byte[] Export(GameObject source, ExportRecoveryReport report, ICollection<string> warnings) =>
             UniVrmOneClickExporter.Export(source, "Stage guard", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
-                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report, mergeMeshes: true);
     }
 }

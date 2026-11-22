@@ -213,6 +213,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void ExportRetainsTheAuthoredVrmConstraintEnabledState(bool recordFace, bool enabled)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var settings = ScriptableObject.CreateInstance<VRM10Object>();
             fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
@@ -374,7 +375,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnAddedFileInASlotStaysThereAndStopsTheSave()
+        public void AnAddedFileInASlotStaysThereAndIsSavedEmpty()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var window = BoardHarness.Create();
@@ -391,9 +392,11 @@ namespace VRVlog.LilToonExporter.Tests
 
                 AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, .3f));
                 window.Call("RefreshCandidateValidation");
-                // The slot the user chose keeps the file and names its reason.
+                // The slot the user chose keeps the file and names its reason;
+                // the save goes on with that slot empty.
                 Assert.That(board.PlaceOf(clip), Is.EqualTo(ExpressionBoard.Place.Slot(ExpressionPreset.happy)));
-                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlocksExport, Is.False);
+                Assert.That(window.SkippedSlotNote(), Is.Not.Null);
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
         }
@@ -469,11 +472,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(board.UsesRecordRoute, Is.False, "Nothing added is left to record.");
                 Assert.That(window.Field<string>("status"), Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(
                     new[] { ("Face", ExporterLocalization.T(ExperimentalExpressionCaptureWindow.DeletedClipReason)) })));
-                // The slot keeps the choice and names the file as missing, so the save stops with that reason.
+                // The slot keeps the choice and names the file as missing; the save writes it empty.
                 var slot = board.SlotValue(ExpressionPreset.happy);
                 Assert.That(slot, Is.Not.Null); Assert.That(slot.IsNone, Is.False);
                 Assert.That(ExperimentalExpressionCaptureSession.PresetDisplayName(slot), Is.EqualTo(ExporterLocalization.T("見つからないファイル")));
-                Assert.That(window.BlocksExport, Is.True, "The kept slot stops the save.");
+                Assert.That(window.BlocksExport, Is.False, "The kept slot does not stop the save.");
+                Assert.That(window.SkippedSlotNote(), Is.Not.Null, "The bottom bar says the slot is saved empty.");
             }
             finally { Object.DestroyImmediate(window); if (clip != null) Object.DestroyImmediate(clip); AssetDatabase.DeleteAsset(folder); }
         }
@@ -524,6 +528,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ARepeatedRendererPathLeavesTheChannelsAndWarns()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
@@ -621,6 +626,7 @@ namespace VRVlog.LilToonExporter.Tests
         [UnityTest]
         public IEnumerator CorrectedRecommendedAssetBecomesSelectableWithoutLosingExplicitFiles()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folder = "Assets/VRVlogCandidateRefresh_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
             var clip = new AnimationClip { name = "Repair candidate" }; var retained = new AnimationClip { name = "Keep selected face" };
@@ -651,6 +657,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(inputs.Single().Clip, Is.SameAs(retained));
                 var session = window.Session();
                 Assert.That(session.SourceDifference(), Is.Null);
+                NoGraphicsDevice.IgnoreWindowChecks();
                 var rectangles = window.Field<System.Collections.Generic.Dictionary<AnimationClip, Rect>>("candidateRects");
                 Click(window, rectangles[clip]); for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 session = window.Session();
@@ -674,6 +681,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, "3rd", "stay")]
         public void PrimaryWindowOffersMaterialRecoveryAndSavesRetryWithoutChangingSource(bool recordFace, string layer, string ownerAction)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
@@ -749,6 +757,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, true)]
         public void TransferFollowsTheStageChoice(bool continueOnFailure, bool interactive)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
@@ -809,6 +818,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheResultListBlinkButtonStillOpensAfterARebuild()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var other = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
@@ -951,7 +961,8 @@ namespace VRVlog.LilToonExporter.Tests
         // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
         // bone and the shown object beside it. A finger pose beside the face is left out; a body pose, an IK goal
         // or the root keeps a clip no gesture enters unsupported. A material swap keeps the clip unsupported. A hand pose that
-        // only holds the face shapes at rest is not a face.
+        // only holds the face shapes at rest is not a face. A particle setting or a PhysBone switch changes nothing in the
+        // VRM and the export skips it for any face, so the board ignores it too, gesture or not.
         [TestCase("transform", true, 80f, "usable")]
         [TestCase("transform", false, 80f, "usable")]
         [TestCase("active", true, 80f, "usable")]
@@ -963,6 +974,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ik", false, 80f, "unsupported")]
         [TestCase("root", false, 80f, "unsupported")]
         [TestCase("material", true, 80f, "unsupported")]
+        [TestCase("particle", true, 80f, "usable")]
+        [TestCase("particle", false, 80f, "usable")]
+        [TestCase("physbone", false, 80f, "usable")]
         [TestCase("transform", true, 0f, "noface")]
         [TestCase("finger", false, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
@@ -992,11 +1006,32 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(error, Is.Null);
                     // A standard expression carries BlendShapes only. It takes a gesture face beside an eye
                     // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
-                    // keeps the clip out of it, as before, so the automatic choice of each preset is unchanged.
+                    // keeps the clip out of the automatic candidates, as before, so the automatic choice of each
+                    // preset is unchanged. A slot the user filled takes the clip and names the curve it leaves
+                    // out, so the export does not stop on it: an emotion slot writes the bones and shown objects
+                    // beside its BlendShapes and leaves out only a finger pose, a gaze slot leaves out all three.
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
-                    var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body");
-                    if (presetUsable) Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
-                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(binding.propertyName));
+                    var gaze = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
+                    var automatic = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip); automatic.Automatic = true;
+                    var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body") ||
+                        extra == "particle" || extra == "physbone";
+                    Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
+                    Assert.That(session.PresetError(ExpressionPreset.happy, preset), Is.Null);
+                    var named = binding.path + " / " + binding.propertyName;
+                    if (presetUsable)
+                    {
+                        Assert.That(session.PresetError(ExpressionPreset.happy, automatic), Is.Null);
+                        Assert.That(session.PresetLeftOut(gaze), Is.Null);
+                    }
+                    else
+                    {
+                        Assert.That(session.PresetError(ExpressionPreset.happy, automatic), Does.EndWith(binding.propertyName));
+                        Assert.That(session.PresetLeftOut(gaze), Is.EqualTo(named));
+                    }
+                    Assert.That(session.PresetLeavesOutBones(gaze), Is.EqualTo(!presetUsable));
+                    Assert.That(session.PresetLeftOut(preset), Is.EqualTo(extra == "finger" && !gesture ? named : null));
+                    Assert.That(session.PresetLeavesOutBones(preset), Is.False);
+                    Assert.That(session.PresetLeftOut(automatic), Is.Null);
                     Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
@@ -1017,6 +1052,11 @@ namespace VRVlog.LilToonExporter.Tests
                 case "ik": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHandT.x"), 0.2f);
                 case "root": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "RootT.x"), 0.2f);
                 case "material": return (EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), 0.5f);
+                case "particle": return (EditorCurveBinding.FloatCurve("Front", typeof(ParticleSystem), "EmissionModule.rateOverTime.scalar"), 20);
+                case "physbone":
+                    var physBone = OptionalTools.Find(PhysBoneSpringExport.PhysBoneType);
+                    if (physBone == null) Assert.Ignore("Install the VRChat SDK.");
+                    return (EditorCurveBinding.FloatCurve("Front", physBone, "m_Enabled"), 0);
                 default: throw new System.ArgumentOutOfRangeException(nameof(extra), extra, null);
             }
         }
@@ -1174,7 +1214,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var field = descriptor.GetType().GetField(key); var layers = (Array)field.GetValue(descriptor);
                 for (var i = 0; i < layers.Length; i++)
                 {
-                    var layer = layers.GetValue(i); var empty = new AnimatorController(); assets.Add(empty);
+                    var layer = layers.GetValue(i); var empty = VrcAvatar.EmptyController(); assets.Add(empty);
                     SetPoseMember(layer, "isDefault", false); SetPoseMember(layer, "animatorController", VrChatExpressionMenu.Member(layer, "type").ToString() == "Gesture" ? controller : empty); layers.SetValue(layer, i);
                 }
                 field.SetValue(descriptor, layers);
@@ -1255,6 +1295,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void ChangingAvatarDoesNotCarryLicenseSelectionsIntoTheNextSavedVrm(bool recordFace, bool changeFromUnpreparedWindow)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var first = new AttachmentConnectionTests.Fixture();
             using var second = new AttachmentConnectionTests.Fixture();
             foreach (var skin in first.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Concat(second.Source.GetComponentsInChildren<SkinnedMeshRenderer>()))
@@ -1311,6 +1352,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, "  Named avatar  ", "Named avatar")]
         public void PrimaryWindowSavesBlankOrPaddedAvatarNames(bool recordFace, string rootName, string expectedName)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             fixture.Source.name = rootName;
@@ -1341,6 +1383,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void ListOnlyExportWritesTheListWithoutAMenu(bool repeatedName)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = BoardHarness.Create();
@@ -1556,6 +1599,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ListOnlyExportKeepsAMovingFaceAnimation()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = BoardHarness.Create();
@@ -1601,6 +1645,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ListOnlyExportHoldsAMotionTimeFaceAtOneFrame()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = BoardHarness.Create();
@@ -1644,6 +1689,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ListOnlyExportKeepsAMovingSlotFaceMovingAsACustomFace()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = BoardHarness.Create();
@@ -1784,6 +1830,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void RecordRouteSavesRepeatedNamesNumbered()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = BoardHarness.Create();
@@ -1827,6 +1874,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(bool recordFace, bool moveRendererWithMa)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var originalSkin = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
@@ -1861,6 +1909,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload(bool moveRendererWithMa)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 0);
@@ -1906,6 +1955,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public async Task ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(bool recordFace, bool moveRendererWithMa)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var sourceSkin = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>(); sourceSkin.SetBlendShapeWeight(0, 0);
@@ -1948,6 +1998,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task ReadWriteDisabledFaceMeshesCanBePreparedExportedAndReimported(bool recordFace)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.sharedMesh).Distinct().ToArray();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
@@ -2005,6 +2056,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("vrm", true, true)]
         public async Task ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(string configuration, bool recordFace, bool moveRendererWithMa)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var authored = ScriptableObject.CreateInstance<VRM10Object>();
@@ -2075,6 +2127,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public async Task ModelOnlyExportReimportsWithoutRequiringFacialFiles(bool withAuthoredExpression)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
             {
@@ -2137,6 +2190,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("zh-Hant", "傳送到 App（標準）", "儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             ExperimentalExpressionCaptureWindow window = null;
             using (new LocaleScope(locale))
             {
@@ -2159,6 +2213,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void HeaderLogoIsSharedAndSurvivesScriptReload()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var icon = ExporterWindowIcon.Texture;
             Assert.That(icon, Is.Not.Null);
             Assert.That((icon.width, icon.height), Is.EqualTo((128, 128)));
@@ -2239,6 +2294,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("_lil/lilToonMulti")]
         public async Task ExplicitExportWithAudioLinkEnabledReimportsWithoutChangingThePreviewOrWarning(string shaderName)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
             var extra = new Material(Shader.Find(shaderName));
@@ -2542,6 +2598,7 @@ namespace VRVlog.LilToonExporter.Tests
         [UnityTest]
         public IEnumerator CandidateSelectionBulkAddAndNamePreviewUseTheAutomaticFinalFrame()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var window = BoardHarness.Create();
@@ -2557,6 +2614,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var errors = window.Field<System.Collections.Generic.Dictionary<AnimationClip, string>>("clipErrors");
                 foreach (var clip in clips) errors[clip] = null;
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
+                NoGraphicsDevice.IgnoreWindowChecks();
                 var names = window.Field<System.Collections.Generic.Dictionary<AnimationClip, Rect>>("candidateRects");
                 Click(window, names[clips[0]]);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
@@ -2622,6 +2680,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             var outside = new Vector2(150, 150); var inside = CloseButtonProbe.Tile.center;
             Assert.That(CloseButtonProbe.Tile.Contains(outside), Is.False);
+            NoGraphicsDevice.IgnoreWindowChecks();
             // The probe sees the shift the earlier form made, so the check below is not empty.
             Assert.That(Run(true, outside, EventType.Repaint), Is.Not.EqualTo(Run(true, outside, EventType.Layout)));
             var layout = Run(false, outside, EventType.Layout);
@@ -2642,6 +2701,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static IEnumerator VerifyExplicitDrop(int count)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var window = BoardHarness.Create();
@@ -2655,6 +2715,7 @@ namespace VRVlog.LilToonExporter.Tests
                 window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 window.Load(fixture.Source);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
+                NoGraphicsDevice.IgnoreWindowChecks();
                 var drop = window.Field<Rect>("expressionDropRect");
                 Assert.That(drop.height, Is.GreaterThan(0));
                 DragAndDrop.PrepareStartDrag(); DragAndDrop.objectReferences = clips.Cast<Object>().ToArray();
@@ -2777,11 +2838,12 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The prepared board's third page is the transfer panel.
+        // The prepared board's last page is the transfer panel.
         [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true)]
         [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, false, false)]
         [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, false)]
-        public void ThePreparedBoardsThirdPageIsThePanel(int page, bool prepared, bool panel)
+        [TestCase(ExperimentalExpressionCaptureWindow.GazePage, true, false)]
+        public void ThePreparedBoardsLastPageIsThePanel(int page, bool prepared, bool panel)
         {
             Assert.That(ExperimentalExpressionCaptureWindow.PanelPage(page, prepared), Is.EqualTo(panel));
         }
@@ -2794,7 +2856,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExperimentalExpressionCaptureWindow.CancelTransferTitle, ExperimentalExpressionCaptureWindow.CancelTransferBody,
                 ExperimentalExpressionCaptureWindow.LeaveTransferText, ExperimentalExpressionCaptureWindow.KeepTransferText,
-                ExperimentalExpressionCaptureWindow.NextLabel, StepIndicator.Names()[2],
+                ExperimentalExpressionCaptureWindow.NextLabel, StepIndicator.Names()[ExperimentalExpressionCaptureWindow.InfoPage],
             };
             foreach (var text in texts)
                 Assert.That(System.Text.RegularExpressions.Regex.IsMatch(text, "[。、！!\n]|ください|できます|はい|いいえ"), Is.False, text);
@@ -2834,6 +2896,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ARenamedBoardFaceIsExportedUnderItsNewName()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var clip = new AnimationClip { name = "face_file_01" };
@@ -3151,8 +3214,10 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var errors = window.Field<System.Collections.Generic.Dictionary<ExpressionPreset, string>>("presetErrors");
                 errors[ExpressionPreset.sad] = null; errors[ExpressionPreset.aa] = "Mouth reason"; errors[ExpressionPreset.angry] = "Angry reason";
-                Assert.That(window.BlockReason(), Is.EqualTo("Angry reason"), "The first broken slot in board order gives its own reason.");
-                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.Null, "A broken slot is saved empty, so it does not stop the save.");
+                Assert.That(window.BlocksExport, Is.False);
+                Assert.That(window.SkippedSlotNote(), Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.SkippedSlotFormat), "Angry reason")),
+                    "The first broken slot in board order gives its own reason.");
 
                 window.SetField("excludedObjectEdits", new System.Collections.Generic.List<GameObject>());
                 Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
@@ -3272,6 +3337,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ATransferChecksTheSourceForTheRecordsAndTheExportOnly()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
@@ -3347,6 +3413,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ATransferAfterAnEditOfTheSourceFollowsItWithTheSameChoices()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var board = new FollowBoard();
             var before = board.Session;
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-edited-" + Guid.NewGuid().ToString("N") + ".vrm");
@@ -3420,6 +3487,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ATransferStopsWithoutDroppingFilesWhenAShownFaceIsHidden()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var board = new FollowBoard();
             var clip = new AnimationClip { name = "Smile file" };
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-hidden-" + Guid.NewGuid().ToString("N") + ".vrm");
@@ -3635,6 +3703,7 @@ namespace VRVlog.LilToonExporter.Tests
         [UnityTest]
         public IEnumerator TheBoardsOwnWorkIsNotReportedAsAnEdit()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var opening = ExperimentalExpressionCaptureSession.EditorEdits.Count;
             var board = new FollowBoard();
             var clip = SmileFile(100);
@@ -3690,6 +3759,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ARetryFromTheRecoveryWindowAfterAnEditExportsTheAvatarAsItIs()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var board = new FollowBoard();
             var target = board.Session;
             board.Edit();

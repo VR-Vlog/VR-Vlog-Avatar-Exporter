@@ -4,7 +4,7 @@ using UnityEngine.UIElements;
 
 namespace VRVlog.LilToonExporter
 {
-    // The expression board's third page comes from the optional QR module, which references
+    // The expression board's last page comes from the optional QR module, which references
     // this assembly and registers the page here when it loads. Packages without the module
     // leave it unregistered, and the board then says to install the QR package.
     public static class AppTransferBoardPage

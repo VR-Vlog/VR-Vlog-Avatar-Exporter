@@ -150,7 +150,11 @@ namespace VRVlog.Expressions
             // Omitted when empty, so avatars without bone or visibility keys
             // keep the bytes they had before transforms existed.
             if (document.Transforms.Count > 0) result["transforms"] = WriteTransforms(document.Transforms);
-            ReadTransforms(result, ReadDocument(result)); // The exporter and runtime enforce the same contract.
+            if (document.PresetTransforms.Count > 0) result["presetTransforms"] = WriteTransforms(document.PresetTransforms);
+            // The exporter and runtime enforce the same contract.
+            var read = ReadDocument(result);
+            ReadTransforms(result, read);
+            ReadPresetTransforms(result, read);
             return result;
         }
 
@@ -222,7 +226,11 @@ namespace VRVlog.Expressions
             if (root.TryGetValue("order", out var order) && order is string text && text.Length > 0) document.Order = text;
             var expressions = Json.Arr(root["expressions"]);
             var array = Json.Arr(root["animations"]);
-            if (expressions.Count > 1024 || array.Count > 512 || expressions.Count == 0 && array.Count == 0) Bad();
+            // A document may carry only the bones of standard expressions
+            // (presetTransforms). Readers older than that key reject it, which
+            // costs them nothing: it has no custom expression to drop.
+            if (expressions.Count > 1024 || array.Count > 512 ||
+                expressions.Count == 0 && array.Count == 0 && !root.ContainsKey("presetTransforms")) Bad();
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var raw in expressions)
             {
@@ -336,31 +344,75 @@ namespace VRVlog.Expressions
                 // the same expression has the same length and looping.
                 var blendShapes = document.Animations.FirstOrDefault(a => a.Expression == animation.Expression);
                 if (blendShapes != null && (blendShapes.Duration != animation.Duration || blendShapes.Loop != animation.Loop)) Bad();
-                var owners = new HashSet<(int, string)>();
-                foreach (var rawTrack in Json.Arr(obj["tracks"]))
-                {
-                    if (++trackCount > 1024) Bad();
-                    var t = Json.Obj(rawTrack);
-                    var track = new ExpressionTransformAnimation.Track { Node = Json.NonNegative(t["node"]), Property = Json.Text(t["property"]) };
-                    var components = ExpressionTransformAnimation.Components(track.Property);
-                    // euler and rotation both write the node's rotation.
-                    var owner = track.Property == ExpressionTransformAnimation.Euler ? ExpressionTransformAnimation.Rotation : track.Property;
-                    if (components == 0 || !owners.Add((track.Node, owner))) Bad();
-                    var curves = Json.Arr(t["curves"]);
-                    if (curves.Count != components) Bad();
-                    foreach (var rawCurve in curves)
-                    {
-                        var curve = ReadCurve(Json.Obj(rawCurve), ref keyCount);
-                        curve.Range(out var minimum, out var maximum);
-                        if (track.Property == ExpressionTransformAnimation.Active && (minimum < 0 || maximum > 1)) Bad();
-                        track.Curves.Add(curve);
-                    }
-                    animation.Tracks.Add(track);
-                }
-                if (animation.Tracks.Count == 0) Bad();
+                ReadTracks(obj, animation, ref trackCount, ref keyCount);
                 result.Add(animation);
             }
             return result;
+        }
+
+        // The standard VRM expressions whose bones and visibility
+        // "presetTransforms" may carry: emotions, mouth shapes and blinks.
+        // Gaze already turns the eyes, and neutral is never shown on its own.
+        public static readonly IReadOnlyCollection<string> PresetTransformNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "happy", "angry", "sad", "relaxed", "surprised",
+            "aa", "ih", "ou", "ee", "oh",
+            "blink", "blinkLeft", "blinkRight",
+        };
+
+        // Reads the optional "presetTransforms" of a schema 2 document that
+        // ReadDocument already accepted: the bone and visibility pose of a
+        // standard expression, held at time 0 (duration 0, no loop). The app
+        // blends it by the expression's weight after tracking, lip sync and
+        // overrides. Readers that skip this key, older ones too, keep the rest.
+        public static List<ExpressionTransformAnimation> ReadPresetTransforms(object value, ExpressionAnimationDocument document)
+        {
+            var root = Json.Obj(value);
+            var result = new List<ExpressionTransformAnimation>();
+            if (!root.TryGetValue("presetTransforms", out var rawTransforms)) return result;
+            if (document == null || document.SchemaVersion != 2) Bad();
+            var array = Json.Arr(rawTransforms);
+            if (array.Count == 0 || array.Count > PresetTransformNames.Count) Bad();
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            var trackCount = 0; var keyCount = 0;
+            foreach (var raw in array)
+            {
+                var obj = Json.Obj(raw);
+                var animation = new ExpressionTransformAnimation { Expression = Json.Text(obj["expression"]), Duration = Json.Number(obj["duration"]) };
+                if (!(obj["loop"] is bool)) Bad();
+                animation.Loop = (bool)obj["loop"];
+                if (!PresetTransformNames.Contains(animation.Expression) || !names.Add(animation.Expression) ||
+                    animation.Duration != 0 || animation.Loop) Bad();
+                ReadTracks(obj, animation, ref trackCount, ref keyCount);
+                result.Add(animation);
+            }
+            return result;
+        }
+
+        static void ReadTracks(Dictionary<string, object> obj, ExpressionTransformAnimation animation, ref int trackCount, ref int keyCount)
+        {
+            var owners = new HashSet<(int, string)>();
+            foreach (var rawTrack in Json.Arr(obj["tracks"]))
+            {
+                if (++trackCount > 1024) Bad();
+                var t = Json.Obj(rawTrack);
+                var track = new ExpressionTransformAnimation.Track { Node = Json.NonNegative(t["node"]), Property = Json.Text(t["property"]) };
+                var components = ExpressionTransformAnimation.Components(track.Property);
+                // euler and rotation both write the node's rotation.
+                var owner = track.Property == ExpressionTransformAnimation.Euler ? ExpressionTransformAnimation.Rotation : track.Property;
+                if (components == 0 || !owners.Add((track.Node, owner))) Bad();
+                var curves = Json.Arr(t["curves"]);
+                if (curves.Count != components) Bad();
+                foreach (var rawCurve in curves)
+                {
+                    var curve = ReadCurve(Json.Obj(rawCurve), ref keyCount);
+                    curve.Range(out var minimum, out var maximum);
+                    if (track.Property == ExpressionTransformAnimation.Active && (minimum < 0 || maximum > 1)) Bad();
+                    track.Curves.Add(curve);
+                }
+                animation.Tracks.Add(track);
+            }
+            if (animation.Tracks.Count == 0) Bad();
         }
 
         static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
@@ -385,6 +437,9 @@ namespace VRVlog.Expressions
         public readonly List<ExpressionAnimationData> Animations = new List<ExpressionAnimationData>();
         // Written under "transforms" and read only by ExpressionAnimationData.ReadTransforms.
         public readonly List<ExpressionTransformAnimation> Transforms = new List<ExpressionTransformAnimation>();
+        // Written under "presetTransforms" and read only by ExpressionAnimationData.ReadPresetTransforms:
+        // the bones and visibility of standard expressions (PresetTransformNames), named by preset.
+        public readonly List<ExpressionTransformAnimation> PresetTransforms = new List<ExpressionTransformAnimation>();
     }
 
     // Bone and visibility keys of one custom expression. Values are in the

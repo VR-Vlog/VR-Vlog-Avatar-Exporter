@@ -94,6 +94,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheExportedMToonOutlineTakesTheScaleAfterTextureBakingCopiesTheMaterial()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var shader = OptionalTools.RequireShader("Hidden/lilToonOutline", "Requires lilToon.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = new Material(shader) { name = "Outlined" };

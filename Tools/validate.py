@@ -352,7 +352,7 @@ assert 'faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,\n      
 assert 'new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy)' in one_click
 assert 'SkipVrChatMenus' not in recovery and 'ExcludeMenuBranch' not in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
-assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
+assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings, presetExpressions)' in one_click
 assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(presetSources)' in one_click
 assert 'bonesOnlyFaces.Contains(clip)' in one_click
 assert "ValidateAllEncodedTextures(glb, textureSources);" in injector

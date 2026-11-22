@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using VRVlog.AvatarFormats;
 using VRVlog.Expressions;
 using VRVlog.ObjectToggles;
 
@@ -12,6 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
     // here changes which avatars the app loads.
     public sealed class FormatsContractBoundaryTests
     {
+        const string LimitInvalid = "Humanoid limit data is invalid or exceeds the supported limits.";
         const string LipSyncInvalid = "Lip sync data is invalid or exceeds the supported limits.";
         const string GestureInvalid = "Expression gesture data is invalid or exceeds the supported limits.";
         const string ToggleInvalid = "Object toggle data is invalid or exceeds the supported limits.";
@@ -57,6 +59,75 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(LipSyncInvalid, () => LipSyncData.Read(Lip(r => r["extra"] = 1L)));
             Rejects(LipSyncInvalid, () => LipSyncData.Read(Lip(r => r.Remove("dominantViseme"))));
             Rejects(LipSyncInvalid, () => LipSyncData.Read(new List<object>()));
+        }
+
+        static Dictionary<string, object> Limits(Action<Dictionary<string, object>, Dictionary<string, object>> change = null)
+        {
+            var bone = new Dictionary<string, object>
+            {
+                ["min"] = new List<object> { -60.0, -45L, -90.0 }, ["max"] = new List<object> { 60.0, 80.0, 90.0 },
+                ["center"] = new List<object> { 0.0, 0.0, 0.0 }, ["axisLength"] = .3
+            };
+            var root = new Dictionary<string, object> { ["schemaVersion"] = 1L, ["bones"] = new Dictionary<string, object> { ["leftUpperArm"] = bone } };
+            change?.Invoke(root, bone);
+            return root;
+        }
+
+        [Test]
+        public void HumanoidLimitBoundaries()
+        {
+            Assert.That(HumanoidLimitData.Read(Limits()).Bones["leftUpperArm"].Min[1], Is.EqualTo(-45));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => { b["min"] = new List<object> { -180.0, 0L, 0L }; b["max"] = new List<object> { 180.0, 0L, 0L }; })));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => b["axisLength"] = HumanoidLimitData.MaximumAxisLength)));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => b["center"] = new List<object> { -180.0, 180.0, 0L })));
+            Assert.That(HumanoidLimitData.BoneNames.Count, Is.EqualTo(55));
+
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["min"] = new List<object> { 1.0, 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["max"] = new List<object> { -1.0, 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["min"] = new List<object> { -180.001, 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["center"] = new List<object> { 0L, 0L })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["center"] = new List<object> { 0L, 0L, double.NaN })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["axisLength"] = -.001)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["axisLength"] = HumanoidLimitData.MaximumAxisLength + .001)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b.Remove("center"))));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => b["extra"] = 1L)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => ((Dictionary<string, object>)r["bones"])["LeftUpperArm"] = b)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["bones"] = new Dictionary<string, object>())));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["schemaVersion"] = 2L)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["extra"] = 1L)));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(new List<object>()));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Write(new HumanoidLimitData()));
+        }
+
+        static List<object> Rotation(params double[] values) => values.Select(value => (object)value).ToList();
+
+        // tPose is optional next to bones, and either one alone is a value.
+        [Test]
+        public void HumanoidTPoseBoundaries()
+        {
+            var half = Math.Sqrt(.5);
+            var both = HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftLowerArm"] = Rotation(0, 0, half, half) }));
+            Assert.That(both.Bones.Keys, Is.EqualTo(new[] { "leftUpperArm" }));
+            Assert.That(both.TPose["leftLowerArm"], Is.EqualTo(new[] { 0, 0, half, half }));
+            var alone = HumanoidLimitData.Read(Limits((r, b) => { r.Remove("bones"); r["tPose"] = new Dictionary<string, object> { ["rightHand"] = Rotation(0, 0, 0, 1) }; }));
+            Assert.That(alone.Bones, Is.Empty);
+            Assert.That(alone.TPose.Keys, Is.EqualTo(new[] { "rightHand" }));
+            Assert.DoesNotThrow(() => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 0, 1 + HumanoidLimitData.RotationLengthTolerance * .9) })));
+            var written = new HumanoidLimitData();
+            written.TPose["leftUpperArm"] = new[] { 0, .0000001, half, half };
+            var value = HumanoidLimitData.Write(written);
+            Assert.That(value.Keys, Is.EquivalentTo(new[] { "schemaVersion", "tPose" }), "no empty bones");
+            Assert.That(((Dictionary<string, object>)value["tPose"])["leftUpperArm"], Is.EqualTo(Rotation(0, 0, Math.Round(half, 6), Math.Round(half, 6))));
+            Assert.That(HumanoidLimitData.Write(HumanoidLimitData.Read(Limits())).ContainsKey("tPose"), Is.False, "a file with limits alone is as before");
+
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object>())));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 0, 1.01) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 1) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["leftHand"] = Rotation(0, 0, 0, double.NaN) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new Dictionary<string, object> { ["LeftHand"] = Rotation(0, 0, 0, 1) })));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r["tPose"] = new List<object>())));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r.Remove("bones"))));
+            Rejects(LimitInvalid, () => HumanoidLimitData.Read(Limits((r, b) => r.Remove("schemaVersion"))));
         }
 
         static Dictionary<string, object> Gestures(Action<Dictionary<string, object>, List<object>> change = null)
@@ -146,6 +217,89 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(ToggleInvalid, () => ObjectToggleData.Read(Toggles((r, g, i) => r["extra"] = 1L)));
             Rejects(ToggleInvalid, () => ObjectToggleData.Read(Toggles((r, g, i) => r["items"] = new List<object>())));
             Rejects(ToggleInvalid, () => ObjectToggleData.Read(Toggles((r, g, i) => r["groups"] = "groups")));
+        }
+
+        const string TransformInvalid = "Object toggle transform data is invalid or exceeds the supported limits.";
+
+        // A transform group for the group "P" of Toggles(), whose states are 0 and 1.
+        static Dictionary<string, object> Moves(Action<Dictionary<string, object>, Dictionary<string, object>, Dictionary<string, object>> change = null)
+        {
+            Dictionary<string, object> Transform(double scale) => new Dictionary<string, object>
+            {
+                ["translation"] = new List<object> { 0.0, .1, 0.0 }, ["scale"] = new List<object> { scale, scale, scale }
+            };
+            var target = new Dictionary<string, object> { ["node"] = 3L, ["properties"] = new List<object> { "translation", "scale" } };
+            var group = new Dictionary<string, object>
+            {
+                ["parameter"] = "P", ["targets"] = new List<object> { target },
+                ["states"] = new List<object>
+                {
+                    new Dictionary<string, object> { ["value"] = 0L, ["transforms"] = new List<object> { Transform(1) } },
+                    new Dictionary<string, object> { ["value"] = 1L, ["transforms"] = new List<object> { Transform(.01) } }
+                }
+            };
+            var root = new Dictionary<string, object> { ["schemaVersion"] = 1L, ["groups"] = new List<object> { group } };
+            change?.Invoke(root, group, target);
+            return root;
+        }
+
+        static Dictionary<string, object> FirstTransform(Dictionary<string, object> group) =>
+            (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)((List<object>)group["states"])[0])["transforms"])[0];
+
+        [Test]
+        public void ObjectToggleTransformBoundaries()
+        {
+            var toggles = ObjectToggleData.Read(Toggles());
+            var read = ObjectToggleTransformData.Read(Moves(), toggles);
+            Assert.That(read.Groups.Single().Targets.Single().Node, Is.EqualTo(3));
+            Assert.That(read.Groups[0].Targets[0].Properties, Is.EqualTo(new[] { "translation", "scale" }));
+            Assert.That(read.Groups[0].StateFor(1).Transforms[0].Scale, Is.EqualTo(new[] { .01, .01, .01 }));
+            Assert.That(read.Groups[0].StateFor(1).Transforms[0].Rotation, Is.Null);
+            Assert.DoesNotThrow(() => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+            {
+                t["properties"] = new List<object> { "rotation" };
+                foreach (Dictionary<string, object> state in (List<object>)g["states"])
+                    state["transforms"] = new List<object> { new Dictionary<string, object> { ["rotation"] = new List<object> { 0.0, 0.0, 0.0, 1.0005 } } };
+            }), toggles), "A rotation of length 1 within 0.001 is read.");
+
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves(), null));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => g["parameter"] = "Q"), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => r["schemaVersion"] = 2L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => r["extra"] = 1L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["extra"] = 1L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["node"] = -1L), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object>()), toggles));
+            // Properties keep their order.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object> { "scale", "translation" }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object> { "translation", "translation" }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => t["properties"] = new List<object> { "translation", "skew" }), toggles));
+            // Too few states.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => ((List<object>)g["states"]).RemoveAt(1)), toggles));
+            // A value the toggle group does not have.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((Dictionary<string, object>)((List<object>)g["states"])[1])["value"] = 2L), toggles));
+            // A repeated value.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((Dictionary<string, object>)((List<object>)g["states"])[1])["value"] = 0L), toggles));
+            // A missing property.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g).Remove("scale")), toggles));
+            // A property the target does not list.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g)["rotation"] = new List<object> { 0.0, 0.0, 0.0, 1.0 }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g)["scale"] = new List<object> { 1.0, 1.0 }), toggles));
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) => FirstTransform(g)["scale"] = new List<object> { 1.0, double.NaN, 1.0 }), toggles));
+            // A rotation that is not a unit quaternion.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+            {
+                t["properties"] = new List<object> { "rotation" };
+                foreach (Dictionary<string, object> state in (List<object>)g["states"])
+                    state["transforms"] = new List<object> { new Dictionary<string, object> { ["rotation"] = new List<object> { 0.0, 0.0, 0.0, 2.0 } } };
+            }), toggles));
+            // Two groups for one parameter.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((List<object>)r["groups"]).Add(Moves()["groups"] is List<object> more ? more[0] : null)), toggles));
+            // A node twice.
+            Rejects(TransformInvalid, () => ObjectToggleTransformData.Read(Moves((r, g, t) =>
+                ((List<object>)g["targets"]).Add(new Dictionary<string, object> { ["node"] = 3L, ["properties"] = new List<object> { "scale" } })), toggles));
         }
 
         static List<object> Keys() => new List<object>

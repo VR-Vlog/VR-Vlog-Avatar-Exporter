@@ -16,6 +16,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, true)] [TestCase(true, false)]
         public void EmptyMeshDoesNotCreateAFullBindingOrRemoveItsBone(bool hasVertices, bool skinned)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var empty = new Mesh { name = "Removed clothing geometry" };
@@ -80,6 +81,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("_lil/lilToonMulti", "3rd", "DissolveNoiseMask")]
         public void UnsupportedImageInAProvenInactiveLayerKeepsEveryMaterialProperty(string shader, string layer, string suffix)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new MaterialFixture(shader);
             var property = "_Main" + layer + suffix;
             fixture.Material.SetFloat("_UseMain" + layer + "Tex", 0);
@@ -101,6 +103,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void SupportedImageInAnInactiveLayerIsStillStored()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new MaterialFixture();
             fixture.Material.SetFloat("_UseMain2ndTex", 0);
             fixture.Material.SetTexture("_Main2ndTex", Texture2D.whiteTexture);
@@ -127,6 +130,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("_MainTex")] [TestCase("_EmissionMap")]
         public void UnsupportedImagesOutsideTheProvenLayerSetAreNotOmitted(string property)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new MaterialFixture();
             fixture.Material.SetTexture(property, fixture.Dynamic);
             Assert.Throws<NotSupportedException>(() => LilToonFullSnapshot.Capture(fixture.Root));
@@ -177,6 +181,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FullExportAcceptsAnInactiveDynamicLayerWithoutEditingSourceAppearance()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             var dynamic = new RenderTexture(4, 4, 0);

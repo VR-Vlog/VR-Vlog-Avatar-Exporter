@@ -166,6 +166,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase(true)]
         public void RememberedPrivacyChoiceNeverUploadsWhenOpeningASavedVrm(bool accepted)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             WithPrivacyPreference(() =>
             {
                 CloudVrmTransferWindow.PrivacyConsentAccepted = accepted;
@@ -377,6 +378,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void DevelopmentFileSelectionCopiesTheVrmWithoutStartingAnUploadAndClosureDeletesOnlyTheCopy()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-dev-selected-" + Guid.NewGuid().ToString("N") + ".vrm");
             var bytes = new byte[] { 51, 52, 53, 54 };
             CloudVrmTransferWindow window = null;
@@ -420,6 +422,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("")]
         public void CanceledDevelopmentFileSelectionKeepsTheExistingSourceAndSession(string selection)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var window = EditorWindow.GetWindow<CloudVrmTransferWindow>();
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-dev-existing-" + Guid.NewGuid().ToString("N") + ".vrm");
             CloudVrmTransferSource source = null;
@@ -445,6 +448,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void RejectedDevelopmentFileSelectionKeepsTheExistingSourceAndSession()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var window = EditorWindow.GetWindow<CloudVrmTransferWindow>();
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-dev-existing-invalid-" + Guid.NewGuid().ToString("N") + ".vrm");
             CloudVrmTransferSource source = null;
@@ -470,6 +474,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void InvalidOwnedSelectionKeepsTheExistingSessionAndDeletesOnlyTheRejectedSnapshot()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             if (!CloudTransferAvailability.Enabled)
             {
                 Assert.Throws<NotSupportedException>(() => CloudVrmTransferWindow.CreateSnapshotPath());

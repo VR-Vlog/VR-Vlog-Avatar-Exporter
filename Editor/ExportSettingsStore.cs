@@ -55,8 +55,13 @@ namespace VRVlog.LilToonExporter
             public List<string> ExcludedPoses = new List<string>();
             public List<PoseName> PoseNames = new List<PoseName>();
             public AvatarLicenseOptions License = new AvatarLicenseOptions();
-            // Missing in entries saved before the option: off, as before.
-            public bool AutoLightweight;
+            // Missing in entries saved before the option existed: on, the
+            // default, because nobody chose. A written false stays off.
+            public bool AutoLightweight = true;
+            // Missing in older entries: on, the default, as above.
+            public bool MergeMeshes = true;
+            // 視線の動く範囲. Missing in older entries: all 0, the avatar's own range.
+            public GazeRangeOptions Gaze = new GazeRangeOptions();
             // The name of the last successful "アプリに転送". It is not part of
             // ExportSettings, so it never changes the settings' signature.
             public string TransferName;
@@ -109,7 +114,7 @@ namespace VRVlog.LilToonExporter
             // A file from another format version or one that cannot be read is
             // left untouched, so other avatars' entries are never lost.
             var store = Read(out var problem);
-            if (problem != null) { WarnOnce(problem); return; }
+            if (problem != null) { Failed(problem); return; }
             store = store ?? new Store();
             var existing = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key);
             var transferName = existing?.TransferName;
@@ -147,7 +152,7 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             var store = Read(out var problem);
-            if (problem != null) { WarnOnce(problem); return; }
+            if (problem != null) { Failed(problem); return; }
             store = store ?? new Store();
             var entry = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key) ?? Capture(key, avatar, new ExportSettings());
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
@@ -181,7 +186,7 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             var store = Read(out var problem);
-            if (problem != null) { WarnOnce(problem); return; }
+            if (problem != null) { Failed(problem); return; }
             store = store ?? new Store();
             var entry = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key) ?? Capture(key, avatar, new ExportSettings());
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
@@ -201,13 +206,24 @@ namespace VRVlog.LilToonExporter
             try
             {
                 UserSettingsFile.Write(FilePath, store, store.Avatars, MaximumAvatars);
+                Problem = null;
                 return true;
             }
             catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
             {
-                WarnOnce(string.Format(ExporterLocalization.T("書き出し設定を保存できませんでした: {0}"), error.Message));
+                Failed(string.Format(ExporterLocalization.T("書き出し設定を保存できませんでした: {0}"), error.Message));
                 return false;
             }
+        }
+
+        // Why the last save stored nothing, until a save is written. The console
+        // warns of each problem once, so the windows that save show this instead.
+        internal static string Problem { get; set; }
+
+        static void Failed(string message)
+        {
+            Problem = message;
+            WarnOnce(message);
         }
 
         // Each different problem is shown once, so a second problem is not
@@ -244,7 +260,9 @@ namespace VRVlog.LilToonExporter
                 ExcludedPoses = poses.Excluded.OrderBy(item => item, StringComparer.Ordinal).ToList(),
                 PoseNames = poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => new PoseName { Key = item.Key, Value = item.Value }).ToList(),
                 License = (settings.License ?? new AvatarLicenseOptions()).Copy(),
-                AutoLightweight = settings.AutoLightweight
+                AutoLightweight = settings.AutoLightweight,
+                MergeMeshes = settings.MergeMeshes,
+                Gaze = (settings.Gaze ?? new GazeRangeOptions()).Validated()
             };
         }
 
@@ -283,7 +301,12 @@ namespace VRVlog.LilToonExporter
                 return bindings;
             }
 
-            var settings = new ExportSettings { AutoExcludeGimmicks = entry.AutoExcludeGimmicks, AutoLightweight = entry.AutoLightweight };
+            var settings = new ExportSettings
+            {
+                AutoExcludeGimmicks = entry.AutoExcludeGimmicks, AutoLightweight = entry.AutoLightweight,
+                MergeMeshes = entry.MergeMeshes,
+                Gaze = (entry.Gaze ?? new GazeRangeOptions()).Validated()
+            };
             settings.ExcludedObjects.AddRange((entry.Excluded ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
             settings.IncludedGimmicks.AddRange((entry.Included ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
             settings.IncludedGimmickComponents.AddRange((entry.IncludedComponents ?? new List<string>()).Select(Inside<Component>).Where(item => item != null).Distinct());

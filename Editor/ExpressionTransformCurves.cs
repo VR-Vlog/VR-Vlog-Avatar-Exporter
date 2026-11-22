@@ -63,6 +63,14 @@ namespace VRVlog.LilToonExporter
         };
         static readonly string[] Axes = { "x", "y", "z", "w" };
 
+        // A curve of a Transform's local position, rotation or scale.
+        internal static bool IsTransformBinding(EditorCurveBinding binding)
+        {
+            if (binding.type != typeof(Transform) || binding.isPPtrCurve || binding.propertyName == null) return false;
+            var dot = binding.propertyName.LastIndexOf('.');
+            return dot > 0 && Properties.ContainsKey(binding.propertyName.Substring(0, dot));
+        }
+
         internal static Reading Read(GameObject avatar, AnimationClip clip, Func<string, bool> excludedPath = null)
         {
             if (!Enabled) return new Reading();
@@ -193,7 +201,7 @@ namespace VRVlog.LilToonExporter
 
         // How far one local unit of the target's position reaches in the
         // avatar: the largest axis of the parent's scale.
-        static double ParentScale(Transform target)
+        internal static double ParentScale(Transform target)
         {
             if (target.parent == null) return 1;
             var scale = target.parent.lossyScale;
@@ -228,7 +236,7 @@ namespace VRVlog.LilToonExporter
 
         // Degrees between two rotations, in double: Quaternion.Angle reads
         // anything under about 0.16 degrees as 0.
-        static double Angle(Quaternion a, Quaternion b)
+        internal static double Angle(Quaternion a, Quaternion b)
         {
             double ax = a.x, ay = a.y, az = a.z, aw = a.w, bx = b.x, by = b.y, bz = b.z, bw = b.w;
             var na = Math.Sqrt(ax * ax + ay * ay + az * az + aw * aw);
@@ -242,7 +250,7 @@ namespace VRVlog.LilToonExporter
             return 2 * Math.Atan2(Math.Sqrt(x * x + y * y + z * z), Math.Abs(w)) * 180 / Math.PI;
         }
 
-        static HashSet<Transform> HumanoidTransforms(GameObject avatar)
+        internal static HashSet<Transform> HumanoidTransforms(GameObject avatar)
         {
             var result = new HashSet<Transform>();
             var animator = avatar.GetComponent<Animator>();

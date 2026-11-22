@@ -65,13 +65,14 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 Assert.That(decoded.width, Is.EqualTo(1024));
                 Assert.That(decoded.height, Is.EqualTo(2));
+                Assert.That(source.width, Is.EqualTo(4096));
+                Assert.That(EditorJsonUtility.ToJson(importer), Is.EqualTo(settingsBefore));
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(fileBefore));
+                NoGraphicsDevice.IgnorePixelChecks();
                 var pixel = decoded.GetPixels32()[0];
                 Assert.That((int)pixel.r, Is.EqualTo(128).Within(4));
                 Assert.That((int)pixel.g, Is.EqualTo(128).Within(4));
                 Assert.That((int)pixel.b, Is.GreaterThanOrEqualTo(251));
-                Assert.That(source.width, Is.EqualTo(4096));
-                Assert.That(EditorJsonUtility.ToJson(importer), Is.EqualTo(settingsBefore));
-                Assert.That(File.ReadAllBytes(path), Is.EqualTo(fileBefore));
             }
             finally
             {
@@ -91,10 +92,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var copy = OutlineMaskTexture.Create(source, owned);
                 Assert.That(copy.width, Is.EqualTo(1024));
                 Assert.That(copy.height, Is.EqualTo(2));
-                Assert.That(copy.GetPixel(0,0).g, Is.EqualTo(64 / 255f).Within(.01));
                 Assert.That(source.width, Is.EqualTo(4096));
                 Assert.That(source.GetPixels32()[0].g, Is.EqualTo(200));
                 Assert.That(copy, Is.Not.SameAs(source));
+                NoGraphicsDevice.IgnorePixelChecks();
+                Assert.That(copy.GetPixel(0,0).g, Is.EqualTo(64 / 255f).Within(.01));
             }
             finally { foreach (var texture in owned) Object.DestroyImmediate(texture); Object.DestroyImmediate(source); }
         }

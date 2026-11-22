@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 {
                     var size = input.Length;
                     if (size < 1 || size > CloudTransferProtocol.MaximumSize)
-                        throw new InvalidOperationException("256 MiB以下の書き出し済みVRMファイルを選択してください。");
+                        throw new InvalidOperationException("256MB以下の書き出し済みVRMファイルを選択してください。");
                     using (var output = new FileStream(snapshot.SnapshotPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.SequentialScan))
                     {
                         snapshot.owned = true;

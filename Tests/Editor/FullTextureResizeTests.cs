@@ -45,13 +45,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(F.Int(record, "aniso"), Is.EqualTo(3));
                 Assert.That(F.Number(record, "mipBias"), Is.EqualTo(.25));
                 var bytes = Pixels(snapshot, record, 0, 0);
-                for (var pixel = 0; pixel < bytes.Length / 4; pixel++)
-                {
-                    Assert.That((int)bytes[pixel * 4], Is.EqualTo(102).Within(1));
-                    Assert.That((int)bytes[pixel * 4 + 1], Is.EqualTo(51).Within(1));
-                    Assert.That((int)bytes[pixel * 4 + 2], Is.EqualTo(204).Within(1));
-                    Assert.That((int)bytes[pixel * 4 + 3], Is.EqualTo(128).Within(1));
-                }
+                Assert.That(bytes.Length, Is.EqualTo(outputWidth * outputHeight * 4));
                 Assert.That(source.width, Is.EqualTo(width));
                 Assert.That(source.height, Is.EqualTo(height));
                 Assert.That(source.GetPixels32(), Is.EqualTo(original));
@@ -60,6 +54,14 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(source.wrapModeU, Is.EqualTo(TextureWrapMode.Clamp));
                 Assert.That(fixture.Material.GetTexture("_MainTex"), Is.SameAs(source));
                 Assert.That(warnings.Any(w => w.Contains(source.name) && w.Contains("1024")), Is.True);
+                NoGraphicsDevice.IgnorePixelChecks();
+                for (var pixel = 0; pixel < bytes.Length / 4; pixel++)
+                {
+                    Assert.That((int)bytes[pixel * 4], Is.EqualTo(102).Within(1));
+                    Assert.That((int)bytes[pixel * 4 + 1], Is.EqualTo(51).Within(1));
+                    Assert.That((int)bytes[pixel * 4 + 2], Is.EqualTo(204).Within(1));
+                    Assert.That((int)bytes[pixel * 4 + 3], Is.EqualTo(128).Within(1));
+                }
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -92,11 +94,13 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var actual = Pixels(snapshot, record, 0, mip);
                     Assert.That(actual.Length, Is.EqualTo(expected[mip].Length));
-                    for (var i = 0; i < actual.Length; i++)
-                        Assert.That((int)actual[i], Is.EqualTo((int)expected[mip][i]).Within(1), "mip " + mip + " component " + i);
+                    if (!NoGraphicsDevice.Missing)
+                        for (var i = 0; i < actual.Length; i++)
+                            Assert.That((int)actual[i], Is.EqualTo((int)expected[mip][i]).Within(1), "mip " + mip + " component " + i);
                     Assert.That(source.GetPixels32(mip)[0].r, Is.EqualTo(expected[mip][0]));
                 }
                 Assert.That(warnings, Is.Empty);
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -104,6 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FourKSquareCaptureReducesDecodedUploadBytesBySixteen()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             // One real 4K square proves the memory reduction without creating a
             // collection of 64 MiB fixtures. No CPU-readable source is required.
             var source = new Texture2D(4096, 4096, TextureFormat.RGBA32, false, true) { name = "Single 4K memory fixture" };
@@ -147,6 +152,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var size = Math.Max(1, 1024 >> mip);
                     var bytes = Pixels(snapshot, record, 0, mip);
                     Assert.That(bytes.Length, Is.EqualTo(size * size * 4));
+                    if (NoGraphicsDevice.Missing) continue;
                     foreach (var offset in new[] { 0, ((bytes.Length / 8) * 4), bytes.Length - 4 }.Distinct())
                     {
                         Assert.That((int)bytes[offset], Is.EqualTo((int)expected.r).Within(2), "mip " + mip);
@@ -159,6 +165,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(source.mipmapCount, Is.EqualTo(2));
                 Assert.That(source.isReadable, Is.False);
                 Assert.That(source.filterMode, Is.EqualTo(FilterMode.Point));
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -176,6 +183,8 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Material.SetTexture("_MainTex", source);
                 var snapshot = LilToonFullSnapshot.Capture(fixture.Avatar);
                 var bytes = Pixels(snapshot, Texture(snapshot, source.name), 0, 0);
+                Assert.That(bytes.Length, Is.EqualTo(1024 * 1 * 4));
+                NoGraphicsDevice.IgnorePixelChecks();
                 for (var pixel = 0; pixel < bytes.Length / 4; pixel++)
                     Assert.That((int)bytes[pixel * 4], Is.EqualTo(srgb ? 188 : 128).Within(2), "Color filtering follows the image encoding.");
 
@@ -252,6 +261,9 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(F.Int(record, "height"), Is.EqualTo(2));
                 Assert.That(F.Text(record, "format"), Is.EqualTo(format == TextureFormat.RGBAHalf ? "rgbaHalf" : "rgbaFloat"));
                 Assert.That(F.Bool(record, "srgb"), Is.False);
+                Assert.That(source.GetPixel(0, 0), Is.EqualTo(color));
+                Assert.That(fixture.Material.GetTexture("_EmissionMap"), Is.SameAs(source));
+                NoGraphicsDevice.IgnorePixelChecks();
                 var copy = new Texture2D(1024, 2, format, false, true);
                 try
                 {
@@ -261,8 +273,6 @@ namespace VRVlog.LilToonExporter.Tests
                         Assert.That(((Vector4)pixel - (Vector4)color).sqrMagnitude, Is.LessThan(1e-7f));
                 }
                 finally { Object.DestroyImmediate(copy); }
-                Assert.That(source.GetPixel(0, 0), Is.EqualTo(color));
-                Assert.That(fixture.Material.GetTexture("_EmissionMap"), Is.SameAs(source));
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -289,6 +299,11 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(F.Int(record, "width"), Is.EqualTo(1024));
                 Assert.That(F.Int(record, "height"), Is.EqualTo(maximum ? 5 : 2));
                 Assert.That(F.Text(record, "format"), Is.EqualTo("rgbaFloat"));
+                Assert.That(source.GetRawTextureData(), Is.EqualTo(original));
+                Assert.That(source.width, Is.EqualTo(width));
+                Assert.That(source.mipmapCount, Is.EqualTo(1));
+                Assert.That(fixture.Material.GetTexture("_EmissionMap"), Is.SameAs(source));
+                NoGraphicsDevice.IgnorePixelChecks();
                 var bytes = Pixels(snapshot, record, 0, 0);
                 for (var pixel = 0; pixel < bytes.Length / 16; pixel++)
                 for (var component = 0; component < 4; component++)
@@ -299,10 +314,6 @@ namespace VRVlog.LilToonExporter.Tests
                         Assert.That(Math.Abs(((double)actual - expected[component]) / expected[component]), Is.LessThanOrEqualTo(2e-6));
                     else Assert.That(actual, Is.EqualTo(expected[component]).Within(1e-6f));
                 }
-                Assert.That(source.GetRawTextureData(), Is.EqualTo(original));
-                Assert.That(source.width, Is.EqualTo(width));
-                Assert.That(source.mipmapCount, Is.EqualTo(1));
-                Assert.That(fixture.Material.GetTexture("_EmissionMap"), Is.SameAs(source));
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -339,6 +350,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var bytes = Pixels(snapshot, record, face, mip);
                     decodedBytes += bytes.LongLength;
                     Assert.That(bytes.Length, Is.EqualTo(size * size * 4));
+                    if (NoGraphicsDevice.Missing) continue;
                     var expected = CubeColor(face, mip + 1);
                     foreach (var offset in new[] { 0, bytes.Length - 4 })
                     {
@@ -352,6 +364,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(source.width, Is.EqualTo(2048));
                 Assert.That(source.mipmapCount, Is.EqualTo(12));
                 Assert.That(source.isReadable, Is.False);
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -390,6 +403,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var bytes = Pixels(snapshot, record, 0, mip);
                     Assert.That(bytes.Length, Is.EqualTo(Math.Max(1, 1024 >> mip) * Math.Max(1, 2 >> mip) * 4));
+                    if (NoGraphicsDevice.Missing) continue;
                     for (var pixel = 0; pixel < bytes.Length / 4; pixel++)
                     {
                         Assert.That(bytes[pixel * 4] / 255f, Is.EqualTo(.5f).Within(.02f));
@@ -404,6 +418,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(File.ReadAllBytes(path), Is.EqualTo(fileBefore));
                 Assert.That(File.ReadAllBytes(path + ".meta"), Is.EqualTo(metaBefore));
                 Assert.That(fixture.Material.GetTexture("_BumpMap"), Is.SameAs(source));
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { AssetDatabase.DeleteAsset(path); Object.DestroyImmediate(original); }
         }
@@ -457,6 +472,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var actual = Pixels(snapshot, record, 0, mip);
                     var stride = quantized ? 1 : 2;
                     Assert.That(actual.Length / stride * 4, Is.EqualTo(expected.Length));
+                    if (NoGraphicsDevice.Missing) continue;
                     if (quantized) Assert.That(actual, Is.EqualTo(LilToonFullSnapshot.NormalToRgba32(halfReads[mip])));
                     for (var component = 0; component < actual.Length / stride; component++)
                         Assert.That(quantized ? actual[component] / 255f : Mathf.HalfToFloat(BitConverter.ToUInt16(actual, component * 2)),
@@ -468,6 +484,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(File.ReadAllBytes(path), Is.EqualTo(fileBefore));
                 Assert.That(File.ReadAllBytes(path + ".meta"), Is.EqualTo(metaBefore));
                 Assert.That(fixture.Material.GetTexture("_BumpMap"), Is.SameAs(source));
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { AssetDatabase.DeleteAsset(path); Object.DestroyImmediate(original); }
         }
@@ -475,6 +492,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void CompleteExportCapsAllFallbackAndFullImagesIncludingExtensionOnlySlots()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Resize integration material" };
             var main = TestTextures.Image(4096, 8, false, _ => new Color32(102, 51, 204, 255));
@@ -559,6 +577,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, 2048, 1024)]
         public void DeleteMeshOutlineMaskKeepsItsEditorSizeUpToTheMobileMaximum(bool deleteMesh, int size, int expected)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var mask = new Texture2D(size, size, TextureFormat.RGBA32, false, true) { name = "Outline width mask " + size };
             using var fixture = new SurfaceFixture("Hidden/lilToonOutline");
             try
@@ -597,6 +616,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var record = Texture(snapshot, mask.name);
                 Assert.That(F.Int(record, "width"), Is.EqualTo(2048));
                 var bytes = Pixels(snapshot, record, 0, 0);
+                Assert.That(bytes.Length, Is.EqualTo(2048 * 2048 * 4));
+                NoGraphicsDevice.IgnorePixelChecks();
                 var moved = Enumerable.Range(0, bytes.Length / 4).Count(pixel => (Width(pixel).r == 0) != (bytes[pixel * 4] == 0));
                 Assert.That(moved, Is.EqualTo(0), "Texels whose zero test differs from the Editor mask.");
             }
@@ -607,6 +628,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void SharedOutlineMaskIsStoredAtTheDeleteMeshSizeInEitherMaterialOrder(bool deleteMeshFirst)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var mask = new Texture2D(2048, 2048, TextureFormat.RGBA32, false, true) { name = "Shared outline width mask" };
             using var fixture = new SurfaceFixture("Hidden/lilToonOutline");
             var other = new Material(fixture.Material.shader);

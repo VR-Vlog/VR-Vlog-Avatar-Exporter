@@ -13,6 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NegativeAuthoredExtentsAreStoredAsTheSameBoxWhileFilesStillRejectNegatives()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find("lilToon"));
             try

@@ -84,7 +84,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 master = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 Size = master.Length;
-                if (Size < 1 || Size > CloudTransferProtocol.MaximumSize) throw new InvalidOperationException("スマホへの転送は256 MiB以下のVRMに対応しています。");
+                if (Size < 1 || Size > CloudTransferProtocol.MaximumSize) throw new InvalidOperationException("スマホへの転送は256MB以下のVRMに対応しています。");
                 using (var hash = SHA256.Create()) FileHash = CloudTransferProtocol.Hex(hash.ComputeHash(master));
                 master.Position = 0;
             }

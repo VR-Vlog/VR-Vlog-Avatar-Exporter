@@ -9,7 +9,7 @@ using System.Reflection;
 
 namespace UnityEngine
 {
-    public static class Debug { public static void LogWarning(object message) { } }
+    public static class Debug { public static void LogWarning(object message) { } public static void LogException(System.Exception exception) { } }
     [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = true, Inherited = true)]
     public sealed class RequireComponent : System.Attribute { }
     public class Object
@@ -50,6 +50,8 @@ namespace UnityEngine
         public readonly List<Component> components = new List<Component>();
         public readonly Transform transform;
         public bool activeSelf = true;
+        public string tag = "Untagged";
+        public bool CompareTag(string value) => tag == value;
         public bool activeInHierarchy => activeSelf && (transform.parent == null || transform.parent.gameObject.activeInHierarchy);
         public void SetActive(bool value) { activeSelf = value; }
         public GameObject(string name) { this.name = name; transform = new Transform { gameObject = this }; components.Add(transform); }
@@ -218,7 +220,7 @@ namespace UnityEditor
 }
 namespace UnityEditor.PackageManager
 {
-    public class PackageInfo { public string name, version; public static PackageInfo FindForAssembly(Assembly assembly) => null; public static PackageInfo[] GetAllRegisteredPackages() => new PackageInfo[0]; }
+    public class PackageInfo { public string name, version, displayName; public static PackageInfo FindForAssembly(Assembly assembly) => null; public static PackageInfo[] GetAllRegisteredPackages() => new PackageInfo[0]; }
 }
 // Authoring metadata adapter only; the real pipeline tests still require the
 // installed NDMFAvatarRoot and canonical NDMF classes and remain skipped here.

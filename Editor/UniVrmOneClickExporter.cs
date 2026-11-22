@@ -84,14 +84,14 @@ namespace VRVlog.LilToonExporter
         // succeeded, leaves out only that phase: the retry keeps the outfit and
         // mesh edits. A pass that NDMF records as failed earlier is left out alone
         // by the preparation; any other build failure leaves out every build pass.
-        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<T> prepare)
+        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<bool> merged, Func<T> prepare)
         {
             try { return prepare(); }
             catch (Exception error) when (guard.ContinueOnFailure && !guard.IsOmitted(ExportStage.Optimizing) &&
                                           !ExportStageGuard.IsCancellation(error) && ExportStageFailure.Find(error) == null &&
                                           NdmfExportPreparation.FailedInOptimizing(error))
             {
-                throw new ExportStageFailure(ExportStage.Optimizing, error);
+                throw new ExportStageFailure(merged() ? ExportStage.MeshMerge : ExportStage.Optimizing, error);
             }
         }
 
@@ -139,7 +139,8 @@ namespace VRVlog.LilToonExporter
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
             IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null,
-            IReadOnlyCollection<AnimationClip> gestureFaces = null)
+            IReadOnlyCollection<AnimationClip> gestureFaces = null, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones = null,
+            GazeRangeOptions gazeRange = null, bool mergeMeshes = false)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -168,7 +169,8 @@ namespace VRVlog.LilToonExporter
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces);
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces,
+                    presetBones, gazeRange, mergeMeshes);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -418,6 +420,31 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The bones and shown objects of each standard expression's clip, read
+        // like a listed face's (ExpressionTransformCurves.Read); what the read
+        // leaves out or rejects is listed under the slot's label. Name is the label for
+        // the warnings of Resolve, Preset the name Add writes.
+        internal static List<VrmMenuExpressions.Expression> ReadPresetBones(GameObject clone,
+            IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones, Func<string, bool> excludedPath, ICollection<string> warnings)
+        {
+            var result = new List<VrmMenuExpressions.Expression>();
+            foreach (var (preset, label, clip) in presetBones)
+            {
+                // A clip the read rejects (a bone with both rotation forms, a
+                // value that is not finite) loses only its slot's bones; its face
+                // and the other expressions are written as before.
+                ExpressionTransformCurves.Reading reading;
+                try { reading = ExpressionTransformCurves.Read(clone, clip, excludedPath); }
+                catch (InvalidOperationException error) { warnings?.Add(label + ": " + error.Message); continue; }
+                foreach (var message in reading.Messages()) warnings?.Add(label + ": " + message);
+                if (reading.Tracks.Count == 0) continue;
+                var expression = new VrmMenuExpressions.Expression { Name = label, Preset = preset };
+                expression.Transforms.AddRange(reading.Tracks);
+                result.Add(expression);
+            }
+            return result;
+        }
+
         static byte[] ExportCore(GameObject source, string avatarName, string author, ICollection<string> warnings, bool suppressSharedTextureEmission,
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
@@ -425,7 +452,8 @@ namespace VRVlog.LilToonExporter
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces,
-            IReadOnlyCollection<AnimationClip> gestureFaces)
+            IReadOnlyCollection<AnimationClip> gestureFaces, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones,
+            GazeRangeOptions gazeRange, bool mergeMeshes)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -491,6 +519,8 @@ namespace VRVlog.LilToonExporter
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
+            VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
+            var armTPose = new Dictionary<HumanBodyBones, Quaternion>();
             // Set once the build passes have changed the copy; see the catch below.
             ExportStage? builtStage = null;
             try
@@ -524,6 +554,9 @@ namespace VRVlog.LilToonExporter
                 var faceEmoBindings = guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
                     expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true), () => null);
                 List<VrmMenuExpressions.Expression> expressions = null;
+                // The bones and shown objects of the standard expressions the
+                // caller filled (presetBones), written under their preset names.
+                var presetExpressions = new List<VrmMenuExpressions.Expression>();
                 ExpressionGestureCapture gestures = null;
                 recoveryReport.Stage = "ビルド処理";
                 recoveryReport.Phase = ExportPhase.Skeleton;
@@ -539,7 +572,11 @@ namespace VRVlog.LilToonExporter
                 // optimizer would have broken leaves out the build passes.
                 var optimizes = !guard.IsOmitted(ExportStage.BuildProcess) && !guard.IsOmitted(ExportStage.Optimizing);
                 var optimizerStage = optimizes ? ExportStage.Optimizing : ExportStage.BuildProcess;
-                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
+                // Set when the automatic mesh merge was added for AAO. A failure
+                // of the optimizer or of a later check then leaves out the merge
+                // first and Optimizing only if the export fails again.
+                var merged = false;
+                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => merged, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
@@ -604,7 +641,7 @@ namespace VRVlog.LilToonExporter
                     }
                     // After the build passes, which match clothing to the bones as
                     // authored, and before anything below reads the rest pose.
-                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>());
+                    AvatarRestPose.AlignArms(clone.GetComponent<Animator>(), armTPose);
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     // The faces are the board's list: its clips are read as the
@@ -618,6 +655,10 @@ namespace VRVlog.LilToonExporter
                     using (ExpressionBoardTimings.Step("export.playback"))
                         menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
                             faces, faceEmoBindings, gestureFaces?.Cast<UnityEngine.Object>().ToList()), () => new VrChatExpressionMenu.Source());
+                    // Read on the same prepared copy as the faces above.
+                    if (presetBones != null && presetBones.Count > 0)
+                        presetExpressions = guard.Step(ExportStage.Expressions,
+                            () => ReadPresetBones(clone, presetBones, expressionBindings.ExcludesPreparedPath, warnings), () => new List<VrmMenuExpressions.Expression>());
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
@@ -638,6 +679,7 @@ namespace VRVlog.LilToonExporter
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // Viseme Parameter Only reads the merged FX. A failure only warns.
                     lipSync = LipSyncCapture.Capture(clone, warnings);
+                    humanoidLimits = HumanoidLimitCapture.Capture(clone.GetComponent<Animator>(), armTPose, warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -714,8 +756,11 @@ namespace VRVlog.LilToonExporter
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
+                    if (mergeMeshes && optimizes && optimizerBindings != null)
+                        merged = guard.Step(ExportStage.MeshMerge, () => ExportMeshMerge.Apply(clone, optimizerBindings.RoutedRenderers), () => false);
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
                     stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing), tolerateFailedPasses: guard.ContinueOnFailure)));
+                if (merged) optimizerStage = ExportStage.MeshMerge;
                 if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
@@ -823,7 +868,15 @@ namespace VRVlog.LilToonExporter
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
-                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles), () => null);
+                // Expression tracks move bones by local values, which an aim's
+                // added parent would shift; those targets keep their parent.
+                var animated = (expressions ?? new List<VrmMenuExpressions.Expression>()).Concat(presetExpressions)
+                    .SelectMany(expression => expression.Transforms)
+                    .Where(track => track.Property != VRVlog.Expressions.ExpressionTransformAnimation.Active)
+                    .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform)
+                    // The bones the toggles move are written by local values too.
+                    .Concat((objectToggles?.MovedTargets ?? Enumerable.Empty<GameObject>()).Select(bone => bone.transform)).ToArray();
+                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles, animated), () => null);
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // MToon's outline width does not follow the renderer scale that lilToon's
@@ -840,7 +893,7 @@ namespace VRVlog.LilToonExporter
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
                 recoveryReport.Phase = ExportPhase.Export;
-                var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
+                var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings, gazeRange), () => null);
                 DisableEmptyMeshRenderers(clone, warnings);
                 DropOutsideBones(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
@@ -849,7 +902,7 @@ namespace VRVlog.LilToonExporter
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)
                 {
-                    var pruned = ExportEmptyNodes.Prune(clone);
+                    var pruned = ExportEmptyNodes.Prune(clone, objectToggles?.MovedTargets);
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
@@ -874,6 +927,7 @@ namespace VRVlog.LilToonExporter
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
+                        ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
                     }, warnings: warnings);
                 guard.Watch(optimizerStage, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
@@ -897,7 +951,7 @@ namespace VRVlog.LilToonExporter
                     // Only the faces Add registered may fill an empty emotion;
                     // their names no longer carry a source prefix, so each is
                     // inferred from its menu path as before.
-                    var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
+                    var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings, presetExpressions);
                     RecordMergedExpressions(expressions, recoveryReport);
                     // A face of the list that is a face only for its bones or
                     // visibility (bonesOnlyFaces) fills no standard preset by
@@ -1005,9 +1059,10 @@ namespace VRVlog.LilToonExporter
                 }
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
-                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
+                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData, objectToggles.Transforms), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
+                if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,

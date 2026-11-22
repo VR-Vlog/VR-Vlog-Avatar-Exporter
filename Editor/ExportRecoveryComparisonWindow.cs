@@ -159,7 +159,7 @@ namespace VRVlog.LilToonExporter
             var renderers = root.GetComponentsInChildren<Renderer>(true)
                 .Where(renderer => renderer.enabled && renderer.gameObject.activeInHierarchy).ToArray();
             if (renderers.Length == 0)
-                throw new InvalidOperationException(ExporterLocalization.T("プレビューするメッシュがありません。"));
+                throw new InvalidOperationException(ExporterLocalization.T("プレビューするメッシュがありません"));
             var bounds = renderers[0].bounds;
             foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
             return bounds;

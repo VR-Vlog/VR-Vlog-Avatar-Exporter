@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -32,6 +33,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             ExportSettingsStore.PathOverride = previousPath;
             ExpressionPresetStore.PathOverride = previousPresetPath;
+            // A failed save in a test must not warn on the board afterwards.
+            ExportSettingsStore.Problem = null;
             if (File.Exists(storePath)) File.Delete(storePath);
             if (File.Exists(presetPath)) File.Delete(presetPath);
         }
@@ -81,6 +84,7 @@ namespace VRVlog.LilToonExporter.Tests
             settings.License.CopyrightInformation = "Sample copyright";
             settings.License.AllowRedistribution = true;
             settings.AutoLightweight = true;
+            settings.Gaze = new GazeRangeOptions { Up = 18, Down = 12.5f, Side = 24 };
             return settings;
         }
 
@@ -102,10 +106,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));
             Assert.That(loaded.Poses.Names["pose-b"], Is.EqualTo("Renamed"));
             Assert.That(loaded.License.CopyrightInformation, Is.EqualTo("Sample copyright"));
+            Assert.That(loaded.Gaze.Key(), Is.EqualTo(new GazeRangeOptions { Up = 18, Down = 12.5f, Side = 24 }.Key()));
             Assert.That(ExportSettingsStore.Load(fixture.Outside).Signature(), Is.EqualTo(new ExportSettings().Signature()),
                 "Another avatar starts from the defaults.");
             var text = File.ReadAllText(storePath);
             Assert.That(text, Does.Not.Contain("SampleAvatar").And.Not.Contain("Pet"), "Objects are kept by identity, not by name.");
+        }
+
+        // 視線の動く範囲 outside what an eye can turn, as a hand-edited file
+        // could hold, comes back as the avatar's own range for that axis.
+        [Test]
+        public void AGazeRangeAnEyeCannotTurnIsReadAsTheAvatarsOwn()
+        {
+            using var fixture = new SavedAvatar();
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { Gaze = new GazeRangeOptions { Up = 20, Down = 20, Side = 20 } });
+            var text = File.ReadAllText(storePath);
+            var edited = Regex.Replace(Regex.Replace(text, @"(""Up"":\s*)20(\.0)?", "${1}500.0"), @"(""Down"":\s*)20(\.0)?", "${1}-3.0");
+            Assert.That(edited, Is.Not.EqualTo(text), "The stored file holds the range.");
+            File.WriteAllText(storePath, edited, Encoding.UTF8);
+            var loaded = ExportSettingsStore.Load(fixture.Avatar).Gaze;
+            Assert.That((loaded.Up, loaded.Down, loaded.Side), Is.EqualTo((0f, 0f, 20f)));
         }
 
         [Test]
@@ -139,6 +159,58 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AnAvatarWithNothingSavedStartsLightweight()
+        {
+            using var fixture = new SavedAvatar();
+            Assert.That(new ExportSettings().AutoLightweight, Is.True);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.True);
+        }
+
+        [Test]
+        public void TurningLightweightOffIsWrittenAndComesBack()
+        {
+            using var fixture = new SavedAvatar();
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { AutoLightweight = false });
+            Assert.That(File.ReadAllText(storePath), Does.Contain(ExpressionPresetStore.KeyFor(fixture.Avatar)), "Off differs from the default, so it has an entry.");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.False);
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, "Avatar");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.False, "Saving the name keeps the choice.");
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings());
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.True, "Turning it back on applies.");
+        }
+
+        // Files written by earlier versions: the value is kept when it is there,
+        // and an entry from before the option has no value and takes the default.
+        [TestCase(",\"AutoLightweight\":false", false)]
+        [TestCase(",\"AutoLightweight\":true", true)]
+        [TestCase("", true)]
+        public void AnEntryFromAnEarlierVersionIsRead(string field, bool expected)
+        {
+            using var fixture = new SavedAvatar();
+            var key = ExpressionPresetStore.KeyFor(fixture.Avatar);
+            File.WriteAllText(storePath, "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"" + key + "\",\"AutoExcludeGimmicks\":true,\"TransferName\":\"Avatar\"" + field + "}]}", Encoding.UTF8);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected));
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, "Renamed");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected), "Saving again does not change it.");
+        }
+
+        // メッシュをまとめて表示を速くする: on unless saved off, and an entry from
+        // before the option takes the default.
+        [TestCase(",\"MergeMeshes\":false", false)]
+        [TestCase("", true)]
+        public void MergeMeshesIsOnUnlessSavedOff(string field, bool expected)
+        {
+            using var fixture = new SavedAvatar();
+            Assert.That(new ExportSettings().MergeMeshes, Is.True);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).MergeMeshes, Is.True);
+            var key = ExpressionPresetStore.KeyFor(fixture.Avatar);
+            File.WriteAllText(storePath, "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"" + key + "\",\"AutoExcludeGimmicks\":true,\"TransferName\":\"Avatar\"" + field + "}]}", Encoding.UTF8);
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).MergeMeshes, Is.EqualTo(expected));
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { MergeMeshes = !expected });
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).MergeMeshes, Is.EqualTo(!expected), "The choice is written and comes back.");
+        }
+
+        [Test]
         public void AFileThatCannotBeReadIsNeverOverwritten()
         {
             using var fixture = new SavedAvatar();
@@ -168,6 +240,22 @@ namespace VRVlog.LilToonExporter.Tests
             File.WriteAllText(storePath, "{\"Version\":2,\"Avatars\":[]}", Encoding.UTF8);
             ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
             Assert.That(ExportSettingsStore.Revision, Is.EqualTo(before), "A file from another format version is not saved.");
+        }
+
+        [Test]
+        public void ASaveThatStoresNothingKeepsWhyUntilASaveIsWritten()
+        {
+            using var fixture = new SavedAvatar();
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Is.Null);
+            File.WriteAllText(storePath, "{ not json", Encoding.UTF8);
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Does.Contain(storePath), "The board shows why, not only the console.");
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Does.Contain(storePath), "A second failed save still shows it, though the console warned once.");
+            File.Delete(storePath);
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Problem, Is.Null, "A written save clears it.");
         }
 
         [Test]
@@ -239,6 +327,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AppTransferExportsWithTheAvatarsRememberedSettings()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             // The quick transfer exports from a board prepared out of sight, so
             // the avatar needs a mesh the board can show.
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
@@ -307,6 +396,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AppTransferRemembersTheNameOnlyAfterASave()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             static AppTransferExport Transfer(GameObject avatar)
             {
                 var transfer = new AppTransferExport();

@@ -28,13 +28,18 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < names.Length; i++)
                 {
                     Assert.That(shaders[i], Is.Not.Null, names[i]);
-                    var differences = Check.Compare(Check.Read(shaders[i]), names[i]);
+                    var differences = WithoutDevicePasses(Check.Compare(Check.Read(shaders[i]), names[i]));
                     Assert.That(differences, Is.Empty, names[i] + ": " + string.Join("; ", differences));
                 }
                 timings.Append(" read+compare round " + round + ": " + timer.ElapsedMilliseconds + " ms");
             }
             UnityEngine.Debug.Log("lilToon structure check of " + names.Length + " shaders: find " + find.ElapsedMilliseconds + " ms" + timings);
+            NoGraphicsDevice.IgnoreLilToonPassChecks();
         }
+
+        // Leaves out the passes without a graphics device, where they depend on the subshader Unity uses.
+        static List<Check.Difference> WithoutDevicePasses(List<Check.Difference> differences) => !NoGraphicsDevice.Missing ? differences
+            : differences.Where(d => d.Kind != Check.Kind.MissingPass && d.Kind != Check.Kind.UnknownPass && d.Kind != Check.Kind.PassLightMode).ToList();
 
         [Test]
         public void ExportEntryChecksTheLilToonShadersTheAvatarUses()
@@ -60,20 +65,20 @@ namespace VRVlog.LilToonExporter.Tests
                 body.sharedMaterials = new[] { other, null };
                 Assert.That(Check.Check(avatar), Is.Empty);
                 body.sharedMaterials = new[] { other, lilToon };
-                Assert.That(Check.Check(avatar), Is.Empty);
+                Assert.That(WithoutDevicePasses(Check.Check(avatar)), Is.Empty);
                 var warnings = new List<string>();
                 Assert.DoesNotThrow(() => Check.Inspect(avatar, "2.3.4", warnings));
-                Assert.That(warnings, Is.Empty);
+                if (!NoGraphicsDevice.Missing) Assert.That(warnings, Is.Empty);
 
                 // Renderers the snapshot does not record are not checked.
                 var hidden = Child("hidden", mesh);
                 hidden.GetComponent<MeshRenderer>().sharedMaterial = broken;
                 hidden.SetActive(false);
                 Child("empty", null).GetComponent<MeshRenderer>().sharedMaterial = broken;
-                Assert.That(Check.Check(avatar), Is.Empty);
+                Assert.That(WithoutDevicePasses(Check.Check(avatar)), Is.Empty);
 
                 body.sharedMaterials = new[] { lilToon, broken };
-                var differences = Check.Check(avatar);
+                var differences = WithoutDevicePasses(Check.Check(avatar));
                 Assert.That(differences.Count, Is.EqualTo(1), string.Join("; ", differences));
                 Assert.That(differences[0].Kind, Is.EqualTo(Check.Kind.MissingProperty));
                 Assert.That(differences[0].Name, Is.EqualTo("_Cull"));
@@ -82,6 +87,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var listed = string.Join("\n", warnings);
                 StringAssert.Contains(Probe, listed);
                 StringAssert.Contains("_Cull", listed);
+                NoGraphicsDevice.IgnoreLilToonPassChecks();
             }
             finally
             {

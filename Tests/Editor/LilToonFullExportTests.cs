@@ -70,8 +70,10 @@ namespace VRVlog.LilToonExporter.Tests
                     using var decoder = new System.IO.Compression.DeflateStream(encoded, System.IO.Compression.CompressionMode.Decompress);
                     using var decoded = new MemoryStream(); decoder.CopyTo(decoded);
                     var actual = decoded.ToArray(); Assert.That(actual.Length, Is.EqualTo(expected[mip].Length));
+                    if (NoGraphicsDevice.Missing) continue;
                     for (var i = 0; i < actual.Length; i++) Assert.That((int)actual[i], Is.EqualTo((int)expected[mip][i]).Within(1), "mip " + mip + " component " + i);
                 }
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { Object.DestroyImmediate(source); }
         }
@@ -79,6 +81,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(2)][TestCase(3)]
         public void ExternalProbeDataCannotBeSilentlyOmitted(int mode)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find("lilToon"));
             try
@@ -95,6 +98,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void EditorGradientKeysAreExcludedWhileTheRenderedGradientTextureRemains()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var material=new Material(Shader.Find("lilToon"));
             try
             {
@@ -165,6 +169,7 @@ namespace VRVlog.LilToonExporter.Tests
                 source.SetPixels(expected.Select(v=>new Color(v,0,0,1)).ToArray());source.Apply(false);
                 var storage=LilToonFullSnapshot.StorageFormat(UnityEngine.Experimental.Rendering.GraphicsFormat.R8_SNorm,false);
                 var bytes=LilToonFullTexture.Read(source,0,0,false,false,storage!="rgba32",storage=="rgbaHalf");
+                NoGraphicsDevice.IgnorePixelChecks();
                 for(var i=0;i<4;i++)Assert.That(BitConverter.ToSingle(bytes,i*16),Is.EqualTo(expected[i]).Within(1e-6f));
             }
             finally {Object.DestroyImmediate(source);}
@@ -208,6 +213,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void UnassignedNormalDefaultsUseHalfAndPreserveTheirSampler()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var source = new Material(Shader.Find("lilToon"));
             try
             {
@@ -237,6 +243,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(TextureFormat.RGBAFloat, "rgbaFloat")]
         public void AuthoredFloatingNormalCaptureKeepsItsComponentFormat(TextureFormat format, string expected)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var texture = new Texture2D(4, 4, format, false, true)
                 { name = "Authored floating-point normal", filterMode = FilterMode.Bilinear };
             var material = new Material(Shader.Find("lilToon"));
@@ -265,6 +272,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false,false)][TestCase(true,false)][TestCase(false,true)]
         public void ExplicitEmissionSuppressionReachesBothFullLayersWithoutEditingSource(bool shared,bool hdr)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find("_lil/lilToonMulti"));
             try
@@ -298,6 +306,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NonMeshRenderersDoNotCreateFullPrimitiveBindings()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find("lilToon"));
             var particles=new GameObject("Particle system");particles.transform.SetParent(fixture.Source.transform,false);
@@ -317,6 +326,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void EmptyMaterialSlotKeepsLilToonOnTheOtherRenderers()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find("lilToon"));
             try
@@ -339,6 +349,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void EmptyMaterialSlotBesideLilToonIsNamedAndSharedLilToonStays()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find("lilToon"));
             Mesh twoSlots=null;
@@ -379,16 +390,19 @@ namespace VRVlog.LilToonExporter.Tests
                     source.SetPixelData(samples,0);source.Apply(false);
                     Assert.That(LilToonFullSnapshot.StorageFormat(source.graphicsFormat,false),Is.EqualTo("rgbaFloat"));
                     var bytes=LilToonFullTexture.Read(source,0,0,false,false,true);
+                    if(NoGraphicsDevice.Missing)continue;
                     for(var pixel=0;pixel<4;pixel++)for(var c=0;c<components;c++)
                         Assert.That(BitConverter.ToSingle(bytes,pixel*16+c*4),Is.EqualTo(samples[pixel*components+c]/65535f).Within(1e-6f),format+" component "+c);
                 }
                 finally {Object.DestroyImmediate(source);}
             }
+            NoGraphicsDevice.IgnorePixelChecks();
         }
 
         [Test]
         public async Task ExtraMaterialDrawsBecomeExplicitPrimitivesWithoutEditingTheSourceMesh()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture=new AttachmentConnectionTests.Fixture();
             var first=new Material(Shader.Find("lilToon"));var overlay=new Material(Shader.Find("_lil/[Optional] lilToonOverlay"));
             GameObject loaded=null;
@@ -448,6 +462,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void EachOfficialShaderSnapshotHasEveryPropertyAndPass()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             foreach(var shaderName in VRVlog.LilToon.LilToon234Catalogue.Shaders.Keys)
             {
                 var material=new Material(Shader.Find(shaderName));
@@ -485,10 +500,12 @@ namespace VRVlog.LilToonExporter.Tests
                     try
                     {
                         copy.LoadRawTextureData(LilToonFullTexture.Read(source,mip,face,false,false,true,half));copy.Apply(false);
+                        if(NoGraphicsDevice.Missing)continue;
                         foreach(var color in copy.GetPixels()) Assert.That(((Vector4)color-new Vector4(2+face,mip+.5f,4,1)).sqrMagnitude,Is.LessThan(1e-8f));
                     }
                     finally {Object.DestroyImmediate(copy);}
                 }
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally {Object.DestroyImmediate(source);}
         }
@@ -513,6 +530,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ExportRetainsDynamicLayersAndSourceImagesWithDuplicateMaterialNames()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = new Material(Shader.Find("lilToon")) {name = "Duplicate"};
             var other = new Material(source) {name = "Duplicate"};
@@ -572,9 +590,12 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var mip=0;mip<texture.mipmapCount;mip++)
                 {
                     var bytes=LilToonFullTexture.Read(texture,mip,0,false,false,true);
+                    Assert.That(bytes.Length,Is.EqualTo(Math.Max(1,4>>mip)*Math.Max(1,4>>mip)*16));
+                    if(NoGraphicsDevice.Missing)continue;
                     Assert.That(BitConverter.ToSingle(bytes,0),Is.EqualTo(4+mip).Within(.0001f));
                     Assert.That(BitConverter.ToSingle(bytes,12),Is.EqualTo(.75f).Within(.0001f));
                 }
+                NoGraphicsDevice.IgnorePixelChecks();
             }
             finally { Object.DestroyImmediate(texture); }
         }

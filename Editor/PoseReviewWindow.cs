@@ -227,7 +227,7 @@ namespace VRVlog.LilToonExporter
             {
                 EditorGUILayout.LabelField(ExporterLocalization.T("ポーズを確認"), EditorStyles.boldLabel);
                 EditorGUILayout.Space(8);
-                EditorGUILayout.LabelField(ExporterLocalization.T("動くポーズは先頭から最後まで再生します。"), EditorStyles.wordWrappedLabel);
+                EditorGUILayout.LabelField(ExporterLocalization.T("動くポーズは先頭から最後まで再生します"), EditorStyles.wordWrappedLabel);
                 if (error != null) EditorGUILayout.HelpBox(error, MessageType.Warning);
                 PreviewRendering.DrawExportNotices(Notices, ref noticeScroll);
                 if (IsBusy) EditorGUILayout.LabelField(ExporterLocalization.T("確認中…"), EditorStyles.miniLabel);

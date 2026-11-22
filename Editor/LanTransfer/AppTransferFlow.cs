@@ -39,7 +39,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Avatar = "アバター";
         internal const string Exporting = "VRMを書き出しています";
         internal const string ExportFailed = "書き出せませんでした";
-        internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
+        internal const string SnapshotTooLarge = "書き出したVRMが256MBを超えています";
         internal const string SnapshotUnreadable = "書き出したVRMを開けません";
         internal const string ScanWithCamera = "スマホのカメラで読み取る";
         internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしないでください";

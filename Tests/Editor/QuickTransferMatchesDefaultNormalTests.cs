@@ -51,6 +51,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             previousSettingsPath = ExportSettingsStore.PathOverride;
             settingsPath = Path.Combine(Path.GetTempPath(), "vrvlog-same-settings-" + Guid.NewGuid().ToString("N") + ".json");
             ExportSettingsStore.PathOverride = settingsPath;
@@ -70,6 +71,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TearDown]
         public void TearDown()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             CloseBoards();
             ExportFallbackConfirmation.Dialog = originalDialog;
             ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
@@ -106,6 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheSavedExpressionsMatch()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             ExpressionPresetStore.Save(ExpressionPresetStore.KeyFor(fixture.Source),
                 new[] { ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Hair detail") });
@@ -119,6 +122,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheGimmicksAndTheSavedExclusionsMatch()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
             var hiddenMaterial = new Material(Shader.Find("VRVlogTests/UnsupportedHiddenFallback"));
@@ -153,6 +157,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void APlainAvatarMatches()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var (quick, normal) = ExportBoth(fixture.Source);
             AssertSame(quick, normal);
@@ -163,6 +168,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFailingStageMatches()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var material = new Material(Shader.Find("lilToon"));
             var texture = new RenderTexture(16, 16, 0);
@@ -192,12 +198,14 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ABoardReusedForAnotherAvatarStartsFromTheSameDefaults()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             using var other = new AttachmentConnectionTests.Fixture();
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
             Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
-            Board.GetField("autoLightweight", Flags).SetValue(window, true);
+            Board.GetField("autoLightweight", Flags).SetValue(window, false);
+            Board.GetField("gazeRange", Flags).SetValue(window, new GazeRangeOptions { Up = 25 });
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
             Assert.That(OpenNormal(fixture.Source), Is.SameAs(window));
@@ -218,6 +226,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void TheSavedLightweightChoiceMatches()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var texture = new Texture2D(512, 512, TextureFormat.RGBA32, true) { name = "Lightened main" };
             try
@@ -240,6 +249,65 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(texture); }
         }
 
+        // 自動で軽量化する starts on; saved off, both boards start from off.
+        [Test]
+        public void LightweightStartsOnUnlessSavedOff()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("autoLightweight True")); }
+            finally { Object.DestroyImmediate(hidden); }
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { AutoLightweight = false });
+            hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("autoLightweight False")); }
+            finally { Object.DestroyImmediate(hidden); }
+            var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
+        }
+
+        // メッシュをまとめて表示を速くする starts on; saved off, both boards start
+        // from off. The fixture has no AAO, so the file is the same either way.
+        [Test]
+        public void MergeMeshesStartsOnUnlessSavedOff()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("mergeMeshes True")); }
+            finally { Object.DestroyImmediate(hidden); }
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { MergeMeshes = false });
+            hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("mergeMeshes False")); }
+            finally { Object.DestroyImmediate(hidden); }
+            var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
+        }
+
+        // 視線の動く範囲 saved for the avatar: both boards start from it and
+        // both write it into the VRM look-at range.
+        [Test]
+        public void TheSavedGazeRangeMatches()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AppTransferQuickExportTests.SavedFixture(eyes: true);
+            var gaze = new GazeRangeOptions { Up = 20, Down = 15, Side = 25 };
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { Gaze = gaze });
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(hidden), Has.Member("gaze " + gaze.Key())); }
+            finally { Object.DestroyImmediate(hidden); }
+
+            var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
+            var lookAt = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)Read(quick.Path).Json["extensions"])["VRMC_vrm"])["lookAt"];
+            float Output(string key) => Convert.ToSingle(((Dictionary<string, object>)lookAt[key])["outputScale"]);
+            float Input(string key) => Convert.ToSingle(((Dictionary<string, object>)lookAt[key])["inputMaxValue"]);
+            Assert.That((Input("rangeMapVerticalUp"), Output("rangeMapVerticalUp")), Is.EqualTo((20f, 20f)));
+            Assert.That((Input("rangeMapVerticalDown"), Output("rangeMapVerticalDown")), Is.EqualTo((15f, 15f)));
+            Assert.That((Input("rangeMapHorizontalInner"), Output("rangeMapHorizontalInner")), Is.EqualTo((25f, 25f)));
+            Assert.That((Input("rangeMapHorizontalOuter"), Output("rangeMapHorizontalOuter")), Is.EqualTo((25f, 25f)));
+        }
+
         sealed class CountingLimitDialog : IPoseLimitDialog
         {
             internal int Asked;
@@ -258,6 +326,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void PosesOverTheAppLimitMatch()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var assets = new List<string>();
             var previousDialog = PoseLimitChooser.Dialog;
@@ -302,6 +371,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var folder = "Assets/VRVlogPrefabExport-" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
@@ -386,6 +456,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 "page " + window.Page,
                 "autoLightweight " + Board.GetField("autoLightweight", Flags).GetValue(window),
+                "mergeMeshes " + Board.GetField("mergeMeshes", Flags).GetValue(window),
+                "gaze " + ((GazeRangeOptions)Board.GetField("gazeRange", Flags).GetValue(window)).Key(),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),
                 "blink " + (blink == null ? "(automatic)" : blink.Mode.ToString()),

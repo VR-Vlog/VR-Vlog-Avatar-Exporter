@@ -14,6 +14,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(1, true, true)] [TestCase(2, true, true)] [TestCase(3, true, true)]
         public void MainLayersSurviveActualVrmExport(int layers, bool textured, bool multi)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find(multi ? "_lil/lilToonMulti" : "lilToon"));
             var texture = new Texture2D(8, 8, TextureFormat.RGBA32, false, false);
@@ -81,6 +82,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("1.10.3")] [TestCase("2.3.5")] [TestCase("2.3.4-beta")]
         public void ExportRecordsInstalledLilToonVersionAndKeepsCatalogueVersion(string installed)
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             try
@@ -102,6 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ExportStopsWhenLilToonIsMissing()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             try

@@ -36,6 +36,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TearDown]
         public void TearDown()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             foreach (var window in Resources.FindObjectsOfTypeAll<AppPreviewWindow>()) window.Close();
             foreach (var session in sessions) session.Dispose();
             sessions.Clear();
@@ -46,6 +47,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task SelectingAnExpressionKeepsTheManualEyeClosure()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             AppPreviewEntry.Backend = new FakeBackend(this);
             var window = AppPreviewWindow.Open(new byte[] { 1 }, "fake.vrm");
             await window.LastLoad;
@@ -64,6 +66,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task TheAnimationButtonTurnsBackToPlayWhenASinglePlayEnds()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             AppPreviewEntry.Backend = new FakeBackend(this);
             var window = AppPreviewWindow.Open(new byte[] { 1 }, "fake.vrm");
             await window.LastLoad;
@@ -81,6 +84,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AfterAScriptReloadTheWindowOffersToLoadTheFileAgain()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             var flags = BindingFlags.Instance | BindingFlags.NonPublic;
             Assert.That(typeof(AppPreviewWindow).GetField("bytes", flags).IsNotSerialized, Is.True,
                 "The VRM bytes stay out of the reload state.");

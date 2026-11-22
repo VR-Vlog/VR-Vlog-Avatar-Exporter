@@ -354,6 +354,129 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.WriteDocument(document));
         }
 
+        private static ExpressionTransformAnimation Preset(string name, params ExpressionTransformAnimation.Track[] tracks)
+        {
+            var preset = new ExpressionTransformAnimation { Expression = name, Duration = 0, Loop = false };
+            preset.Tracks.AddRange(tracks);
+            return preset;
+        }
+
+        // happy raises a bone and shows an object; aa holds a jaw bone.
+        private static ExpressionAnimationDocument WithPresets(ExpressionAnimationDocument document)
+        {
+            document.PresetTransforms.Add(Preset("happy",
+                Track(43, ExpressionTransformAnimation.Translation, Held(0), Held(0.02), Held(0)),
+                Track(58, ExpressionTransformAnimation.Active, Held(1))));
+            document.PresetTransforms.Add(Preset("aa", Track(44, ExpressionTransformAnimation.Euler, Held(12), Held(0), Held(0))));
+            return document;
+        }
+
+        private static Dictionary<string, object> PresetsJson() =>
+            (Dictionary<string, object>)JsonDom.Parse(JsonDom.Serialize(ExpressionAnimationData.WriteDocument(WithPresets(WithTransforms()))));
+
+        [Test]
+        public void PresetTransformsRoundTripApartFromTheCustomFaces()
+        {
+            Assert.That(TransformsJson().ContainsKey("presetTransforms"), Is.False);
+            var text = JsonDom.Serialize(ExpressionAnimationData.WriteDocument(WithPresets(WithTransforms())));
+            var json = JsonDom.Parse(text);
+            var read = ExpressionAnimationData.ReadDocument(json);
+            // Standard expressions never join the custom faces or their bones.
+            Assert.That(read.Expressions.Select(e => e.Expression), Is.EqualTo(new[] { "Smile", "Fist", "Wink" }));
+            Assert.That(ExpressionAnimationData.ReadTransforms(json, read).Select(t => t.Expression), Is.EqualTo(new[] { "Smile", "Fist" }));
+            var presets = ExpressionAnimationData.ReadPresetTransforms(json, read);
+            Assert.That(presets.Select(t => t.Expression), Is.EqualTo(new[] { "happy", "aa" }));
+            Assert.That(presets[0].Tracks.Select(t => t.Node + ":" + t.Property), Is.EqualTo(new[] { "43:translation", "58:active" }));
+            Assert.That(presets.All(t => t.Duration == 0 && !t.Loop), Is.True);
+            var copy = new ExpressionAnimationDocument();
+            copy.Expressions.AddRange(read.Expressions);
+            copy.Animations.AddRange(read.Animations);
+            copy.Transforms.AddRange(ExpressionAnimationData.ReadTransforms(json, read));
+            copy.PresetTransforms.AddRange(presets);
+            Assert.That(JsonDom.Serialize(ExpressionAnimationData.WriteDocument(copy)), Is.EqualTo(text));
+        }
+
+        [Test]
+        public void ADocumentMayCarryOnlyPresetTransforms()
+        {
+            var json = (Dictionary<string, object>)JsonDom.Parse(JsonDom.Serialize(
+                ExpressionAnimationData.WriteDocument(WithPresets(new ExpressionAnimationDocument()))));
+            Assert.That(((List<object>)json["expressions"]).Count, Is.EqualTo(0));
+            var read = ExpressionAnimationData.ReadDocument(json);
+            Assert.That(read.Animations, Is.Empty);
+            Assert.That(ExpressionAnimationData.ReadTransforms(json, read), Is.Empty);
+            Assert.That(ExpressionAnimationData.ReadPresetTransforms(json, read).Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ReadersThatSkipPresetTransformsKeepEverythingElse()
+        {
+            // A reader before presetTransforms runs ReadDocument and ReadTransforms
+            // only; both read the same as without the key.
+            var with = PresetsJson();
+            var without = TransformsJson();
+            var read = ExpressionAnimationData.ReadDocument(with);
+            var before = ExpressionAnimationData.ReadDocument(without);
+            Assert.That(read.Expressions.Select(e => e.Expression + "/" + e.Source), Is.EqualTo(before.Expressions.Select(e => e.Expression + "/" + e.Source)));
+            Assert.That(read.Animations.Select(a => a.Expression), Is.EqualTo(before.Animations.Select(a => a.Expression)));
+            Assert.That(ExpressionAnimationData.ReadTransforms(with, read).Select(t => t.Expression),
+                Is.EqualTo(ExpressionAnimationData.ReadTransforms(without, before).Select(t => t.Expression)));
+            // Files written before the key read no preset transforms.
+            Assert.That(ExpressionAnimationData.ReadPresetTransforms(Json(), ExpressionAnimationData.ReadDocument(Json())), Is.Empty);
+        }
+
+        private static Action<Dictionary<string, object>> BreakPresets(string kind)
+        {
+            Dictionary<string, object> Entry(Dictionary<string, object> json, int index) => (Dictionary<string, object>)((List<object>)json["presetTransforms"])[index];
+            switch (kind)
+            {
+                case "gaze": return json => Entry(json, 0)["expression"] = "lookUp";
+                case "neutral": return json => Entry(json, 0)["expression"] = "neutral";
+                case "custom face": return json => Entry(json, 0)["expression"] = "Smile";
+                case "other case": return json => Entry(json, 0)["expression"] = "Happy";
+                case "duplicate": return json => Entry(json, 1)["expression"] = "happy";
+                case "a clock": return json => Entry(json, 0)["duration"] = 1.0;
+                case "loop": return json => Entry(json, 0)["loop"] = true;
+                case "no tracks": return json => Entry(json, 1)["tracks"] = new List<object>();
+                case "unknown property": return json => ((Dictionary<string, object>)((List<object>)Entry(json, 0)["tracks"])[0])["property"] = "skew";
+                case "empty": return json => json["presetTransforms"] = new List<object>();
+                default: return json => json["presetTransforms"] = "x";
+            }
+        }
+
+        [TestCase("gaze")]
+        [TestCase("neutral")]
+        [TestCase("custom face")]
+        [TestCase("other case")]
+        [TestCase("duplicate")]
+        [TestCase("a clock")]
+        [TestCase("loop")]
+        [TestCase("no tracks")]
+        [TestCase("unknown property")]
+        [TestCase("empty")]
+        [TestCase("not an array")]
+        public void PresetTransformsRejectBrokenEntries(string kind)
+        {
+            var json = PresetsJson();
+            BreakPresets(kind)(json);
+            // A broken presetTransforms key stops neither the faces nor their bones.
+            var document = ExpressionAnimationData.ReadDocument(json);
+            Assert.That(document.Animations.Count, Is.EqualTo(2));
+            Assert.That(ExpressionAnimationData.ReadTransforms(json, document).Count, Is.EqualTo(2));
+            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.ReadPresetTransforms(json, document));
+        }
+
+        [Test]
+        public void WriteDocumentRejectsPresetTransformsItCannotRead()
+        {
+            var gaze = WithPresets(Document());
+            gaze.PresetTransforms[0].Expression = "lookLeft";
+            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.WriteDocument(gaze));
+            var clock = WithPresets(Document());
+            clock.PresetTransforms[1].Duration = 1;
+            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.WriteDocument(clock));
+        }
+
         [Test]
         public void AppVersionsCompareNumerically()
         {

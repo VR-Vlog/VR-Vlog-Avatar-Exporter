@@ -219,7 +219,7 @@ namespace VRVlog.LilToonExporter
             {
                 generatedBytes += mesh.vertexCount * 36L;
                 if (generatedBytes > 128L * 1024 * 1024)
-                    throw new InvalidOperationException("表情の追加データが上限の128 MiBを超えます。元のメッシュの頂点数や表情アニメーションを整理してください。");
+                    throw new InvalidOperationException("表情の追加データが上限の128MBを超えます。元のメッシュの頂点数や表情アニメーションを整理してください。");
             }
             foreach (var plan in plans)
             {

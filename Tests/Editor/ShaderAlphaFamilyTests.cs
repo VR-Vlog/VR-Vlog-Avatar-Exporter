@@ -137,6 +137,14 @@ namespace VRVlog.LilToonExporter.Tests
             var textures = new List<Texture2D>();
             var output = Substitute(source, textures);
             Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
+            // Unbaked, the main alpha would be read the wrong way round: every pixel is drawn.
+            if (NoGraphicsDevice.Missing)
+            {
+                AssertMask(output, 1, 0, 1);
+                Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(0f));
+                Assert.That(textures, Is.Empty);
+                return;
+            }
             AssertMask(output, 1, 1, .1f);
             Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.4f).Within(1e-5));
             Assert.That(textures, Has.Count.EqualTo(1));
@@ -210,6 +218,13 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(source, textures);
             Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonCutout"));
             Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.2f).Within(1e-5));
+            // Unbaked, the mask's alpha cannot be copied and the mask is left out.
+            if (NoGraphicsDevice.Missing)
+            {
+                Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(0f));
+                Assert.That(textures, Is.Empty);
+                return;
+            }
             AssertMask(output, 1, 1, 0);
             Assert.That(textures, Has.Count.EqualTo(1));
             Assert.That(textures[0].GetPixel(1, 1).r, Is.EqualTo(.3f).Within(.01f));
@@ -241,6 +256,13 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(source, textures);
             Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
             AssertMask(output, 2, 1, 0);
+            // Unbaked, the colored mask is used as it is.
+            if (NoGraphicsDevice.Missing)
+            {
+                Assert.That(output.GetTexture("_AlphaMask"), Is.SameAs(source.GetTexture("_AlphaMask")));
+                Assert.That(textures, Is.Empty);
+                return;
+            }
             Assert.That(textures, Has.Count.EqualTo(1));
             Assert.That(textures[0].GetPixel(1, 1).r, Is.EqualTo(.2126f).Within(.01f));
         }

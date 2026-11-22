@@ -127,6 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void WithoutAssignmentsTheExportedExpressionsAreUnchanged()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             using var session = new Session(fixture.Source);
             var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
@@ -140,6 +141,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task OrdinaryRouteAddsAssignedClipAndBlendShapeAsPresets()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var clip = FaceClip(80);
             Vrm10Instance imported = null;
@@ -182,6 +184,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task PresetFromAMovingClipBakesTheFaceItHolds()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var clip = new AnimationClip { name = "Sad loop" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
@@ -216,6 +219,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void PresetFromAClipWithShapesTheAvatarNeverHadBindsOnlyTheRest()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var clip = FaceClip(100);
             var absent = new AnimationClip { name = "Only missing" };
@@ -236,6 +240,164 @@ namespace VRVlog.LilToonExporter.Tests
                     Does.Contain(ExporterLocalization.T("参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。")));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(absent); }
+        }
+
+        // A face that also shows or hides an object can be put in a standard
+        // slot by hand. A standard expression holds BlendShapes only, so the
+        // export binds its BlendShapes, leaves the object out and says so,
+        // instead of stopping on the slot.
+        [Test]
+        public void AChosenPresetThatAlsoShowsAnObjectKeepsItsShapesAndSaysWhatItLeftOut()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = Fixture();
+            var clip = FaceClip(100);
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+                using var session = new Session(fixture.Source);
+                var automatic = Session.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip); automatic.Automatic = true;
+                Assert.That(session.PresetError(ExpressionPreset.lookUp, automatic), Does.EndWith("m_IsActive"));
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
+                Assert.That(session.PresetError(ExpressionPreset.lookUp, assignment), Is.Null);
+                session.SetPreset(ExpressionPreset.lookUp, assignment);
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(BoundShapes(bytes, "lookUp"), Has.Length.EqualTo(1));
+                var leftOut = ExporterLocalization.T(Session.PresetLeftOutNote) + "Front / m_IsActive";
+                Assert.That(warnings.Count(warning => warning.Contains(leftOut)), Is.EqualTo(1), string.Join("\n", warnings));
+                // Gaze keeps BlendShapes only: nothing is written under its name.
+                Assert.That(PresetTransforms(bytes), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
+        static List<VRVlog.Expressions.ExpressionTransformAnimation> PresetTransforms(byte[] bytes)
+        {
+            var extensions = (Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+            if (!extensions.TryGetValue(VRVlog.Expressions.ExpressionAnimationData.Extension, out var data))
+                return new List<VRVlog.Expressions.ExpressionTransformAnimation>();
+            var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(data);
+            return VRVlog.Expressions.ExpressionAnimationData.ReadPresetTransforms(data, document);
+        }
+
+        // An emotion slot the user filled with a face that also moves a bone
+        // and hides an object writes both under the preset's name, held at the
+        // board's frame; they never become a custom face of their own.
+        [Test]
+        public void AChosenEmotionSlotWritesItsBonesAndShownObjectsUnderThePreset()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = Fixture();
+            var clip = FaceClip(100);
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Back", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.y"),
+                    AnimationCurve.Constant(0, 1, 1.85f));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.x"),
+                    AnimationCurve.Constant(0, 1, .5f));
+                using var session = new Session(fixture.Source);
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
+                Assert.That(session.PresetLeftOut(assignment), Is.Null);
+                Assert.That(session.PresetLeavesOutBones(assignment), Is.False);
+                session.SetPreset(ExpressionPreset.happy, assignment);
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(BoundShapes(bytes, "happy"), Has.Length.EqualTo(1));
+                Assert.That(warnings.Any(warning => warning.Contains(ExporterLocalization.T(Session.PresetLeftOutNote))), Is.False, string.Join("\n", warnings));
+                var data = Extension(bytes);
+                var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(data);
+                Assert.That(document.Expressions, Is.Empty, "A standard expression is not listed as a custom face.");
+                Assert.That(VRVlog.Expressions.ExpressionAnimationData.ReadTransforms(data, document), Is.Empty);
+                var happy = VRVlog.Expressions.ExpressionAnimationData.ReadPresetTransforms(data, document).Single();
+                Assert.That(happy.Expression, Is.EqualTo("happy"));
+                Assert.That(happy.Duration, Is.EqualTo(0));
+                Assert.That(happy.Loop, Is.False);
+                var nodes = (List<object>)GlbDocument.Read(bytes).Json["nodes"];
+                Dictionary<string, object> Node(int index) => (Dictionary<string, object>)nodes[index];
+                int Named(string name) => Enumerable.Range(0, nodes.Count).Single(index => (string)Node(index)["name"] == name);
+                var joint = ((List<object>)Node(Named("Independent hair"))["children"]).Select(Convert.ToInt32).Single();
+                Assert.That(happy.Tracks.Select(track => track.Node + ":" + track.Property),
+                    Is.EquivalentTo(new[] { Named("Back") + ":active", joint + ":translation" }));
+                var values = new double[3];
+                happy.Tracks.Single(track => track.Property == VRVlog.Expressions.ExpressionTransformAnimation.Active).Evaluate(0, values);
+                Assert.That(values[0], Is.EqualTo(0));
+                happy.Tracks.Single(track => track.Property == VRVlog.Expressions.ExpressionTransformAnimation.Translation).Evaluate(0, values);
+                Assert.That(values[1], Is.EqualTo(1.85).Within(1e-4));
+                Assert.That(values[0], Is.EqualTo(-.5).Within(1e-4), "glTF mirrors x, as for a listed face.");
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
+        // A slot's clip the bone read rejects (a value that is not finite)
+        // loses only its own bones: the other slots keep theirs and the result
+        // list names the slot, instead of the export leaving out every
+        // expression.
+        [Test]
+        public void ARejectedSlotClipLosesOnlyItsBones()
+        {
+            using var on = new ExpressionTransformsSwitch(true);
+            using var fixture = Fixture();
+            var broken = new AnimationClip { name = "broken" };
+            var moving = new AnimationClip { name = "moving" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(broken, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalScale.x"),
+                    NeutralShapeSamplerTests.NaNCurve());
+                AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), "m_LocalPosition.y"),
+                    AnimationCurve.Constant(0, 1, 1.85f));
+                var warnings = new List<string>();
+                var read = UniVrmOneClickExporter.ReadPresetBones(fixture.Source,
+                    new[] { ("happy", "Happy slot", broken), ("aa", "Aa slot", moving) }, null, warnings);
+                Assert.That(read.Select(expression => expression.Preset), Is.EqualTo(new[] { "aa" }));
+                // The read's own message names the clip, the path and the property.
+                Assert.That(warnings.Any(warning => warning.StartsWith("Happy slot: ", StringComparison.Ordinal) &&
+                    warning.Contains("broken / Independent hair/Head / m_LocalScale.x")), Is.True, string.Join("|", warnings));
+            }
+            finally { Object.DestroyImmediate(broken); Object.DestroyImmediate(moving); }
+        }
+
+        static Dictionary<string, object> Extension(byte[] bytes) =>
+            (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])[VRVlog.Expressions.ExpressionAnimationData.Extension];
+
+        // A slot whose face is the baseline's stops neither the board nor the
+        // transfer: it is written empty and the result list says so.
+        [Test]
+        public void AChosenSlotThatCannotBeWrittenIsWrittenEmpty()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = Fixture();
+            var clip = FaceClip(0);
+            try
+            {
+                using var session = new Session(fixture.Source);
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.lookUp, clip);
+                var error = session.PresetError(ExpressionPreset.lookUp, assignment);
+                Assert.That(error, Is.Not.Null, "The clip moves no shape away from the baseline.");
+                session.SetPreset(ExpressionPreset.lookUp, assignment);
+                var happy = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
+                session.SetPreset(ExpressionPreset.happy, happy);
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(warnings.Count(warning => warning == string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), error)), Is.EqualTo(1), string.Join("\n", warnings));
+                Assert.That(Presets(bytes).ContainsKey("lookUp"), Is.False, "The slot is left empty, not filled from names.");
+                Assert.That(BoundShapes(bytes, "happy"), Has.Length.EqualTo(1), "The other slots are written as chosen.");
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
+        public void AChangedSourceIsNotASlotError()
+        {
+            using var fixture = Fixture();
+            using var session = new Session(fixture.Source);
+            var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
+            Assert.Throws<Session.SourceChangedException>(() => session.PresetError(ExpressionPreset.happy,
+                Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile")), "The slot is not emptied when the avatar changed.");
         }
 
         [Test]
@@ -778,6 +940,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task MouthGazeAndNeutralAssignmentsExportWithoutOverrides()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture();
             var mesh = FrontMesh(fixture, Shape("Open", OpenDelta), Shape("Raise", RaiseDelta));
             Vrm10Instance imported = null;
@@ -821,6 +984,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AssignedBlinkReplacesTheAutomaticBlink()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Shut", ShutDelta));
             Vrm10Instance assigned = null, automatic = null;
@@ -917,6 +1081,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task ConfirmingOneBlinkPresetKeepsTheOtherCandidates()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1), Shape("Shut_L", ShutDelta, 0));
             Vrm10Instance imported = null;
@@ -956,6 +1121,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void MouthCandidatesFollowLipSyncThenKnownNames()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             // On both meshes: the ordinary export binds it on each, so no single candidate.
             fixture.Mesh.AddBlendShapeFrame("vrc.v_ih", 100, Enumerable.Repeat(RaiseDelta, 3).ToArray(), new Vector3[3], new Vector3[3]);
@@ -1030,6 +1196,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void LipSyncCandidateOnAKnownNameKeepsTheNameBindingOnEveryMesh()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             // Back keeps the shared mesh and Front copies it: both have vrc.v_aa.
             fixture.Mesh.AddBlendShapeFrame("vrc.v_aa", 100, Enumerable.Repeat(OpenDelta, 3).ToArray(), new Vector3[3], new Vector3[3]);
@@ -1055,6 +1222,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NoneOnAMouthPresetStopsTheNameBinding()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("vrc.v_aa", OpenDelta), Shape("vrc.v_ih", RaiseDelta));
             try
@@ -1073,6 +1241,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NoneOnEveryBlinkPresetWritesNoBlink()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             try
@@ -1092,6 +1261,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ChoosingOneEyeKeepsTheAutomaticBlinkOnEveryMesh()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             // Back keeps the shared mesh and Front copies it: the automatic
             // blink closes both eyes on two meshes, so it offers no candidate.
@@ -1129,6 +1299,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void BlinkClipsUseOnlyWhatDiffersFromTheBaseline()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             var left = EyeClip("Blink_L", 35); var right = EyeClip("Blink_R", 35);
@@ -1150,6 +1321,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void BlinkClipsSharingAShapeAreAnEyeSlotError()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             var left = EyeClip("Blink_L", 60); var right = EyeClip("Blink_R", 60);
@@ -1163,8 +1335,14 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Not.Null);
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkLeft, chosen[0]), Is.True, "The slot shows the short overlap text.");
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkRight, chosen[1]), Is.True);
-                var thrown = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", NoFaces, presets: chosen));
-                Assert.That(thrown.Message, Is.EqualTo(error), "The export stops with the eye slot's own error.");
+                // Both eye slots are written empty; the result list names each with its own error.
+                var warnings = new List<string>();
+                var bytes = session.Export("Test", "Tests", NoFaces, warnings, presets: chosen);
+                var skipped = new[] { error, session.PresetError(ExpressionPreset.blinkRight, chosen[1]) }
+                    .Select(reason => string.Format(ExporterLocalization.T(Session.PresetSkippedFormat), reason)).ToArray();
+                Assert.That(warnings.Where(warning => skipped.Contains(warning)), Is.EquivalentTo(skipped), string.Join("\n", warnings));
+                foreach (var eye in new[] { "blinkLeft", "blinkRight" })
+                    Assert.That(Presets(bytes).TryGetValue(eye, out var written) ? ((List<object>)((Dictionary<string, object>)written)["morphTargetBinds"]).Count : 0, Is.Zero, eye);
             }
             finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(left); Object.DestroyImmediate(right); }
         }
@@ -1172,6 +1350,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NoneOnAnEmptySlotKeepsTheSourceVrmBlink()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var fixture = Fixture(smile: false);
             var settings = ScriptableObject.CreateInstance<VRM10Object>();
             var blink = ScriptableObject.CreateInstance<VRM10Expression>();

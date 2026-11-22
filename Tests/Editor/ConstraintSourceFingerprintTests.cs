@@ -187,6 +187,7 @@ namespace VRVlog.LilToonExporter.Tests
         [UnityTest]
         public IEnumerator FailedExportChoicesSurviveSolverUpdatesAndStillRejectAnAuthoredChange()
         {
+            NoGraphicsDevice.AllowErrorLogs();
             using var f = new ExportRecoveryTests.RecoveryFixture();
             var target = new GameObject("Driven target").transform; target.SetParent(f.Source.transform, false);
             var constraint = target.gameObject.AddComponent<RotationConstraint>();

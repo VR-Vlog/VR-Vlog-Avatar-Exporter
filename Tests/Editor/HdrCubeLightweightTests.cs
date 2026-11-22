@@ -6,7 +6,6 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -56,21 +55,23 @@ namespace VRVlog.LilToonExporter.Tests
                 var flags = BindingFlags.Instance | BindingFlags.NonPublic;
                 if (on) typeof(LilToonFullSnapshot).GetField("lightweight", flags).SetValue(snapshot, new TexelDensity.Plan(new Dictionary<Texture, double>()));
                 var texture = typeof(LilToonFullSnapshot).GetMethod("Texture", flags, null, new[] { typeof(Texture), typeof(bool), typeof(float) }, null);
-                // Without a GPU (-nographics) the copy shader cannot read the
-                // texture back, so the snapshot stops with the same error as
-                // without the option.
-                if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+                // Without a GPU (-nographics) the copy shader may be unsupported,
+                // and the snapshot stops with the same error as without the
+                // option. If it is drawn, the pixels read back are undefined, and
+                // so is whether they fit half.
+                int index;
+                try { index = (int)texture.Invoke(snapshot, new object[] { source, false, 1f }); }
+                catch (TargetInvocationException error) when (NoGraphicsDevice.Missing)
                 {
-                    var error = Assert.Throws<TargetInvocationException>(() => texture.Invoke(snapshot, new object[] { source, false, 1f }));
                     Assert.That(error.InnerException, Is.InstanceOf<InvalidOperationException>());
                     return;
                 }
-                var index = (int)texture.Invoke(snapshot, new object[] { source, false, 1f });
                 var record = (Dictionary<string, object>)((List<object>)typeof(LilToonFullSnapshot).GetField("textures", flags).GetValue(snapshot))[index];
-                Assert.That(record["format"], Is.EqualTo(expected));
                 Assert.That(record["width"], Is.EqualTo(size));
                 Assert.That(record["mips"], Is.EqualTo(source.mipmapCount));
                 Assert.That(record["faces"], Is.EqualTo(faces));
+                NoGraphicsDevice.IgnorePixelChecks();
+                Assert.That(record["format"], Is.EqualTo(expected));
                 if (expected != "rgbaHalf") return;
                 var payloads = (List<DeflatePayload>)typeof(LilToonFullSnapshot).GetField("payloads", flags).GetValue(snapshot);
                 var chunks = (List<object>)record["chunks"];

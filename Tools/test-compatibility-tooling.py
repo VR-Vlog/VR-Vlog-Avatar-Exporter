@@ -499,7 +499,9 @@ class RunnerSourceIdentityTests(unittest.TestCase):
         def git(*args):
             return unity_runner.subprocess.run(
                 ['git', '-c', 'safe.directory=' + self.root.as_posix(), '-C', str(self.root), *args],
-                capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+                # Setting up the fixture (init, commit) is not what is tested and
+                # can take far longer than 10 s on a loaded host.
+                capture_output=True, text=True, check=True, timeout=120).stdout.strip()
         git('init')
         git('add', 'package.json')
         git('-c', 'user.name=Runner Test', '-c', 'user.email=runner-test@example.invalid',

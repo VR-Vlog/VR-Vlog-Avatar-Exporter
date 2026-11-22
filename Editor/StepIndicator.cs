@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    // The step row at the top of the expression board: three circles joined by
+    // The step row at the top of the expression board: four circles joined by
     // lines, each followed by its step name. Everything is placed from the row
     // width only, never from the font or the names, so a larger font or a longer
     // translation cannot move a circle or a line; a name longer than its box is
@@ -19,16 +19,16 @@ namespace VRVlog.LilToonExporter
         internal const float Height = 24, Circle = 20, CircleGap = 8, LineGap = 10, MinLine = 16;
         // The name boxes take what the circles and the shortest lines leave, up to
         // this much; a wider row lengthens the lines instead.
-        internal const float MaxLabels = 420;
-        // Shares of the name boxes in step order. The first name is the shortest in
-        // every locale; the second and third are the long ones ("Objects to exclude",
-        // "Save and send the VRM").
-        static readonly float[] Shares = { .8f, 1.1f, 1.1f };
+        internal const float MaxLabels = 520;
+        // Shares of the name boxes in step order. The first two names are the short
+        // ones in every locale; the third and fourth are the long ones ("Objects to
+        // exclude", "Save and send the VRM").
+        static readonly float[] Shares = { .8f, .8f, 1.1f, 1.1f };
 
         internal static int Count => Shares.Length;
 
-        // The third page saves and sends the VRM.
-        internal static string[] Names() => new[] { "1 表情の設定", "2 除外するオブジェクト", "3 VRMの保存と転送" };
+        // The last page saves and sends the VRM.
+        internal static string[] Names() => new[] { "1 表情の設定", "2 視線の設定", "3 除外するオブジェクト", "4 VRMの保存と転送" };
 
         // "1 表情の設定" is ("1", "表情の設定"): the number goes in the circle.
         internal static (string Number, string Name) Split(string text)
