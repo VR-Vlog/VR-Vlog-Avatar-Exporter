@@ -54,6 +54,14 @@ TAG_GATE = "github.event_name == 'workflow_dispatch' && startsWith(github.ref, '
 TAG_AUTHENTICATION = {"name": "Authenticate published beta tag", "if": TAG_GATE,
                       "env": {"GH_TOKEN": "${{ github.token }}"},
                       "run": "python3 Tools/resolve-staging-beta.py --verify-published-tag"}
+# Public issues, pull requests and comments are written by anyone; no workflow may hand them to an AI model.
+AI_MARKERS = re.compile(
+    r"anthropics/|openai/|actions/ai-inference|run-gemini-cli|github/copilot|api\.anthropic\.com|api\.openai\.com"
+    r"|generativelanguage\.googleapis\.com|aiplatform\.googleapis\.com|models\.github\.ai|models\.inference\.ai\.azure\.com"
+    r"|openrouter\.ai|bedrock-runtime|ANTHROPIC_|OPENAI_|CLAUDE_CODE_|GEMINI_|\b(?:claude|codex|gemini|copilot|llm)\b",
+    re.IGNORECASE)
+UNTRUSTED_TEXT = re.compile(
+    r"github\.event\.(?:pull_request\.(?:body|title)|issue|comment|review|discussion|head_commit\.message|commits)\b")
 GITFLOW_STEP = {"name": "Check Gitflow pull request target", "if": "github.event_name == 'pull_request'",
                 "env": {"GH_TOKEN": "${{ github.token }}"}, "run": "python3 Tools/check-gitflow.py"}
 
@@ -282,6 +290,9 @@ def check(name, workflow):
     if name == "release-vpm.yml":
         allowed.add("workflow_run")
     require(set(events) <= allowed, name + ": unsafe or unreviewed trigger")
+    text = json.dumps(workflow)
+    require(not AI_MARKERS.search(text), name + ": AI actions and model APIs are not approved in public workflows")
+    require(not UNTRUSTED_TEXT.search(text), name + ": issue, pull request and comment text must not enter workflows")
     require(workflow.get("permissions") in ({}, {"contents": "read"}), name + ": default permissions must be read-only")
     require(isinstance(workflow.get("concurrency"), dict), name + ": concurrency required")
     jobs = workflow.get("jobs", {})

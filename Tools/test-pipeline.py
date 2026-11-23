@@ -28,6 +28,7 @@ candidate = tool("build-release-candidate")
 release = tool("verify-release-candidate")
 lint = tool("run-actionlint")
 gitflow = tool("check-gitflow")
+large_files = tool("check-large-files")
 staging = tool("resolve-staging-beta")
 publication_policy = tool("release_policy")
 SHA = "a" * 40
@@ -64,6 +65,26 @@ class WorkflowTrustTests(unittest.TestCase):
         data["jobs"]["schema"]["permissions"] = {"contents": "write"}
         with self.assertRaises(ValueError):
             policy.check("validate.yml", data)
+
+    def test_ai_actions_and_untrusted_text_fail(self):
+        mutations = (lambda j: j["steps"].append({"uses": "anthropics/claude-code-action@" + "a" * 40}),
+                     lambda j: j["steps"].append({"uses": "actions/ai-inference@" + "a" * 40}),
+                     lambda j: j["steps"].append({"run": "npx @openai/codex exec review"}),
+                     lambda j: j["steps"].append({"run": "curl https://api.anthropic.com/v1/messages"}),
+                     lambda j: j["steps"].append({"env": {"KEY": "${{ vars.OPENAI_API_KEY }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"BODY": "${{ github.event.pull_request.body }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"TEXT": "${{ github.event.comment.body }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"TEXT": "${{ github.event.issue.title }}"}, "run": "true"}))
+        for mutation in mutations:
+            data = self.workflow()
+            mutation(data["jobs"]["schema"])
+            with self.subTest(step=data["jobs"]["schema"]["steps"][-1]), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        for trigger in ("issues", "pull_request_review", "pull_request_review_comment", "discussion", "discussion_comment"):
+            data = self.workflow()
+            data["on"][trigger] = None
+            with self.subTest(trigger=trigger), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
 
     def test_pr_cannot_receive_secrets_or_persist_checkout_credentials(self):
         mutations = (lambda j: j["steps"][0]["with"].update({"persist-credentials": True}),
@@ -559,6 +580,22 @@ class GitflowTests(unittest.TestCase):
                 gitflow.main()
 
 
+class LargeFileTests(unittest.TestCase):
+    def test_current_tree_passes(self):
+        findings = [(name, large_files.inspect(name, size)) for name, size in large_files.tracked_sizes()]
+        self.assertEqual([], [item for item in findings if item[1]])
+
+    def test_models_packages_and_large_files_fail(self):
+        for name in ("Avatar.vrm", "Assets/Model.FBX", "Body.blend", "Scene.glb", "Export.unitypackage", "Data.zip"):
+            with self.subTest(name=name):
+                self.assertTrue(large_files.inspect(name, 10))
+        self.assertTrue(large_files.inspect("Documentation~/new.png", large_files.LIMIT + 1))
+        self.assertFalse(large_files.inspect("Documentation~/new.png", large_files.LIMIT))
+        name, size = next(iter(large_files.APPROVED_LARGE.items()))
+        self.assertFalse(large_files.inspect(name, size))
+        self.assertTrue(large_files.inspect(name, size + 1))
+
+
 class ValidationReceiptTests(unittest.TestCase):
     def test_mirror_and_publication_regressions_join_every_complete_host_plan(self):
         existing = ("check-pipeline.py", "test-pipeline.py", "validate.py", "test-release-policy.py",
@@ -567,7 +604,7 @@ class ValidationReceiptTests(unittest.TestCase):
         added = {"test-vpm-mirrors.py", "test-exporter-publication.py",
                  "check-liltoon-structure.py", "test-liltoon-catalogue.py",
                  "test-liltoon-version-parity.py", "test-liltoon-version-parity-runner.py",
-                 "test-compare-exports.py", "test-installer.py"}
+                 "test-compare-exports.py", "test-installer.py", "check-large-files.py"}
         self.assertEqual(existing, tuple(name for name in runner.PYTHON_CHECKS if name not in added))
         for name in added:
             self.assertEqual(1, runner.PYTHON_CHECKS.count(name))
