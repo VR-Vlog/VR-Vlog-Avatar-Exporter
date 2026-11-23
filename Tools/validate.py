@@ -204,7 +204,7 @@ assert "NdmfExportPreparation.InstantiateOwnedCopy(source)" in one_click
 assert "ReplaceLilToonMaterials(clone" in one_click
 assert "DestroyImmediate(clone)" in one_click
 assert "MToon10Meta.UnityShaderName" in one_click
-assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes)" in one_click
+assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes, hide)" in one_click
 assert "created.Add(material)" in one_click
 assert 'Float(source, "_Cull", 2f) == 2f' in one_click
 assert "context.Validate()" in one_click
