@@ -712,6 +712,41 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The lilToon extension could not be written: the file is written again
+        // without the snapshot and without hiding anything, and the result list
+        // names that one omission, not the extension's too.
+        [Test]
+        public void AFailedLilToonExtensionIsListedOnceAndHidesNothing()
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            using var avatar = new ToggleAvatar();
+            var material = new Material(shader) { name = "Toggles" };
+            try
+            {
+                foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                var calls = 0;
+                ExportTestHooks.FaultInjection = stage =>
+                {
+                    if (stage == ExportStage.LilToonExtension && ++calls == 1) throw new InvalidOperationException("injected extension");
+                };
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var json = GlbDocument.Read(Export(avatar.Source, warnings, report)).Json;
+
+                Assert.That(calls, Is.EqualTo(1));
+                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
+                    Is.EqualTo(new ExportStage?[] { ExportStage.LilToonSnapshot }));
+                Assert.That(warnings.Count(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.StageOmittedWarning))), Is.EqualTo(1),
+                    string.Join("\n", warnings));
+                Assert.That(warnings.Single(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.StageOmittedWarning))),
+                    Does.Contain("injected extension"));
+                Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(LilToonMobileProfile.ExtensionName), Is.False);
+                var materials = ((List<object>)json["materials"]).Cast<Dictionary<string, object>>();
+                Assert.That(materials.Select(value => (string)value["name"]), Has.None.EndsWith(UniVrmOneClickExporter.HiddenByDefaultSuffix));
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
         // Writing the toggles failed after the meshes were turned on: the file
         // is written again without the stage, so meshes that are off by default
         // stay out instead of showing without a way to hide them.

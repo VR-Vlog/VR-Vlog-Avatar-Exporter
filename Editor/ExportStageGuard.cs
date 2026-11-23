@@ -144,6 +144,15 @@ namespace VRVlog.LilToonExporter
             OnOmit?.Invoke(stage, error);
         }
 
+        // Takes back a stage left out in place, for a failure that restarts the
+        // export without an earlier stage whose omission covers it: the result
+        // list then shows the one cause once.
+        internal void Forget(ExportStage stage)
+        {
+            if (!omitted.Remove(stage)) return;
+            omissions.RemoveAll(omission => omission.Stage == stage);
+        }
+
         // Runs attempt until it succeeds. Each failure that names a stage which
         // was not yet left out restarts the export without that stage. Anything
         // else (strict mode, cancellation, a stage that cannot be left out, or a

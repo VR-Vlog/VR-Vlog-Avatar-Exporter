@@ -1033,10 +1033,16 @@ namespace VRVlog.LilToonExporter
                     {
                         // The app would draw the default-off meshes with the invisible
                         // standard materials, and showing them would show nothing:
-                        // export again without hiding them.
+                        // export again without hiding them. The retry leaves out the
+                        // snapshot, so the extension is not written then either: the
+                        // result list names that one stage, not both.
                         if (hiddenFallbacks.Count > 0)
-                            throw new ExportStageFailure(ExportStage.LilToonSnapshot, guard.Omissions.LastOrDefault(omission => omission.Stage == ExportStage.LilToonExtension).Error ??
-                                new InvalidOperationException(ExporterLocalization.T(StageOmittedWarning)));
+                        {
+                            var cause = guard.Omissions.LastOrDefault(omission => omission.Stage == ExportStage.LilToonExtension).Error ??
+                                new InvalidOperationException(ExporterLocalization.T(StageOmittedWarning));
+                            guard.Forget(ExportStage.LilToonExtension);
+                            throw new ExportStageFailure(ExportStage.LilToonSnapshot, cause);
+                        }
                         // The save check accepts a file without the extension only when marked.
                         exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                         foreach(var warning in fallbackWarnings)warnings?.Add(warning);
