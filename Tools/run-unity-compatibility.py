@@ -927,13 +927,12 @@ BEHAVIOR_CASES = {
         'AFailingStageMatches': 1,
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'TheSavedLightweightChoiceMatches': 1,
-        'LightweightStartsOnUnlessSavedOff': 1,
-        'MergeMeshesStartsOnUnlessSavedOff': 1,
+        'LightweightStartsAtMaxUnlessSavedOtherwise': 2,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
         'TheSavedGazeRangeMatches': 1,
     },
-    # 自動で軽量化する: texture sizes from texel density; off measures nothing.
+    # 軽量化 標準: texture sizes from texel density; なし measures nothing.
     'TexelDensityTests': {
         'AQuadHasTheExactDensity': 5,
         'ASkinnedQuadOfOneSquareMetreHasTheUnscaledDensity': 6,
@@ -1010,13 +1009,14 @@ BEHAVIOR_CASES = {
         'AnImporterMipFilterOtherThanTheBoxFilterKeepsTheMips': 5,
         'ATextureWithoutAnImporterKeepsItsMips': 1,
     },
-    # メッシュをまとめて表示を速くする: which renderers the AAO merge takes.
+    # 軽量化 最大: which renderers the AAO merge takes.
     'ExportMeshMergeTests': {
         'TheFaceAndEveryRendererAnAnimationSwitchesStaySeparate': 1,
         'ShapesTheExporterGeneratedAndRoutedRenderersStaySeparate': 1,
         'HiddenClothAndEmptyRenderersAreNotMerged': 1,
         'OneRendererLeftIsNotAMerge': 1,
         'AnAvatarWithoutAvatarOptimizerIsNotMerged': 1,
+        'TheMaxNoteSaysWhatAnAvatarWithoutOptimizerGets': 1,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
 }
