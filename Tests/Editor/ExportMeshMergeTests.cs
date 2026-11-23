@@ -133,10 +133,32 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(avatar.Root.transform.Find(ExportMeshMerge.MergedName), Is.Null);
         }
 
+        // 最大 is the same choice for every avatar; only its note says that an
+        // avatar without Avatar Optimizer gets what 標準 writes.
+        [Test]
+        public void TheMaxNoteSaysWhatAnAvatarWithoutOptimizerGets()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.LightweightNote(LightweightLevel.Max, true), Is.EqualTo(ExperimentalExpressionCaptureWindow.LightweightMaxNote));
+            Assert.That(ExperimentalExpressionCaptureWindow.LightweightNote(LightweightLevel.Max, false), Is.EqualTo(ExperimentalExpressionCaptureWindow.LightweightMaxWithoutOptimizerNote));
+            foreach (var optimizer in new[] { true, false })
+            {
+                Assert.That(ExperimentalExpressionCaptureWindow.LightweightNote(LightweightLevel.None, optimizer), Is.EqualTo(ExperimentalExpressionCaptureWindow.LightweightNoneNote));
+                Assert.That(ExperimentalExpressionCaptureWindow.LightweightNote(LightweightLevel.Standard, optimizer), Is.EqualTo(ExperimentalExpressionCaptureWindow.LightweightStandardNote));
+            }
+            Assert.That(LightweightLevel.Max.MergesMeshes() && LightweightLevel.Max.Lightens(), Is.True);
+            Assert.That(LightweightLevel.Standard.MergesMeshes(), Is.False);
+            Assert.That(LightweightLevel.Standard.Lightens(), Is.True);
+            Assert.That(LightweightLevel.None.MergesMeshes() || LightweightLevel.None.Lightens(), Is.False);
+        }
+
         [Test]
         public void TheTextFollowsTheWordingRulesAndExistsInEveryLocale()
         {
-            var texts = new[] { ExperimentalExpressionCaptureWindow.MergeMeshesLabel, ExperimentalExpressionCaptureWindow.MergeMeshesNote, "メッシュの自動結合" };
+            var texts = new[]
+            {
+                ExperimentalExpressionCaptureWindow.LightweightMaxNote, ExperimentalExpressionCaptureWindow.LightweightMaxWithoutOptimizerNote,
+                ExperimentalExpressionCaptureWindow.LightweightMaxTooltip, "メッシュの自動結合"
+            };
             foreach (var text in texts)
                 Assert.That(System.Text.RegularExpressions.Regex.IsMatch(text, "[。、！!\n]|ください|できます|\\d \\S|[ぁ-んァ-ヶ一-龠] [A-Za-z]|[A-Za-z] [ぁ-んァ-ヶ一-龠]"), Is.False, text);
             Assert.That(ExportStageGuard.Label(ExportStage.MeshMerge), Is.EqualTo("メッシュの自動結合"));
