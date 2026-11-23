@@ -3,12 +3,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.TestTools;
 using VRVlog.AvatarFormats;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.ObjectToggles;
 using Object = UnityEngine.Object;
 
@@ -638,6 +641,75 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(avatar.Source.transform.Find(path).gameObject.activeSelf, Is.False, path);
             }
             finally { Object.DestroyImmediate(material); }
+        }
+
+        // A VRM viewer that reads only the standard materials has no toggles:
+        // the meshes that are off by default get an invisible copy of the
+        // material they share with shown ones, and the lilToon extension still
+        // carries the authored material for both, so the app shows and hides
+        // them as before (Documentation~/decisions/2026-11-23-hide-default-off-outfits.md).
+        [Test]
+        public async Task ViewersOfTheStandardMaterialsDoNotShowTheMeshesThatAreOffByDefault()
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            using var avatar = new ToggleAvatar();
+            var material = new Material(shader) { name = "Toggles" };
+            Vrm10Instance imported = null;
+            try
+            {
+                foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                var warnings = new List<string>();
+                var bytes = Export(avatar.Source, warnings, null);
+                var json = GlbDocument.Read(bytes).Json;
+
+                var nodes = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+                var meshes = ((List<object>)json["meshes"]).Cast<Dictionary<string, object>>().ToList();
+                var materials = ((List<object>)json["materials"]).Cast<Dictionary<string, object>>().ToList();
+                int MaterialOf(string name)
+                {
+                    var node = nodes.Single(candidate => candidate.TryGetValue("name", out var value) && (string)value == name);
+                    var primitive = (Dictionary<string, object>)((List<object>)meshes[Convert.ToInt32(node["mesh"])]["primitives"]).Single();
+                    return Convert.ToInt32(primitive["material"]);
+                }
+                double Alpha(int index) => Convert.ToDouble(((List<object>)((Dictionary<string, object>)materials[index]["pbrMetallicRoughness"])["baseColorFactor"])[3]);
+                string Mode(int index) => materials[index].TryGetValue("alphaMode", out var mode) ? (string)mode : "OPAQUE";
+                var shown = MaterialOf("Dress");
+                Assert.That(Mode(shown), Is.EqualTo("OPAQUE"));
+                Assert.That(Alpha(shown), Is.EqualTo(1).Within(1e-6));
+                Assert.That(materials[shown]["name"], Is.EqualTo("Toggles"));
+                var hidden = MaterialOf("Hat");
+                Assert.That(hidden, Is.Not.EqualTo(shown), "The shown meshes must keep their own material.");
+                foreach (var name in new[] { "Hat", "Suit", "Glasses", "Ribbon" })
+                    Assert.That(MaterialOf(name), Is.EqualTo(hidden), name);
+                Assert.That(Mode(hidden), Is.EqualTo("BLEND"));
+                Assert.That(Alpha(hidden), Is.EqualTo(0).Within(1e-6));
+                Assert.That(materials[hidden]["name"], Is.EqualTo("Toggles" + UniVrmOneClickExporter.HiddenByDefaultSuffix));
+                var mtoon = (Dictionary<string, object>)((Dictionary<string, object>)materials[hidden]["extensions"])["VRMC_materials_mtoon"];
+                Assert.That(mtoon.TryGetValue("transparentWithZWrite", out var zWrite) && (bool)zWrite, Is.False);
+                // The app draws both with the authored lilToon material.
+                var lilToon = (Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])[LilToonMobileProfile.ExtensionName];
+                var records = ((List<object>)lilToon["materials"]).Cast<Dictionary<string, object>>().ToList();
+                Assert.That(records.Select(record => Convert.ToInt32(record["materialIndex"])), Is.EquivalentTo(new[] { shown, hidden }));
+                Assert.That(records.Select(record => (string)record["name"]), Is.EqualTo(new[] { "Toggles", "Toggles" }));
+                Assert.That(material.GetColor("_Color").a, Is.EqualTo(1f), "The source material must not change.");
+
+                // UniVRM reads only the standard materials, as other VRM viewers do.
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null);
+                Material Loaded(string name) => imported.GetComponentsInChildren<Renderer>(true).Single(renderer => renderer.name == name).sharedMaterial;
+                foreach (var name in new[] { "Hat", "Suit", "Glasses", "Ribbon" })
+                {
+                    Assert.That(Loaded(name).GetColor("_Color").a, Is.EqualTo(0f).Within(1e-6), name);
+                    Assert.That(Loaded(name).renderQueue, Is.GreaterThanOrEqualTo((int)UnityEngine.Rendering.RenderQueue.Transparent), name);
+                }
+                Assert.That(Loaded("Dress").GetColor("_Color").a, Is.EqualTo(1f).Within(1e-6));
+                Assert.That(Loaded("Dress").renderQueue, Is.LessThan((int)UnityEngine.Rendering.RenderQueue.Transparent));
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+                Object.DestroyImmediate(material);
+            }
         }
 
         // Writing the toggles failed after the meshes were turned on: the file
