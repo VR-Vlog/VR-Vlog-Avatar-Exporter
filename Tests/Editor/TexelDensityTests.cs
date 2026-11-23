@@ -508,7 +508,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var texts = new[]
             {
-                ExperimentalExpressionCaptureWindow.AutoLightweightLabel, ExperimentalExpressionCaptureWindow.AutoLightweightNote,
+                ExperimentalExpressionCaptureWindow.LightweightLabel, ExperimentalExpressionCaptureWindow.LightweightLevelNames[1],
+                ExperimentalExpressionCaptureWindow.LightweightLevelNames[2], ExperimentalExpressionCaptureWindow.LightweightNoneNote,
+                ExperimentalExpressionCaptureWindow.LightweightStandardNote,
                 ExportNoteText.TexturesLightened,
             };
             foreach (var text in texts)
