@@ -21,6 +21,11 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<Renderer, Material[]> sources = new Dictionary<Renderer, Material[]>();
         readonly Dictionary<Material, Dictionary<string, object>> records = new Dictionary<Material, Dictionary<string, object>>();
         internal bool IsEmpty => records.Count == 0;
+        // Whether the extension carries this slot, so the app draws it with
+        // lilToon rather than with its standard VRM material.
+        internal bool Carries(Renderer renderer, int slot) =>
+            renderer != null && sources.TryGetValue(renderer, out var materials) && slot >= 0 && slot < materials.Length &&
+            materials[slot] != null && records.ContainsKey(materials[slot]);
         // Official lilToon materials whose installed shader lacks a 2.3.4
         // runtime property, or declares one with another type or texture
         // dimension. They cannot satisfy the catalogue, so the app shows their

@@ -227,6 +227,14 @@ namespace VRVlog.LilToonExporter
         // The objects the toggles show and hide.
         internal IEnumerable<GameObject> Targets => groups.SelectMany(group => group.Targets);
 
+        // The targets the default value of their parameter hides. The copy
+        // has them on; the app hides them by the extension's default state.
+        internal IEnumerable<GameObject> OffByDefault => groups.SelectMany(group =>
+        {
+            var state = group.States.FirstOrDefault(entry => entry.Value == group.DefaultValue).Active;
+            return state == null ? Enumerable.Empty<GameObject>() : group.Targets.Where((target, column) => column < state.Length && !state[column]);
+        });
+
         // The bones the toggles move.
         internal IEnumerable<GameObject> MovedTargets => groups.SelectMany(group => group.Moved);
 
