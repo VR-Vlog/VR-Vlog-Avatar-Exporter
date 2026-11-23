@@ -146,7 +146,8 @@ namespace VRVlog.LilToonExporter
 
         // Takes back a stage left out in place, for a failure that restarts the
         // export without an earlier stage whose omission covers it: the result
-        // list then shows the one cause once.
+        // list then shows the one cause once. Only for a stage that the restarted
+        // export does not reach again, so the attempts stay bounded.
         internal void Forget(ExportStage stage)
         {
             if (!omitted.Remove(stage)) return;
