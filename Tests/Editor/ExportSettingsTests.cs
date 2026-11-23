@@ -178,8 +178,10 @@ namespace VRVlog.LilToonExporter.Tests
             ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { Lightweight = level });
             var text = File.ReadAllText(storePath);
             Assert.That(text, Does.Contain(ExpressionPresetStore.KeyFor(fixture.Avatar)), "It differs from the default, so it has an entry.");
-            Assert.That(text, Does.Contain("\"Lightweight\":" + (int)level));
-            Assert.That(text, Does.Contain("\"AutoLightweight\":" + (lighten ? "true" : "false")).And.Contain("\"MergeMeshes\":" + (merge ? "true" : "false")));
+            // The file is indented: compare without the spaces.
+            var compact = Regex.Replace(text, @"\s", "");
+            Assert.That(compact, Does.Contain("\"Lightweight\":" + (int)level));
+            Assert.That(compact, Does.Contain("\"AutoLightweight\":" + (lighten ? "true" : "false")).And.Contain("\"MergeMeshes\":" + (merge ? "true" : "false")));
             Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(level));
             ExportSettingsStore.SaveTransferName(fixture.Avatar, "Avatar");
             Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(level), "Saving the name keeps the choice.");
