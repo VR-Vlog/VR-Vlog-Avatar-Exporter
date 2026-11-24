@@ -67,23 +67,37 @@ class WorkflowTrustTests(unittest.TestCase):
             policy.check("validate.yml", data)
 
     def test_ai_actions_and_untrusted_text_fail(self):
-        mutations = (lambda j: j["steps"].append({"uses": "anthropics/claude-code-action@" + "a" * 40}),
-                     lambda j: j["steps"].append({"uses": "actions/ai-inference@" + "a" * 40}),
-                     lambda j: j["steps"].append({"run": "npx @openai/codex exec review"}),
-                     lambda j: j["steps"].append({"run": "curl https://api.anthropic.com/v1/messages"}),
-                     lambda j: j["steps"].append({"env": {"KEY": "${{ vars.OPENAI_API_KEY }}"}, "run": "true"}),
-                     lambda j: j["steps"].append({"env": {"BODY": "${{ github.event.pull_request.body }}"}, "run": "true"}),
+        ai = (lambda j: j["steps"].append({"uses": "actions/ai-inference@" + "a" * 40}),
+              lambda j: j["steps"].append({"run": "npx @openai/codex exec review"}),
+              lambda j: j["steps"].append({"run": "curl https://api.anthropic.com/v1/messages"}),
+              lambda j: j["steps"].append({"run": "pip install anthropic"}),
+              lambda j: j["steps"].append({"run": "npm install @anthropic-ai/sdk"}),
+              lambda j: j["steps"].append({"run": "python -c 'import openai'"}),
+              lambda j: j["steps"].append({"run": "llm --model gpt-4o"}),
+              lambda j: j["steps"].append({"run": "ollama run mistral"}),
+              lambda j: j["steps"].append({"env": {"KEY": "${{ vars.OPENAI_API_KEY }}"}, "run": "true"}))
+        untrusted = (lambda j: j["steps"].append({"env": {"BODY": "${{ github.event.pull_request.body }}"}, "run": "true"}),
                      lambda j: j["steps"].append({"env": {"TEXT": "${{ github.event.comment.body }}"}, "run": "true"}),
-                     lambda j: j["steps"].append({"env": {"TEXT": "${{ github.event.issue.title }}"}, "run": "true"}))
-        for mutation in mutations:
-            data = self.workflow()
-            mutation(data["jobs"]["schema"])
-            with self.subTest(step=data["jobs"]["schema"]["steps"][-1]), self.assertRaises(ValueError):
-                policy.check("validate.yml", data)
-        for trigger in ("issues", "pull_request_review", "pull_request_review_comment", "discussion", "discussion_comment"):
+                     lambda j: j["steps"].append({"env": {"TEXT": "${{ github.event.issue.title }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"TEXT": "${{ github.event['issue']['body'] }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"TEXT": "${{ GitHub.Event.Issue.Body }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"TEXT": "${{ toJSON(github.event) }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"REF": "${{ github.head_ref }}"}, "run": "true"}),
+                     lambda j: j["steps"].append({"env": {"REF": "${{ github.event.pull_request.head.ref }}"}, "run": "true"}))
+        for pattern, mutations in (("AI actions", ai), ("reviewed event fields", untrusted),
+                                   ("raw event payload", (lambda j: j["steps"].append({"run": "cat $GITHUB_EVENT_PATH"}),)),
+                                   ("published by GitHub", (lambda j: j["steps"].append({"uses": "someone/review-action@" + "a" * 40}),))):
+            for mutation in mutations:
+                data = self.workflow()
+                mutation(data["jobs"]["schema"])
+                with self.subTest(step=data["jobs"]["schema"]["steps"][-1]), self.assertRaisesRegex(ValueError, pattern):
+                    policy.check("validate.yml", data)
+        self.assertEqual("github.event.pull_request.number", policy.event_field("github.event['pull_request'].number"))
+        for trigger in ("issues", "issue_comment", "pull_request_target", "pull_request_review",
+                        "pull_request_review_comment", "discussion", "discussion_comment"):
             data = self.workflow()
             data["on"][trigger] = None
-            with self.subTest(trigger=trigger), self.assertRaises(ValueError):
+            with self.subTest(trigger=trigger), self.assertRaisesRegex(ValueError, "unsafe or unreviewed trigger"):
                 policy.check("validate.yml", data)
 
     def test_pr_cannot_receive_secrets_or_persist_checkout_credentials(self):
@@ -582,8 +596,14 @@ class GitflowTests(unittest.TestCase):
 
 class LargeFileTests(unittest.TestCase):
     def test_current_tree_passes(self):
-        findings = [(name, large_files.inspect(name, size)) for name, size in large_files.tracked_sizes()]
-        self.assertEqual([], [item for item in findings if item[1]])
+        self.assertEqual([], large_files.findings())
+
+    def test_submodules_links_and_lfs_fail(self):
+        self.assertTrue(large_files.inspect("Models", 0, "160000"))
+        self.assertTrue(large_files.inspect("Link.txt", 10, "120000"))
+        self.assertFalse(large_files.inspect("Tools/run.sh", 10, "100755"))
+        self.assertTrue(large_files.inspect_attributes("*.png filter=lfs diff=lfs merge=lfs -text\n"))
+        self.assertFalse(large_files.inspect_attributes("*.cs text eol=lf\n"))
 
     def test_models_packages_and_large_files_fail(self):
         for name in ("Avatar.vrm", "Assets/Model.FBX", "Body.blend", "Scene.glb", "Export.unitypackage", "Data.zip"):
