@@ -43,8 +43,8 @@ namespace VRVlog.LilToonExporter
         Vector2 pageScroll;
         Vector3 center;
         float distance = 1, yaw, zoom = 1;
-        // 軽量化: Max for a new board and for another avatar; the avatar's saved choice applies on preparing.
-        LightweightLevel lightweight = LightweightLevel.Max;
+        // 軽量化: Standard for a new board and for another avatar; the avatar's saved choice applies on preparing.
+        LightweightLevel lightweight = LightweightLevel.Standard;
         // Whether the avatar uses Avatar Optimizer: Max merges meshes only
         // then, and its note says so. Read once when the avatar is prepared.
         bool usesAvatarOptimizer;
@@ -2882,7 +2882,7 @@ namespace VRVlog.LilToonExporter
         {
             SaveGazeRange();
             Cleanup(); CloseChildWindows();
-            lightweight = LightweightLevel.Max;
+            lightweight = LightweightLevel.Standard;
             usesAvatarOptimizer = false;
             gazeRange = new GazeRangeOptions();
             licenseOptions = new AvatarLicenseOptions();

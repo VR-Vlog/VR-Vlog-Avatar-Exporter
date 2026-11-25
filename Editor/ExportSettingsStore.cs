@@ -61,10 +61,12 @@ namespace VRVlog.LilToonExporter
             public int Lightweight = -1;
             // The two switches older versions saved (自動で軽量化する and
             // メッシュをまとめて表示を速くする). Missing in still older
-            // entries: on, the default, because nobody chose. They are written
-            // to match the level so an older version reads the same choice.
+            // entries, where nobody chose: 自動で軽量化する on and no merge, so
+            // the level is Standard, the default. Released versions before the
+            // levels saved only the first. They are written to match the level
+            // so an older version reads the same choice.
             public bool AutoLightweight = true;
-            public bool MergeMeshes = true;
+            public bool MergeMeshes;
             // 視線の動く範囲. Missing in older entries: all 0, the avatar's own range.
             public GazeRangeOptions Gaze = new GazeRangeOptions();
             // The name of the last successful "アプリに転送". It is not part of

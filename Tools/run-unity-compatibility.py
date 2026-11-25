@@ -927,7 +927,7 @@ BEHAVIOR_CASES = {
         'AFailingStageMatches': 1,
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'TheSavedLightweightChoiceMatches': 1,
-        'LightweightStartsAtMaxUnlessSavedOtherwise': 2,
+        'LightweightStartsAtStandardUnlessSavedOtherwise': 2,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
         'TheSavedGazeRangeMatches': 1,
