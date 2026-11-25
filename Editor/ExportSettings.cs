@@ -50,8 +50,8 @@ namespace VRVlog.LilToonExporter
         internal readonly List<Component> IncludedGimmickComponents = new List<Component>();
         internal BlinkExportOptions Blink = new BlinkExportOptions();
         internal PoseExportOptions Poses = new PoseExportOptions();
-        // 軽量化. Max unless the avatar saved another level.
-        internal LightweightLevel Lightweight = LightweightLevel.Max;
+        // 軽量化. Standard unless the avatar saved another level.
+        internal LightweightLevel Lightweight = LightweightLevel.Standard;
         // 視線の動く範囲. Its default keeps the avatar's own range.
         internal GazeRangeOptions Gaze = new GazeRangeOptions();
         internal AvatarLicenseOptions License = new AvatarLicenseOptions();
