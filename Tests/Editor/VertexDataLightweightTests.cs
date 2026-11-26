@@ -9,6 +9,8 @@ using UnityEditor;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using VRVlog.AvatarAnimator;
+using VRVlog.Expressions;
 using F = VRVlog.LilToon.LilToonFullContract;
 using Object = UnityEngine.Object;
 
@@ -90,6 +92,47 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Attributes(Primitives(meshes[0]).Single()).ContainsKey("COLOR_0"), Is.False);
             Assert.That(Attributes(Primitives(meshes[1]).Single()).ContainsKey("COLOR_0"), Is.True);
             Assert.That(F.List(glb.Json, "accessors").Count, Is.EqualTo(4));
+        }
+
+        // The menu may put material 1 on node 0, whose mesh draws material 0:
+        // when material 1 reads the colours, mesh 0 keeps them too.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AMaterialTheMenuSetsOnAnotherMeshCounts(bool readsColours)
+        {
+            var glb = GlbDocument.Read(Build(new[] { Record("lilToon", 0, 0, 0, true), Record("Hidden/lilToonOutline", readsColours ? 1 : 0, 0, 0, true) }, splitMeshes: true));
+            glb.Json["nodes"] = new List<object> { new Dictionary<string, object> { { "mesh", 0L } }, new Dictionary<string, object> { { "mesh", 1L } } };
+            var source = glb.Write();
+            var menu = new Dictionary<int, IReadOnlyCollection<int>> { { 0, new[] { 0, 1, -1 } } };
+            var result = VertexDataLightweight.Apply(source, null, out _, menu);
+            var after = Consistent(source, result);
+            foreach (var primitive in AllPrimitives(after))
+                Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(readsColours));
+        }
+
+        // The rest and every key of each material slot target, by its node;
+        // other targets add nothing.
+        [Test]
+        public void MenuMaterialsAreTheSlotTargetsRestAndKeys()
+        {
+            var data = new AvatarAnimatorData();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "materialSlot", Slot = 1, Rest = 2 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "active", Rest = 1 });
+            var clip = new AvatarAnimatorData.Clip();
+            foreach (var t in new[] { 0, 1 })
+            {
+                var track = new AvatarAnimatorData.Track { Target = t };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 5 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = -1 });
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+            }
+            data.Clips.Add(clip);
+            var menu = VertexDataLightweight.MenuMaterials(data);
+            Assert.That(menu.Keys, Is.EquivalentTo(new[] { 3 }));
+            Assert.That(menu[3], Is.EquivalentTo(new[] { 2, 5, -1 }));
+            Assert.That(VertexDataLightweight.MenuMaterials(null), Is.Null);
         }
 
         // Each vertex adds up to exactly 65535, a zero stays zero, and each

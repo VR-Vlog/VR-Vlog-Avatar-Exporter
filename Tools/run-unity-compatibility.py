@@ -964,6 +964,8 @@ BEHAVIOR_CASES = {
         'AnythingNotKnownCountsAsReading': 1,
         'AMeshLosesItsColoursOnlyWhenNoMaterialReadsThem': 3,
         'AColourAccessorAnotherMeshUsesStays': 1,
+        'AMaterialTheMenuSetsOnAnotherMeshCounts': 2,
+        'MenuMaterialsAreTheSlotTargetsRestAndKeys': 1,
         'WeightsAddUpToExactly65535': 7,
         'RandomWeightsRoundTripWithin1Over65535': 1,
         'WeightsThatDoNotAddUpTo1StayFloat': 1,
