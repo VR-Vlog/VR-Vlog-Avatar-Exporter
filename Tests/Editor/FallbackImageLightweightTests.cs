@@ -110,6 +110,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Is.EqualTo(new[] { string.Format(FallbackImageLightweight.UnknownExtensionWarning, "EXT_unknown") }));
         }
 
+        // The extension for the materials only the menu sets does not keep
+        // the file. Its material has no record in the full extension, so its
+        // image keeps its size, and its record is written as it was.
+        [Test]
+        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile()
+        {
+            var glb = GlbDocument.Read(Build());
+            var record = new Dictionary<string, object> { { "materialIndex", 2L }, { "textures", new List<object> { new Dictionary<string, object> { { "name", "_MainTex" }, { "texture", 0L } } } } };
+            F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
+            glb.Json["extensionsUsed"] = new List<object> { F.ExtensionName, F.UnboundExtensionName };
+            var source = glb.Write();
+            var before = GlbDocument.Read(source);
+            var warnings = new List<string>();
+            var result = FallbackImageLightweight.Apply(source, warnings, out var count, out var saved);
+            Assert.That(warnings, Is.Empty);
+            Assert.That(count, Is.EqualTo(3));
+            Assert.That(saved, Is.EqualTo(source.Length - result.Length).And.GreaterThan(0));
+            var after = GlbDocument.Read(result);
+            Assert.That(Png(after, 2), Is.EqualTo(Png(before, 2)));
+            Assert.That(JsonDom.Serialize(F.Object(after.Json["extensions"])[F.UnboundExtensionName]),
+                Is.EqualTo(JsonDom.Serialize(F.Object(before.Json["extensions"])[F.UnboundExtensionName])));
+        }
+
         // Through the exporter and back through the vendored importer. Off,
         // the MToon image keeps the export's size; on, it is at most 512 and
         // the extension still has its own copy. The result list has the line

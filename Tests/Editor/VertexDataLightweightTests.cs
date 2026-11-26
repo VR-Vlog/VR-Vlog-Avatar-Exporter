@@ -166,6 +166,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Is.EqualTo(new[] { string.Format(VertexDataLightweight.UnknownExtensionWarning, "EXT_unknown") }));
         }
 
+        // The extension for the materials only the menu sets does not keep
+        // the file, and its record is written as it was.
+        [Test]
+        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile()
+        {
+            var glb = GlbDocument.Read(Build(new[] { Record("lilToon", 0, 0, 0, true), Record("lilToon", 0, 0, 0, true) }));
+            var record = new Dictionary<string, object> { { "materialIndex", 1L }, { "textures", new List<object>() } };
+            F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
+            glb.Json["extensionsUsed"] = new List<object> { F.ExtensionName, F.UnboundExtensionName };
+            var source = glb.Write();
+            var warnings = new List<string>();
+            var result = VertexDataLightweight.Apply(source, warnings, out var saved);
+            Assert.That(warnings, Is.Empty);
+            Assert.That(saved, Is.EqualTo(source.Length - result.Length).And.GreaterThan(0));
+            var after = Consistent(source, result);
+            Assert.That(JsonDom.Serialize(F.Object(after.Json["extensions"])[F.UnboundExtensionName]),
+                Is.EqualTo(JsonDom.Serialize(F.Object(glb.Json["extensions"])[F.UnboundExtensionName])));
+        }
+
         // Through the exporter and back through the vendored importer. Off, the
         // file keeps the float weights and the colours and lists no line. On,
         // the weights load within 1/65535 of the source, the colours go unless
