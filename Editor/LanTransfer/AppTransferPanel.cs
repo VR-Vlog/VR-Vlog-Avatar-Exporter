@@ -108,6 +108,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
         [NonSerialized] private bool pressedWhileBlocked, authorMarked;
         [NonSerialized] private IMGUIContainer termsView, lightweightView;
+        [NonSerialized] private VisualElement lightweightRow;
         [NonSerialized] private VisualElement root, content, form, columns, mainColumn, previewLine, previewColumn, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, qrSample, warningRow, barFill,
             qrMark, qrFrame, scanCaption;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
@@ -869,6 +870,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             nameLabel = root.Q<Label>("name-label");
             nameField = root.Q<TextField>("name-field");
             nameHint = root.Q<Label>("name-hint");
+            lightweightRow = root.Q("lightweight-row");
             lightweightLabel = root.Q<Label>("lightweight-label");
             lightweightNote = root.Q<Label>("lightweight-note");
             termsLabel = root.Q<Label>("terms-label");
@@ -1163,7 +1165,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             nameLabel.text = T(AppTransferText.Name);
             if (nameField.value != avatarName) nameField.SetValueWithoutNotify(avatarName);
             nameHint.text = T(AppTransferText.NameHint);
-            Show(root.Q("lightweight-row"), !detailed && entry != null);
+            Show(lightweightRow, !detailed && entry != null);
             Show(lightweightNote, !detailed && entry != null);
             lightweightLabel.text = T(AppTransferText.Lightweight);
             lightweightLabel.tooltip = lightweightLabel.text;

@@ -347,6 +347,7 @@ namespace VRVlog.LilToonExporter
         // Read again only after a save, like the summary.
         private LightweightLevel Level(GameObject avatar)
         {
+            if (avatar == null) return LightweightLevel.Standard;
             if (avatar != levelAvatar || levelRevision != ExportSettingsStore.Revision)
             {
                 levelAvatar = avatar;

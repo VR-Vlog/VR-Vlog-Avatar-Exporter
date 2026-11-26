@@ -106,6 +106,8 @@ namespace VRVlog.LilToonExporter
         ExportSettings savedSettings;
         GameObject savedSettingsSource;
         int savedSettingsRevision = -1;
+        // The revision last drawn, so a save from the quick transfer shows at once.
+        int paintedSettingsRevision = -1;
         // The whole avatar beside the objects page, made when the page opens and
         // dropped when it is left; it hides what the page leaves out at once.
         ExcludedObjectsPreview objectsPreview;
@@ -317,6 +319,7 @@ namespace VRVlog.LilToonExporter
         void Advance()
         {
             if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+            if (paintedSettingsRevision != ExportSettingsStore.Revision) { paintedSettingsRevision = ExportSettingsStore.Revision; Repaint(); }
             if (pending == null && candidateValidationPending && session != null) pending = RefreshCandidateValidation;
             if (pending == null) { AdvanceIdle(); return; }
             var action = pending; pending = null;
