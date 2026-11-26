@@ -217,6 +217,40 @@ namespace VRVlog.LilToonExporter.Tests
             AssertNumbers(particle["position"], 0, 0, .2);
         }
 
+        // A gimmick at the avatar root that MA's Bone Proxy hangs from Head is
+        // removed before the build: its effects are placed where the build
+        // would have moved them, under Head, as its contacts are. Before, they
+        // stayed where the gimmick is in the scene.
+        [TestCase("AsChildAtRoot", .1f)]
+        [TestCase("AsChildKeepWorldPose", .3f)]
+        public void EffectsOfARemovedBoneProxyHangFromItsTarget(string mode, float y)
+        {
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            // MA finds the avatar root by its descriptor to resolve the target.
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (proxyType == null || descriptorType == null) Assert.Ignore("Requires installed Modular Avatar and the VRChat avatar SDK in Unity.");
+            var root = Root();
+            root.AddComponent(descriptorType);
+            var head = Child(root.transform, "Head").transform;
+            head.localPosition = new Vector3(0, 1.4f, 0);
+            var gimmick = Child(root.transform, "Gimmick").transform;
+            gimmick.localPosition = new Vector3(0, 1.6f, 0);
+            var proxy = gimmick.gameObject.AddComponent(proxyType);
+            proxyType.GetField("subPath").SetValue(proxy, "Head");
+            var field = proxyType.GetField("attachmentMode");
+            field.SetValue(proxy, Enum.Parse(field.FieldType, mode));
+            var system = System(gimmick, "Sparkles", 10);
+            system.transform.localPosition = new Vector3(0, .1f, 0);
+            Assert.That(NdmfExportPreparation.FollowingTarget(proxy), Is.EqualTo(head), "The export reads the target.");
+
+            var capture = AvatarEffectsExport.Capture(root);
+            Object.DestroyImmediate(gimmick.gameObject);
+            capture.Rebind();
+            var particle = Single(capture.Resolve(go => go.transform == head ? 1 : -1));
+            Assert.That(particle["node"], Is.EqualTo(1));
+            AssertNumbers(particle["position"], 0, y, 0);
+        }
+
         [Test]
         public void WhenNothingIsWrittenTheResultLineStillCountsWhatWasLeftOut()
         {

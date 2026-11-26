@@ -178,20 +178,19 @@ namespace VRVlog.LilToonExporter
         // The build may remove the effect's object or any ancestor, and
         // Resolve takes the nearest one written. Whether it plays is its
         // object's state in the copy; the FX that turns it on is not read here.
+        // A gimmick removed before the build is not moved by its Bone Proxy:
+        // as for the contacts, the effect is placed where the build would
+        // have moved it, under the proxy's target.
         static Effect Place(string kind, Component component, Transform root)
         {
-            var ancestors = new List<Transform>();
-            for (var ancestor = component.transform; ancestor != null; ancestor = ancestor.parent)
-            {
-                ancestors.Add(ancestor);
-                if (ancestor == root) break;
-            }
+            var world = component.transform.localToWorldMatrix;
+            var ancestors = AvatarContactsExport.Walk(component.transform, root, ref world);
             return new Effect
             {
                 Kind = kind,
                 Part = AvatarAnimatorCapture.ReadPart(kind.Substring(0, kind.Length - 1), component, root),
                 Ancestors = ancestors.ToArray(),
-                World = component.transform.localToWorldMatrix,
+                World = world,
                 Active = component.gameObject.activeInHierarchy
             };
         }
@@ -411,13 +410,10 @@ namespace VRVlog.LilToonExporter
             {
                 // The build may move an object under another parent (a bone it
                 // merges into): from the nearest object still there, walk the
-                // parents as they are now.
-                var chain = new List<Transform>();
-                for (var ancestor = effect.Ancestors.FirstOrDefault(a => a != null); ancestor != null; ancestor = ancestor.parent)
-                {
-                    chain.Add(ancestor);
-                    if (ancestor == root) break;
-                }
+                // parents as they are now (through a Bone Proxy the build has
+                // not processed yet). World already stands where it moves it.
+                var world = effect.World;
+                var chain = AvatarContactsExport.Walk(effect.Ancestors.FirstOrDefault(a => a != null), root, ref world);
                 if (chain.Count == 0 || chain[chain.Count - 1] != root) chain.Add(root);
                 effect.Ancestors = chain.ToArray();
                 effect.Offsets = new Matrix4x4[effect.Ancestors.Length];

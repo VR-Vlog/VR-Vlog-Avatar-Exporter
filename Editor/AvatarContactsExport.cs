@@ -178,7 +178,7 @@ namespace VRVlog.LilToonExporter
         // removes before the build never moves, so from an object that holds
         // Modular Avatar's Bone Proxy the walk goes on from its target, and
         // world (a pose under the object) goes where the build would move it.
-        static List<Transform> Walk(Transform from, Transform stop, ref Matrix4x4 world)
+        internal static List<Transform> Walk(Transform from, Transform stop, ref Matrix4x4 world)
         {
             var chain = new List<Transform>();
             // Proxies that hang from each other end the walk instead of looping.
