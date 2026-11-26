@@ -110,6 +110,123 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(readsColours));
         }
 
+        // A value the menu moves counts with every value it may take: an
+        // outline width or fur direction the menu turns on keeps the colours
+        // a material at rest leaves unread.
+        [TestCase("Hidden/lilToonOutline", "_OutlineVertexR2Width", new[] { 0d }, false)]
+        [TestCase("Hidden/lilToonOutline", "_OutlineVertexR2Width", new[] { 0d, 1d }, true)]
+        [TestCase("Hidden/lilToonOutline", "_OutlineDeleteMesh", new[] { 0d, 1d }, false)]
+        [TestCase("Hidden/lilToonFur", "_VertexColor2FurVector", new[] { 0d, 1d }, true)]
+        [TestCase("lilToon", "_OutlineVertexR2Width", new[] { 0d, 2d }, false)]
+        public void AValueTheMenuMovesCountsWithEveryValue(string shader, string name, double[] values, bool reads)
+        {
+            var moved = new Dictionary<string, IReadOnlyCollection<double>> { { name, values } };
+            Assert.That(VertexDataLightweight.ReadsVertexColor(MToonMaterial(), Record(shader, 0, 0, 0, true), moved), Is.EqualTo(reads));
+        }
+
+        // The menu may turn on the outline width of material 1, which reads no
+        // colours at rest: the mesh drawing it keeps them.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AMeshKeepsTheColoursAValueTheMenuMovesReads(bool widthMoves)
+        {
+            var source = Build(new[] { Record("lilToon", 0, 0, 0, true), Record("Hidden/lilToonOutline", 0, 0, 0, true) });
+            var values = new Dictionary<int, IReadOnlyDictionary<string, IReadOnlyCollection<double>>>
+            {
+                { 1, new Dictionary<string, IReadOnlyCollection<double>> { { "_OutlineVertexR2Width", widthMoves ? new[] { 0d, 1d } : new[] { 0d } } } },
+            };
+            var result = VertexDataLightweight.Apply(source, null, out _, null, values);
+            var after = Consistent(source, result);
+            foreach (var primitive in AllPrimitives(after))
+                Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(widthMoves));
+        }
+
+        // The rest and every key of each materialFloat target, by its material
+        // and name; other targets add nothing.
+        [Test]
+        public void MenuValuesAreTheFloatTargetsRestAndKeys()
+        {
+            var data = new AvatarAnimatorData();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 2, Name = "_OutlineVertexR2Width", Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "materialSlot", Slot = 0, Rest = 2 });
+            var clip = new AvatarAnimatorData.Clip();
+            foreach (var t in new[] { 0, 1 })
+            {
+                var track = new AvatarAnimatorData.Track { Target = t };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 1 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = 2 });
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+            }
+            data.Clips.Add(clip);
+            var menu = VertexDataLightweight.MenuValues(data);
+            Assert.That(menu.Keys, Is.EquivalentTo(new[] { 2 }));
+            Assert.That(menu[2].Keys, Is.EquivalentTo(new[] { "_OutlineVertexR2Width" }));
+            Assert.That(menu[2]["_OutlineVertexR2Width"], Is.EquivalentTo(new[] { 0d, 1d, 2d }));
+            Assert.That(VertexDataLightweight.MenuValues(null), Is.Null);
+        }
+
+        // Through the export: an outline that reads no colours at rest, whose
+        // width the menu sets from them, keeps the colours as authored; with
+        // the width left alone they go.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheExportKeepsTheColoursAnOutlineTheMenuTurnsOnReads(bool menuMovesWidth)
+        {
+            if (VrcAvatar.ComponentType("VRCAvatarDescriptor") == null) Assert.Ignore("Install the real VRChat SDK.");
+            var shader = OptionalTools.RequireShader("Hidden/lilToonOutline", "Install lilToon for the outline shader.");
+            var folder = TempAssetFolder.Create("__VertexColorMenu_");
+            var colors = new[] { new Color(0, 1, 1, 1), Color.white, new Color(.5f, 1, 1, 1) };
+            var materials = new List<Material>();
+            try
+            {
+                using var fixture = new AttachmentConnectionTests.Fixture();
+                fixture.Mesh.colors = colors;
+                foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    var material = new Material(shader) { name = renderer.name + " outline" };
+                    material.SetFloat("_OutlineVertexR2Width", 0);
+                    materials.Add(material);
+                    renderer.sharedMaterials = new[] { material };
+                }
+                var fx = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                fx.AddParameter("Outline", AnimatorControllerParameterType.Bool);
+                var off = FxGraph.StartState(fx.layers[0].stateMachine, "Off");
+                var clip = new AnimationClip { name = "Outline from colours" };
+                foreach (var path in new[] { "Front", "Back" })
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer),
+                        "material." + (menuMovesWidth ? "_OutlineVertexR2Width" : "_OutlineWidth")), AnimationCurve.Constant(0, 1, 1));
+                AssetDatabase.AddObjectToAsset(clip, fx);
+                FxGraph.Transition(off, FxGraph.State(fx.layers[0].stateMachine, "On", clip), "Outline", UnityEditor.Animations.AnimatorConditionMode.If, 0);
+                var descriptor = fixture.Source.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor"));
+                using (var data = new SerializedObject(descriptor))
+                {
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
+                    var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
+                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = fx;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vertex colour menu", "Tests", exporterVersion: "tests", lilToonVersion: "2.3.4", warnings: warnings,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, autoLightweight: true);
+                var glb = GlbDocument.Read(bytes);
+                var primitives = AllPrimitives(glb).ToList();
+                Assert.That(primitives, Is.Not.Empty);
+                Assert.That(F.List(F.Object(F.Object(glb.Json["extensions"])[F.ExtensionName]), "materials"), Is.Not.Empty, "The lilToon records are written.");
+                foreach (var primitive in primitives)
+                    Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(menuMovesWidth), string.Join("\n", warnings));
+            }
+            finally
+            {
+                foreach (var material in materials) Object.DestroyImmediate(material);
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
         // The rest and every key of each material slot target, by its node;
         // other targets add nothing.
         [Test]

@@ -1314,12 +1314,13 @@ namespace VRVlog.LilToonExporter
                 if (autoLightweight)
                 {
                     // After the lilToon extension: Apply reads its material
-                    // records, and the materials the FX sets from its data,
+                    // records, and the materials and values the FX sets from its data,
                     // which is written later. A failure keeps the file as it is.
                     try
                     {
                         var skipped = new List<string>();
-                        exported = VertexDataLightweight.Apply(exported, skipped, out var saved, VertexDataLightweight.MenuMaterials(avatarAnimatorData));
+                        exported = VertexDataLightweight.Apply(exported, skipped, out var saved,
+                            VertexDataLightweight.MenuMaterials(avatarAnimatorData), VertexDataLightweight.MenuValues(avatarAnimatorData));
                         foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
                         if (VertexDataLightweight.ResultLine(saved) is string packed) warnings?.Add(packed);
                     }
