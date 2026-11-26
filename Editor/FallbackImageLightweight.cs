@@ -27,7 +27,12 @@ namespace VRVlog.LilToonExporter
         internal const string UnknownExtensionWarning = "Kept the MToon images because the file has extensions this step has not checked: {0}";
         internal const string StorageWarning = "Kept the MToon images because the file's binary data is not one GLB chunk this step can pack again";
 
-        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions.Append(LilToonFullContract.ExtensionName).ToArray();
+        // The one for the materials only the menu sets points to materials and
+        // to the full one's textures by index, never to an image. Its
+        // materials have no record in the full one, so their images keep
+        // their size.
+        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions
+            .Append(LilToonFullContract.ExtensionName).Append(LilToonFullContract.UnboundExtensionName).ToArray();
 
         // The MToon and glTF texture slots and whether each holds colour
         // (sRGB). A slot not listed here keeps its image unchanged.

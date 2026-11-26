@@ -21,10 +21,13 @@ namespace VRVlog.LilToonExporter
 
         const long Float = 5126, UnsignedShort = 5123, UnsignedInt = 5125;
 
-        // The extensions UnusedMorphTargets checked, and the lilToon one: it
-        // points to bufferViews (moved like any other) and to meshes and
-        // materials by index, never to an accessor.
-        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions.Append(LilToon.LilToonFullContract.ExtensionName).ToArray();
+        // The extensions UnusedMorphTargets checked, and the lilToon ones: the
+        // full one points to bufferViews (moved like any other) and to meshes
+        // and materials by index, never to an accessor; the one for the
+        // materials only the menu sets points to materials and to the full
+        // one's textures by index.
+        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions
+            .Append(LilToon.LilToonFullContract.ExtensionName).Append(LilToon.LilToonFullContract.UnboundExtensionName).ToArray();
 
         // Returns the input array itself when nothing changes. saved receives
         // how many bytes the file lost.
@@ -74,6 +77,13 @@ namespace VRVlog.LilToonExporter
             foreach (var record in Objects(List(extension, "materials")))
                 if (record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index) records[index] = record;
             var removed = new HashSet<int>();
+            // A material only the menu sets is drawn on a mesh the file does
+            // not name; when one reads the colours, every mesh keeps them.
+            var unbound = Object(Object(json, "extensions"), LilToon.LilToonFullContract.UnboundExtensionName);
+            foreach (var record in Objects(List(unbound, "materials")))
+                if (!(record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index && index < materials.Count) ||
+                    ReadsVertexColor(materials[index] as Dictionary<string, object>, record))
+                    return removed;
             foreach (var mesh in meshes)
             {
                 var primitives = Objects(List(mesh, "primitives")).ToList();
