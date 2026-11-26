@@ -204,7 +204,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
             Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
-            Board.GetField("lightweight", Flags).SetValue(window, LightweightLevel.None);
+            ExportSettingsStore.Save(other.Source, new ExportSettings { Lightweight = LightweightLevel.None });
             Board.GetField("gazeRange", Flags).SetValue(window, new GazeRangeOptions { Up = 25 });
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
@@ -266,6 +266,30 @@ namespace VRVlog.LilToonExporter.Tests
             try { Assert.That(Defaults(hidden), Has.Member("lightweight " + level)); }
             finally { Object.DestroyImmediate(hidden); }
             var (quick, normal) = ExportBoth(fixture.Source);
+            AssertSame(quick, normal);
+        }
+
+        // 軽量化 chosen in the quick transfer while the board is open: the open
+        // board shows the same level, the quick transfer's note follows it, and
+        // both transfers write it.
+        [TestCase((int)LightweightLevel.None)]
+        [TestCase((int)LightweightLevel.Max)]
+        public void ALevelChosenInTheQuickTransferIsWhatTheOpenBoardExports(int value)
+        {
+            var level = (LightweightLevel)value;
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var window = OpenNormal(fixture.Source);
+            var transfer = Transfer(fixture.Source);
+            Assert.That(Board.GetProperty("Lightweight", Flags).GetValue(window), Is.EqualTo(LightweightLevel.Standard));
+            Assert.That(transfer.LightweightNote(fixture.Source), Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.LightweightStandardNote)));
+            LightweightChoice.Choose(fixture.Source, level);
+            Assert.That(Board.GetProperty("Lightweight", Flags).GetValue(window), Is.EqualTo(level));
+            Assert.That(transfer.LightweightNote(fixture.Source), Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.LightweightNote(level, false))));
+            var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try { Assert.That(Defaults(window), Is.EqualTo(Defaults(hidden))); }
+            finally { Object.DestroyImmediate(hidden); }
+            var (quick, normal) = (ExportQuick(fixture.Source), ExportNormal(fixture.Source, window));
             AssertSame(quick, normal);
         }
 
@@ -440,7 +464,7 @@ namespace VRVlog.LilToonExporter.Tests
             return new[]
             {
                 "page " + window.Page,
-                "lightweight " + Board.GetField("lightweight", Flags).GetValue(window),
+                "lightweight " + Board.GetProperty("Lightweight", Flags).GetValue(window),
                 "gaze " + ((GazeRangeOptions)Board.GetField("gazeRange", Flags).GetValue(window)).Key(),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),

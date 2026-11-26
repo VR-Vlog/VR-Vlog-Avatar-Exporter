@@ -204,6 +204,13 @@
     text-overflow: ellipsis;
 }
 
+/* The three buttons of 軽量化 keep their width (LightweightChoice.Width) in every language. */
+.lightweight {
+    width: 240px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
 /* What the export takes from elsewhere: the expressions on the first line, shortened to fit
    next to its button, and the excluded count on the second. Two lines whatever the text. */
 .summary {

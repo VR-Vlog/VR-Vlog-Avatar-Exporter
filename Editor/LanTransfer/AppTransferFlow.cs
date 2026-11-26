@@ -25,6 +25,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Sending = "{0}を送る";
         internal const string Name = "名前";
         internal const string NameHint = "アプリのアバター一覧での名前";
+        internal const string Lightweight = "軽量化";
         internal const string SendLightModel = "複数人撮影用の軽量モデルも送る";
         internal const string LightModelNeedsNewApp = "古いバージョンのアプリでは読み取れません";
         internal const string LightModelSame = "軽量化しても変わらないため通常のモデルだけ送ります";
