@@ -985,7 +985,7 @@ BEHAVIOR_CASES = {
         'AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept': 1,
         'AFileWithoutTheExtensionOrWithAnUnknownOneIsKept': 1,
         'TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile': 4,
-        'AMaterialTheMenuPutsOnAMeshFollowsHowTheAppDrawsIt': 4,
+        'AMaterialTheMenuPutsOnAMeshFollowsHowTheAppDrawsIt': 5,
         'TheExportShrinksTheImagesOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },

@@ -16,9 +16,10 @@ namespace VRVlog.LilToonExporter
     // record that no node without a binding draws. The materials only the
     // menu sets count too: no mesh draws them, and the app draws them from
     // their lilToon record, using the MToon images only when that record
-    // fails to load. A material the menu puts on a node without a binding
-    // does not count: the app draws a mesh with no lilToon material in
-    // MToon (AvatarAnimatorPlayer), the menu's materials too. An image
+    // fails to load. A material the menu puts on a mesh that draws none of
+    // the first kind does not count: the app draws a mesh with no lilToon
+    // material in MToon (AvatarAnimatorPlayer), the menu's materials too,
+    // whether or not the mesh has a binding. An image
     // anything else uses (another material, the thumbnail) keeps its size.
     // A file this class cannot fully account for is returned unchanged.
     internal static class FallbackImageLightweight
@@ -122,15 +123,15 @@ namespace VRVlog.LilToonExporter
             var fully = FullyBoundMaterials(json);
             // None, or a node FullyBoundMaterials cannot account for.
             if (fully.Count == 0) return result;
+            var lilToonNodes = NodesDrawing(json, fully);
             fully.UnionWith(MenuOnlyMaterials(json));
             var face = FaceMaterials(json);
             if (menuMaterials != null)
             {
-                var bound = BoundNodes(json);
                 var faceNodes = FaceNodes(json);
                 foreach (var pair in menuMaterials)
                 {
-                    if (!bound.Contains(pair.Key)) fully.ExceptWith(pair.Value);
+                    if (!lilToonNodes.Contains(pair.Key)) fully.ExceptWith(pair.Value);
                     if (faceNodes.Contains(pair.Key)) face.UnionWith(pair.Value);
                 }
             }
@@ -195,6 +196,22 @@ namespace VRVlog.LilToonExporter
                 if (mesh >= meshes.Count) { result.Clear(); return result; }
                 foreach (var primitive in Objects(List(meshes[mesh] as Dictionary<string, object>, "primitives")))
                     if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Remove(material);
+            }
+            return result;
+        }
+
+        // The nodes whose mesh draws one of these materials: the app's
+        // FullRenderer, which draws the menu's materials from their records.
+        static HashSet<int> NodesDrawing(Dictionary<string, object> json, HashSet<int> drawn)
+        {
+            var result = new HashSet<int>();
+            var nodes = List(json, "nodes") ?? new List<object>();
+            var meshes = List(json, "meshes") ?? new List<object>();
+            for (var n = 0; n < nodes.Count; n++)
+            {
+                if (!(nodes[n] is Dictionary<string, object> node) || !(node.TryGetValue("mesh", out var rawMesh) && Index(rawMesh) is int mesh) || mesh >= meshes.Count) continue;
+                foreach (var primitive in Objects(List(meshes[mesh] as Dictionary<string, object>, "primitives")))
+                    if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material && drawn.Contains(material)) result.Add(n);
             }
             return result;
         }

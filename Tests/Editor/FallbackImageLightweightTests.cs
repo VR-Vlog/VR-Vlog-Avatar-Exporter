@@ -160,11 +160,14 @@ namespace VRVlog.LilToonExporter.Tests
         // itself. On bound node 0 its image is made smaller as usual, on face
         // node 1 to the face's size. On node 2, which has no binding, the app
         // draws it in MToon, so its image stays; so does that of material 0
-        // (image 5), which has a record but the menu puts it on node 2.
+        // (image 5), which has a record but the menu puts it on node 2. Node 3
+        // has a binding, but here material 3 has no record, so the app draws
+        // node 3 in MToon too.
         [TestCase(0, 4, 1, FallbackImageLightweight.Maximum)]
         [TestCase(1, 4, 1, FallbackImageLightweight.FaceMaximum)]
         [TestCase(2, 4, 1, 0)]
         [TestCase(2, 0, 5, 0)]
+        [TestCase(3, 4, 1, 0)]
         public void AMaterialTheMenuPutsOnAMeshFollowsHowTheAppDrawsIt(int node, int material, int image, int maximum)
         {
             var glb = GlbDocument.Read(Build((materials, info) =>
@@ -178,6 +181,7 @@ namespace VRVlog.LilToonExporter.Tests
             }));
             var record = new Dictionary<string, object> { { "materialIndex", 4L } };
             F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
+            if (node == 3) F.List(F.Object(F.Object(glb.Json["extensions"])[F.ExtensionName]), "materials").RemoveAt(3);
             Assert.That(FallbackImageLightweight.Plan(glb.Json)[image].Maximum, Is.EqualTo(FallbackImageLightweight.Maximum));
             var menu = new Dictionary<int, IReadOnlyCollection<int>> { { node, new[] { material, -1 } } };
             var plan = FallbackImageLightweight.Plan(glb.Json, menu);
