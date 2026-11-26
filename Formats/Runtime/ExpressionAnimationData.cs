@@ -80,6 +80,9 @@ namespace VRVlog.Expressions
                 }
                 var a = Keys[lo]; var b = Keys[hi];
                 if (time == a.Time || !a.OutTangent.HasValue || !b.InTangent.HasValue) return a.Value;
+                // A flat segment is its value; the Bezier below would wobble by
+                // a rounding error from frame to frame.
+                if (a.Value == b.Value && a.OutTangent.Value == 0 && b.InTangent.Value == 0) return a.Value;
                 var duration = b.Time - a.Time;
                 var x = (time - a.Time) / duration;
                 // Weighted Unity tangents are cubic Bezier handles in normalized
@@ -171,7 +174,7 @@ namespace VRVlog.Expressions
                 }).ToList()
             }).ToList();
 
-        static Dictionary<string, object> WriteCurve(Curve curve) => new Dictionary<string, object>
+        internal static Dictionary<string, object> WriteCurve(Curve curve) => new Dictionary<string, object>
         {
             ["preWrap"] = curve.PreWrap, ["postWrap"] = curve.PostWrap,
             ["keys"] = curve.Keys.Select(k => (object)new List<object>
@@ -300,7 +303,7 @@ namespace VRVlog.Expressions
             return result;
         }
 
-        static Curve ReadCurve(Dictionary<string, object> c, ref int keyCount)
+        internal static Curve ReadCurve(Dictionary<string, object> c, ref int keyCount)
         {
             var curve = new Curve { PreWrap = Json.Text(c["preWrap"]), PostWrap = Json.Text(c["postWrap"]) };
             foreach (var rawKey in Json.Arr(c["keys"]))

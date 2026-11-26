@@ -219,8 +219,80 @@ namespace VRVlog.LilToonExporter
             return ExporterLocalization.T(headline) == headline || shown != detail ? " (" + shown + ")" : "";
         }
 
+        // The parts FX's enabled curves may turn (AvatarAnimatorParts.cs): the
+        // effects and contacts read before the build removed objects, and the
+        // PhysBones of the copy.
+        internal static IEnumerable<AvatarAnimatorCapture.Part> AnimatorParts(GameObject clone, AvatarEffectsExport effects, AvatarContactsExport contacts) =>
+            (effects?.Parts ?? Enumerable.Empty<AvatarAnimatorCapture.Part>())
+                .Concat(contacts?.Parts ?? Enumerable.Empty<AvatarAnimatorCapture.Part>())
+                .Concat(AvatarAnimatorCapture.PhysBoneParts(clone)).ToList();
+
+        // A part's index and node in the table that wrote it; (-1, -1) for a
+        // part no table wrote. A null table writes nothing.
+        internal static Func<Component, (int Index, int Node)> AnimatorPartIndex(AvatarEffectsExport effects, AvatarContactsExport contacts, AvatarPhysBonesExport physBones) =>
+            component =>
+            {
+                foreach (var found in new[] { effects?.IndexOf(component), contacts?.IndexOf(component), physBones?.IndexOf(component) })
+                    if (found is (int index, int node) && index >= 0) return (index, node);
+                return (-1, -1);
+            };
+
         // Authored VRM clips and generated shapes that the build passes moved
         // or removed (lenient exports only).
+        // The shapes each output shape the FX moves was made from. An output
+        // with a source the export did not read has none, so its curves are
+        // left out rather than written against another shape's endpoints.
+        // A shape whose name another mesh also has without the FX moving it
+        // there is unknown once it lands on another renderer: a merge may have
+        // put that mesh's shape into the same output, which the FX never moved.
+        internal static Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> AnimatorMorphSources(
+            IEnumerable<(int SourceRenderer, string SourceShape, SkinnedMeshRenderer Renderer, string Shape)> routes,
+            IReadOnlyDictionary<(int Renderer, string Shape), float> rest,
+            IReadOnlyDictionary<(int Renderer, string Shape), (double Baked, double End)> ends,
+            ICollection<(int Renderer, string Shape)> shared,
+            IReadOnlyDictionary<(int Renderer, string Shape), string> reverses = null)
+        {
+            if (routes == null || rest == null || ends == null) return null;
+            var sources = new Dictionary<(SkinnedMeshRenderer, string), List<AvatarAnimatorCapture.MorphSource>>();
+            var unknown = new HashSet<(SkinnedMeshRenderer, string)>();
+            // Where each reverse shape ended up, found by the shape it reverses.
+            var all = routes.ToList();
+            var reverseNames = new HashSet<(int, string)>((reverses ?? new Dictionary<(int, string), string>()).Select(pair => (pair.Key.Renderer, pair.Value)));
+            var reversed = all.Where(route => reverseNames.Contains((route.SourceRenderer, route.SourceShape)))
+                .ToDictionary(route => (route.SourceRenderer, route.SourceShape), route => (route.Renderer, route.Shape));
+            foreach (var (sourceRenderer, sourceShape, renderer, shape) in all)
+            {
+                if (reverseNames.Contains((sourceRenderer, sourceShape))) continue;
+                var key = (renderer, shape);
+                if (!rest.TryGetValue((sourceRenderer, sourceShape), out var weight) || !ends.TryGetValue((sourceRenderer, sourceShape), out var end) ||
+                    (shared != null && shared.Contains((sourceRenderer, sourceShape)) && renderer.GetInstanceID() != sourceRenderer))
+                {
+                    unknown.Add(key);
+                    continue;
+                }
+                if (!sources.TryGetValue(key, out var list)) sources[key] = list = new List<AvatarAnimatorCapture.MorphSource>();
+                var reverse = reverses != null && reverses.TryGetValue((sourceRenderer, sourceShape), out var name) &&
+                              reversed.TryGetValue((sourceRenderer, name), out var found) ? found : (null, null);
+                list.Add(new AvatarAnimatorCapture.MorphSource(weight, end.Baked, end.End, reverse.Item1, reverse.Item2));
+            }
+            return (renderer, shape) => !unknown.Contains((renderer, shape)) && sources.TryGetValue((renderer, shape), out var list)
+                ? list : (IReadOnlyList<AvatarAnimatorCapture.MorphSource>)Array.Empty<AvatarAnimatorCapture.MorphSource>();
+        }
+
+        // The shapes the FX moves whose name another mesh under root also has
+        // where the FX does not move it.
+        internal static HashSet<(int Renderer, string Shape)> SharedAnimatorMorphs(GameObject root,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> driven)
+        {
+            var moved = new HashSet<(SkinnedMeshRenderer, string)>(driven);
+            var skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skin => skin.sharedMesh != null).ToArray();
+            var shared = new HashSet<(int, string)>();
+            foreach (var (renderer, shape) in moved)
+                if (skins.Any(other => other != renderer && other.sharedMesh.GetBlendShapeIndex(shape) >= 0 && !moved.Contains((other, shape))))
+                    shared.Add((renderer.GetInstanceID(), shape));
+            return shared;
+        }
+
         static void RecordLostMorphs(NdmfExportPreparation transformed, List<PreparedExpressionBindings.LostAuthoredMorph> lost,
             ICollection<string> warnings, ExportRecoveryReport report)
         {
@@ -262,6 +334,25 @@ namespace VRVlog.LilToonExporter
                 if (entry.Error == null)
                     foreach (var message in ExpressionSettlement.Messages.Where(entry.Messages.Contains))
                         report.Fallbacks.Record(ExportOutcome.Approximated, "表情", entry.Name ?? entry.Id ?? "", message);
+        }
+
+        // The board's own clip of a listed face clip, or null.
+        internal static UnityEngine.Object ListFaceSource(IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
+            IReadOnlyList<AnimationClip> listFaceSources, UnityEngine.Object clip)
+        {
+            if (listFaces == null || listFaceSources == null || clip == null) return null;
+            for (var index = 0; index < listFaces.Count && index < listFaceSources.Count; index++)
+                if (listFaces[index].Clip == clip) return listFaceSources[index];
+            return null;
+        }
+
+        // The asset NDMF records value as made from; null when the registry
+        // cannot be read.
+        static UnityEngine.Object RegisteredOriginal(object registry, UnityEngine.Object value)
+        {
+            try { return NdmfExportPreparation.RegisteredOriginal(registry, value); }
+            catch (System.Reflection.TargetInvocationException) { return null; }
+            catch (ArgumentException) { return null; }
         }
 
         // An animated expression whose loop ends neutral shows no change in
@@ -399,6 +490,9 @@ namespace VRVlog.LilToonExporter
             else warnings?.Add(warning);
         }
 
+        internal const string MissingMeshKind = "メッシュが見つからず省略";
+        internal const string MissingMeshReason = "メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。";
+
         // A strict attempt's list holds the caller's warnings too, and may have
         // put a warning before them, so it replaces the caller's list.
         static void CopyWarnings(List<string> attempt, bool replace, ICollection<string> warnings)
@@ -519,6 +613,40 @@ namespace VRVlog.LilToonExporter
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
+            Dictionary<GameObject, bool> animatorRest = null;
+            // BlendShape weights in the scene, and the weights the export bakes
+            // and shows at 1 for each shape the FX moves.
+            Dictionary<(int Renderer, string Shape), float> animatorMorphRest = null;
+            Dictionary<(int Renderer, string Shape), (double Baked, double End)> animatorMorphEnds = null;
+            HashSet<(int Renderer, string Shape)> animatorMorphShared = null;
+            // The reverse shape added for each shape whose base holds its end.
+            Dictionary<(int Renderer, string Shape), string> animatorMorphReverses = null;
+            AvatarAnimatorCapture avatarAnimator = null;
+            VRVlog.AvatarAnimator.AvatarAnimatorData avatarAnimatorData = null;
+            // The particles the VRM cannot carry, for VRVLOG_avatar_effects.
+            AvatarEffectsExport effects = null;
+            Dictionary<string, object> effectsData = null;
+            // The Contact Senders and Receivers, for VRVLOG_avatar_contacts.
+            AvatarContactsExport contacts = null;
+            VRVlog.AvatarContacts.AvatarContactsData contactsData = null;
+            // The constraints ConstraintExport leaves in their pose, written
+            // with their settings as VRVLOG_avatar_constraints.
+            var avatarConstraints = new AvatarConstraintsExport();
+            VRVlog.AvatarConstraints.AvatarConstraintsData avatarConstraintsData = null;
+            // The PhysBones' settings for their parameters, VRVLOG_avatar_physbones.
+            AvatarPhysBonesExport physBones = null;
+            VRVlog.AvatarPhysBones.AvatarPhysBonesData physBonesData = null;
+            // Builds the FX extension again: with the constraint entries while
+            // animatorConstraints is set, and with the PhysBone parameters
+            // builtin while animatorPhysBones is, and their enabled curves while
+            // animatorPhysBoneTable is, and the effects' and contacts' enabled
+            // curves while animatorEffects and animatorContacts are.
+            Func<Component, int> animatorConstraints = null;
+            ISet<string> animatorPhysBones = null;
+            AvatarPhysBonesExport animatorPhysBoneTable = null;
+            AvatarEffectsExport animatorEffects = null;
+            AvatarContactsExport animatorContacts = null;
+            Func<VRVlog.AvatarAnimator.AvatarAnimatorData> resolveAnimator = null;
             VRVlog.AvatarFormats.HumanoidLimitData humanoidLimits = null;
             var armTPose = new Dictionary<HumanBodyBones, Quaternion>();
             // Set once the build passes have changed the copy; see the catch below.
@@ -531,6 +659,14 @@ namespace VRVlog.LilToonExporter
                 // Source getters can use an enclosing root or no root at all.
                 guard.Step(ExportStage.CopyValidation, () => NdmfExportPreparation.ValidateCopy(source, clone,
                     target => exclusions.ContainsCopyTransform(clone, target)));
+                // Read before the build removes the objects that hold particles,
+                // while the copy still matches the source. A failure leaves the
+                // table's stage out, and the file is written without the extension.
+                effects = guard.Optional(ExportStage.AvatarEffects,
+                    () => AvatarEffectsExport.Capture(clone, target => manualExclusions.ContainsCopyTransform(clone, target)), () => null);
+                // The contacts too, which the gimmick removal takes with their objects.
+                contacts = guard.Optional(ExportStage.AvatarContacts,
+                    () => AvatarContactsExport.Capture(clone, target => manualExclusions.ContainsCopyTransform(clone, target)), () => null);
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
                 // Lip Sync captured before the caller removed the descriptor
@@ -582,6 +718,9 @@ namespace VRVlog.LilToonExporter
                     recovery?.Track(copy, original);
                 }, afterTransforming: transformed =>
                 {
+                    // activeSelf before the steps below change it; only read.
+                    animatorRest = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Snapshot(clone), () => null);
+                    animatorMorphRest = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.MorphSnapshot(clone), () => null);
                     // A lenient export keeps the build passes: lost shapes are
                     // followed by name, and only what cannot be found is left out.
                     var lenient = guard.ContinueOnFailure;
@@ -748,6 +887,50 @@ namespace VRVlog.LilToonExporter
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? guard.Watch(ExportStage.TrackingOutput, () => new UnifiedExpressionPreparation(clone,
                         suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission)) : null;
+                    // The shapes the FX moves, with what Rebase made of each, so
+                    // the optimizer keeps a route to where each one ends up.
+                    var animatorMorphs = animatorMorphRest == null ? null : guard.Optional(ExportStage.AvatarAnimator, () =>
+                    {
+                        animatorMorphEnds = new Dictionary<(int, string), (double, double)>();
+                        animatorMorphReverses = new Dictionary<(int, string), string>();
+                        var driven = new List<(SkinnedMeshRenderer Renderer, string Shape)>();
+                        var held = new Dictionary<(SkinnedMeshRenderer, string), double?>();
+                        var reverse = new List<(SkinnedMeshRenderer Renderer, string Shape, int Index, Mesh Original, double Baked)>();
+                        foreach (var (renderer, shape) in AvatarAnimatorCapture.DrivenMorphs(clone, held))
+                        {
+                            var state = neutral.Get(renderer);
+                            var index = state?.OriginalMesh == null ? -1 : state.OriginalMesh.GetBlendShapeIndex(shape);
+                            if (index < 0 || index >= state.Weights.Length) continue;
+                            driven.Add((renderer, shape));
+                            // Rebase takes the other lip sync shapes and the default mouth off an
+                            // exclusive shape too, which (v - baked) / (end - baked) cannot show.
+                            // It keeps its route without endpoints, so the shape and any output
+                            // merged from it are counted as blendShape.
+                            if (AvatarBaseShape.ExclusiveShapes(renderer, state.OriginalMesh, visemes?.Renderer, visemes?.Exclusive).Contains(index)) continue;
+                            // A shape of several frames need not be linear, and then no
+                            // weight puts its base back: it is counted the same way.
+                            if (state.OriginalMesh.GetBlendShapeFrameCount(index) > 1) continue;
+                            var ends = AvatarBaseShape.MorphEndpoints(state.OriginalMesh, index, state.Weights[index]);
+                            animatorMorphEnds[(renderer.GetInstanceID(), shape)] = ends;
+                            // The base holds the shape at its end, so its target shows
+                            // nothing: unless every curve keeps it there, add a shape that
+                            // takes the base back to 0. The base is the copy Rebase made.
+                            if (ends.Baked != 0 && ends.Baked == ends.End && held[(renderer, shape)] != ends.Baked &&
+                                renderer.sharedMesh != state.OriginalMesh)
+                                reverse.Add((renderer, shape, index, state.OriginalMesh, ends.Baked));
+                        }
+                        animatorMorphShared = SharedAnimatorMorphs(clone, driven);
+                        var used = reverse.Count == 0 ? null : DeterministicNames.BlendShapeNames(clone);
+                        foreach (var (renderer, shape, index, original, baked) in reverse)
+                        {
+                            var path = renderer.transform == clone.transform ? "" : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
+                            var name = DeterministicNames.Unique("__VRVlog_Reverse_" + DeterministicNames.Hash("Reverse", path, shape), used);
+                            AvatarBaseShape.AppendAnimatedShape(original, renderer.sharedMesh, name, index, baked, 0);
+                            animatorMorphReverses[(renderer.GetInstanceID(), shape)] = name;
+                            driven.Add((renderer, name));
+                        }
+                        return driven;
+                    }, () => null);
                     // Without the build passes AAO never runs, so its components
                     // on the copy promise no mapping.
                     optimizerBindings = guard.Watch(ExportStage.OptimizerEvidence, () => ExportOptimizationBindings.Capture(clone,
@@ -755,7 +938,7 @@ namespace VRVlog.LilToonExporter
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
-                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
+                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes, animatorMorphs: animatorMorphs));
                     if (mergeMeshes && optimizes && optimizerBindings != null)
                         merged = guard.Step(ExportStage.MeshMerge, () => ExportMeshMerge.Apply(clone, optimizerBindings.RoutedRenderers), () => false);
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
@@ -767,6 +950,15 @@ namespace VRVlog.LilToonExporter
                 // A lenient export retries without Optimizing, then without the
                 // build passes; a source that already lacks them still stops.
                 guard.Watch(optimizerStage, () => ValidatePreparedHumanoid(source, clone));
+                // The FX, menus and parameters as the build and the optimizer
+                // left them. Only read; nothing below changes the FX.
+                // The faces are matched to its clips here, while the build's
+                // record of the clips it copied is still open.
+                // A merge that copies enablement ran only with Optimizing.
+                var enabledRest = optimizes && requiresPreparation ? objectToggles?.CopiedEnablementRest : null;
+                avatarAnimator = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Capture(clone, animatorRest, enabledRest, AnimatorParts(clone, effects, contacts))?.ReadFaces(expressions,
+                    clip => ListFaceSource(listFaces, listFaceSources, clip), preparation != null ? preparation.IsolatedCopyOf : (Func<UnityEngine.Object, UnityEngine.Object>)null,
+                    value => RegisteredOriginal(preparation?.ObjectRegistry, value)), () => null);
                 // The same holds for expressions or materials the optimizer
                 // lost: the routes feed the menu, blink, Lip Sync and tracking
                 // output, so the file is written again without Optimizing.
@@ -795,7 +987,7 @@ namespace VRVlog.LilToonExporter
                 // references. Disable external audio on the final owned copy too.
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
-                DropEmptySubmeshes(clone, temporaryMeshes, warnings);
+                DropEmptySubmeshes(clone, temporaryMeshes, warnings, (renderer, kept) => avatarAnimator?.KeepSlots(renderer, kept));
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
@@ -812,11 +1004,26 @@ namespace VRVlog.LilToonExporter
                 // texture is read. Off, nothing is measured and every size stays;
                 // a measurement that fails also keeps every size.
                 TexelDensity.Plan lightweight = null;
+                // A feature switch an FX curve turns on keeps its texture slots.
+                var movedFloats = avatarAnimator?.MovedMaterialFloats();
                 if (autoLightweight)
-                    try { lightweight = TexelDensity.Measure(clone); }
+                    try { lightweight = TexelDensity.Measure(clone, movedFloats); }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
-                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight), () => null) : null;
+                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight, movedFloats: movedFloats), () => null) : null;
+                // The lilToon materials only slot curves set, which no mesh draws
+                // with: the file adds them at the end of the glTF materials. A
+                // failure here adds none; their curves are then counted as material.
+                IReadOnlyList<Material> unboundSwaps = Array.Empty<Material>();
+                if (avatarAnimator != null)
+                    try
+                    {
+                        // A slot holding the export's own copy of a material holds that material.
+                        avatarAnimator.SourceOf = recoveryReport.SourceMaterial;
+                        unboundSwaps = avatarAnimator.UnboundSwaps(ExportRendererSelection.ExportedMeshRenderers(clone));
+                        if (fullSnapshot != null) unboundSwaps = fullSnapshot.AddUnbound(unboundSwaps);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); unboundSwaps = Array.Empty<Material>(); }
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // Another lilToon version may lack a 2.3.4 property a material
                 // needs. Such a material keeps the MToon approximation written
@@ -865,6 +1072,8 @@ namespace VRVlog.LilToonExporter
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
                 recoveryReport.Phase = ExportPhase.Springs;
+                // Read before the conversion; a failure leaves the table's stage out.
+                physBones = guard.Optional(ExportStage.AvatarPhysBones, () => AvatarPhysBonesExport.Capture(clone), () => null);
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
@@ -876,7 +1085,7 @@ namespace VRVlog.LilToonExporter
                     .Select(track => track.Target as GameObject).Where(bone => bone != null).Select(bone => bone.transform)
                     // The bones the toggles move are written by local values too.
                     .Concat((objectToggles?.MovedTargets ?? Enumerable.Empty<GameObject>()).Select(bone => bone.transform)).ToArray();
-                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles, animated), () => null);
+                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles, animated, avatarConstraints), () => null);
                 recoveryReport.Stage = "マテリアル保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // MToon's outline width does not follow the renderer scale that lilToon's
@@ -891,8 +1100,12 @@ namespace VRVlog.LilToonExporter
                 // so none is hidden then (see the retry below).
                 var offByDefault = OffByDefaultSlots(objectToggles, fullSnapshot);
                 var hiddenFallbacks = new List<Material>();
-                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
-                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes, offByDefault: offByDefault, hiddenFallbacks: hiddenFallbacks);
+                var replaced = ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
+                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes, unbound: unboundSwaps, offByDefault: offByDefault, hiddenFallbacks: hiddenFallbacks);
+                // The copies of the materials only slot curves set, added after
+                // the meshes' materials in the order the curves name them.
+                var addedMaterials = unboundSwaps.Where(replaced.ContainsKey).ToDictionary(material => material, material => replaced[material]);
+                if (avatarAnimator != null) avatarAnimator.AddedMaterials = addedMaterials.Count > 0 ? addedMaterials : null;
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -902,6 +1115,10 @@ namespace VRVlog.LilToonExporter
                 DropOutsideBones(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
                 var rootScale = clone.transform.localScale;
+                // The particles hang from what the build left, as it stands now.
+                // A table that cannot be measured again is left out by its stage.
+                if (effects != null) effects = guard.Optional(ExportStage.AvatarEffects, () => { effects.Rebind(); return effects; }, () => null);
+                if (contacts != null) contacts = guard.Optional(ExportStage.AvatarContacts, () => { contacts.Rebind(); return contacts; }, () => null);
                 // Every capture above is taken; objects with nothing to write
                 // would only be empty nodes. Normal output: the Console only.
                 if (gimmickOptions.AutoExclude)
@@ -919,7 +1136,7 @@ namespace VRVlog.LilToonExporter
                     vrmMeta: CreateMeta(avatarName.Trim(), author.Trim(), licenseOptions),
                     afterExport: (converter, model, storage) =>
                     {
-                        if (fullSnapshot != null) guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));
+                        if (fullSnapshot != null) guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage, addedMaterials));
                         guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));
                         guard.Watch(ExportStage.PoseCapture, () => poses.Bind(converter, model, storage));
                         optimizerBindings.Bind(converter, model, storage);
@@ -928,11 +1145,36 @@ namespace VRVlog.LilToonExporter
                         // Default-off meshes are already on in the copy; without the
                         // extension they would show, so a failure writes the file
                         // again without the toggles.
-                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
+                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings,
+                            avatarAnimator == null ? null : (Func<Renderer, bool>)(renderer => avatarAnimator.Switches(renderer) && OutputNode(renderer.gameObject) >= 0)), () => null);
+                        // Before the FX, whose constraint enabled curves name the entries.
+                        // Checked against the nodes here, so Inject has little left to fail on.
+                        avatarConstraintsData = guard.Optional(ExportStage.AvatarConstraints,
+                            () => AvatarConstraintsExport.Checked(avatarConstraints.Resolve(OutputNode), model.Nodes.Count), () => null);
+                        // Also before the FX, whose builtin parameters are those of its entries.
+                        physBonesData = physBones == null ? null : guard.Optional(ExportStage.AvatarPhysBones,
+                            () => AvatarPhysBonesExport.Checked(physBones.Resolve(OutputNode), model.Nodes.Count), () => null);
+                        // The effects and contacts too, whose enabled curves name their entries.
+                        effectsData = effects == null ? null : guard.Optional(ExportStage.AvatarEffects, () => effects.Resolve(OutputNode), () => null);
+                        contactsData = contacts == null ? null : guard.Optional(ExportStage.AvatarContacts,
+                            () => AvatarContactsExport.Checked(contacts.Resolve(OutputNode), model.Nodes.Count), () => null);
+                        if (avatarAnimator != null)
+                        {
+                            animatorConstraints = avatarConstraintsData != null ? avatarConstraints.IndexOf : (Func<Component, int>)null;
+                            animatorPhysBones = physBonesData != null ? AvatarPhysBonesExport.ParameterNames(physBonesData) : null;
+                            animatorPhysBoneTable = physBonesData != null ? physBones : null;
+                            animatorEffects = effectsData != null ? effects : null;
+                            animatorContacts = contactsData != null ? contacts : null;
+                            resolveAnimator = () => avatarAnimator.Resolve(OutputNode,
+                                AnimatorMorphSources(optimizerBindings?.AnimatorMorphs, animatorMorphRest, animatorMorphEnds, animatorMorphShared,
+                                    animatorMorphReverses), material => model.Materials.IndexOf(material), animatorConstraints, animatorPhysBones,
+                                    AnimatorPartIndex(animatorEffects, animatorContacts, animatorPhysBoneTable));
+                            avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                        }
                         // Bones and visibility the faces move refer to output nodes.
                         ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                         ExpressionTransformCurves.Resolve(presetExpressions, OutputNode, clone.transform, warnings);
-                    }, warnings: warnings);
+                    }, warnings: warnings, addedMaterials: unboundSwaps.Where(addedMaterials.ContainsKey).Select(material => addedMaterials[material]).ToList());
                 guard.Watch(optimizerStage, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
                 // or its save: over the app's image limit, export without them.
@@ -994,13 +1236,23 @@ namespace VRVlog.LilToonExporter
                 }, () => exported);
                 // After every expression is bound: BlendShapes that nothing
                 // binds and the app does not drive by name are left out.
+                // The shapes VRVLOG_avatar_animator moves are kept and its
+                // indices follow the renumbering; a file left as it was keeps them.
+                var unstripped = exported;
+                // A morph target on a node the file wrote no such mesh for (a
+                // renderer that is off or empty) is left out before Strip keeps it.
+                if (avatarAnimatorData != null)
+                    avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, () => { avatarAnimator.DropMorphsNotIn(exported); return avatarAnimatorData; }, () => null);
+                var animatorBinds = avatarAnimatorData != null ? avatarAnimator.MorphBinds : null;
+                var softBinds = avatarAnimatorData != null ? avatarAnimator.SoftMorphBinds : null;
+                var animatorIndices = animatorBinds?.Concat(softBinds).Select(bind => bind["index"]).ToList();
                 exported = guard.Run(ExportStage.UnusedMorphs, () =>
                 {
                     // Normal output, not a fallback: the Console only, no
                     // warning and no result line.
                     var skipped = new List<string>();
                     var removed = new List<string>();
-                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed);
+                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed, animatorBinds, softBinds);
                     foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
                     // The first 20 names only: a real avatar leaves out hundreds.
                     if (removed.Count > 0)
@@ -1008,6 +1260,15 @@ namespace VRVlog.LilToonExporter
                                   (removed.Count > 20 ? $" … (+{removed.Count - 20} more)" : ""));
                     return stripped;
                 }, () => exported);
+                if (animatorBinds != null)
+                {
+                    if (ReferenceEquals(exported, unstripped))
+                    {
+                        var all = animatorBinds.Concat(softBinds).ToList();
+                        for (var i = 0; i < all.Count; i++) all[i]["index"] = animatorIndices[i];
+                    }
+                    avatarAnimator.RenumberMorphs();
+                }
                 var marked = false;
                 if (fullSnapshot != null)
                 {
@@ -1078,7 +1339,75 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData, objectToggles.Transforms), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
+                // The constraints before the FX: when they cannot be written, the
+                // FX is built again without the targets that name their entries,
+                // which is the file written before the extension.
+                if (avatarConstraintsData != null)
+                {
+                    exported = guard.Optional(ExportStage.AvatarConstraints, () => AvatarConstraintsExport.Inject(exported, avatarConstraintsData), () => exported);
+                    if (guard.IsOmitted(ExportStage.AvatarConstraints) && avatarAnimatorData != null && resolveAnimator != null)
+                    {
+                        animatorConstraints = null;
+                        avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                    }
+                }
+                // The PhysBones too: without the table, the FX is built again
+                // with their parameters animator, as before the extension.
+                if (physBonesData != null)
+                {
+                    exported = guard.Optional(ExportStage.AvatarPhysBones, () => AvatarPhysBonesExport.Inject(exported, physBonesData), () => exported);
+                    if (guard.IsOmitted(ExportStage.AvatarPhysBones) && avatarAnimatorData != null && resolveAnimator != null)
+                    {
+                        animatorPhysBones = null;
+                        animatorPhysBoneTable = null;
+                        avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                    }
+                }
+                // The FX, then the effects and contacts whose entries its
+                // enabled targets name. A table that cannot be written must not
+                // be named: it is left out, the FX is built again without it and
+                // the three are written again on the bytes before them, until
+                // every table the FX names is written (each pass leaves one more
+                // out, so at most three). The FX goes first so the file keeps
+                // its extension order.
+                var withoutAnimator = exported;
+                while (true)
+                {
+                    exported = withoutAnimator;
+                    if (avatarAnimatorData != null) exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.Inject(exported, avatarAnimatorData, avatarAnimator.FaceClips), () => exported);
+                    if (effectsData != null) exported = guard.Optional(ExportStage.AvatarEffects, () => AvatarEffectsExport.Inject(exported, effectsData), () => exported);
+                    if (contactsData != null) exported = guard.Optional(ExportStage.AvatarContacts, () => AvatarContactsExport.Inject(exported, contactsData), () => exported);
+                    var unwrittenEffects = animatorEffects != null && guard.IsOmitted(ExportStage.AvatarEffects);
+                    var unwrittenContacts = animatorContacts != null && guard.IsOmitted(ExportStage.AvatarContacts);
+                    if (!unwrittenEffects && !unwrittenContacts || avatarAnimatorData == null || resolveAnimator == null) break;
+                    if (unwrittenEffects) animatorEffects = null;
+                    if (unwrittenContacts) animatorContacts = null;
+                    avatarAnimatorData = guard.Optional(ExportStage.AvatarAnimator, resolveAnimator, () => null);
+                }
+                // What was left out of a written table, or of one with nothing
+                // to write; a table left out whole is told by its stage.
+                if (!guard.IsOmitted(ExportStage.AvatarEffects) && effects?.LeftOut is string effectsLeftOut) warnings?.Add(effectsLeftOut);
+                if (!guard.IsOmitted(ExportStage.AvatarContacts) && contacts != null)
+                    foreach (var line in contacts.LeftOut) warnings?.Add(line);
+                // Before the size check below, which measures the finished file.
                 if (humanoidLimits != null) exported = HumanoidLimitCapture.Inject(exported, humanoidLimits);
+                // The app does not read a file whose JSON is over its limit. The
+                // extension is the stage that grows with the FX, so it goes, as
+                // when it is over its own limit. The check reads the finished
+                // file, the required app versions written.
+                if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator))
+                {
+                    var finished = AvatarFormatRequirements.Write(exported);
+                    exported = guard.Optional(ExportStage.AvatarAnimator, () => AvatarAnimatorCapture.RequireJsonWithinApp(finished),
+                        () => AvatarAnimatorCapture.Remove(finished));
+                }
+                // The curves the written extension left out, by kind.
+                if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator) && AvatarAnimatorCapture.OmittedCurvesLine(avatarAnimatorData) is string leftOut)
+                    warnings?.Add(leftOut);
+                // The app's player against Unity's Animator on the copy, which
+                // nothing reads after this; the file is already made.
+                if (avatarAnimatorData != null && !guard.IsOmitted(ExportStage.AvatarAnimator))
+                    AvatarAnimatorCrossCheck.Check(clone, avatarAnimator, avatarAnimatorData, warnings);
                 return AvatarFormatRequirements.Write(exported);
             }
             // The steps after the build passes, UniVRM's conversion among them,
@@ -1187,7 +1516,8 @@ namespace VRVlog.LilToonExporter
         // for it, so the export copy drops it with its material slot. Runs
         // after PreserveExtraMaterialSlots, so slots and submeshes line up.
         // A mesh whose submeshes are all empty is left to DisableEmptyMeshRenderers.
-        internal static void DropEmptySubmeshes(GameObject clone, ICollection<Mesh> owned, ICollection<string> warnings)
+        // slotsKept gets, for each slot a renderer keeps, the slot it had.
+        internal static void DropEmptySubmeshes(GameObject clone, ICollection<Mesh> owned, ICollection<string> warnings, Action<Renderer, int[]> slotsKept = null)
         {
             foreach (var renderer in ExportRendererSelection.Enumerate(clone))
             {
@@ -1201,8 +1531,9 @@ namespace VRVlog.LilToonExporter
                 var slots = renderer.sharedMaterials;
                 // Slots past the submeshes draw the last submesh again, which
                 // draws nothing when that one is empty.
-                var extra = original.GetIndexCount(count - 1) > 0 ? slots.Skip(count) : Enumerable.Empty<Material>();
-                var materials = kept.Where(sub => sub < slots.Length).Select(sub => slots[sub]).Concat(extra).ToArray();
+                var extra = original.GetIndexCount(count - 1) > 0 ? Enumerable.Range(count, Math.Max(0, slots.Length - count)) : Enumerable.Empty<int>();
+                var keptSlots = kept.Where(sub => sub < slots.Length).Concat(extra).ToArray();
+                var materials = keptSlots.Select(slot => slots[slot]).ToArray();
                 var mesh = UnityEngine.Object.Instantiate(original);
                 mesh.name = original.name;
                 owned.Add(mesh);
@@ -1211,6 +1542,7 @@ namespace VRVlog.LilToonExporter
                     mesh.SetIndices(original.GetIndices(kept[sub]), original.GetTopology(kept[sub]), sub, false);
                 ReplaceMesh(skin, filter, mesh);
                 renderer.sharedMaterials = materials;
+                slotsKept?.Invoke(renderer, keptSlots);
                 warnings?.Add(ExporterLocalization.T(EmptySubmeshesOmitted) +
                     (renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform)));
             }
@@ -1250,21 +1582,26 @@ namespace VRVlog.LilToonExporter
         // logs keep the warnings that matter. Their nodes and bones are still
         // written; a material used only by such a renderer no longer is.
         // When no mesh renderer has geometry, leave the copy as it is.
+        // A renderer without any mesh asset, as when an outfit prefab is in the
+        // project without its model, loses a visible part, so it gets its own
+        // note per renderer in the "<kind>: <path> — <reason>" form that the
+        // transfer result counts. A mesh that is there but empty keeps the one line.
         internal static void DisableEmptyMeshRenderers(GameObject clone, ICollection<string> warnings)
         {
             if (clone == null || UnityEditor.EditorUtility.IsPersistent(clone))
                 throw new ArgumentException("An independent export copy is required.", nameof(clone));
             var renderers = ExportRendererSelection.Enumerate(clone).Where(renderer => renderer is SkinnedMeshRenderer || renderer is MeshRenderer).ToArray();
-            var empty = renderers.Where(renderer =>
-            {
-                var filter = renderer is MeshRenderer ? renderer.GetComponent<MeshFilter>() : null;
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
-                return !ExportRendererSelection.HasGeometry(mesh);
-            }).ToArray();
+            Mesh MeshOf(Renderer renderer) => renderer is SkinnedMeshRenderer skin ? skin.sharedMesh
+                : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
+            var empty = renderers.Where(renderer => !ExportRendererSelection.HasGeometry(MeshOf(renderer))).ToArray();
             if (empty.Length == 0 || empty.Length == renderers.Length) return;
             foreach (var renderer in empty) renderer.enabled = false;
-            warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", empty.Select(renderer =>
-                renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform))));
+            string PathOf(Renderer renderer) => renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
+            foreach (var renderer in empty.Where(renderer => MeshOf(renderer) == null))
+                warnings?.Add(MissingMeshKind + ": " + PathOf(renderer) + " — " + MissingMeshReason);
+            var withoutGeometry = empty.Where(renderer => MeshOf(renderer) != null).ToArray();
+            if (withoutGeometry.Length > 0)
+                warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", withoutGeometry.Select(PathOf)));
         }
 
         // UniVRM 0.131 looks up every bone and root bone among the avatar's own
@@ -1357,6 +1694,7 @@ namespace VRVlog.LilToonExporter
 
         internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
             bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null, MatcapApproximation.Bakes matcapBakes = null,
+            IReadOnlyList<Material> unbound = null,
             Func<Renderer, int, bool> offByDefault = null, ICollection<Material> hiddenFallbacks = null)
         {
             var converted = new Dictionary<Material, Material>();
@@ -1440,6 +1778,21 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(MissingMaterialsError + string.Join(", ", unassigned.Take(5)) +
                     (unassigned.Count > 5 ? ", …" : ""));
             if (converted.Count == 0 && hiddenConverted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
+            // Materials no slot holds, which a slot curve sets, get a copy each
+            // too; one that cannot be converted gets the MToon defaults rather
+            // than cost the file.
+            foreach (var source in unbound ?? Array.Empty<Material>())
+            {
+                if (source == null || converted.ContainsKey(source) || !LilToonMaterialReader.IsLilToon(source)) continue;
+                Material fallback;
+                try { fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, 1f, matcapBakes); }
+                catch (Exception error) when (!(error is OperationCanceledException))
+                {
+                    fallback = CreateMToonDefault(source, created);
+                    warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + source.name + " — " + error.Message);
+                }
+                converted.Add(source, fallback);
+            }
             return converted;
         }
 

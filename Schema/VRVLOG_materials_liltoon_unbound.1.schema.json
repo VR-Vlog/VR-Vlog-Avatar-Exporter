@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_materials_liltoon_unbound/1/schema.json",
+  "title": "VR Vlog lilToon records of materials no primitive draws with",
+  "description": "The lilToon records of glTF materials that no primitive uses and that a materialSlot target of VRVLOG_avatar_animator sets. Each record has the shape of a VRVLOG_materials_liltoon material; its texture indices name entries of VRVLOG_materials_liltoon.textures. Kept apart from VRVLOG_materials_liltoon, whose reader rejects a record that no primitive binds.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "materials"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "materials": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/material"
+      },
+      "description": "Ordered by materialIndex. A materialIndex appears once, is not the material of any primitive, and has no record in VRVLOG_materials_liltoon."
+    }
+  },
+  "$defs": {
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceShader",
+        "name",
+        "materialIndex",
+        "renderQueue",
+        "values",
+        "textures",
+        "passes",
+        "keywords",
+        "clippingCanceller"
+      ],
+      "properties": {
+        "sourceShader": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "materialIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "renderQueue": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 5000
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "textures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/textureProperty"
+          }
+        },
+        "passes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pass"
+          }
+        },
+        "keywords": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "clippingCanceller": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "lightMode",
+        "enabled"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "lightMode": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "textureProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "texture",
+        "st"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "texture": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "st": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    },
+    "value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "type": {
+          "enum": [
+            "float",
+            "color",
+            "vector"
+          ]
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    }
+  }
+}

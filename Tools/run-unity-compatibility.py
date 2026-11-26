@@ -992,6 +992,7 @@ BEHAVIOR_CASES = {
     # 自動で軽量化する: textures of switched-off lilToon features are left out.
     'LilToonInactiveSlotsTests': {
         'ASlotIsSampledOnlyWhileItsSwitchIsOn': 29,
+        'ASlotOfAMovedSwitchIsSampled': 1,
         'AMissingSwitchCountsAsSampled': 1,
         'DissolveSlotsFollowTheDissolveMode': 3,
         'OutlineSlotsNeedAnOutlinePassThatIsDrawn': 4,
@@ -1110,7 +1111,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 5, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
 def table_cases():

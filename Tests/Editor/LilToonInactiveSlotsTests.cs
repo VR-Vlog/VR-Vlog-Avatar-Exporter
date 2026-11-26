@@ -61,6 +61,24 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
+        // A switch an FX curve moves can be on in the app, so its slots are
+        // sampled even while it is off in the avatar; the other switches' are not.
+        [Test]
+        public void ASlotOfAMovedSwitchIsSampled()
+        {
+            var material = new Material(Find("lilToon"));
+            try
+            {
+                material.SetFloat("_UseBacklight", 0);
+                material.SetFloat("_UseEmission", 0);
+                Assert.That(LilToonInactiveSlots.Sampled(material, "_BacklightColorTex"), Is.False);
+                Assert.That(LilToonInactiveSlots.Sampled(material, "_BacklightColorTex", new[] { "_UseBacklight" }), Is.True);
+                Assert.That(LilToonInactiveSlots.Sampled(material, "_EmissionMap", new[] { "_UseBacklight" }), Is.False);
+                Assert.That(LilToonInactiveSlots.Sampled(material, "_EmissionMap", new string[0]), Is.False);
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
         // Named like an official shader but without _UseShadow: the slot is
         // kept. So is any slot of a shader that is not lilToon 2.3.4.
         [Test]

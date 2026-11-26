@@ -10,6 +10,13 @@ namespace VRVlog.LilToon
     public static class LilToonFullContract
     {
         public const string ExtensionName = "VRVLOG_materials_liltoon";
+        // The records of materials no primitive draws with, which a
+        // materialSlot target of VRVLOG_avatar_animator sets: { schemaVersion,
+        // materials } with each material in the shape of ExtensionName's, its
+        // textures indexing ExtensionName's. Validate does not read it, so an
+        // app that predates it keeps ExtensionName.
+        public const string UnboundExtensionName = "VRVLOG_materials_liltoon_unbound";
+        public const int UnboundSchemaVersion = 1;
         public const string SourceColorSpaceKey = "VRVLOG_lilToonColorSpace";
 
         // glTF asset extras preserve compatibility with schema 2.0 consumers.
@@ -41,6 +48,30 @@ namespace VRVlog.LilToon
         {
             if (!gltf.TryGetValue("extensions", out var raw) || !(raw is Dictionary<string, object> ext) || !ext.TryGetValue(ExtensionName, out raw)) return null;
             return Object(raw);
+        }
+        // The feature switches the app fixes when it loads a material: it turns
+        // off the shader code of a group whose switches are all 0
+        // (LilToonFeatureSpecialization), so an animation that moves one shows
+        // nothing there, unless the avatar's controller moves the switch: the
+        // exporter writes such a curve as a materialFloat target and the app
+        // keeps that group's code. An older exporter left it out (materialSwitch).
+        // The 2nd layer's dissolve mode, the x of the vector
+        // _Main2ndDissolveParams, is one too; vector curves are not carried.
+        public static readonly string[] Switches =
+        {
+            "_UseMain2ndTex", "_UseMain3rdTex", "_UseEmission", "_UseEmission2nd",
+            "_UseReflection", "_UseMatCap", "_UseMatCap2nd", "_UseRim", "_UseGlitter", "_UseBacklight", "_UseRimShade",
+            "_UseBumpMap", "_UseBump2ndMap", "_UseAnisotropy", "_UseParallax",
+        };
+        public static bool IsSwitch(string name) => Array.IndexOf(Switches, name) >= 0;
+        // The type (float, color, vector or texture) of a property the app's
+        // runtime material keeps under the same name, or null for a name the
+        // contract does not carry (another shader's, or one only the editor or
+        // an outside system reads).
+        public static string RuntimeType(string name)
+        {
+            if (name == null || !LilToon234Catalogue.Properties.TryGetValue(name, out var declaration) || !declaration.EndsWith(":runtime", StringComparison.Ordinal)) return null;
+            return declaration.Substring(0, declaration.IndexOf(':'));
         }
         public static bool IsFull(Dictionary<string, object> gltf)
         {

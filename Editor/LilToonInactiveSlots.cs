@@ -7,8 +7,9 @@ using VRVlog.LilToon;
 namespace VRVlog.LilToonExporter
 {
     // 自動で軽量化する: lilToon 2.3.4 texture slots the shader samples only while
-    // a feature switch is on. The app never changes these switches (expressions
-    // edit colours and UVs only), so a slot whose switch is off is never drawn.
+    // a feature switch is on. Expressions edit colours and UVs only; the app
+    // changes a switch only by an FX curve (moved), so a slot whose switch is
+    // off and not moved is never drawn.
     // Every row was checked against the 2.3.4 shader source; a slot not listed
     // here, or a switch the material lacks, counts as sampled.
     internal static class LilToonInactiveSlots
@@ -48,10 +49,11 @@ namespace VRVlog.LilToonExporter
         // the reflection cube, without _UseReflection.
         static readonly string[] UngatedReflectionFamilies = {"lts_gem", "lts_ref_blur"};
 
-        internal static bool Sampled(Material material, string slot)
+        internal static bool Sampled(Material material, string slot, ICollection<string> moved = null)
         {
             if (material == null || material.shader == null || !Switches.TryGetValue(slot ?? "", out var feature) ||
                 !LilToon234Catalogue.Shaders.TryGetValue(material.shader.name, out var family)) return true;
+            if (moved != null && moved.Contains(feature)) return true;
             // lilToonMulti selects its features with keywords, not these floats.
             if (family.StartsWith("ltsmulti", StringComparison.Ordinal)) return true;
             if (feature == "_UseReflection" && Array.IndexOf(UngatedReflectionFamilies, family) >= 0) return true;

@@ -122,7 +122,8 @@ namespace VRVlog.LilToonExporter
 
         // The density of every texture of the avatar's lilToon materials that may shrink.
         // A texture with a never-shrink use, an unmeasurable use or no use is left out.
-        internal static Plan Measure(GameObject avatar)
+        // moved: the material floats an FX curve moves (AvatarAnimatorCapture.MovedMaterialFloats).
+        internal static Plan Measure(GameObject avatar, ICollection<string> moved = null)
         {
             Measurements++;
             var densities = new Dictionary<Texture, double>();
@@ -155,7 +156,7 @@ namespace VRVlog.LilToonExporter
                         }
                         // A slot whose feature is off is written blank, so it does not
                         // count; its density could only allow a smaller texture.
-                        if (!LilToonInactiveSlots.Sampled(material, name)) continue;
+                        if (!LilToonInactiveSlots.Sampled(material, name, moved)) continue;
                         // A slot sampled on the main UV is tiled by both; a smaller main
                         // tiling lowers the density, a larger one is not counted.
                         var tiling = Tiling(material, name) * (name == "_MainTex" ? 1 : Math.Min(1, mainTiling));
