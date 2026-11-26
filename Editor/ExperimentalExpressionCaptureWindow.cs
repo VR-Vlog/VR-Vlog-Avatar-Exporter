@@ -2749,8 +2749,7 @@ namespace VRVlog.LilToonExporter
                 }
                 catch (Exception exception)
                 {
-                    Debug.LogWarning(ExporterLocalization.T("軽量モデルを書き出せませんでした") + "
-" + exception.Message);
+                    Debug.LogWarning(ExporterLocalization.T("軽量モデルを書き出せませんでした") + "\n" + exception.Message);
                     if (File.Exists(lightDestination)) File.Delete(lightDestination);
                 }
                 finally { EditorUtility.ClearProgressBar(); }
