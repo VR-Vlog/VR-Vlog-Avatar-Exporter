@@ -66,8 +66,12 @@ namespace VRVlog.LilToonExporter
         internal const double FaceWeightTolerance = 0.5;
         // Muscles, read back from the bones in single precision (the design's 1e-3).
         internal const double MuscleTolerance = 1e-3;
-        // The time the inputs may take together; the rest are not compared.
-        internal static double BudgetSeconds = 60;
+        // The time the inputs may take together; the rest are not compared,
+        // and one under way when it runs out stops at that frame. Quick and
+        // normal exports use the same limit.
+        internal static double BudgetSeconds = 30;
+        // The seconds since the check started (tests replace it).
+        internal static Func<Stopwatch, double> ElapsedSeconds = clock => clock.Elapsed.TotalSeconds;
         // Off leaves VRChat's behaviours to plain Unity, which runs none (tests).
         internal static bool HookBehaviours = true;
         // Names listed in the result line; the others are counted.
@@ -277,11 +281,14 @@ namespace VRVlog.LilToonExporter
                     ToRest(data, bindings, shown, shapes);
                     if (!graph) animator.runtimeAnimatorController = played.Count > 0 ? played[0] : null;
                     player.Read();
+                    bool Late() => ElapsedSeconds(clock) > BudgetSeconds;
                     foreach (var input in inputs)
                     {
                         // The first input always runs, so a slow avatar still shows something.
-                        if (input != inputs[0] && clock.Elapsed.TotalSeconds > BudgetSeconds) { result.OutOfTime++; continue; }
-                        var mismatch = Play(input, data, bindings, shown, muscles, poses, shapes, quaternions, player, out var skipped);
+                        var first = input == inputs[0];
+                        if (!first && Late()) { result.OutOfTime++; continue; }
+                        var mismatch = Play(input, data, bindings, shown, muscles, poses, shapes, quaternions, player, first ? null : (Func<bool>)Late, out var skipped, out var late);
+                        if (late) { result.OutOfTime++; continue; }
                         if (skipped) { result.Skipped.Add(input.Name); continue; }
                         result.Compared++;
                         if (mismatch != null) result.Mismatches.Add(mismatch);
@@ -509,8 +516,9 @@ namespace VRVlog.LilToonExporter
         }
 
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, List<int> muscles,
-            MuscleReader poses, int[] shapes, Dictionary<int, int[]> quaternions, UnityPlayer player, out bool skipped)
+            MuscleReader poses, int[] shapes, Dictionary<int, int[]> quaternions, UnityPlayer player, Func<bool> late, out bool skipped, out bool outOfTime)
         {
+            skipped = outOfTime = false;
             var pose = new HumanPose();
             // Both draw the same sequence; a different order of behaviours shows as a difference.
             var seed = input.Name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c));
@@ -521,6 +529,8 @@ namespace VRVlog.LilToonExporter
             Mismatch first = null;
             for (var frame = 0; frame < SettleFrames + InputFrames; frame++)
             {
+                // Stopped part way, the input is not compared.
+                if (late != null && late()) { outOfTime = true; return null; }
                 if (frame == SettleFrames)
                     foreach (var (parameter, value) in input.Values)
                     {
@@ -554,7 +564,6 @@ namespace VRVlog.LilToonExporter
                     break;
                 }
             }
-            skipped = false;
             return first;
         }
 
