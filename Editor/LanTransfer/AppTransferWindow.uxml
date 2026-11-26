@@ -36,6 +36,12 @@
                         <ui:TextField name="name-field" class="field" />
                     </ui:VisualElement>
                     <ui:Label name="name-hint" class="t mini grey field-line" />
+                    <!-- One fixed-height row and the line under it, whose text depends on the avatar's settings; hidden while off, so nothing moves. -->
+                    <ui:VisualElement class="light-row">
+                        <ui:Toggle name="light-toggle" class="check" />
+                        <ui:Label name="light-text" class="t light-text" />
+                    </ui:VisualElement>
+                    <ui:Label name="light-hint" class="t mini grey field-line" />
                     <ui:VisualElement class="hairline section" />
                     <ui:IMGUIContainer name="terms" class="terms" />
                 </ui:VisualElement>
@@ -109,6 +115,8 @@
                         <ui:Image name="warning-icon" class="warning-icon" />
                         <ui:Label name="warning-text" class="t warning-text" />
                     </ui:VisualElement>
+                    <!-- Only in a transfer that asked for the lightweight model; it keeps its height until that model is given up. -->
+                    <ui:Label name="light-note" class="t mini reason light-note" />
                     <ui:VisualElement class="status-row">
                         <ui:Label name="status" class="t mini grey status" />
                         <ui:Label name="remaining" class="t bold remaining" />

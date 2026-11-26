@@ -35,6 +35,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
             get => EditorPrefs.GetBool(QrReadySoundPreference, AppTransferFlow.QrReadySoundByDefault);
             set => EditorPrefs.SetBool(QrReadySoundPreference, value);
         }
+        // "複数人撮影用の軽量モデルも送る", kept for every project on this PC. Off until the app reads the link with both files.
+        internal const string SendLightModelPreference = "VRVlog.AppTransfer.SendLightModel";
+        internal static bool SendLightModel
+        {
+            get => EditorPrefs.GetBool(SendLightModelPreference, AppTransferFlow.SendLightModelByDefault);
+            set => EditorPrefs.SetBool(SendLightModelPreference, value);
+        }
 
         // The avatar, the name and whether it is detailed survive a domain reload with the window.
         [SerializeField] private AppTransferPanel panel = new AppTransferPanel();

@@ -363,6 +363,26 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [Test]
+        public void SendingTheLightModelDefaultsOffAndIsSaved()
+        {
+            var exists = EditorPrefs.HasKey(AppTransferWindow.SendLightModelPreference);
+            var saved = EditorPrefs.GetBool(AppTransferWindow.SendLightModelPreference, false);
+            try
+            {
+                EditorPrefs.DeleteKey(AppTransferWindow.SendLightModelPreference);
+                Assert.That(AppTransferWindow.SendLightModel, Is.False);
+                AppTransferWindow.SendLightModel = true;
+                Assert.That(EditorPrefs.GetBool(AppTransferWindow.SendLightModelPreference, false), Is.True);
+                Assert.That(AppTransferWindow.SendLightModel, Is.True);
+            }
+            finally
+            {
+                if (exists) EditorPrefs.SetBool(AppTransferWindow.SendLightModelPreference, saved);
+                else EditorPrefs.DeleteKey(AppTransferWindow.SendLightModelPreference);
+            }
+        }
+
         private static void WithPrivacyPreference(Action test)
         {
             var exists = EditorPrefs.HasKey(CloudVrmTransferWindow.PrivacyConsentPreference);

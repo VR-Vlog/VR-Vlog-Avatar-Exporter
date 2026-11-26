@@ -311,6 +311,69 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId, LinkToken, "a.vrm", 1, LinkHash, 1, LinkToken));
         }
 
+        // The contract's version 4 vector: a normal and a lightweight transfer of one avatar in one link.
+        private const string PairId = "00112233445566778899aabbccddeeff";
+        private const string PairLightId = "ffeeddccbbaa99887766554433221100";
+        // The contract writes key, ltoken and lkey as one letter repeated, which leaves
+        // padding bits set; the link carries only canonical base64url, so the last
+        // letter of each is the nearest canonical one (A).
+        private static readonly string PairToken = new string('A', 43);
+        private static readonly string PairKey = new string('B', 85) + "A";
+        private static readonly string PairLightToken = new string('C', 42) + "A";
+        private static readonly string PairLightKey = new string('D', 85) + "A";
+        private static readonly string PairHash = new string('1', 64);
+        private static readonly string PairLightHash = new string('2', 64);
+        private static string PairLink(string name) => CloudTransferProtocol.ImportLink(PairId, PairToken, name, 41943040, PairHash, 1795000000, PairKey,
+            PairLightId, PairLightToken, 16777216, PairLightHash, PairLightKey);
+
+        private const string PairVector = "vrvlog://import#v=4&id=00112233445566778899aabbccddeeff&token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                + "&name=%E3%82%A2%E3%83%90%E3%82%BF%E3%83%BC%20A.vrm&size=41943040"
+                + "&sha256=1111111111111111111111111111111111111111111111111111111111111111&exp=1795000000"
+                + "&key=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+                + "&lid=ffeeddccbbaa99887766554433221100&ltoken=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC&lsize=16777216"
+                + "&lsha256=2222222222222222222222222222222222222222222222222222222222222222"
+                + "&lkey=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+
+        [Test]
+        public void PairLinkMatchesTheVectorSharedWithTheApp()
+        {
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, new string('B', 86)));
+            var canonical = PairVector.Replace("&key=" + new string('B', 86), "&key=" + PairKey)
+                .Replace("&ltoken=" + new string('C', 43), "&ltoken=" + PairLightToken).Replace("&lkey=" + new string('D', 86), "&lkey=" + PairLightKey);
+            Assert.That(canonical.Length, Is.EqualTo(PairVector.Length));
+            Assert.That(PairLink("アバター A.vrm"), Is.EqualTo(canonical));
+        }
+
+        [Test]
+        public void PairLinkCarriesTheThirteenMembersInTheContractOrder()
+        {
+            var link = PairLink("衣装-夜 昼.vrm");
+            Assert.That(link.Substring(CloudTransferProtocol.ImportLinkPrefix.Length).Split('&').Select(pair => pair.Substring(0, pair.IndexOf('='))).ToArray(),
+                Is.EqualTo(new[] { "v", "id", "token", "name", "size", "sha256", "exp", "key", "lid", "ltoken", "lsize", "lsha256", "lkey" }));
+            // Everything before the light members is the version 3 link of the normal file.
+            var normal = CloudTransferProtocol.ImportLink(PairId, PairToken, "衣装-夜 昼.vrm", 41943040, PairHash, 1795000000, PairKey);
+            Assert.That(link.Substring(CloudTransferProtocol.ImportLinkPrefix.Length + 3, normal.Length - CloudTransferProtocol.ImportLinkPrefix.Length - 3),
+                Is.EqualTo(normal.Substring(CloudTransferProtocol.ImportLinkPrefix.Length + 3)));
+        }
+
+        [Test]
+        public void PairLinkChecksTheLightMembersAsTheNormalOnesAndKeepsTheLengthBound()
+        {
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, PairId, PairLightToken, 1, PairLightHash, PairLightKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, PairLightId.ToUpperInvariant(), PairLightToken, 1, PairLightHash, PairLightKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, PairLightId, PairLightToken + "&x=1", 1, PairLightHash, PairLightKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, PairLightId, PairLightToken, 0, PairLightHash, PairLightKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, PairLightId, PairLightToken, 1, PairLightHash.Substring(1), PairLightKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, PairLightId, PairLightToken, 1, PairLightHash, PairLightToken));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, PairKey, null, PairLightToken, 1, PairLightHash, PairLightKey));
+            Assert.Throws<InvalidOperationException>(() => PairLink("\ud83d"));
+            var longest = new string('あ', (CloudTransferProtocol.MaximumImportLinkLength - PairLink("").Length) / 9);
+            Assert.That(PairLink(longest).Length, Is.LessThanOrEqualTo(CloudTransferProtocol.MaximumImportLinkLength));
+            Assert.Throws<InvalidOperationException>(() => PairLink(longest + "あ"));
+            // Every name the service allows still fits.
+            Assert.That(PairLink(CloudTransferProtocol.DisplayName(new string('あ', 300))).Length, Is.LessThanOrEqualTo(CloudTransferProtocol.MaximumImportLinkLength));
+        }
+
         [Test]
         public async Task SessionIssuesTheImportLinkWithItsQrAndForgetsBothTogether()
         {
