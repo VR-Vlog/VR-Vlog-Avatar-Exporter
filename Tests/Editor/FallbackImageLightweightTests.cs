@@ -115,8 +115,9 @@ namespace VRVlog.LilToonExporter.Tests
         // on no primitive, and its images shrink like those of a material
         // with a record in the full extension: alone (image 1, which material
         // 1 then stops using), shared with material 0 (image 0). An image the
-        // unbound node's material 2 also uses stays, and so does one of a
-        // record that names a material a primitive draws.
+        // unbound node's material 2 also uses stays. A record that names a
+        // material a primitive draws (2, there is no material 4) does not
+        // make it count: image 2, which only material 2 uses, stays.
         [TestCase("alone", 1, true)]
         [TestCase("shared", 0, true)]
         [TestCase("drawn", 2, false)]
@@ -126,6 +127,7 @@ namespace VRVlog.LilToonExporter.Tests
             var glb = GlbDocument.Read(Build((materials, info) =>
             {
                 if (how == "alone") F.Object(((Dictionary<string, object>)materials[1])["pbrMetallicRoughness"])["baseColorTexture"] = info(0);
+                if (how == "recordOnAMesh") return;
                 materials.Add(new Dictionary<string, object>
                 {
                     { "pbrMetallicRoughness", new Dictionary<string, object> { { "baseColorTexture", info(image) } } },
@@ -151,6 +153,36 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Png(after, 2), Is.EqualTo(Png(before, 2)));
             Assert.That(JsonDom.Serialize(F.Object(after.Json["extensions"])[F.UnboundExtensionName]),
                 Is.EqualTo(JsonDom.Serialize(F.Object(before.Json["extensions"])[F.UnboundExtensionName])));
+        }
+
+        // A material the menu puts on a mesh follows how the app draws it
+        // there. Material 4 has only the unbound record and image 1 to
+        // itself. On bound node 0 its image is made smaller as usual, on face
+        // node 1 to the face's size. On node 2, which has no binding, the app
+        // draws it in MToon, so its image stays; so does that of material 0
+        // (image 5), which has a record but the menu puts it on node 2.
+        [TestCase(0, 4, 1, FallbackImageLightweight.Maximum)]
+        [TestCase(1, 4, 1, FallbackImageLightweight.FaceMaximum)]
+        [TestCase(2, 4, 1, 0)]
+        [TestCase(2, 0, 5, 0)]
+        public void AMaterialTheMenuPutsOnAMeshFollowsHowTheAppDrawsIt(int node, int material, int image, int maximum)
+        {
+            var glb = GlbDocument.Read(Build((materials, info) =>
+            {
+                F.Object(((Dictionary<string, object>)materials[1])["pbrMetallicRoughness"])["baseColorTexture"] = info(0);
+                materials.Add(new Dictionary<string, object>
+                {
+                    { "pbrMetallicRoughness", new Dictionary<string, object> { { "baseColorTexture", info(1) } } },
+                    { "extensions", new Dictionary<string, object> { { "VRMC_materials_mtoon", new Dictionary<string, object>() } } },
+                });
+            }));
+            var record = new Dictionary<string, object> { { "materialIndex", 4L } };
+            F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
+            Assert.That(FallbackImageLightweight.Plan(glb.Json)[image].Maximum, Is.EqualTo(FallbackImageLightweight.Maximum));
+            var menu = new Dictionary<int, IReadOnlyCollection<int>> { { node, new[] { material, -1 } } };
+            var plan = FallbackImageLightweight.Plan(glb.Json, menu);
+            if (maximum == 0) Assert.That(plan.Keys, Has.No.Member(image));
+            else Assert.That(plan[image].Maximum, Is.EqualTo(maximum));
         }
 
         // Through the exporter and back through the vendored importer. Off,
