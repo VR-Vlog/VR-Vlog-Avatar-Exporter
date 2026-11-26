@@ -34,6 +34,7 @@ namespace VRVlog.LilToonExporter
         // how many bytes the file lost. menuMaterials holds, by node, the
         // materials the menu may put on that node's mesh (MenuMaterials): the
         // FX is written after this step, so the file does not tell them yet.
+        // A negative index (no material, not written) is left out.
         internal static byte[] Apply(byte[] bytes, ICollection<string> warnings, out long saved,
             IReadOnlyDictionary<int, IReadOnlyCollection<int>> menuMaterials = null)
         {
