@@ -747,6 +747,9 @@ namespace VRVlog.AvatarAnimator
         public double LayerWeight(int layer) => layers[layer].Weight;
         // The FX's playable weight (Playable Layer Control); 1 without an FX.
         public double FxWeight => playableWeight.Length > 0 ? playableWeight[0] : 1;
+        // Whether a state or state machine entered since the start ran a
+        // Playable Layer Control on the FX, whatever weight it sets.
+        public bool FxControlled { get; private set; }
         // Per controller of Data.Controllers: its playable weight, why the
         // evaluator skips it (null when it plays), and the index above
         // (State, LayerWeight...) of one of its layers, or -1 when it is
@@ -1341,6 +1344,7 @@ namespace VRVlog.AvatarAnimator
                     }
                     break;
                 case "playableLayerControl":
+                    if (behaviour.Playable == "fx") FxControlled = true;
                     // The weight of a skipped controller moves too, unseen.
                     var playable = -1;
                     for (var c = 0; c < data.Controllers.Count; c++)

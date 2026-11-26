@@ -33,7 +33,8 @@ namespace VRVlog.LilToonExporter
     // evaluator does, from the same random sequence, and an Animator Layer
     // Control on the FX blends that layer's weight from the next frame (M10).
     // An input that starts a Playable Layer Control on the FX is not compared:
-    // plain Unity has no FX weight to blend.
+    // plain Unity has no FX weight to blend. The evaluator plays each input
+    // alone first (Controls), so Unity plays only the inputs it can compare.
     //
     // With only the FX, Unity's Animator plays it as the controller. With a
     // Gesture or an Action the evaluator plays too, or a muscle target, a
@@ -287,6 +288,9 @@ namespace VRVlog.LilToonExporter
                         // The first input always runs, so a slow avatar still shows something.
                         var first = input == inputs[0];
                         if (!first && Late()) { result.OutOfTime++; continue; }
+                        var controls = Controls(input, data, first ? null : (Func<bool>)Late);
+                        if (controls == null) { result.OutOfTime++; continue; }
+                        if (controls == true) { result.Skipped.Add(input.Name); continue; }
                         var mismatch = Play(input, data, bindings, shown, muscles, poses, shapes, quaternions, player, first ? null : (Func<bool>)Late, out var skipped, out var late);
                         if (late) { result.OutOfTime++; continue; }
                         if (skipped) { result.Skipped.Add(input.Name); continue; }
@@ -515,13 +519,33 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
+        // Each input draws its own random sequence, the same on both sides.
+        static int Seed(Input input) => input.Name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c));
+
+        // Whether the evaluator runs a Playable Layer Control on the FX in the
+        // frames Play plays the input; null when late stops it part way.
+        static bool? Controls(Input input, AvatarAnimatorData data, Func<bool> late)
+        {
+            var random = new System.Random(Seed(input));
+            var evaluator = new AvatarAnimatorEvaluator(data, () => random.NextDouble());
+            for (var frame = 0; frame < SettleFrames + InputFrames; frame++)
+            {
+                if (late != null && late()) return null;
+                if (frame == SettleFrames)
+                    foreach (var (parameter, value) in input.Values) evaluator.Set(parameter, value);
+                evaluator.Advance(FrameSeconds);
+                if (evaluator.FxControlled) return true;
+            }
+            return false;
+        }
+
         static Mismatch Play(Input input, AvatarAnimatorData data, IReadOnlyList<Binding> bindings, List<int> shown, List<int> muscles,
             MuscleReader poses, int[] shapes, Dictionary<int, int[]> quaternions, UnityPlayer player, Func<bool> late, out bool skipped, out bool outOfTime)
         {
             skipped = outOfTime = false;
             var pose = new HumanPose();
             // Both draw the same sequence; a different order of behaviours shows as a difference.
-            var seed = input.Name.Aggregate(17, (hash, c) => unchecked(hash * 31 + c));
+            var seed = Seed(input);
             var evaluatorRandom = new System.Random(seed);
             var evaluator = new AvatarAnimatorEvaluator(data, () => evaluatorRandom.NextDouble());
             ToRest(data, bindings, shown, shapes);
