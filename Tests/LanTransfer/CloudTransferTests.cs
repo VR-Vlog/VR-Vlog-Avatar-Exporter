@@ -314,9 +314,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         // The contract's version 4 vector: a normal and a lightweight transfer of one avatar in one link.
         private const string PairId = "00112233445566778899aabbccddeeff";
         private const string PairLightId = "ffeeddccbbaa99887766554433221100";
-        // The contract writes key, ltoken and lkey as one letter repeated, which leaves
-        // padding bits set; the link carries only canonical base64url, so the last
-        // letter of each is the nearest canonical one (A).
+        // key, ltoken and lkey end in A, so each is canonical base64url (no padding bits set).
         private static readonly string PairToken = new string('A', 43);
         private static readonly string PairKey = new string('B', 85) + "A";
         private static readonly string PairLightToken = new string('C', 42) + "A";
@@ -329,19 +327,16 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         private const string PairVector = "vrvlog://import#v=4&id=00112233445566778899aabbccddeeff&token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 + "&name=%E3%82%A2%E3%83%90%E3%82%BF%E3%83%BC%20A.vrm&size=41943040"
                 + "&sha256=1111111111111111111111111111111111111111111111111111111111111111&exp=1795000000"
-                + "&key=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
-                + "&lid=ffeeddccbbaa99887766554433221100&ltoken=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC&lsize=16777216"
+                + "&key=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA"
+                + "&lid=ffeeddccbbaa99887766554433221100&ltoken=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCA&lsize=16777216"
                 + "&lsha256=2222222222222222222222222222222222222222222222222222222222222222"
-                + "&lkey=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+                + "&lkey=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDA";
 
         [Test]
         public void PairLinkMatchesTheVectorSharedWithTheApp()
         {
             Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(PairId, PairToken, "a.vrm", 1, PairHash, 1, new string('B', 86)));
-            var canonical = PairVector.Replace("&key=" + new string('B', 86), "&key=" + PairKey)
-                .Replace("&ltoken=" + new string('C', 43), "&ltoken=" + PairLightToken).Replace("&lkey=" + new string('D', 86), "&lkey=" + PairLightKey);
-            Assert.That(canonical.Length, Is.EqualTo(PairVector.Length));
-            Assert.That(PairLink("アバター A.vrm"), Is.EqualTo(canonical));
+            Assert.That(PairLink("アバター A.vrm"), Is.EqualTo(PairVector));
         }
 
         [Test]
