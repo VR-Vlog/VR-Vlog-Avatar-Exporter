@@ -200,7 +200,7 @@ namespace VRVlog.LilToonExporter
                     throw new InvalidOperationException("表情の対象Meshがneutral確定後に変更されました: " + state.Path);
                 generatedBytes += state.OriginalMesh.vertexCount * 36L;
                 if (generatedBytes > 128L * 1024 * 1024)
-                    throw new InvalidOperationException("表情の追加データが上限の128 MiBを超えます。");
+                    throw new InvalidOperationException("表情の追加データが上限の128MBを超えます。");
                 if (!meshes.Contains(renderer.sharedMesh) || ReferenceEquals(renderer.sharedMesh, state.OriginalMesh))
                 {
                     renderer.sharedMesh = Object.Instantiate(renderer.sharedMesh);

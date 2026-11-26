@@ -83,7 +83,7 @@ namespace VRVlog.LilToonExporter.Tests
             settings.Poses.Names["pose-b"] = "Renamed";
             settings.License.CopyrightInformation = "Sample copyright";
             settings.License.AllowRedistribution = true;
-            settings.AutoLightweight = true;
+            settings.Lightweight = LightweightLevel.None;
             settings.Gaze = new GazeRangeOptions { Up = 18, Down = 12.5f, Side = 24 };
             return settings;
         }
@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(loaded.IncludedGimmicks, Is.EqualTo(new[] { fixture.Gimmick }));
             Assert.That(loaded.IncludedGimmickComponents, Is.EqualTo(new Component[] { fixture.RootSettings }), "A kept component on the root stays a component.");
             Assert.That(loaded.AutoExcludeGimmicks, Is.False);
-            Assert.That(loaded.AutoLightweight, Is.True);
+            Assert.That(loaded.Lightweight, Is.EqualTo(LightweightLevel.None));
             Assert.That(loaded.Blink.Mode, Is.EqualTo(BlinkExportMode.Manual));
             Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));
             Assert.That(loaded.Poses.Names["pose-b"], Is.EqualTo("Renamed"));
@@ -159,39 +159,59 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnAvatarWithNothingSavedStartsLightweight()
+        public void AnAvatarWithNothingSavedStartsAtStandard()
         {
             using var fixture = new SavedAvatar();
-            Assert.That(new ExportSettings().AutoLightweight, Is.True);
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.True);
+            Assert.That(new ExportSettings().Lightweight, Is.EqualTo(LightweightLevel.Standard));
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(LightweightLevel.Standard));
         }
 
-        [Test]
-        public void TurningLightweightOffIsWrittenAndComesBack()
+        // A level other than the default is written with the two switches older versions read,
+        // so going back to an older version keeps the same choice.
+        [TestCase((int)LightweightLevel.None, false, false)]
+        [TestCase((int)LightweightLevel.Max, true, true)]
+        // The level is an int: the enum is internal and NUnit runs public methods.
+        public void AnotherLevelIsWrittenAndComesBack(int value, bool lighten, bool merge)
         {
+            var level = (LightweightLevel)value;
             using var fixture = new SavedAvatar();
-            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { AutoLightweight = false });
-            Assert.That(File.ReadAllText(storePath), Does.Contain(ExpressionPresetStore.KeyFor(fixture.Avatar)), "Off differs from the default, so it has an entry.");
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.False);
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings { Lightweight = level });
+            var text = File.ReadAllText(storePath);
+            Assert.That(text, Does.Contain(ExpressionPresetStore.KeyFor(fixture.Avatar)), "It differs from the default, so it has an entry.");
+            // The file is indented: compare without the spaces.
+            var compact = Regex.Replace(text, @"\s", "");
+            Assert.That(compact, Does.Contain("\"Lightweight\":" + (int)level));
+            Assert.That(compact, Does.Contain("\"AutoLightweight\":" + (lighten ? "true" : "false")).And.Contain("\"MergeMeshes\":" + (merge ? "true" : "false")));
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(level));
             ExportSettingsStore.SaveTransferName(fixture.Avatar, "Avatar");
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.False, "Saving the name keeps the choice.");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(level), "Saving the name keeps the choice.");
             ExportSettingsStore.Save(fixture.Avatar, new ExportSettings());
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.True, "Turning it back on applies.");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(LightweightLevel.Standard), "Going back to 標準 applies.");
         }
 
-        // Files written by earlier versions: the value is kept when it is there,
-        // and an entry from before the option has no value and takes the default.
-        [TestCase(",\"AutoLightweight\":false", false)]
-        [TestCase(",\"AutoLightweight\":true", true)]
-        [TestCase("", true)]
-        public void AnEntryFromAnEarlierVersionIsRead(string field, bool expected)
+        // Files written by earlier versions hold the two switches and no level:
+        // the level is read from them once, and a later save writes the level.
+        // A level the version does not know is read from the switches too.
+        // A missing switch is read as nobody chose: 1.15 and earlier saved
+        // only 自動で軽量化する, and those avatars start at 標準, the default.
+        [TestCase(",\"AutoLightweight\":false", (int)LightweightLevel.None)]
+        [TestCase(",\"AutoLightweight\":false,\"MergeMeshes\":true", (int)LightweightLevel.None)]
+        [TestCase(",\"AutoLightweight\":true,\"MergeMeshes\":false", (int)LightweightLevel.Standard)]
+        [TestCase(",\"MergeMeshes\":false", (int)LightweightLevel.Standard)]
+        [TestCase(",\"AutoLightweight\":true", (int)LightweightLevel.Standard)]
+        [TestCase(",\"AutoLightweight\":true,\"MergeMeshes\":true", (int)LightweightLevel.Max)]
+        [TestCase("", (int)LightweightLevel.Standard)]
+        [TestCase(",\"Lightweight\":1,\"AutoLightweight\":true,\"MergeMeshes\":true", (int)LightweightLevel.Standard)]
+        [TestCase(",\"Lightweight\":7,\"AutoLightweight\":false", (int)LightweightLevel.None)]
+        public void AnEntryFromAnEarlierVersionIsRead(string field, int value)
         {
+            var expected = (LightweightLevel)value;
             using var fixture = new SavedAvatar();
             var key = ExpressionPresetStore.KeyFor(fixture.Avatar);
             File.WriteAllText(storePath, "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"" + key + "\",\"AutoExcludeGimmicks\":true,\"TransferName\":\"Avatar\"" + field + "}]}", Encoding.UTF8);
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected));
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(expected));
             ExportSettingsStore.SaveTransferName(fixture.Avatar, "Renamed");
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).AutoLightweight, Is.EqualTo(expected), "Saving again does not change it.");
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Lightweight, Is.EqualTo(expected), "Saving again does not change it.");
         }
 
         [Test]

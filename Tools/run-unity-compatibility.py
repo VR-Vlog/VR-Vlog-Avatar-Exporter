@@ -745,6 +745,12 @@ BEHAVIOR_CASES = {
         'UnsavedSharedAssetsAreIsolatedBeforeAnyPassCanMutateThem': 1,
         'UnvalidatedVersionsFailBeforeProcessing': 5,
         'UsesGenericOnlyWhenSourceHasNoPrimaryPlatform': 1,
+        'SdkCallbacksRunAroundTheBuildStepsInUploadOrder': 1,
+        'SdkCallbacksRunInUploadOrderWhenNothingNeedsNdmf': 1,
+        'PreviewLeavesOutTheSdkCallbacksAfterTheExportReadsTheCopy': 2,
+        'SdkCallbacksThatBracketTheUploadAreNotRun': 1,
+        'ToleratedSdkCallbackFailureLeavesOutOnlyThatCallback': 1,
+        'FailedSdkCallbackStopsAStrictExport': 2,
     },
     'DirectFxExpressionDiscoveryTests': {
         'DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone': 1,
@@ -921,12 +927,13 @@ BEHAVIOR_CASES = {
         'AFailingStageMatches': 1,
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'TheSavedLightweightChoiceMatches': 1,
-        'LightweightStartsOnUnlessSavedOff': 1,
+        'LightweightStartsAtStandardUnlessSavedOtherwise': 2,
+        'ALevelChosenInTheQuickTransferIsWhatTheOpenBoardExports': 2,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
         'TheSavedGazeRangeMatches': 1,
     },
-    # 自動で軽量化する: texture sizes from texel density; off measures nothing.
+    # 軽量化 標準: texture sizes from texel density; なし measures nothing.
     'TexelDensityTests': {
         'AQuadHasTheExactDensity': 5,
         'ASkinnedQuadOfOneSquareMetreHasTheUnscaledDensity': 6,
@@ -996,6 +1003,24 @@ BEHAVIOR_CASES = {
         'TheExportListsTheLineOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
+    # 自動で軽量化する: opaque colour textures are written as mip 0 alone.
+    'LightweightMipsTests': {
+        'OnlyTheOptionLeavesOutTheMipsOfOpaqueColourTextures': 2,
+        'TexturesOfNonOpaqueMaterialsKeepTheirMips': 1,
+        'APointFilteredTextureKeepsItsMips': 1,
+        'AnImporterMipFilterOtherThanTheBoxFilterKeepsTheMips': 5,
+        'ATextureWithoutAnImporterKeepsItsMips': 1,
+    },
+    # 軽量化 最大: which renderers the AAO merge takes.
+    'ExportMeshMergeTests': {
+        'TheFaceAndEveryRendererAnAnimationSwitchesStaySeparate': 1,
+        'ShapesTheExporterGeneratedAndRoutedRenderersStaySeparate': 1,
+        'HiddenClothAndEmptyRenderersAreNotMerged': 1,
+        'OneRendererLeftIsNotAMerge': 1,
+        'AnAvatarWithoutAvatarOptimizerIsNotMerged': 1,
+        'TheMaxNoteSaysWhatAnAvatarWithoutOptimizerGets': 1,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
 }
 INTEGRATION_CASES = {
     'NdmfLostMorphFollowTests': {
@@ -1040,6 +1065,10 @@ INTEGRATION_CASES = {
     'InstalledAaoNeutralEndpointExportTests': {
         'MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink': 3,
     },
+    'InstalledAaoMeshMergeExportTests': {
+        'TheFaceAndTheToggledHatStaySeparateAndTheRestBecomesOne': 1,
+        'AFailureAfterTheMergeLeavesOutOnlyTheMerge': 1,
+    },
     'NdmfAnimationModeSamplingTests': {
         'ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode': 1,
         'GenericAvatarLendsAaoAControllerThatAnimationModeCanSample': 1,
@@ -1051,6 +1080,12 @@ INTEGRATION_CASES = {
     'PhysBoneSpringExportTests': {
         'InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport': 2,
         'InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid': 1,
+    },
+    'UploadedAvatarPlayablesTests': {
+        'PlayablesAreTheCustomLayersAndTheExpressionsTheDescriptorGivesVrchat': 1,
+        'FinalFxPointsAtTheShapesOfTheMeshTheExportWrites': 1,
+        'EditorOnlyObjectsAreRemovedBeforeTheExportReadsTheCopy': 2,
+        'EditorOnlyObjectsStayOnAnAvatarWithoutTheVrchatDescriptor': 1,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real

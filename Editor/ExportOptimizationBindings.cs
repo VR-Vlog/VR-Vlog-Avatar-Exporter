@@ -169,6 +169,16 @@ namespace VRVlog.LilToonExporter
             catch { Dispose(); throw; }
         }
 
+        // Renderers whose shapes or material slots this export binds after
+        // optimizing (expressions, Blink, Lip Sync, tracking, material colors).
+        // The automatic mesh merge leaves them separate. The neutral pose's
+        // property mutations are left out: they cover every renderer with a
+        // shape, and AAO maps them through the merge.
+        internal IEnumerable<Renderer> RoutedRenderers => marker == null ? Enumerable.Empty<Renderer>() :
+            marker.Morphs.Select(route => (Renderer)route.Renderer)
+                .Concat(marker.Materials.Select(route => route.Renderer))
+                .Where(renderer => renderer != null).Distinct();
+
         static bool IsAvatarOptimizerAuthoring(Component component) =>
             component != null && ExportTypeNames.InheritsFrom(component.GetType(), ExportTypeNames.AaoAvatarTag);
 

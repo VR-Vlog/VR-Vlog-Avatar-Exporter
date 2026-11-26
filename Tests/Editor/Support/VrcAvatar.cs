@@ -1,6 +1,7 @@
 using System;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -12,6 +13,16 @@ namespace VRVlog.LilToonExporter.Tests
         public static Type ComponentType(string name) => OptionalTools.Find("VRC.SDK3.Avatars.Components." + name);
 
         public static Type DescriptorType => ComponentType("VRCAvatarDescriptor");
+
+        // A controller with no states for a non-default playable layer. Like one
+        // made in the editor it has a base layer: the SDK's descriptor inspector,
+        // which an upload's VRCFury hook opens, reads the first layer's mask.
+        public static AnimatorController EmptyController()
+        {
+            var controller = new AnimatorController();
+            controller.AddLayer("Base Layer");
+            return controller;
+        }
 
         // Turns on custom playable layers and makes the controller the only
         // base layer, as a non-default FX layer.

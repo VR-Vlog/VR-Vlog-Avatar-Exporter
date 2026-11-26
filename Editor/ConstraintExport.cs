@@ -16,6 +16,10 @@ namespace VRVlog.LilToonExporter
     // one source becomes a child of that source instead, which moves the same
     // way (props held in a hand). So does a position constraint that fully
     // follows one source, which then also turns with it (approximated).
+    // One below full weight moves by an aimed arm instead (Carry).
+    // An aim with a rotation offset, which VRM aims lack, turns an empty node
+    // put in between the target and its parent instead (RelayAim), and so
+    // does a rotation whose rest differs from its source's (RelayRotation).
     // The rest keep the current pose, as before,
     // and are listed in the result list. The originals stay on the copy
     // (UniVRM does not write them). Off constraints keep the pose too and are
@@ -29,6 +33,7 @@ namespace VRVlog.LilToonExporter
         internal const string ApproximatedRotation = "VRMの回転コンストレイントで近似しました。基準の向きか強さが元と違うため、大きく動いたときの向きが元と少し異なります";
         internal const string ApproximatedRoll = "1軸だけの回転をVRMのロールコンストレイントで近似しました";
         internal const string ApproximatedPosition = "ソースの子に移し、ソースと一緒に動くようにしました。ソースが回ると一緒に回るため、向きと位置が元と異なる場合があります";
+        internal const string ApproximatedCarry = "強さが1未満の位置のコンストレイントを、補助のノードとVRMのエイム・回転のコンストレイントで近似しました。対象の親が回ると位置が元と少し異なる場合があります";
         internal const string ApproximatedAim = "VRMのエイムコンストレイントで近似しました。向ける軸は保ちますが、ねじれが元と異なる場合があります";
         internal const string OmittedKind = "VRMに同じ働きのコンストレイントがないため、今の姿勢のまま書き出しました";
         internal const string OmittedSetting = "VRMで表せない設定（複数のソース・自分自身がソース・2軸だけの回転・ワールドに固定・軸以外の向き）のため、今の姿勢のまま書き出しました";
@@ -38,16 +43,21 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedDuplicate = "同じオブジェクトに別のコンストレイントが既にあるため、今の姿勢のまま書き出しました";
         internal const string OmittedCycle = "ソースのコンストレイントをたどるとこのオブジェクトに戻り、VRMはこの循環を書けないため、今の姿勢のまま書き出しました";
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
-        internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
+        internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・回転を写すコンストレイントのソースになっている・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
         internal const string OmittedToggle = "ソースの子に移すとメニューの表示切り替えが元と変わるため、今の姿勢のまま書き出しました";
 
         // A VRM rotation constraint applies the source's local change in the
         // target's own frame. It equals the original when both rest rotations
-        // match; past 60 degrees it moves further off than keeping the pose.
+        // match; a node above the target with the source's rest matches them.
+        // Where no node fits, past 60 degrees the target moves further off
+        // than keeping the pose.
         const float KeptRestAngle = 1f, MaximumRestAngle = 60f;
         // VRM aim turns the axis onto the source even at rest.
         const float MaximumAimAngle = 2f;
+        internal const string RelayName = "VRVlog Aim";
+        internal const string RotationRelayName = "VRVlog Rotation";
+        internal const string CarryName = "VRVlog Follow";
         const string VrcPrefix = "VRC.SDK3.Dynamics.Constraint.Components.VRC";
 
         internal sealed class Result { internal int Sources, Kept, Approximated, Omitted; }
@@ -71,7 +81,7 @@ namespace VRVlog.LilToonExporter
         // frame it had before, or on a target a VRM constraint moves, which the
         // app would solve twice.
         internal static Result Convert(GameObject source, GameObject copy, ICollection<string> warnings, ExportFallbackReport fallbacks = null,
-            ObjectToggleCapture toggles = null, AvatarConstraintsExport extension = null)
+            ObjectToggleCapture toggles = null, IEnumerable<Transform> animated = null, AvatarConstraintsExport extension = null)
         {
             if (source == null || copy == null || source == copy || copy.transform.IsChildOf(source.transform) ||
                 source.transform.IsChildOf(copy.transform) || EditorUtility.IsPersistent(copy))
@@ -90,8 +100,11 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
+            var relays = new Relays(copy, authored, plans.Where(p => p.Kind == Kind.Rotation).SelectMany(p => p.Sources.Select(s => s.Transform)),
+                plans.Where(p => (p.Kind == Kind.Parent || p.Kind == Kind.Rotation) && p.On && p.Weight > 0).Select(p => p.Target),
+                animated ?? Enumerable.Empty<Transform>());
             var membership = new ToggleMembership(toggles, plans.Select(plan => plan.Target));
-            var humanoid = plans.Any(p => Follows(p) || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
+            var humanoid = plans.Any(p => p.Kind != Kind.Scale) ? HumanoidBones(copy) : new HashSet<Transform>();
             // Targets this pass aims; one may still follow a position constraint.
             var aimed = new HashSet<Transform>();
             var followed = new HashSet<Transform>();
@@ -110,8 +123,9 @@ namespace VRVlog.LilToonExporter
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : Follows(plan) ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, aimed, followed, membership, paths[order])
-                        : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
+                        : Follows(plan) ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, aimed, followed, membership, paths[order], relays,
+                            turning, added)
+                        : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added, humanoid, bound, relays);
                     // As a child, a position-constrained target also turns with the source.
                     if (plan.Kind == Kind.Position && outcome == ExportOutcome.Kept) (outcome, reason) = (ExportOutcome.Approximated, ApproximatedPosition);
                     if (outcome != ExportOutcome.Omitted)
@@ -119,17 +133,20 @@ namespace VRVlog.LilToonExporter
                         taken.Add(plan.Target);
                         if (plan.Kind == Kind.Aim || plan.Kind == Kind.LookAt) aimed.Add(plan.Target);
                         if (Follows(plan)) followed.Add(plan.Target);
-                        // The rotation may have moved its source up to the bone that turns.
-                        if (!Follows(plan)) AddEdge(edges, plan.Target, ((IVrm10Constraint)added.Last()).ConstraintSource);
+                        // The rotation may have moved its source up to the bone that
+                        // turns, and an aim may sit on the node above the target.
+                        if (!Follows(plan) && added.Last() is IVrm10Constraint last) AddEdge(edges, last.ConstraintTarget, last.ConstraintSource);
                     }
                     decisions.Add((order, plan, outcome, reason));
                 }
+                KeepAimsOnHeldSources(decisions, relays, edges);
             }
             catch
             {
                 // The stage is omitted as a whole; never write a partial set.
                 foreach (var component in added) if (component != null) UnityEngine.Object.DestroyImmediate(component);
                 for (var index = moved.Count - 1; index >= 0; index--) moved[index].Restore();
+                relays.Restore();
                 throw;
             }
             membership.Apply();
@@ -143,14 +160,53 @@ namespace VRVlog.LilToonExporter
                 if (entry != null) entry.Path = paths[order];
                 if (outcome == ExportOutcome.Omitted && !taken.Contains(plan.Target)) extension?.Add(plan.Component);
             }
-            if (added.Count > 0 && copy.GetComponent<Vrm10Instance>() == null) copy.AddComponent<Vrm10Instance>();
+            if (added.Any(component => component != null) && copy.GetComponent<Vrm10Instance>() == null) copy.AddComponent<Vrm10Instance>();
             if (result.Sources > 0)
                 warnings?.Add($"コンストレイント変換: 元{result.Sources}件 / 変換{result.Kept + result.Approximated}件（うち近似{result.Approximated}件） / 省略{result.Omitted}件。");
             return result;
         }
 
+        // A relay turns its target towards a point that moves in the avatar.
+        // Where the file leaves that point in place, because a constraint on
+        // it or between it and the aim was not written, the aim would turn the
+        // target the wrong way, so the target keeps its pose as before. A
+        // target that stops turning holds what hangs below it in turn.
+        static void KeepAimsOnHeldSources(List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)> decisions, Relays relays,
+            Dictionary<Transform, List<Transform>> edges)
+        {
+            var omitted = decisions.Where(d => d.Outcome == ExportOutcome.Omitted && d.Reason != OmittedOff).ToArray();
+            var held = new HashSet<Transform>(omitted.Select(d => d.Plan.Target));
+            var stays = new HashSet<Transform>(omitted.Where(d => Follows(d.Plan)).Select(d => d.Plan.Target));
+            for (var changed = true; changed;)
+            {
+                changed = false;
+                for (var index = 0; index < decisions.Count; index++)
+                {
+                    var (order, plan, outcome, _) = decisions[index];
+                    if (outcome == ExportOutcome.Omitted || plan.Kind != Kind.Aim && plan.Kind != Kind.LookAt) continue;
+                    var node = relays.Above(plan.Target);
+                    if (node == plan.Target || !node.TryGetComponent<Vrm10AimConstraint>(out var aim) || !Held(aim.Source, node, held, stays)) continue;
+                    edges.Remove(node);
+                    relays.Unwrap(plan.Target, aim);
+                    decisions[index] = (order, plan, ExportOutcome.Omitted, OmittedRest);
+                    held.Add(plan.Target);
+                    changed = true;
+                }
+            }
+        }
+
+        // What the source shares with the aiming node moves both alike.
+        static bool Held(Transform source, Transform node, HashSet<Transform> held, HashSet<Transform> stays)
+        {
+            if (stays.Contains(source) && !node.IsChildOf(source)) return true;
+            for (var parent = source.parent; parent != null && !node.IsChildOf(parent); parent = parent.parent)
+                if (held.Contains(parent)) return true;
+            return false;
+        }
+
         static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> driven,
-            HashSet<Transform> turning, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Component> added)
+            HashSet<Transform> turning, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Component> added,
+            HashSet<Transform> humanoid, HashSet<string> bound, Relays relays)
         {
             if (plan.Kind == Kind.Scale) return (ExportOutcome.Omitted, OmittedKind);
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
@@ -163,7 +219,7 @@ namespace VRVlog.LilToonExporter
             // local rotation, and an aim the source's world position and the
             // parent's world pose; any of them may lead back inside the target.
             var aims = plan.Kind != Kind.Rotation;
-            if (Reaches(edges, source, target) || DependsOnInside(edges, source, aims ? Reading.Position : Reading.Rotation, target, false)
+            if (Reaches(edges, relays, source, target) || DependsOnInside(edges, source, aims ? Reading.Position : Reading.Rotation, target, false)
                 || aims && DependsOnInside(edges, target.parent, Reading.Pose, target, false))
                 return (ExportOutcome.Omitted, OmittedCycle);
             var weight = Mathf.Clamp01(plan.Weight * Mathf.Min(1, sources[0].Weight));
@@ -186,7 +242,7 @@ namespace VRVlog.LilToonExporter
                     if (moving == root || moving == target || !driven.Contains(moving)
                         || Frame(moving, root, turning) != Frame(target, root, turning))
                         return (ExportOutcome.Omitted, OmittedParent);
-                    if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
+                    if (Reaches(edges, relays, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
                     source = moving;
                 }
                 if (axes == 1)
@@ -200,17 +256,39 @@ namespace VRVlog.LilToonExporter
                 // A world-space pair shares the frame it turns in, so the world
                 // rotations compare; a local-space one compares as authored.
                 var rest = plan.LocalSpace ? Quaternion.Angle(target.localRotation, source.localRotation) : Quaternion.Angle(target.rotation, source.rotation);
-                if (rest >= MaximumRestAngle) return (ExportOutcome.Omitted, OmittedRest);
-                var rotation = target.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(rotation);
+                var turned = target;
+                if (rest > KeptRestAngle)
+                {
+                    // A node with the source's rest in the target's parent frame
+                    // turns by the source's change as the original turns the
+                    // target, which it carries in its pose.
+                    var turn = plan.LocalSpace ? source.localRotation : Quaternion.Inverse(target.parent.rotation) * source.rotation;
+                    turned = relays.Insert(target, turn, RotationRelayName, humanoid, bound, true);
+                    if (turned != null) { turning.Add(turned); rest = 0; }
+                    else if (rest >= MaximumRestAngle) return (ExportOutcome.Omitted, OmittedRest);
+                    else turned = target;
+                }
+                var rotation = turned.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(rotation);
                 rotation.Source = source; rotation.Weight = weight;
                 return rest <= KeptRestAngle && weight == 1 ? (ExportOutcome.Kept, KeptRotation) : (ExportOutcome.Approximated, ApproximatedRotation);
             }
             // Aim and look-at: one direction towards the source position.
             if (!(plan.X && plan.Y && plan.Z) || !TryAxis(plan.AimAxis, out var axis, out var vector)) return (ExportOutcome.Omitted, OmittedSetting);
             var toSource = source.position - target.position;
-            if (toSource.sqrMagnitude < 1e-10f || Vector3.Angle(target.rotation * vector, toSource) > MaximumAimAngle)
-                return (ExportOutcome.Omitted, OmittedRest);
-            var aim = target.gameObject.AddComponent<Vrm10AimConstraint>(); added.Add(aim);
+            if (toSource.sqrMagnitude < 1e-10f) return (ExportOutcome.Omitted, OmittedRest);
+            // An offset (Unity's Activate keeps the pose with one) leaves the
+            // axis off the source; the relay node points it there instead.
+            var node = target;
+            if (Vector3.Angle(target.rotation * vector, toSource) > MaximumAimAngle)
+            {
+                // Turned by the shortest arc, the node puts the axis on the source.
+                var turn = Quaternion.Inverse(target.parent.rotation) * Quaternion.FromToRotation(target.rotation * vector, toSource) * target.rotation;
+                node = relays.Insert(target, turn, RelayName, humanoid, bound, false);
+                if (node != null && Vector3.Angle(node.rotation * vector, toSource) > MaximumAimAngle) { relays.Remove(target); node = null; }
+                if (node == null) return (ExportOutcome.Omitted, OmittedRest);
+                turning.Add(node);
+            }
+            var aim = node.gameObject.AddComponent<Vrm10AimConstraint>(); added.Add(aim);
             aim.Source = source; aim.Weight = weight; aim.AimAxis = axis;
             return (ExportOutcome.Approximated, ApproximatedAim);
         }
@@ -223,32 +301,41 @@ namespace VRVlog.LilToonExporter
         // the same object still turns it, as VRM aims by the world direction.
         static (ExportOutcome, string) Reparent(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> humanoid,
             HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved, HashSet<Transform> aimed,
-            HashSet<Transform> followed, ToggleMembership membership, string userPath)
+            HashSet<Transform> followed, ToggleMembership membership, string userPath, Relays relays, HashSet<Transform> turning, List<Component> added)
         {
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
+            // The node that moves: the target, or the relay node above it, which
+            // carries it and whose aim then keeps turning it.
+            var node = relays.Above(target);
             var source = sources[0].Transform;
             // A source inside the target would follow itself.
-            if (source.IsChildOf(target)) return (ExportOutcome.Omitted, OmittedSetting);
-            if (!Inside(root, target) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
+            if (source.IsChildOf(node)) return (ExportOutcome.Omitted, OmittedSetting);
+            if (!Inside(root, node) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
             var aiming = plan.Kind == Kind.Position && aimed.Contains(target) && !followed.Contains(target);
             if (taken.Contains(target) && !aiming) return (ExportOutcome.Omitted, OmittedDuplicate);
-            // Moving a humanoid bone would change the skeleton, and VRM
-            // constraints read the local rotation of their ends.
-            if (!(plan.X && plan.Y && plan.Z && plan.Positions) || plan.LocalSpace || plan.Weight * Mathf.Min(1, sources[0].Weight) < FullWeight ||
-                humanoid.Any(bone => bone.IsChildOf(target)) || edges.ContainsKey(target) && !aiming || edges.Values.Any(ends => ends.Contains(target)))
+            // Moving a humanoid bone would change the skeleton, and a rotation
+            // or roll reads the local rotation of its source. An aim reads the
+            // world position, which the move keeps; a loop through it is the
+            // cycle check's.
+            var weight = plan.Weight * Mathf.Min(1, sources[0].Weight);
+            var partial = weight < FullWeight;
+            if (!(plan.X && plan.Y && plan.Z && plan.Positions) || plan.LocalSpace || partial && (plan.Kind != Kind.Position || aiming) ||
+                humanoid.Any(bone => bone.IsChildOf(node)) || edges.ContainsKey(node) && !aiming ||
+                edges.Any(edge => edge.Value.Contains(target) && !edge.Key.TryGetComponent<Vrm10AimConstraint>(out _)))
                 return (ExportOutcome.Omitted, OmittedReparent);
             // If the source's pose depends on something inside the target, the
             // target would, once it follows, move with itself.
-            if (DependsOnInside(edges, source, Reading.Pose, target, true)) return (ExportOutcome.Omitted, OmittedCycle);
-            if (target.parent == source) return (ExportOutcome.Kept, KeptParent);
+            if (DependsOnInside(edges, source, Reading.Pose, node, true)) return (ExportOutcome.Omitted, OmittedCycle);
+            if (partial) return Carry(node, source, weight, root, bound, turning, added, edges, moved, relays);
+            if (node.parent == source) return (ExportOutcome.Kept, KeptParent);
             // UniVRM finds expression and first-person renderers by these paths
             // when it writes the file; a moved target would leave them dangling.
-            var path = ExportFallbackReport.RelativePath(root, target);
+            var path = ExportFallbackReport.RelativePath(root, node);
             if (bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal))) return (ExportOutcome.Omitted, OmittedBound);
             if (!membership.Allows(target, source, out var leader)) return (ExportOutcome.Omitted, OmittedToggle);
-            var before = new Moved(target);
-            try { ExportAttachmentSession.ReparentPreservingPose(target, source); }
+            var before = new Moved(node);
+            try { ExportAttachmentSession.ReparentPreservingPose(node, source); }
             catch (InvalidOperationException) { return (ExportOutcome.Omitted, OmittedReparent); }
             moved.Add(before);
             membership.Moved(target, leader, userPath);
@@ -256,6 +343,77 @@ namespace VRVlog.LilToonExporter
         }
 
         const float FullWeight = .999f;
+
+        // Below full weight, a position constraint moves the target by that
+        // share of the source's way in the target's parent. The source swings
+        // about its parent's origin (the joint), so that share is the same swing
+        // on an arm cut to the share: a node at the joint aims at the source; a
+        // copy of its turn, put where the short arm starts, carries a node at
+        // the arm's end, half turned about the arm. An aim turns about an axis
+        // across the arm, so the half turn takes the swing back out, and the
+        // target hung there moves without turning. Exact while the joint stays
+        // put in the target's parent: bones between them never turn, except
+        // the parent itself, which keeps it while it twists about the joint.
+        static (ExportOutcome, string) Carry(Transform node, Transform source, float weight, Transform root, HashSet<string> bound,
+            HashSet<Transform> turning, List<Component> added, Dictionary<Transform, List<Transform>> edges, List<Moved> moved, Relays relays)
+        {
+            var parent = node.parent;
+            var arm = source.parent;
+            var scale = parent.lossyScale;
+            // The source must not move along its arm, nor the target sit in a
+            // spring chain, where the new nodes would come between two joints.
+            if (arm == null || source.IsChildOf(node) || node.IsChildOf(source) || relays.Animated(source) || relays.Animated(node) ||
+                node.TryGetComponent<VRM10SpringBoneJoint>(out _) && parent.TryGetComponent<VRM10SpringBoneJoint>(out _) ||
+                !(scale.x > 0 && scale.y > 0 && scale.z > 0) || Mathf.Abs(scale.x - scale.y) > 1e-3f * scale.y || Mathf.Abs(scale.z - scale.y) > 1e-3f * scale.y)
+                return (ExportOutcome.Omitted, OmittedReparent);
+            // A joint at or above the target's parent: the share is not a swing
+            // about it, and nothing under it moves the target's parent.
+            if (parent.IsChildOf(arm)) return (ExportOutcome.Omitted, OmittedReparent);
+            var shared = parent;
+            while (!arm.IsChildOf(shared)) shared = shared.parent;
+            for (var between = arm.parent; between != shared; between = between.parent)
+                if (turning.Contains(between)) return (ExportOutcome.Omitted, OmittedReparent);
+            if (parent != shared)
+                for (var between = parent.parent; between != shared; between = between.parent)
+                    if (turning.Contains(between)) return (ExportOutcome.Omitted, OmittedReparent);
+            var joint = arm.position;
+            var reach = source.position - joint;
+            var length = reach.magnitude;
+            // A source on the joint never moves in the parent's frame.
+            if (length < 1e-4f) return (ExportOutcome.Omitted, OmittedReparent);
+            var path = ExportFallbackReport.RelativePath(root, node);
+            if (bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal))) return (ExportOutcome.Omitted, OmittedBound);
+            var direction = reach / length;
+            var rest = Quaternion.FromToRotation(Vector3.up, direction);
+            var world = node.localToWorldMatrix;
+            var before = new Moved(node);
+            var sibling = node.GetSiblingIndex();
+            // In this order, so UniVRM, which runs constraints down the hierarchy, aims first.
+            var aim = before.Create(relays.Name(node.name + "-" + CarryName + " Aim"), parent, sibling, joint, rest);
+            var carrier = before.Create(relays.Name(node.name + "-" + CarryName), parent, sibling + 1, node.position - weight * length * direction, rest);
+            var hold = before.Create(relays.Name(node.name + "-" + CarryName + " Hold"), carrier, 0, node.position, rest * Quaternion.AngleAxis(180, Vector3.up));
+            moved.Add(before);
+            var kept = true;
+            try { ExportAttachmentSession.ReparentPreservingPose(node, hold); }
+            catch (InvalidOperationException) { kept = false; }
+            if (!kept || !Relays.Same(world, node.localToWorldMatrix))
+            {
+                before.Restore(); moved.Remove(before);
+                return (ExportOutcome.Omitted, OmittedReparent);
+            }
+            foreach (var value in new[] { aim, carrier, hold }) value.gameObject.layer = node.gameObject.layer;
+            var aiming = aim.gameObject.AddComponent<Vrm10AimConstraint>(); added.Add(aiming);
+            aiming.Source = source; aiming.Weight = 1; aiming.AimAxis = AimAxis.PositiveY;
+            AddEdge(edges, aim, source);
+            foreach (var follower in new[] { carrier, hold })
+            {
+                var copy = follower.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(copy);
+                copy.Source = aim; copy.Weight = 1;
+                AddEdge(edges, follower, aim);
+            }
+            turning.UnionWith(new[] { aim, carrier, hold });
+            return (ExportOutcome.Approximated, ApproximatedCarry);
+        }
 
         // Parent and position constraints follow by moving under the source.
         static bool Follows(Plan plan) => plan.Kind == Kind.Parent || plan.Kind == Kind.Position;
@@ -356,11 +514,151 @@ namespace VRVlog.LilToonExporter
                 position = target.localPosition; rotation = target.localRotation; scale = target.localScale;
             }
 
+            readonly List<GameObject> created = new List<GameObject>();
+
+            // An empty node at a world pose with unit scale, taken out again on Restore.
+            internal Transform Create(string name, Transform under, int index, Vector3 at, Quaternion turn)
+            {
+                var node = new GameObject(name).transform;
+                created.Add(node.gameObject);
+                node.SetParent(under, false); node.SetSiblingIndex(index);
+                node.SetPositionAndRotation(at, turn); node.localScale = Vector3.one;
+                return node;
+            }
+
             internal void Restore()
             {
-                if (target == null) return;
-                target.SetParent(parent, false); target.SetSiblingIndex(sibling);
-                target.localPosition = position; target.localRotation = rotation; target.localScale = scale;
+                if (target != null)
+                {
+                    target.SetParent(parent, false); target.SetSiblingIndex(sibling);
+                    target.localPosition = position; target.localRotation = rotation; target.localScale = scale;
+                }
+                for (var index = created.Count - 1; index >= 0; index--) if (created[index] != null) UnityEngine.Object.DestroyImmediate(created[index]);
+                created.Clear();
+            }
+        }
+
+        // A VRM aim has no offset: it turns its axis straight onto the source,
+        // even at rest. For a target whose axis is off the source, an empty
+        // node at the same place under the same parent takes the aim, with the
+        // axis on the source, and carries the target, which keeps its pose.
+        // Turning the node by the shortest arc turns the target the same way.
+        // A rotation takes a node with its source's rest the same way.
+        sealed class Relays
+        {
+            readonly Transform root;
+            readonly HashSet<Transform> rotationSources, animated;
+            readonly Dictionary<Transform, int> framed;
+            readonly Dictionary<Transform, Transform> above = new Dictionary<Transform, Transform>();
+            readonly List<(Transform Target, Transform Node, Transform Parent, int Sibling, Vector3 Position, Quaternion Rotation)> inserted =
+                new List<(Transform, Transform, Transform, int, Vector3, Quaternion)>();
+            HashSet<string> names;
+
+            // A rotation or roll reads its source's local rotation, which the
+            // node would take over from the target. Framed targets keep their
+            // parent: a parent or rotation constraint of their own would lose
+            // the target to the aim, and expression tracks hold local values.
+            internal Relays(GameObject copy, IEnumerable<IVrm10Constraint> authored, IEnumerable<Transform> rotationSources, IEnumerable<Transform> framed,
+                IEnumerable<Transform> animated)
+            {
+                root = copy.transform;
+                this.framed = framed.Where(t => t != null).GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
+                this.animated = new HashSet<Transform>(animated.Where(t => t != null));
+                this.rotationSources = new HashSet<Transform>(rotationSources.Concat(authored.Where(c => !(c is Vrm10AimConstraint))
+                    .Select(c => c.ConstraintSource)).Where(t => t != null));
+            }
+
+            internal Transform Above(Transform target) => above.TryGetValue(target, out var node) ? node : target;
+
+            internal bool Animated(Transform value) => animated.Contains(value);
+
+            internal string Name(string preferred)
+            {
+                names ??= new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Select(t => t.name), StringComparer.Ordinal);
+                return PhysBoneSpringExport.UniqueName(names, preferred);
+            }
+
+            // The node, with the given local rotation, or null where one would
+            // change more than the constraint on it: in the skeleton, in a spring
+            // chain, under a rotation that reads the target, for VRM settings that
+            // find meshes inside it by path, or for a target that turns otherwise
+            // (`own`: the rotation that frames it is the one the node takes).
+            internal Transform Insert(Transform target, Quaternion turn, string name, HashSet<Transform> humanoid, HashSet<string> bound, bool own)
+            {
+                var path = ExportFallbackReport.RelativePath(root, target);
+                if (humanoid.Any(bone => bone.IsChildOf(target)) || target.TryGetComponent<VRM10SpringBoneJoint>(out _) || animated.Contains(target) ||
+                    framed.TryGetValue(target, out var count) && count > (own ? 1 : 0) ||
+                    rotationSources.Any(source => source.IsChildOf(target)) ||
+                    bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal)))
+                    return null;
+                var parent = target.parent;
+                var world = target.localToWorldMatrix;
+                var rotation = target.localRotation;
+                // Unit scale, so the target's own scale stays a plain TRS below it.
+                var node = new GameObject(Name(target.name + "-" + name)).transform;
+                node.gameObject.layer = target.gameObject.layer;
+                node.SetParent(parent, false);
+                node.SetSiblingIndex(target.GetSiblingIndex());
+                node.localPosition = target.localPosition; node.localRotation = turn; node.localScale = Vector3.one;
+                inserted.Add((target, node, parent, target.GetSiblingIndex(), target.localPosition, rotation));
+                target.SetParent(node, false);
+                target.localPosition = Vector3.zero; target.localRotation = Quaternion.Inverse(turn) * rotation;
+                above[target] = node;
+                if (Same(world, target.localToWorldMatrix)) return node;
+                Undo(inserted.Count - 1);
+                return null;
+            }
+
+            internal void Remove(Transform target) => Undo(inserted.FindIndex(entry => entry.Target == target));
+
+            internal static bool Same(Matrix4x4 a, Matrix4x4 b)
+            {
+                for (var index = 0; index < 16; index++)
+                    if (Mathf.Abs(a[index] - b[index]) > 1e-4f * Mathf.Max(1, Mathf.Abs(a[index]))) return false;
+                return true;
+            }
+
+            void Undo(int index)
+            {
+                var (target, node, parent, sibling, position, rotation) = inserted[index];
+                inserted.RemoveAt(index);
+                if (target != null)
+                {
+                    above.Remove(target);
+                    target.SetParent(parent, false); target.SetSiblingIndex(sibling);
+                    target.localPosition = position; target.localRotation = rotation;
+                }
+                if (node != null) UnityEngine.Object.DestroyImmediate(node.gameObject);
+            }
+
+            // Drops the aim and takes the node out where it now stands, the
+            // target keeping its pose. A move may have scaled the node; where
+            // that does not fold into the target, the node stays, empty.
+            internal void Unwrap(Transform target, Vrm10AimConstraint aim)
+            {
+                UnityEngine.Object.DestroyImmediate(aim);
+                var node = above[target];
+                var world = target.localToWorldMatrix;
+                var (position, rotation, scale) = (target.localPosition, target.localRotation, target.localScale);
+                var sibling = node.GetSiblingIndex();
+                target.SetParent(node.parent, false); target.SetSiblingIndex(sibling);
+                target.localPosition = node.localPosition + node.localRotation * Vector3.Scale(node.localScale, position);
+                target.localRotation = node.localRotation * rotation;
+                target.localScale = Vector3.Scale(node.localScale, scale);
+                if (!Same(world, target.localToWorldMatrix))
+                {
+                    target.SetParent(node, false);
+                    target.localPosition = position; target.localRotation = rotation; target.localScale = scale;
+                    return;
+                }
+                above.Remove(target);
+                inserted.RemoveAll(entry => entry.Target == target);
+                UnityEngine.Object.DestroyImmediate(node.gameObject);
+            }
+
+            internal void Restore()
+            {
+                for (var index = inserted.Count - 1; index >= 0; index--) Undo(index);
             }
         }
 
@@ -458,8 +756,11 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        // VRM forbids constraints that read each other in a loop.
-        static bool Reaches(Dictionary<Transform, List<Transform>> edges, Transform from, Transform to)
+        // VRM forbids constraints that read each other in a loop. A target's aim
+        // sits on the relay node above it, so the walk takes the node's edges
+        // too; otherwise two aims at each other would both be written when the
+        // one with the node came first, and only one in the other order.
+        static bool Reaches(Dictionary<Transform, List<Transform>> edges, Relays relays, Transform from, Transform to)
         {
             var visited = new HashSet<Transform>();
             var pending = new Stack<Transform>();
@@ -468,8 +769,11 @@ namespace VRVlog.LilToonExporter
             {
                 var current = pending.Pop();
                 if (current == to) return true;
-                if (!visited.Add(current) || !edges.TryGetValue(current, out var next)) continue;
-                foreach (var value in next) pending.Push(value);
+                if (!visited.Add(current)) continue;
+                if (edges.TryGetValue(current, out var next))
+                    foreach (var value in next) pending.Push(value);
+                var node = relays.Above(current);
+                if (node != current) pending.Push(node);
             }
             return false;
         }

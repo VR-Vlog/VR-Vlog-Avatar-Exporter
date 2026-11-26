@@ -197,7 +197,7 @@ namespace VRVlog.LilToonExporter.Tests
                         var field = descriptor.GetType().GetField(key); var array = (Array)field.GetValue(descriptor);
                         for (var i = 0; i < array.Length; i++)
                         {
-                            var empty = new AnimatorController(); owned.Add(empty);
+                            var empty = VrcAvatar.EmptyController(); owned.Add(empty);
                             var layer = array.GetValue(i); VrcAvatar.Set(layer, "isDefault", false); VrcAvatar.Set(layer, "animatorController", empty); array.SetValue(layer, i);
                         }
                         field.SetValue(descriptor, array);

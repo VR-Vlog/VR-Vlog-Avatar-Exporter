@@ -45,7 +45,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             catch
             {
                 // File/provider exceptions can include private paths or values.
-                EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T("転送用のコピーを準備できませんでした。256 MiB以下の書き出し済みVRMを選択してください。"), ExporterLocalization.T("閉じる"));
+                EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T("転送用のコピーを準備できませんでした。256MB以下の書き出し済みVRMを選択してください。"), ExporterLocalization.T("閉じる"));
             }
         }
 
@@ -107,7 +107,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (window != null && ReferenceEquals(window.source, prepared)) window.StopAndClean();
                 else prepared?.Dispose();
                 TransferTempDirectory.TryDelete(ownedSnapshotPath);
-                throw new InvalidOperationException("転送用のVRMを開けませんでした。256 MiB以下の書き出し済みVRMを選択してください。");
+                throw new InvalidOperationException("転送用のVRMを開けませんでした。256MB以下の書き出し済みVRMを選択してください。");
             }
         }
 

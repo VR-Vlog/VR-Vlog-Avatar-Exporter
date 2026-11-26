@@ -21,6 +21,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         internal Func<GameObject, bool> DetailedNeedsFix;
         internal Func<GameObject, bool> EditDetails;
         internal Action<bool> DrawTerms;
+        internal Func<GameObject, string> LightweightNote;
+        internal Action<GameObject, Rect> DrawLightweight;
         internal Func<GameObject, string, string, Action, string> Export;
         internal Func<GameObject, string, string, Action, string> ExportDetailed;
         internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
@@ -49,6 +51,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         bool IAppTransferExport.DetailedNeedsFix(GameObject avatar) => DetailedNeedsFix(avatar);
         bool IAppTransferExport.EditDetails(GameObject avatar) => EditDetails(avatar);
         void IAppTransferExport.DrawTerms(bool markAuthor) => DrawTerms(markAuthor);
+        string IAppTransferExport.LightweightNote(GameObject avatar) => LightweightNote?.Invoke(avatar) ?? "";
+        void IAppTransferExport.DrawLightweight(GameObject avatar, Rect rect) => DrawLightweight?.Invoke(avatar, rect);
         string IAppTransferExport.Export(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved);
         string IAppTransferExport.ExportDetailed(GameObject avatar, string name, string destination, Action saved) => ExportDetailed(avatar, name, destination, saved);
         string IAppTransferExport.SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved) => SaveCopy(avatar, name, detailed, saved);

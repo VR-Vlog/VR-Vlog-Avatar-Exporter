@@ -191,6 +191,13 @@ class PackageTests(unittest.TestCase):
         self.assertFalse([name for name in names if name.startswith("Editor/LanTransfer/")])
         package.verify_no_transfer_dependencies({name: (repository / name).read_bytes() for name in names})
 
+    def test_repository_zip_links_resolve(self):
+        # The candidate build checks these only after main; 1.16.0 stopped there on a decision-record link.
+        repository = Path(__file__).resolve().parents[1]
+        archive = self.root / "repository.zip"
+        package.build(repository, archive)
+        load("build-release-candidate").check_zip_links(archive)
+
     def test_excludes_tracked_development_and_untracked_inputs(self):
         excluded = ["work/report.md", ".env", ".github/workflows/example.yml", "Tools/debug.py", "Tools/test-aao-vertex-buffer-patch.py", "Tools/test-aao-vertex-buffer-patch.py.meta", "Documentation~/DependencyPatches/debug.patch", "Tests/Editor/Test.cs", "Docs/ReleaseVerification.md", "Editor/private.vrm", "Editor/error.log", "Editor/private.cs.disabled", "Editor/Locales/private.json"]
         for name in excluded:

@@ -27,7 +27,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // them (AppTransferWindow.uss). 16 of it is the space above and below the QR area for its corner marks.
         private const float FooterHeight = 69f;
         private const float TransferChrome = 224f + FooterHeight;
-        internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
+        // 446 high: the 軽量化 row and its note (8 + 22 + 16) were added to the 400 the form took before.
+        internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 446f);
         // The quick window's form column beside the full-body preview, and the narrowest preview it shows.
         private const float FormColumnWidth = 436f, PreviewMinimumWidth = 200f;
         // The QR notice's size in the window (AppTransferWindow.uss), and the smallest it is made on the board.
@@ -106,12 +107,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private bool built;
         // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
         [NonSerialized] private bool pressedWhileBlocked, authorMarked;
-        [NonSerialized] private IMGUIContainer termsView;
+        [NonSerialized] private IMGUIContainer termsView, lightweightView;
+        [NonSerialized] private VisualElement lightweightRow;
         [NonSerialized] private VisualElement root, content, form, columns, mainColumn, previewLine, previewColumn, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, qrSample, warningRow, barFill,
             qrMark, qrFrame, scanCaption;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
-        [NonSerialized] private Label heading, subtitle, previewTitle, previewNote, previewHint, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+        [NonSerialized] private Label heading, subtitle, previewTitle, previewNote, previewHint, avatarLabel, summaryText, nameLabel, nameHint, lightweightLabel, lightweightNote, termsLabel, readTerms, consentText, privacyLink, privacyText,
             reasonLabel, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
@@ -868,6 +870,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             nameLabel = root.Q<Label>("name-label");
             nameField = root.Q<TextField>("name-field");
             nameHint = root.Q<Label>("name-hint");
+            lightweightRow = root.Q("lightweight-row");
+            lightweightLabel = root.Q<Label>("lightweight-label");
+            lightweightNote = root.Q<Label>("lightweight-note");
             termsLabel = root.Q<Label>("terms-label");
             readTerms = root.Q<Label>("read-terms");
             consentToggle = root.Q<Toggle>("consent-toggle");
@@ -987,6 +992,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The VRM terms are the exporter's IMGUI section (AppTransferExport.DrawTerms).
             termsView = root.Q<IMGUIContainer>("terms");
             termsView.onGUIHandler = DrawTerms;
+            // 軽量化 is the exporter's IMGUI buttons too (AppTransferExport.DrawLightweight). The board
+            // of the detailed transfer shows its own, so only the quick transfer has the row.
+            lightweightView = root.Q<IMGUIContainer>("lightweight");
+            lightweightView.onGUIHandler = DrawLightweight;
             diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;
             summaryButton.clicked += EditDetails;
             backButton.clicked += () => back?.Invoke();
@@ -1036,6 +1045,17 @@ namespace VRVlog.LilToonExporter.LanTransfer
             using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms(markAuthor);
             authorMarked = markAuthor;
             // The author decides the reason line below.
+            if (EditorGUI.EndChangeCheck()) root.schedule.Execute(Refresh);
+        }
+
+        private void DrawLightweight()
+        {
+            var entry = exporter;
+            if (entry == null || detailed) return;
+            EditorGUI.BeginChangeCheck();
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                entry.DrawLightweight(avatar, new Rect(0, 0, lightweightView.contentRect.width, lightweightView.contentRect.height));
+            // The note follows the chosen level.
             if (EditorGUI.EndChangeCheck()) root.schedule.Execute(Refresh);
         }
 
@@ -1145,6 +1165,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
             nameLabel.text = T(AppTransferText.Name);
             if (nameField.value != avatarName) nameField.SetValueWithoutNotify(avatarName);
             nameHint.text = T(AppTransferText.NameHint);
+            Show(lightweightRow, !detailed && entry != null);
+            Show(lightweightNote, !detailed && entry != null);
+            lightweightLabel.text = T(AppTransferText.Lightweight);
+            lightweightLabel.tooltip = lightweightLabel.text;
+            var lightweight = entry != null && !detailed ? entry.LightweightNote(avatar) : "";
+            if (lightweightNote.text != lightweight) { lightweightNote.text = lightweight; lightweightNote.tooltip = lightweight; lightweightView.MarkDirtyRepaint(); }
+            lightweightView.SetEnabled(avatar != null && !Transferring);
             termsLabel.text = T(AppTransferText.Terms);
             readTerms.text = T(AppTransferText.ReadTerms);
             consentText.text = AppTransferFlow.ConsentText;

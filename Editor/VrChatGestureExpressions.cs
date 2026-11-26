@@ -41,11 +41,11 @@ namespace VRVlog.LilToonExporter
         private static AnimatorController Resolve(RuntimeAnimatorController runtime, out Dictionary<AnimationClip, AnimationClip> replacements)
         {
             replacements = new Dictionary<AnimationClip, AnimationClip>();
-            if (!(runtime is AnimatorOverrideController overrides)) return runtime as AnimatorController;
+            if (!(runtime is AnimatorOverrideController overrides)) return AnimatorNesting.Check(runtime as AnimatorController);
             var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
             overrides.GetOverrides(pairs);
             foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
-            return overrides.runtimeAnimatorController as AnimatorController;
+            return AnimatorNesting.Check(overrides.runtimeAnimatorController as AnimatorController);
         }
 
         private static IEnumerable<Target> Discover(AnimatorController controller)

@@ -282,6 +282,27 @@ namespace VRVlog.LilToonExporter
             return ExportTypeNames.InheritsFrom(type, "VF.Component.VRCFuryComponent");
         }
 
+        // Whether every build step an upload runs has run on the copy: only an
+        // export that reaches Optimizing gets there. Previews stop before it.
+        internal bool Completed { get; private set; }
+
+        // The FX, Gesture and Action controllers, the menu and the parameters of
+        // the copy as the last build step left them: what an upload sends.
+        // Null for an avatar without a VRChat Avatar Descriptor.
+        internal AvatarPlayables Playables()
+        {
+            if (!Completed) throw new InvalidOperationException("The build steps after Optimizing have not run on this copy.");
+            return AvatarPlayables.Read(preparedRoot);
+        }
+
+        private void RunCallbacks(AvatarBuildCallbacks callbacks, long below, GameObject clone, ICollection<string> warnings, bool tolerate)
+        {
+            if (!callbacks.AnyBefore(below)) return;
+            RememberUnsavedObjects();
+            try { callbacks.RunBefore(below, clone, warnings, tolerate); }
+            finally { CaptureGenerated(clone); }
+        }
+
         // An upload saves NDMF's build output before VRCFury runs; serialize
         // does the same here. VRCFury reads each controller's state behaviours
         // from the saved asset, so a controller NDMF wrote back would reach it
@@ -566,6 +587,18 @@ namespace VRVlog.LilToonExporter
             ValidateSource(clone, excluded, deferUnresolvedTargets: true);
         }
 
+        // An upload removes EditorOnly objects in NDMF's Resolving, or, when
+        // NDMF is not installed, in the VRChat SDK's callback at -1024. The
+        // export reads the copy before -1024, so a VRChat avatar that needs no
+        // NDMF build has them removed here, where NDMF removes them: the export
+        // never reads a renderer the upload does not have.
+        internal static void RemoveEditorOnlyObjects(GameObject clone)
+        {
+            foreach (var transform in clone.GetComponentsInChildren<Transform>(true))
+                if (transform != null && transform != clone.transform && transform.gameObject.CompareTag("EditorOnly"))
+                    Object.DestroyImmediate(transform.gameObject);
+        }
+
         private static void EnsureCopyAvatarRoot(GameObject clone)
         {
             // BuildContext adds this marker too, but MA's getters need the
@@ -604,7 +637,23 @@ namespace VRVlog.LilToonExporter
             if (!NeedsProcessing(clone))
             {
                 var lease = new NdmfExportPreparation(); lease.CaptureShapes(clone);
-                try { lease.ApplyVrcFury(clone, warnings); afterTransforming?.Invoke(lease); return lease; }
+                var callbacks = AvatarBuildCallbacks.For(clone);
+                try
+                {
+                    lease.RunCallbacks(callbacks, AvatarBuildCallbacks.NdmfTransformingOrder, clone, warnings, tolerateFailedPasses);
+                    if (AvatarBuildCallbacks.IsVrcAvatar(clone)) RemoveEditorOnlyObjects(clone);
+                    lease.RunCallbacks(callbacks, AvatarBuildCallbacks.VrcFuryOrder, clone, warnings, tolerateFailedPasses);
+                    lease.ApplyVrcFury(clone, warnings);
+                    lease.RunCallbacks(callbacks, AvatarBuildCallbacks.NdmfOptimizingOrder, clone, warnings, tolerateFailedPasses);
+                    afterTransforming?.Invoke(lease);
+                    if (afterTransforming != null && !stopBeforeOptimizing)
+                    {
+                        try { lease.RunCallbacks(callbacks, AvatarBuildCallbacks.Rest, clone, warnings, tolerateFailedPasses); }
+                        catch (Exception error) when (!(error is OperationCanceledException)) { throw MarkOptimizing(error, true); }
+                        lease.Completed = true;
+                    }
+                    return lease;
+                }
                 catch { lease.Dispose(); throw; }
             }
             ValidateSource(clone, deferUnresolvedTargets: true);
@@ -636,6 +685,7 @@ namespace VRVlog.LilToonExporter
             lease.RememberUnsavedObjects();
             var requiredMorphs = ExportMorphs(clone);
             lease.CaptureShapes(clone);
+            var callbacks = AvatarBuildCallbacks.For(clone);
             object context = null;
             IDisposable directoryScope = null;
             Exception processError = null;
@@ -655,6 +705,8 @@ namespace VRVlog.LilToonExporter
                     // Use an exclusively owned folder for this export lease.
                     lease.CreateTemporaryAssetDirectory();
                     directoryScope = (IDisposable)Invoke(() => bridge.DirectoryScope.Invoke(new object[] { lease.temporaryAssetPath }));
+                    // The VRChat SDK's callbacks before NDMF's, which makes its context.
+                    lease.RunCallbacks(callbacks, AvatarBuildCallbacks.NdmfTransformingOrder, clone, warnings, tolerateFailedPasses);
                     if (bridge.PrimaryPlatform == null)
                         context = Invoke(() => bridge.Context.Invoke(new object[] { clone, lease.temporaryAssetPath, true }));
                     else
@@ -686,7 +738,9 @@ namespace VRVlog.LilToonExporter
                         }
                         if (Continues())
                         {
+                            lease.RunCallbacks(callbacks, AvatarBuildCallbacks.VrcFuryOrder, clone, warnings, tolerateFailedPasses);
                             lease.ApplyVrcFury(clone, warnings, () => Invoke(() => bridge.Serialize.Invoke(context, null)));
+                            lease.RunCallbacks(callbacks, AvatarBuildCallbacks.NdmfOptimizingOrder, clone, warnings, tolerateFailedPasses);
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);
@@ -751,6 +805,15 @@ namespace VRVlog.LilToonExporter
                             throw MarkOptimizing(BuildFailure(context, null), optimizing);
                         warnings?.Add(string.Format(ExporterLocalization.T(FailedPassesWarning),
                             string.Join("\n", failed.Select(entry => entry.Detail).Distinct().Take(8))));
+                    }
+                    // An upload runs the rest of the SDK's callbacks after NDMF's
+                    // Optimizing and Finish. They belong with Optimizing: an export
+                    // that leaves Optimizing out leaves them out too.
+                    if (optimizing)
+                    {
+                        try { lease.RunCallbacks(callbacks, AvatarBuildCallbacks.Rest, clone, warnings, tolerateFailedPasses); }
+                        catch (Exception error) when (!(error is OperationCanceledException)) { throw MarkOptimizing(error, true); }
+                        lease.Completed = true;
                     }
                     lease.CaptureRendererReplacements(clone, context);
                     // The exporter callback validates scoped AAO mappings;

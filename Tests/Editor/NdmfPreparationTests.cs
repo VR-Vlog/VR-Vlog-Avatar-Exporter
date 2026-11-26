@@ -38,6 +38,9 @@ namespace VRVlog.LilToonExporter.Tests
             FakeContext.ReportedErrors.Clear();
             FakeLegacyContext.Last = null;
             FakeLegacyProcessor.Ranges.Clear();
+            // The doubles stand in for NDMF; the tools installed in the project
+            // register their own VRChat SDK callbacks, which these tests leave out.
+            AvatarBuildCallbacks.RegisteredOverride = () => Enumerable.Empty<object>();
         }
 
         [TearDown]
@@ -47,6 +50,7 @@ namespace VRVlog.LilToonExporter.Tests
             FakeContext.SerializeAction = null;
             ExportTestHooks.PluginPackagesOverride = null;
             NdmfExportPreparation.VrcFuryOverride = null;
+            AvatarBuildCallbacks.RegisteredOverride = null;
             Object.DestroyImmediate(source);
             Object.DestroyImmediate(clone);
             if (original != null) Object.DestroyImmediate(original);
@@ -733,6 +737,108 @@ namespace VRVlog.LilToonExporter.Tests
             CollectionAssert.AreEqual(new[] { "Generating", "Transforming", "Serialize", "VRCFury", "callback", "Optimizing" }, order);
         }
 
+        // The VRChat SDK's other callbacks run at their orders around NDMF's
+        // phases, as in an upload; the export reads the copy just before NDMF's
+        // Optimizing hook (-1025), and the rest run after Optimizing.
+        [Test]
+        public void SdkCallbacksRunAroundTheBuildStepsInUploadOrder()
+        {
+            var order = new List<string>();
+            Register(order, ("last", int.MaxValue, true), ("first", int.MinValue, true), ("after optimizing", -1024, true),
+                ("before NDMF", -11001, true), ("after Transforming", -11000, true), ("before optimizing", -2048, true));
+            FakeProcessor.GeneratingAction = root => order.Add("Generating");
+            FakeProcessor.Action = root => order.Add("Transforming");
+            FakeProcessor.OptimizationAction = root => order.Add("Optimizing");
+            using (var lease = NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: _ => order.Add("callback")))
+            {
+                CollectionAssert.AreEqual(new[] { "first", "before NDMF", "Generating", "Transforming", "after Transforming",
+                    "before optimizing", "callback", "Optimizing", "after optimizing", "last" }, order);
+                Assert.IsTrue(lease.Completed);
+            }
+        }
+
+        [Test]
+        public void SdkCallbacksRunInUploadOrderWhenNothingNeedsNdmf()
+        {
+            var order = new List<string>();
+            Register(order, ("last", int.MaxValue, true), ("after optimizing", -1024, true), ("first", int.MinValue, true));
+            Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(clone));
+            using (var lease = NdmfExportPreparation.Prepare(source, clone, afterTransforming: _ => order.Add("callback")))
+            {
+                CollectionAssert.AreEqual(new[] { "first", "callback", "after optimizing", "last" }, order);
+                Assert.IsTrue(lease.Completed);
+            }
+            Assert.AreEqual(0, FakeProcessor.Calls);
+        }
+
+        // A preview reads the copy as the export does and stops there: nothing
+        // after the export's read point runs, so the copy is not the uploaded one.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PreviewLeavesOutTheSdkCallbacksAfterTheExportReadsTheCopy(bool needsNdmf)
+        {
+            var order = new List<string>();
+            Register(order, ("first", int.MinValue, true), ("after optimizing", -1024, true));
+            FakeProcessor.OptimizationAction = root => order.Add("Optimizing");
+            using var lease = needsNdmf
+                ? NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: _ => order.Add("callback"), stopBeforeOptimizing: true)
+                : NdmfExportPreparation.Prepare(source, clone, afterTransforming: _ => order.Add("callback"), stopBeforeOptimizing: true);
+            CollectionAssert.AreEqual(new[] { "first", "callback" }, order);
+            Assert.IsFalse(lease.Completed);
+            Assert.Throws<InvalidOperationException>(() => lease.Playables());
+        }
+
+        // Such a callback changes project settings before an upload and puts
+        // them back after it (lilToon's shader settings); the copy has no upload.
+        [Test]
+        public void SdkCallbacksThatBracketTheUploadAreNotRun()
+        {
+            var order = new List<string>();
+            AvatarBuildCallbacks.RegisteredOverride = () => new object[]
+            {
+                new PostprocessingCallback(order, "post-process", 100), new BuildRequestCallback(order, "build request", 0),
+                new FakeSdkCallback(order, "plain", 50, true),
+            };
+            using (NdmfExportPreparation.Prepare(source, clone, afterTransforming: _ => { })) { }
+            CollectionAssert.AreEqual(new[] { "plain" }, order);
+        }
+
+        [Test]
+        public void ToleratedSdkCallbackFailureLeavesOutOnlyThatCallback()
+        {
+            var order = new List<string>();
+            AvatarBuildCallbacks.RegisteredOverride = () => new object[]
+            {
+                new FakeSdkCallback(order, "throws", -5000, true) { Failure = new InvalidOperationException("callback failed") },
+                new FakeSdkCallback(order, "refuses", -1024, false), new FakeSdkCallback(order, "runs", 0, true),
+            };
+            var warnings = new List<string>();
+            using (var lease = NdmfExportPreparation.ProcessClone(source, clone, Resolve(), warnings, afterTransforming: _ => { },
+                tolerateFailedPasses: true))
+                Assert.IsTrue(lease.Completed);
+            CollectionAssert.AreEqual(new[] { "throws", "refuses", "runs" }, order);
+            Assert.AreEqual(2, warnings.Count(warning => warning.Contains(nameof(FakeSdkCallback))), string.Join("\n", warnings));
+        }
+
+        // A strict export stops; a failure after the read point is retried
+        // without Optimizing and what follows it, as a failed Optimizing pass is.
+        [TestCase(-5000, false)]
+        [TestCase(-1024, true)]
+        public void FailedSdkCallbackStopsAStrictExport(int callbackOrder, bool afterReading)
+        {
+            var order = new List<string>();
+            AvatarBuildCallbacks.RegisteredOverride = () => new object[] { new FakeSdkCallback(order, "refuses", callbackOrder, false) };
+            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ProcessClone(source, clone, Resolve(),
+                afterTransforming: _ => { }).Dispose());
+            Assert.AreEqual(afterReading, NdmfExportPreparation.FailedInOptimizing(error));
+            StringAssert.Contains(nameof(FakeSdkCallback), error.Message);
+            Assert.IsTrue(original != null);
+        }
+
+        private static void Register(List<string> order, params (string Name, int Order, bool Succeeds)[] callbacks) =>
+            AvatarBuildCallbacks.RegisteredOverride = () => callbacks.Select(callback =>
+                (object)new FakeSdkCallback(order, callback.Name, callback.Order, callback.Succeeds)).ToArray();
+
         [Test]
         public void NdmfOutputIsSavedEarlyOnlyForVrcFury()
         {
@@ -1352,6 +1458,37 @@ namespace VRVlog.LilToonExporter.Tests
         {
             public bool Disposed;
             public void Dispose() { Disposed = true; if (FakeContext.FailSaverDispose) throw new InvalidOperationException("saver disposal failed"); }
+        }
+        // Stand-ins for the VRChat SDK's callbacks: the exporter knows the SDK's
+        // interfaces by name, so these declare their own of the same names. As in
+        // the SDK, the order is on a base interface.
+        public interface IOrderedCallback { int callbackOrder { get; } }
+        public interface IVRCSDKPreprocessAvatarCallback : IOrderedCallback { bool OnPreprocessAvatar(GameObject avatar); }
+        public interface IVRCSDKPostprocessAvatarCallback { void OnPostprocessAvatar(); }
+        public interface IVRCSDKBuildRequestedCallback { bool OnBuildRequested(int requestedBuildType); }
+        public class FakeSdkCallback : IVRCSDKPreprocessAvatarCallback
+        {
+            readonly List<string> order; readonly string name; readonly bool succeeds;
+            public Exception Failure;
+            public FakeSdkCallback(List<string> order, string name, int callbackOrder, bool succeeds)
+            { this.order = order; this.name = name; this.callbackOrder = callbackOrder; this.succeeds = succeeds; }
+            public int callbackOrder { get; }
+            public bool OnPreprocessAvatar(GameObject avatar)
+            {
+                order.Add(name);
+                if (Failure != null) throw Failure;
+                return succeeds;
+            }
+        }
+        public sealed class PostprocessingCallback : FakeSdkCallback, IVRCSDKPostprocessAvatarCallback
+        {
+            public PostprocessingCallback(List<string> order, string name, int callbackOrder) : base(order, name, callbackOrder, true) { }
+            public void OnPostprocessAvatar() { }
+        }
+        public sealed class BuildRequestCallback : FakeSdkCallback, IVRCSDKBuildRequestedCallback
+        {
+            public BuildRequestCallback(List<string> order, string name, int callbackOrder) : base(order, name, callbackOrder, true) { }
+            public bool OnBuildRequested(int requestedBuildType) => true;
         }
         public static class FakeProcessor
         {

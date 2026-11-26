@@ -43,8 +43,13 @@ namespace VRVlog.LilToonExporter
         Vector2 pageScroll;
         Vector3 center;
         float distance = 1, yaw, zoom = 1;
-        // 自動で軽量化する: on for a new board and for another avatar; the avatar's saved choice applies on preparing.
-        bool autoLightweight = true;
+        // 軽量化: Standard for a new board and for another avatar; the avatar's saved choice applies on preparing.
+        // 軽量化 is the avatar's saved level, so a choice made in the quick
+        // transfer while the board is open is what the board shows and exports.
+        LightweightLevel Lightweight => source != null ? SavedSettings().Lightweight : LightweightLevel.Standard;
+        // Whether the avatar uses Avatar Optimizer: Max merges meshes only
+        // then, and its note says so. Read once when the avatar is prepared.
+        bool usesAvatarOptimizer;
         // 視線の動く範囲 the export writes; the section edits it and saves it for the avatar.
         GazeRangeOptions gazeRange = new GazeRangeOptions();
         readonly GazeRangeSection gazeSection = new GazeRangeSection();
@@ -101,6 +106,8 @@ namespace VRVlog.LilToonExporter
         ExportSettings savedSettings;
         GameObject savedSettingsSource;
         int savedSettingsRevision = -1;
+        // The revision last drawn, so a save from the quick transfer shows at once.
+        int paintedSettingsRevision = -1;
         // The whole avatar beside the objects page, made when the page opens and
         // dropped when it is left; it hides what the page leaves out at once.
         ExcludedObjectsPreview objectsPreview;
@@ -312,6 +319,7 @@ namespace VRVlog.LilToonExporter
         void Advance()
         {
             if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+            if (paintedSettingsRevision != ExportSettingsStore.Revision) { paintedSettingsRevision = ExportSettingsStore.Revision; Repaint(); }
             if (pending == null && candidateValidationPending && session != null) pending = RefreshCandidateValidation;
             if (pending == null) { AdvanceIdle(); return; }
             var action = pending; pending = null;
@@ -841,7 +849,7 @@ namespace VRVlog.LilToonExporter
                 // So does the blink, as the blink settings window would set it.
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode != BlinkExportMode.Auto) configuredBlink = storedBlink.Copy();
-                autoLightweight = stored.AutoLightweight;
+                usesAvatarOptimizer = ExportMeshMerge.UsesAvatarOptimizer(source);
                 gazeRange = (stored.Gaze ?? new GazeRangeOptions()).Copy();
                 session = ExperimentalExpressionCaptureSession.Create(source, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
@@ -2225,24 +2233,37 @@ namespace VRVlog.LilToonExporter
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
         }
 
-        internal const string AutoLightweightLabel = "自動で軽量化する";
-        internal const string AutoLightweightNote = "見た目の変化を抑えてファイルとメモリを小さくします";
+        internal const string LightweightLabel = "軽量化";
+        internal static readonly string[] LightweightLevelNames = { "なし", "標準", "最大" };
+        internal const string LightweightNoneNote = "テクスチャもメッシュも元のまま書き出します";
+        internal const string LightweightStandardNote = "見た目の変化を抑えてファイルとメモリを小さくします";
+        internal const string LightweightMaxNote = "標準に加えメッシュをまとめて表示を速くします";
+        internal const string LightweightMaxWithoutOptimizerNote = "このアバターでは標準と同じです（Avatar Optimizerなし）";
+        internal const string LightweightMaxTooltip = "他のVRMアプリではまとめた部分を個別に切り替えられません";
 
-        // Saved at once for the avatar, like the gimmick choices, so the next
-        // board and the quick transfer start from it.
+        internal static string LightweightNote(LightweightLevel level, bool usesAvatarOptimizer) =>
+            level == LightweightLevel.None ? LightweightNoneNote
+            : level == LightweightLevel.Standard ? LightweightStandardNote
+            : usesAvatarOptimizer ? LightweightMaxNote : LightweightMaxWithoutOptimizerNote;
+
+        // 軽量化: a label and three buttons of a fixed width on one line, and
+        // the note of the chosen level under them. The lines and their heights
+        // stay the same for every avatar and language; Max stays selectable
+        // without Avatar Optimizer and its note says it writes what Standard
+        // writes. Saved at once for the avatar, like the gimmick choices, so the
+        // next board and the quick transfer start from it (LightweightChoice).
         void DrawLightweight()
         {
-            var label = ExporterLocalization.T(AutoLightweightLabel);
-            var width = Mathf.Max(0, position.width - 32);
-            var on = EditorGUILayout.ToggleLeft(new GUIContent(Fit(label, EditorStyles.label, width), label), autoLightweight);
-            if (on != autoLightweight)
+            var level = Lightweight;
+            using (new EditorGUILayout.HorizontalScope())
             {
-                autoLightweight = on;
-                var settings = ExportSettingsStore.Load(source);
-                settings.AutoLightweight = on;
-                ExportSettingsStore.Save(source, settings);
+                var label = ExporterLocalization.T(LightweightLabel);
+                var width = Mathf.Max(0, position.width - 32 - LightweightChoice.Width - 30);
+                EditorGUILayout.LabelField(new GUIContent(Fit(label, EditorStyles.label, width), label), EditorStyles.label);
+                var chosen = GUILayout.Toolbar((int)level, LightweightChoice.Buttons(usesAvatarOptimizer, GUI.skin.button), GUI.skin.button, GUI.ToolbarButtonSize.Fixed, GUILayout.Width(LightweightChoice.Width));
+                if (chosen != (int)level && LightweightLevels.IsDefined(chosen)) LightweightChoice.Choose(source, (LightweightLevel)chosen);
             }
-            var note = ExporterLocalization.T(AutoLightweightNote);
+            var note = LightweightChoice.Note(Lightweight, usesAvatarOptimizer);
             var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
         }
@@ -2614,7 +2635,7 @@ namespace VRVlog.LilToonExporter
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
-            var lightweight = autoLightweight;
+            var level = Lightweight;
             var gaze = gazeRange.Copy();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
@@ -2701,7 +2722,7 @@ namespace VRVlog.LilToonExporter
                 var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
                     from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight, gaze));
+                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, level.Lightens(), gaze, level.MergesMeshes()));
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
@@ -2850,7 +2871,7 @@ namespace VRVlog.LilToonExporter
         {
             SaveGazeRange();
             Cleanup(); CloseChildWindows();
-            autoLightweight = true;
+            usesAvatarOptimizer = false;
             gazeRange = new GazeRangeOptions();
             licenseOptions = new AvatarLicenseOptions();
             status = null;

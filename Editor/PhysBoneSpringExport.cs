@@ -517,7 +517,7 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("PhysBoneの参照先がアバターの外にあります。");
         }
         // Deterministic in creation order: "<parent>-<name>", then " 2", " 3"...
-        static string UniqueName(HashSet<string> used, string preferred)
+        internal static string UniqueName(HashSet<string> used, string preferred)
         {
             var name = preferred;
             for (var i = 2; !used.Add(name); i++) name = preferred + " " + i;

@@ -36,6 +36,12 @@
                         <ui:TextField name="name-field" class="field" />
                     </ui:VisualElement>
                     <ui:Label name="name-hint" class="t mini grey field-line" />
+                    <!-- 軽量化, the same saved choice as the board's (AppTransferExport.DrawLightweight). -->
+                    <ui:VisualElement name="lightweight-row" class="row row--spaced">
+                        <ui:Label name="lightweight-label" class="t label-col" />
+                        <ui:IMGUIContainer name="lightweight" class="lightweight" />
+                    </ui:VisualElement>
+                    <ui:Label name="lightweight-note" class="t mini grey field-line" />
                     <ui:VisualElement class="hairline section" />
                     <ui:IMGUIContainer name="terms" class="terms" />
                 </ui:VisualElement>

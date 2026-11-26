@@ -484,6 +484,6 @@ namespace VRVlog.LilToonExporter.Tests
         static byte[] Export(GameObject source, ExportRecoveryReport report, ICollection<string> warnings) =>
             UniVrmOneClickExporter.Export(source, "Stage guard", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
-                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report, mergeMeshes: true);
     }
 }

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -10,6 +11,8 @@ using UnityEngine;
 using VRVlog.AvatarAnimator;
 using UnityEngine.TestTools;
 using VRVlog.AvatarFormats;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.ObjectToggles;
 using Object = UnityEngine.Object;
 
@@ -260,6 +263,62 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(group.Targets.Select(Name), Is.EqualTo(new[] { "Hat", "Room", "Inner" }));
                 Assert.That(States(group), Is.EqualTo(new[] { "0:FFF", "1:TTT" }));
                 Assert.That(data.GroupFor("Glasses").Targets.Select(Name), Is.EqualTo(new[] { "Glasses" }));
+                Assert.DoesNotThrow(() => ObjectToggleData.Write(data));
+            }
+            finally { Object.DestroyImmediate(clone); }
+        }
+
+        // An aim with an offset turns a node above its object (#770). The
+        // toggles still switch the object itself: the node holds nothing else.
+        [Test]
+        public void AnAimWithAnOffsetKeepsItsObjectInTheToggle()
+        {
+            using var avatar = new ToggleAvatar();
+            var clone = Object.Instantiate(avatar.Source);
+            try
+            {
+                var hat = clone.transform.Find("Hat");
+                var anchor = new GameObject("Anchor").transform;
+                anchor.SetParent(clone.transform, false);
+                anchor.localPosition = new Vector3(0, 1, 0);
+                var look = new GameObject("Look").transform;
+                look.SetParent(clone.transform, false);
+                look.position = hat.position + Vector3.right;
+                var visor = new GameObject("Visor").transform;
+                visor.SetParent(hat, false);
+                visor.gameObject.AddComponent<MeshFilter>().sharedMesh = hat.GetComponent<MeshFilter>().sharedMesh;
+                visor.gameObject.AddComponent<MeshRenderer>().sharedMaterial = hat.GetComponent<MeshRenderer>().sharedMaterial;
+                void Aim(Transform target)
+                {
+                    var aim = target.gameObject.AddComponent<UnityEngine.Animations.AimConstraint>();
+                    aim.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = look, weight = 1 });
+                    aim.aimVector = Vector3.forward; aim.constraintActive = true;
+                }
+                Aim(hat);
+                Aim(visor);
+                var follow = visor.gameObject.AddComponent<UnityEngine.Animations.PositionConstraint>();
+                follow.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = anchor, weight = 1 });
+                follow.constraintActive = true;
+                hat.rotation = visor.rotation = Quaternion.identity;
+
+                var warnings = new List<string>();
+                var capture = ObjectToggleCapture.Capture(clone, null, warnings);
+                Assert.That(capture, Is.Not.Null, string.Join("\n", warnings));
+                var fallbacks = new ExportFallbackReport();
+                ConstraintExport.Convert(avatar.Source, clone, warnings, fallbacks, capture);
+
+                Assert.That(fallbacks.Results.Select(entry => entry.Reason), Is.EquivalentTo(new[]
+                    { ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedPosition }));
+                Assert.That(hat.parent.name, Is.EqualTo("Hat-" + ConstraintExport.RelayName));
+                Assert.That(visor.parent.name, Is.EqualTo("Visor-" + ConstraintExport.RelayName));
+                Assert.That(visor.parent.parent, Is.SameAs(anchor));
+
+                var nodes = clone.GetComponentsInChildren<Transform>(true).Select(transform => transform.gameObject).ToList();
+                string Name(int node) => nodes[node].name;
+                var data = capture.Resolve(nodes.IndexOf, warnings);
+                var group = data.GroupFor("Hat");
+                Assert.That(group.Targets.Select(Name), Is.EqualTo(new[] { "Hat", "Visor" }));
+                Assert.That(States(group), Is.EqualTo(new[] { "0:FF", "1:TT" }));
                 Assert.DoesNotThrow(() => ObjectToggleData.Write(data));
             }
             finally { Object.DestroyImmediate(clone); }
@@ -581,6 +640,110 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(required[ObjectToggleTransformData.Extension], Is.EqualTo("1.2.9"));
                 foreach (var path in new[] { "Hat", "Clothes/Suit", "Glasses", "Ribbon" })
                     Assert.That(avatar.Source.transform.Find(path).gameObject.activeSelf, Is.False, path);
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        // A VRM viewer that reads only the standard materials has no toggles:
+        // the meshes that are off by default get an invisible copy of the
+        // material they share with shown ones, and the lilToon extension still
+        // carries the authored material for both, so the app shows and hides
+        // them as before (Documentation~/decisions/2026-11-23-hide-default-off-outfits.md).
+        [Test]
+        public async Task ViewersOfTheStandardMaterialsDoNotShowTheMeshesThatAreOffByDefault()
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            using var avatar = new ToggleAvatar();
+            var material = new Material(shader) { name = "Toggles" };
+            Vrm10Instance imported = null;
+            try
+            {
+                foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                var warnings = new List<string>();
+                var bytes = Export(avatar.Source, warnings, null);
+                var json = GlbDocument.Read(bytes).Json;
+
+                var nodes = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+                var meshes = ((List<object>)json["meshes"]).Cast<Dictionary<string, object>>().ToList();
+                var materials = ((List<object>)json["materials"]).Cast<Dictionary<string, object>>().ToList();
+                int MaterialOf(string name)
+                {
+                    var node = nodes.Single(candidate => candidate.TryGetValue("name", out var value) && (string)value == name);
+                    var primitive = (Dictionary<string, object>)((List<object>)meshes[Convert.ToInt32(node["mesh"])]["primitives"]).Single();
+                    return Convert.ToInt32(primitive["material"]);
+                }
+                double Alpha(int index) => Convert.ToDouble(((List<object>)((Dictionary<string, object>)materials[index]["pbrMetallicRoughness"])["baseColorFactor"])[3]);
+                string Mode(int index) => materials[index].TryGetValue("alphaMode", out var mode) ? (string)mode : "OPAQUE";
+                var shown = MaterialOf("Dress");
+                Assert.That(Mode(shown), Is.EqualTo("OPAQUE"));
+                Assert.That(Alpha(shown), Is.EqualTo(1).Within(1e-6));
+                Assert.That(materials[shown]["name"], Is.EqualTo("Toggles"));
+                var hidden = MaterialOf("Hat");
+                Assert.That(hidden, Is.Not.EqualTo(shown), "The shown meshes must keep their own material.");
+                foreach (var name in new[] { "Hat", "Suit", "Glasses", "Ribbon" })
+                    Assert.That(MaterialOf(name), Is.EqualTo(hidden), name);
+                Assert.That(Mode(hidden), Is.EqualTo("BLEND"));
+                Assert.That(Alpha(hidden), Is.EqualTo(0).Within(1e-6));
+                Assert.That(materials[hidden]["name"], Is.EqualTo("Toggles" + UniVrmOneClickExporter.HiddenByDefaultSuffix));
+                var mtoon = (Dictionary<string, object>)((Dictionary<string, object>)materials[hidden]["extensions"])["VRMC_materials_mtoon"];
+                Assert.That(mtoon.TryGetValue("transparentWithZWrite", out var zWrite) && (bool)zWrite, Is.False);
+                // The app draws both with the authored lilToon material.
+                var lilToon = (Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])[LilToonMobileProfile.ExtensionName];
+                var records = ((List<object>)lilToon["materials"]).Cast<Dictionary<string, object>>().ToList();
+                Assert.That(records.Select(record => Convert.ToInt32(record["materialIndex"])), Is.EquivalentTo(new[] { shown, hidden }));
+                Assert.That(records.Select(record => (string)record["name"]), Is.EqualTo(new[] { "Toggles", "Toggles" }));
+                Assert.That(material.GetColor("_Color").a, Is.EqualTo(1f), "The source material must not change.");
+
+                // UniVRM reads only the standard materials, as other VRM viewers do.
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null);
+                Material Loaded(string name) => imported.GetComponentsInChildren<Renderer>(true).Single(renderer => renderer.name == name).sharedMaterial;
+                foreach (var name in new[] { "Hat", "Suit", "Glasses", "Ribbon" })
+                {
+                    Assert.That(Loaded(name).GetColor("_Color").a, Is.EqualTo(0f).Within(1e-6), name);
+                    Assert.That(Loaded(name).renderQueue, Is.GreaterThanOrEqualTo((int)UnityEngine.Rendering.RenderQueue.Transparent), name);
+                }
+                Assert.That(Loaded("Dress").GetColor("_Color").a, Is.EqualTo(1f).Within(1e-6));
+                Assert.That(Loaded("Dress").renderQueue, Is.LessThan((int)UnityEngine.Rendering.RenderQueue.Transparent));
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        // The lilToon extension could not be written: the file is written again
+        // without the snapshot and without hiding anything, and the result list
+        // names that one omission, not the extension's too.
+        [Test]
+        public void AFailedLilToonExtensionIsListedOnceAndHidesNothing()
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            using var avatar = new ToggleAvatar();
+            var material = new Material(shader) { name = "Toggles" };
+            try
+            {
+                foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                var calls = 0;
+                ExportTestHooks.FaultInjection = stage =>
+                {
+                    if (stage == ExportStage.LilToonExtension && ++calls == 1) throw new InvalidOperationException("injected extension");
+                };
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var json = GlbDocument.Read(Export(avatar.Source, warnings, report)).Json;
+
+                Assert.That(calls, Is.EqualTo(1));
+                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
+                    Is.EqualTo(new ExportStage?[] { ExportStage.LilToonSnapshot }));
+                Assert.That(warnings.Count(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.StageOmittedWarning))), Is.EqualTo(1),
+                    string.Join("\n", warnings));
+                Assert.That(warnings.Single(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.StageOmittedWarning))),
+                    Does.Contain("injected extension"));
+                Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(LilToonMobileProfile.ExtensionName), Is.False);
+                var materials = ((List<object>)json["materials"]).Cast<Dictionary<string, object>>();
+                Assert.That(materials.Select(value => (string)value["name"]), Has.None.EndsWith(UniVrmOneClickExporter.HiddenByDefaultSuffix));
             }
             finally { Object.DestroyImmediate(material); }
         }
