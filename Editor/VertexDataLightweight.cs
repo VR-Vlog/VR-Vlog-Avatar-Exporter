@@ -77,6 +77,13 @@ namespace VRVlog.LilToonExporter
             foreach (var record in Objects(List(extension, "materials")))
                 if (record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index) records[index] = record;
             var removed = new HashSet<int>();
+            // A material only the menu sets is drawn on a mesh the file does
+            // not name; when one reads the colours, every mesh keeps them.
+            var unbound = Object(Object(json, "extensions"), LilToon.LilToonFullContract.UnboundExtensionName);
+            foreach (var record in Objects(List(unbound, "materials")))
+                if (!(record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index && index < materials.Count) ||
+                    ReadsVertexColor(materials[index] as Dictionary<string, object>, record))
+                    return removed;
             foreach (var mesh in meshes)
             {
                 var primitives = Objects(List(mesh, "primitives")).ToList();

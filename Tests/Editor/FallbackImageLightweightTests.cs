@@ -111,24 +111,32 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The extension for the materials only the menu sets does not keep
-        // the file. Its material has no record in the full extension, so its
-        // image keeps its size, and its record is written as it was.
-        [Test]
-        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile()
+        // the file, and its record is written as it was. Its material (4) is
+        // on no primitive and has no record in the full extension, so an
+        // image it uses keeps its size: with image 0, which material 0 also
+        // uses, that image stays; with image 2, kept anyway, all three shrink.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile(bool sharesAnImage)
         {
-            var glb = GlbDocument.Read(Build());
-            var record = new Dictionary<string, object> { { "materialIndex", 2L }, { "textures", new List<object> { new Dictionary<string, object> { { "name", "_MainTex" }, { "texture", 0L } } } } };
+            var glb = GlbDocument.Read(Build((materials, info) => materials.Add(new Dictionary<string, object>
+            {
+                { "pbrMetallicRoughness", new Dictionary<string, object> { { "baseColorTexture", info(sharesAnImage ? 0 : 2) } } },
+                { "extensions", new Dictionary<string, object> { { "VRMC_materials_mtoon", new Dictionary<string, object>() } } },
+            })));
+            var record = new Dictionary<string, object> { { "materialIndex", 4L }, { "textures", new List<object> { new Dictionary<string, object> { { "name", "_MainTex" }, { "texture", 0L } } } } };
             F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
-            glb.Json["extensionsUsed"] = new List<object> { F.ExtensionName, F.UnboundExtensionName };
+            glb.Json["extensionsUsed"] = new List<object> { "VRMC_vrm", "VRMC_materials_mtoon", F.ExtensionName, F.UnboundExtensionName };
             var source = glb.Write();
             var before = GlbDocument.Read(source);
             var warnings = new List<string>();
             var result = FallbackImageLightweight.Apply(source, warnings, out var count, out var saved);
             Assert.That(warnings, Is.Empty);
-            Assert.That(count, Is.EqualTo(3));
+            Assert.That(count, Is.EqualTo(sharesAnImage ? 2 : 3));
             Assert.That(saved, Is.EqualTo(source.Length - result.Length).And.GreaterThan(0));
             var after = GlbDocument.Read(result);
             Assert.That(Png(after, 2), Is.EqualTo(Png(before, 2)));
+            Assert.That(Png(after, 0), sharesAnImage ? Is.EqualTo(Png(before, 0)) : Is.Not.EqualTo(Png(before, 0)));
             Assert.That(JsonDom.Serialize(F.Object(after.Json["extensions"])[F.UnboundExtensionName]),
                 Is.EqualTo(JsonDom.Serialize(F.Object(before.Json["extensions"])[F.UnboundExtensionName])));
         }

@@ -167,20 +167,29 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The extension for the materials only the menu sets does not keep
-        // the file, and its record is written as it was.
-        [Test]
-        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile()
+        // the file, and its record is written as it was. Its material is on
+        // no primitive and has no record in the full extension; the menu can
+        // put it on any mesh, so when it reads the colours every mesh keeps
+        // them, while the weights are packed either way.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile(bool readsColours)
         {
             var glb = GlbDocument.Read(Build(new[] { Record("lilToon", 0, 0, 0, true), Record("lilToon", 0, 0, 0, true) }));
-            var record = new Dictionary<string, object> { { "materialIndex", 1L }, { "textures", new List<object>() } };
+            F.List(glb.Json, "materials").Add(MToonMaterial());
+            var record = Record("Hidden/lilToonOutline", readsColours ? 1 : 0, 0, 0, true);
+            record["materialIndex"] = 2L;
+            record["textures"] = new List<object>();
             F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
-            glb.Json["extensionsUsed"] = new List<object> { F.ExtensionName, F.UnboundExtensionName };
+            glb.Json["extensionsUsed"] = new List<object> { "VRMC_materials_mtoon", F.ExtensionName, F.UnboundExtensionName };
             var source = glb.Write();
             var warnings = new List<string>();
             var result = VertexDataLightweight.Apply(source, warnings, out var saved);
             Assert.That(warnings, Is.Empty);
             Assert.That(saved, Is.EqualTo(source.Length - result.Length).And.GreaterThan(0));
             var after = Consistent(source, result);
+            foreach (var primitive in AllPrimitives(after))
+                Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(readsColours));
             Assert.That(JsonDom.Serialize(F.Object(after.Json["extensions"])[F.UnboundExtensionName]),
                 Is.EqualTo(JsonDom.Serialize(F.Object(glb.Json["extensions"])[F.UnboundExtensionName])));
         }
