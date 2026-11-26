@@ -40,6 +40,48 @@ namespace VRVlog.LilToonExporter
         internal static bool IsDefined(int value) => value >= (int)LightweightLevel.None && value <= (int)LightweightLevel.Max;
     }
 
+    // The lightening choices of one export. The app transfer can send a lightweight model for
+    // shooting with several avatars beside the normal one: the normal export with Light applied.
+    // A choice added here reaches WritesTheSameAs without other changes, so a lightweight model
+    // that becomes lighter than the normal one is sent as a second file.
+    internal sealed class LightModelChoices
+    {
+        internal LightweightLevel Lightweight;
+
+        internal static LightModelChoices Of(LightweightLevel level) => new LightModelChoices { Lightweight = level };
+
+        // What the lightweight model changes, and the one place that says it.
+        internal LightModelChoices Light()
+        {
+            var light = Copy();
+            light.Lightweight = LightweightLevel.Max;
+            return light;
+        }
+
+        internal LightModelChoices Copy() => (LightModelChoices)MemberwiseClone();
+
+        // Whether exporting with these choices and with other writes the same file for an avatar.
+        // Max without Avatar Optimizer writes what Standard writes. Every field is compared.
+        internal bool WritesTheSameAs(LightModelChoices other, bool usesAvatarOptimizer)
+        {
+            var mine = Written(usesAvatarOptimizer);
+            var theirs = other.Written(usesAvatarOptimizer);
+            return typeof(LightModelChoices).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+                .All(field => Equals(field.GetValue(mine), field.GetValue(theirs)));
+        }
+
+        // The lightweight model is a second file only while it differs from the normal one.
+        internal static bool LightDiffers(LightweightLevel normal, bool usesAvatarOptimizer) =>
+            !Of(normal).Light().WritesTheSameAs(Of(normal), usesAvatarOptimizer);
+
+        private LightModelChoices Written(bool usesAvatarOptimizer)
+        {
+            var written = Copy();
+            if (written.Lightweight == LightweightLevel.Max && !usesAvatarOptimizer) written.Lightweight = LightweightLevel.Standard;
+            return written;
+        }
+    }
+
     internal sealed class ExportSettings
     {
         internal readonly List<GameObject> ExcludedObjects = new List<GameObject>();

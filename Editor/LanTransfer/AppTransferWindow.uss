@@ -261,6 +261,24 @@
     flex-shrink: 0;
 }
 
+/* "複数人撮影用の軽量モデルも送る": one line under the name, at the field's indent. */
+.light-row {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    height: 18px;
+    margin-top: 8px;
+    margin-left: 64px;
+}
+
+.light-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* The consent sentence wraps inside its width and is never shortened. */
 .check-text {
     flex-grow: 1;
@@ -642,6 +660,11 @@
 
 .warning--line .warning-text {
     white-space: nowrap;
+    -unity-text-align: middle-center;
+}
+
+.light-note {
+    margin-top: 4px;
     -unity-text-align: middle-center;
 }
 

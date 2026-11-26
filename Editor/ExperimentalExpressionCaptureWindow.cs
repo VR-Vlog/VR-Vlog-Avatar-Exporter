@@ -2565,7 +2565,10 @@ namespace VRVlog.LilToonExporter
         // quick transfer passes false, so what the export worked around is not
         // listed in a window after the transfer and goes to the Console instead, and a
         // board that blocks the export also says why.
-        internal string TransferExport(string name, string author, AvatarLicenseOptions license, string destination, Action saved, bool interactive = true)
+        // With lightDestination, the lightweight model (LightModelChoices.Light) is written there too
+        // before saved runs, from the same choices; it leaves no file when it fails.
+        internal string TransferExport(string name, string author, AvatarLicenseOptions license, string destination, Action saved, bool interactive = true,
+            string lightDestination = null)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
@@ -2576,9 +2579,14 @@ namespace VRVlog.LilToonExporter
             // source once, and Export hashes it again as it writes.
             ExportRecoverySession recovery;
             using (ExperimentalExpressionCaptureSession.Batch())
-                recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), interactive, saved);
+                recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), interactive, saved, lightDestination: lightDestination);
             return recovery == null ? null : recovery.Failure?.Message ?? "";
         }
+
+        // Whether the lightweight model of this board's choices would be another file than its export.
+        internal bool LightModelDiffers => LightModelChoices.LightDiffers(Lightweight, usesAvatarOptimizer);
+
+        internal const string LightModelExporting = "軽量モデルを書き出し中";
 
         // "VRMを保存" on the transfer screen: the board's own save, with the name, author and
         // license of the transfer, so the file holds what the QR sends. The result list and the
@@ -2609,7 +2617,7 @@ namespace VRVlog.LilToonExporter
         // only the dialogs and the Console text, not what is written.
         // savedTo (a file saved from the transfer screen) is told instead of this window's status line.
         ExportRecoverySession Save(string path, string name, string targetAuthor, AvatarLicenseOptions license, bool interactive, Action written,
-            Action<string, int> savedTo = null)
+            Action<string, int> savedTo = null, string lightDestination = null)
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
@@ -2685,6 +2693,7 @@ namespace VRVlog.LilToonExporter
                     else if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
                     LastResult = transferResult;
                     transferResult = null;
+                    if (lightDestination != null) WriteLightModel();
                     written();
                     return;
                 }
@@ -2707,6 +2716,36 @@ namespace VRVlog.LilToonExporter
                 status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(ExportEntry.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
+            }
+            // The lightweight model of a transfer, after its normal file: the same faces, poses and terms
+            // with the choices of LightModelChoices.Light. Nothing is asked, listed or recorded for it, and
+            // a failure leaves no file, so the transfer sends the normal file alone.
+            void WriteLightModel()
+            {
+                var light = LightModelChoices.Of(level).Light();
+                try
+                {
+                    EditorUtility.DisplayProgressBar(ExporterLocalization.T(LightModelExporting), "", 0.5f);
+                    using var batch = ExperimentalExpressionCaptureSession.Batch();
+                    var lightWarnings = new System.Collections.Generic.List<string>();
+                    var lightReport = new ExportRecoveryReport { ContinueOnStageFailure = ExportStageGuard.ContinueByDefault };
+                    byte[] bytes;
+                    using (new PoseLimitChooser.Scope(target.Source, false))
+                        bytes = ExportOnTheAvatarAsItIs(target, false, lightWarnings, (from, sourceIsChecked) =>
+                            from.Export(name, targetAuthor, listFaces, lightWarnings, blink?.Copy(), license.Copy(), new ExportRecoveryOptions(), lightReport,
+                                poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, light.Lightweight.Lightens(), gaze, light.Lightweight.MergesMeshes()));
+                    ExportOutputWriter.Write(lightDestination, bytes);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning(ExporterLocalization.T("軽量モデルを書き出せませんでした") + "\n" + exception.Message);
+                    // A file left half written must not be sent; failing to remove it
+                    // only leaves the normal model, which the transfer checks for.
+                    try { if (File.Exists(lightDestination)) File.Delete(lightDestination); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+                finally { EditorUtility.ClearProgressBar(); }
             }
             var recovery = ExportEntry.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in

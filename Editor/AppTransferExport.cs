@@ -25,8 +25,9 @@ namespace VRVlog.LilToonExporter
         void DrawTerms(bool markAuthor);
         string LightweightNote(GameObject avatar);
         void DrawLightweight(GameObject avatar, Rect rect);
-        string Export(GameObject avatar, string name, string destination, Action saved);
-        string ExportDetailed(GameObject avatar, string name, string destination, Action saved);
+        string Export(GameObject avatar, string name, string destination, Action saved, string lightDestination = null);
+        string ExportDetailed(GameObject avatar, string name, string destination, Action saved, string lightDestination = null);
+        bool LightModelDiffers(GameObject avatar, bool detailed);
         string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved);
         string SaveFileName(GameObject avatar);
         string TermsKey();
@@ -192,14 +193,27 @@ namespace VRVlog.LilToonExporter
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
-        public string Export(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved, false);
+        // With lightDestination, the lightweight model is also written there before saved runs, or nothing when it fails.
+        public string Export(GameObject avatar, string name, string destination, Action saved, string lightDestination = null) =>
+            Export(avatar, name, destination, saved, false, lightDestination);
 
         // Writes what the expression board for this avatar shows, with the name,
         // author and license of this window. Returns like Export; without that
         // board it returns why and writes nothing.
-        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved, true);
+        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved, string lightDestination = null) =>
+            Export(avatar, name, destination, saved, true, lightDestination);
 
-        private string Export(GameObject avatar, string name, string destination, Action saved, bool detailed)
+        // Whether the lightweight model of the avatar would be another file than the export the transfer
+        // sends: the open board's choices for the detailed transfer, the remembered ones for the quick one.
+        public bool LightModelDiffers(GameObject avatar, bool detailed)
+        {
+            if (avatar == null) return false;
+            if (detailed) return ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.LightModelDiffers ?? false;
+            // The same saved level and Avatar Optimizer check as the 軽量化 row above it.
+            return LightModelChoices.LightDiffers(Level(avatar), UsesAvatarOptimizer(avatar));
+        }
+
+        private string Export(GameObject avatar, string name, string destination, Action saved, bool detailed, string lightDestination)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             var open = detailed ? ExperimentalExpressionCaptureWindow.ForTransfer(avatar) : null;
@@ -213,11 +227,11 @@ namespace VRVlog.LilToonExporter
             lastResult = null;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
-            if (open != null) return ExportFrom(open, avatar, name, targetAuthor, targetSettings, destination, saved, true);
+            if (open != null) return ExportFrom(open, avatar, name, targetAuthor, targetSettings, destination, saved, true, lightDestination);
             ExperimentalExpressionCaptureWindow board;
             try { board = ExperimentalExpressionCaptureWindow.PrepareHidden(avatar); }
             catch (OperationCanceledException) { return null; }
-            try { return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, false); }
+            try { return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, false, lightDestination); }
             finally { UnityEngine.Object.DestroyImmediate(board); }
         }
 
@@ -302,7 +316,7 @@ namespace VRVlog.LilToonExporter
         // The one export of both transfers: the board writes the VRM; a saved
         // transfer remembers its name for the avatar.
         private string ExportFrom(ExperimentalExpressionCaptureWindow board, GameObject avatar, string name, string targetAuthor,
-            ExportSettings targetSettings, string destination, Action saved, bool interactive)
+            ExportSettings targetSettings, string destination, Action saved, bool interactive, string lightDestination)
         {
             return board.TransferExport(name, targetAuthor, targetSettings.License.Copy(), destination, () =>
             {
@@ -315,7 +329,7 @@ namespace VRVlog.LilToonExporter
                 lastResult = board.LastResult;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
-            }, interactive);
+            }, interactive, lightDestination);
         }
 
         // The author and the license edited here are remembered for the next

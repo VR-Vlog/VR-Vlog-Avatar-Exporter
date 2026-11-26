@@ -27,8 +27,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // them (AppTransferWindow.uss). 16 of it is the space above and below the QR area for its corner marks.
         private const float FooterHeight = 69f;
         private const float TransferChrome = 224f + FooterHeight;
-        // 446 high: the 軽量化 row and its note (8 + 22 + 16) were added to the 400 the form took before.
-        internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 446f);
+        // The QR screen's line for a lightweight model that was given up, with the space above it.
+        private const float LightNoteHeight = 22f;
+        // 488 high: the 軽量化 row and its note (8 + 22 + 16), then the row for also sending the
+        // lightweight model and its note (8 + 18 + 16), were added to the 400 the form took before.
+        internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 488f);
         // The quick window's form column beside the full-body preview, and the narrowest preview it shows.
         private const float FormColumnWidth = 436f, PreviewMinimumWidth = 200f;
         // The QR notice's size in the window (AppTransferWindow.uss), and the smallest it is made on the board.
@@ -118,7 +121,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
-        [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
+        [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle, lightToggle;
+        [NonSerialized] private Label lightText, lightHint, lightNote;
+        // This transfer asked for the lightweight model: the QR screen keeps the line that says it was given up.
+        [NonSerialized] private bool lightThisTransfer, lightFits;
+
+        // Whether the avatar's lightweight model would be another file than the one this panel exports.
+        private bool LightModelDiffers => avatar != null && Exporter != null && Exporter.LightModelDiffers(avatar, detailed);
+        // "複数人撮影用の軽量モデルも送る" is on and there is a second file to send.
+        private bool SendsLight => AppTransferWindow.SendLightModel && LightModelDiffers;
         [NonSerialized] private Image qrImage, qrCover, qrMarkIcon, warningIcon;
         [NonSerialized] private ScrollView formScroll, transferScroll;
         [NonSerialized] private VisualElement transferBody, fillBeforeSave, fillAfterSave;
@@ -447,7 +458,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             pressedWhileBlocked = false;
             if (!MayStart()) return;
             transferName = AppTransferFlow.TransferName(avatarName);
-            var placeholder = AppTransferFlow.PlaceholderLink(transferName);
+            // The lightweight model goes only while it differs from the normal file, and only in a QR that holds both.
+            lightThisTransfer = SendsLight;
+            lightFits = lightThisTransfer && AppTransferFlow.NameFits(avatarName, true);
+            var placeholder = AppTransferFlow.PlaceholderLink(transferName, lightFits);
             qrMarked = TransferQrCode.CanMark(placeholder);
             placeholderSide = TransferQrCode.Encode(placeholder, qrMarked).Width;
             Flow.BeginExport();
@@ -576,10 +590,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // the ones it was written with and nothing it was made from has changed. Cheap, for the result line:
         // after a change in a scene it says nothing. RunExport checks the avatar itself on every press, as
         // a file reimported on disk changes it without any change in a scene.
+        // The saved file is the normal model only: a transfer that also sends the lightweight one exports both.
         private bool MayReuseSavedCopy(bool checkAvatar)
         {
             var written = savedWritten;
-            if (savedCopy == null || saveProblem != null || written == null || Exporter == null) return false;
+            if (savedCopy == null || saveProblem != null || written == null || Exporter == null || SendsLight) return false;
             if (written.Terms != SaveKey(avatarName.Trim()) || !Exporter.ChoicesUnchanged(written.Stamp)) return false;
             if (!checkAvatar) return !written.SceneChanged;
             if (!Exporter.SourceUnchanged(written.Stamp, avatar)) return false;
@@ -675,9 +690,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var name = avatarName.Trim();
             var wireName = transferName;
             var fromBoard = detailed;
+            var lightWanted = lightThisTransfer;
+            // The lightweight model's own copy. Without a folder for it, or a QR that holds both, the normal file goes alone.
+            string lightPath = null;
+            if (lightFits)
+            {
+                try { lightPath = AppTransferFlow.NewSnapshotPath(); }
+                catch (InvalidOperationException) { }
+            }
+            void Discard()
+            {
+                AppTransferFlow.Discard(path);
+                if (lightPath != null) AppTransferFlow.Discard(lightPath);
+            }
             // After "VRMを保存", the saved file is sent; nothing is exported a second time.
+            // Only a lightweight model that will actually be written needs a fresh export.
             sentWritten = null;
-            if (MayReuseSavedCopy(true) && ReuseSavedCopy(path))
+            if (lightPath == null && MayReuseSavedCopy(true) && ReuseSavedCopy(path))
             {
                 exportAttempt++;
                 missingShaders = savedCopyMissingShaders;
@@ -685,7 +714,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (missingShaders > 0) FitTransferSize();
                 Exporter?.RememberTransferName(target, name);
                 sentWritten = savedWritten;
-                flow.Upload(path, wireName);
+                flow.Upload(path, wireName, lightWanted);
                 Refresh();
                 return;
             }
@@ -695,12 +724,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 // The recovery window can save long after this attempt was replaced or the panel closed
                 // (closing counts as a new attempt).
-                if (flow == null || attempt != exportAttempt) { AppTransferFlow.Discard(path); return; }
+                if (flow == null || attempt != exportAttempt) { Discard(); return; }
                 // A late save from the recovery window, after another panel started its transfer, asks again.
                 if (!MayStart())
                 {
                     exportAttempt++;
-                    AppTransferFlow.Discard(path);
+                    Discard();
                     flow.ExportCanceled();
                     SetMinimumSize(FormSize);
                     Refresh();
@@ -716,7 +745,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (missingShaders > 0) FitTransferSize();
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
-                flow.Upload(path, wireName);
+                // The board writes the lightweight model before this runs, and no file when it failed.
+                flow.Upload(path, wireName, lightWanted, lightPath != null && File.Exists(lightPath) ? lightPath : null);
                 // What the export worked around is listed once the transfer has succeeded or failed (Poll).
                 flow.ShowResultAtEnd(Exporter?.LastResult());
                 // The stamp is taken now, as the file is written; the upload hashed the snapshot already.
@@ -724,13 +754,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 Refresh();
             }
             string failure;
-            try { failure = fromBoard ? Exporter.ExportDetailed(target, name, path, Saved) : Exporter.Export(target, name, path, Saved); }
-            catch (Exception exception) { failure = exception.Message ?? ""; AppTransferFlow.Discard(path); }
+            try { failure = fromBoard ? Exporter.ExportDetailed(target, name, path, Saved, lightPath) : Exporter.Export(target, name, path, Saved, lightPath); }
+            catch (Exception exception) { failure = exception.Message ?? ""; Discard(); }
             finally { EditorUtility.ClearProgressBar(); }
             if (saved || attempt != exportAttempt) return;
             // Nothing was handed to the upload. Delete whatever this attempt left;
             // a later save from the recovery window writes the file again.
-            AppTransferFlow.Discard(path);
+            Discard();
             if (failure == null) { flow.ExportCanceled(); SetMinimumSize(FormSize); }
             else flow.ExportFailed(failure);
             Refresh();
@@ -798,7 +828,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var window = Window;
             if (window == null) return;
             var side = SlotSide;
-            var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f);
+            var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f) + (lightThisTransfer ? LightNoteHeight : 0f);
             var screen = EditorGUIUtility.GetMainWindowPosition().height;
             if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
             var alone = Mathf.Max(FormMinimumSize.x, side + 2f * Padding);
@@ -873,6 +903,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             lightweightRow = root.Q("lightweight-row");
             lightweightLabel = root.Q<Label>("lightweight-label");
             lightweightNote = root.Q<Label>("lightweight-note");
+            lightToggle = root.Q<Toggle>("light-toggle");
+            lightText = root.Q<Label>("light-text");
+            lightHint = root.Q<Label>("light-hint");
+            lightNote = root.Q<Label>("light-note");
             termsLabel = root.Q<Label>("terms-label");
             readTerms = root.Q<Label>("read-terms");
             consentToggle = root.Q<Toggle>("consent-toggle");
@@ -978,6 +1012,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 nameFits = null;
                 Refresh();
             });
+            lightToggle.RegisterValueChangedCallback(changed => { AppTransferWindow.SendLightModel = changed.newValue; Refresh(); });
+            lightText.RegisterCallback<ClickEvent>(_ => lightToggle.value = !lightToggle.value);
             consentToggle.RegisterValueChangedCallback(changed => { consented = changed.newValue; Refresh(); });
             consentText.RegisterCallback<ClickEvent>(_ => consentToggle.value = !consentToggle.value);
             privacyToggle.RegisterValueChangedCallback(changed =>
@@ -1172,6 +1208,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var lightweight = entry != null && !detailed ? entry.LightweightNote(avatar) : "";
             if (lightweightNote.text != lightweight) { lightweightNote.text = lightweight; lightweightNote.tooltip = lightweight; lightweightView.MarkDirtyRepaint(); }
             lightweightView.SetEnabled(avatar != null && !Transferring);
+            lightText.text = lightText.tooltip = T(AppTransferText.SendLightModel);
+            var sendLight = AppTransferWindow.SendLightModel;
+            lightToggle.SetValueWithoutNotify(sendLight);
+            // Said for the avatar as it would be exported now; the line keeps its height while off.
+            lightHint.text = sendLight && avatar != null ? T(LightModelDiffers ? AppTransferText.LightModelNeedsNewApp : AppTransferText.LightModelSame) : "";
+            lightHint.tooltip = lightHint.text;
             termsLabel.text = T(AppTransferText.Terms);
             readTerms.text = T(AppTransferText.ReadTerms);
             consentText.text = AppTransferFlow.ConsentText;
@@ -1275,6 +1317,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             FitWarning();
             // Its place is kept in every state, so it does not move when the QR appears.
             Reserve(warningRow, AppTransferFlow.ShowsDoNotShare(view));
+            // Only a transfer that asked for the lightweight model has the line, so the screen is as before otherwise.
+            lightNote.text = lightNote.tooltip = T(AppTransferText.LightModelFailed);
+            Show(lightNote, lightThisTransfer);
+            Reserve(lightNote, flow.LightFailed);
             var counting = waiting || view == AppTransferView.Expired;
             statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : showQr ? AppTransferText.Waiting : AppTransferText.QrHidden) : "";
             var seconds = waiting ? flow.Remaining : 0;
