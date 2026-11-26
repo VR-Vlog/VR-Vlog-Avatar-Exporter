@@ -136,6 +136,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // The lightweight upload ends this long before the normal file's upload
         // deadline, so both publications still start within it.
         internal const int LightPublicationReserveSeconds = 60;
+        // It starts only with this long left before that end, and its
+        // publication waits no longer than the reserve, so the normal QR
+        // is never held back by the second file.
+        internal const int LightMinimumUploadSeconds = 60;
 
         private readonly object gate = new object();
         private readonly Leg normal;
@@ -239,7 +243,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     await Light(ct, async leg =>
                     {
                         var cutoff = uploadDeadline - LightPublicationReserveSeconds;
-                        if (now() >= cutoff) throw new TimeoutException();
+                        if (cutoff - now() < LightMinimumUploadSeconds) throw new TimeoutException();
                         lightDeadline = await Create(leg, ct, cutoff).ConfigureAwait(false);
                         await UploadParts(leg, ct, cutoff).ConfigureAwait(false);
                     }).ConfigureAwait(false);
@@ -259,7 +263,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     // Right after the normal file, so the two receipts end close together.
                     await Light(ct, async leg =>
                     {
-                        var lightExpiry = await Publish(leg, ct, lightDeadline).ConfigureAwait(false);
+                        var lightExpiry = await Publish(leg, ct, lightDeadline, now() + LightPublicationReserveSeconds).ConfigureAwait(false);
                         lock (gate) expiresAt = Math.Min(expiresAt, lightExpiry);
                     }).ConfigureAwait(false);
                     var linkWithoutLight = false;
@@ -377,10 +381,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         // Returns until when the phone may receive the transfer.
-        private async Task<long> Publish(Leg leg, CancellationToken ct, long legUploadDeadline)
+        private async Task<long> Publish(Leg leg, CancellationToken ct, long legUploadDeadline, long limit = 0)
         {
             var snapshot = leg.Encrypted;
-            var published = await Send("POST", leg.Path + "/publish", leg.UploadToken, Array.Empty<byte>(), "application/octet-stream", ct, retry: true).ConfigureAwait(false);
+            var published = await Send("POST", leg.Path + "/publish", leg.UploadToken, Array.Empty<byte>(), "application/octet-stream", ct, retry: true, limit: limit).ConfigureAwait(false);
             published.Exact("v", "id", "token", "name", "size", "sha256", "expiresAt");
             if (published.Number("v") != 3 || published.Text("id") != leg.Id || published.Text("token") != leg.ReadToken || published.Text("name") != CloudEncryptedSnapshot.WireName
                 || published.Number("size") != snapshot.Size || published.Text("sha256") != snapshot.FileHash) throw CloudTransferProtocol.Invalid();

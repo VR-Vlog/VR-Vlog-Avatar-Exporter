@@ -701,8 +701,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (lightPath != null) AppTransferFlow.Discard(lightPath);
             }
             // After "VRMを保存", the saved file is sent; nothing is exported a second time.
+            // Only a lightweight model that will actually be written needs a fresh export.
             sentWritten = null;
-            if (!lightWanted && MayReuseSavedCopy(true) && ReuseSavedCopy(path))
+            if (lightPath == null && MayReuseSavedCopy(true) && ReuseSavedCopy(path))
             {
                 exportAttempt++;
                 missingShaders = savedCopyMissingShaders;
@@ -710,7 +711,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (missingShaders > 0) FitTransferSize();
                 Exporter?.RememberTransferName(target, name);
                 sentWritten = savedWritten;
-                flow.Upload(path, wireName);
+                flow.Upload(path, wireName, lightWanted);
                 Refresh();
                 return;
             }

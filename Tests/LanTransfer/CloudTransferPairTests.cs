@@ -68,6 +68,19 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [Test]
+        public async Task TheLightweightPublicationWaitsNoLongerThanTheReserve()
+        {
+            using (var pair = new PairFixture())
+            using (var session = pair.Session())
+            {
+                await session.UploadAsync();
+                Assert.That(pair.Transport.PublishTimeouts.Count, Is.EqualTo(2));
+                Assert.That(pair.Transport.PublishTimeouts[1] <= CloudVrmTransferSession.LightPublicationReserveSeconds, Is.True);
+                Assert.That(pair.Transport.PublishTimeouts[0] > CloudVrmTransferSession.LightPublicationReserveSeconds, Is.True);
+            }
+        }
+
         [TestCase("light-create")]
         [TestCase("light-part")]
         [TestCase("light-publish")]
@@ -113,8 +126,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 var current = 1795000000L;
                 pair.Transport.Now = () => current;
-                // The normal file takes all but the reserve of its upload lifetime.
-                pair.Transport.BeforeFirstLightCreate = () => current += CloudTransferProtocol.UploadLifetimeSeconds - CloudVrmTransferSession.LightPublicationReserveSeconds;
+                // The normal file leaves less than the minimum upload time before the reserve.
+                pair.Transport.AfterNormalParts = () => current += CloudTransferProtocol.UploadLifetimeSeconds - CloudVrmTransferSession.LightPublicationReserveSeconds - CloudVrmTransferSession.LightMinimumUploadSeconds + 1;
                 using (var session = pair.Session(() => current))
                 {
                     await session.UploadAsync();
@@ -122,6 +135,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(session.LightFailed, Is.True);
                     Assert.That(ImportLinkFields(session.ImportLink, out _)["v"], Is.EqualTo("3"));
                     Assert.That(pair.Transport.Log.Count(entry => entry.StartsWith("publish", StringComparison.Ordinal)), Is.EqualTo(1));
+                    // Dropped before it was created, so there is nothing to remove.
+                    Assert.That(pair.Transport.Transfers.Count, Is.EqualTo(1));
                 }
             }
         }
@@ -420,7 +435,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             internal bool ExtendedUploads = true;
             internal int[] PublicationLifetimes = { 180, 180 };
             internal string Failure, RemoteState = "ready";
-            internal Action BeforeFirstLightCreate;
+            internal Action AfterNormalParts;
+            internal readonly List<int> PublishTimeouts = new List<int>();
             internal TaskCompletionSource<bool> LightPartRelease;
             internal readonly TaskCompletionSource<bool> LightPartObserved = new TaskCompletionSource<bool>();
             internal PairTransport(CloudVrmTransferSource[] sources) { this.sources = sources; }
@@ -437,7 +453,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 if (path == "/v3/uploads" || path == "/v3/transfers")
                 {
                     var index = Transfers.Count;
-                    if (index == 1) BeforeFirstLightCreate?.Invoke();
                     Log.Add("create " + index);
                     Assert.That(token == null, Is.True);
                     if (Failure == "light-create" && index == 1) return new CloudTransferResponse(503, "{}");
@@ -469,11 +484,13 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                         cancellation.ThrowIfCancellationRequested();
                     }
                     if (part > transfer.Parts.Count) transfer.Parts.Add((byte[])body.Clone());
+                    if (number == 0 && transfer.Parts.Sum(bytes => (long)bytes.Length) == transfer.WireSize) AfterNormalParts?.Invoke();
                     return new CloudTransferResponse(200, "{}");
                 }
                 if (path.EndsWith("/publish", StringComparison.Ordinal))
                 {
                     Log.Add("publish " + number);
+                    PublishTimeouts.Add(timeoutSeconds);
                     if (Failure == "light-publish" && number == 1 || Failure == "normal-publish" && number == 0) return new CloudTransferResponse(503, "{}");
                     using (var digest = SHA256.Create()) Assert.That(CloudTransferProtocol.Hex(digest.ComputeHash(transfer.Parts.SelectMany(bytes => bytes).ToArray())), Is.EqualTo(transfer.WireHash));
                     transfer.ReceiveExpiry = ExtendedUploads ? Now() + PublicationLifetimes[number] : transfer.UploadExpiry;

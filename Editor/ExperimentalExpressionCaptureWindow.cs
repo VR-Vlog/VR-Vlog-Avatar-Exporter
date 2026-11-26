@@ -2750,7 +2750,11 @@ namespace VRVlog.LilToonExporter
                 catch (Exception exception)
                 {
                     Debug.LogWarning(ExporterLocalization.T("軽量モデルを書き出せませんでした") + "\n" + exception.Message);
-                    if (File.Exists(lightDestination)) File.Delete(lightDestination);
+                    // A file left half written must not be sent; failing to remove it
+                    // only leaves the normal model, which the transfer checks for.
+                    try { if (File.Exists(lightDestination)) File.Delete(lightDestination); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
                 }
                 finally { EditorUtility.ClearProgressBar(); }
             }
