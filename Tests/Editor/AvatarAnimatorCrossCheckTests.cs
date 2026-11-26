@@ -172,17 +172,21 @@ namespace VRVlog.LilToonExporter.Tests
         // The time runs out 10 frames into the second input: that input
         // stops there and is not compared, nor are the ones after it. The
         // second input reads the clock once before it starts and once at
-        // each frame, frame 0 included, so the 12th read is frame 10.
-        [Test]
-        public void AnInputUnderWayWhenTheTimeRunsOutStops()
+        // each frame, frame 0 included, first while the evaluator alone
+        // plays it (Controls), then while both play it: with 0 frames of
+        // Controls before, the 12th read is frame 10 of Controls; with all
+        // 180, it is frame 10 of the play.
+        [TestCase(0)]
+        [TestCase(AvatarAnimatorCrossCheck.SettleFrames + AvatarAnimatorCrossCheck.InputFrames)]
+        public void AnInputUnderWayWhenTheTimeRunsOutStops(int controlled)
         {
             var (root, controller, data, bindings) = Build();
             var reads = 0;
-            AvatarAnimatorCrossCheck.ElapsedSeconds = clock => ++reads <= 11 ? 0 : double.MaxValue;
+            AvatarAnimatorCrossCheck.ElapsedSeconds = clock => ++reads <= 11 + controlled ? 0 : double.MaxValue;
             var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
 
             Assert.That((result.Compared, result.OutOfTime), Is.EqualTo((1, 8)));
-            Assert.That(reads, Is.EqualTo(12 + 7), "Each input after the second reads the clock once.");
+            Assert.That(reads, Is.EqualTo(12 + controlled + 7), "Each input after the second reads the clock once.");
         }
 
         [Test]
