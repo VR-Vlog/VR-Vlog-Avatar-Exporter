@@ -8,11 +8,38 @@ using UnityEngine;
 namespace VRVlog.LilToonExporter
 {
     // The choices of one avatar's export: manual exclusions, the gimmick
-    // auto-exclusion and its exceptions, blink, poses, the automatic texture
-    // lightening, 視線の動く範囲 and the VRM license.
+    // auto-exclusion and its exceptions, blink, poses, the lightweight level, 視線の動く範囲 and the VRM license.
     // The expression board and the app transfer read them; the export itself
     // runs through the board. ExportSettingsStore remembers them per avatar
     // outside the avatar itself.
+    // 軽量化 of the export, one choice for the whole avatar.
+    // None writes the avatar as it is. Standard writes textures no more
+    // detailed than the screen shows, drops unused mips, vertex colors and
+    // textures, and packs the bone weights (TexelDensity and the vertex data
+    // lightening): the file and the memory get smaller. Max adds the mesh merge
+    // of an avatar that uses Avatar Optimizer (ExportMeshMerge), which draws
+    // faster; without Avatar Optimizer it writes what Standard writes.
+    internal enum LightweightLevel
+    {
+        None = 0,
+        Standard = 1,
+        Max = 2
+    }
+
+    internal static class LightweightLevels
+    {
+        internal static bool Lightens(this LightweightLevel level) => level != LightweightLevel.None;
+        internal static bool MergesMeshes(this LightweightLevel level) => level == LightweightLevel.Max;
+
+        // The level of the two switches older versions saved: 自動で軽量化する
+        // and メッシュをまとめて表示を速くする. Off for the first is None even
+        // when the second was on, since that avatar asked for no lightening.
+        internal static LightweightLevel FromSwitches(bool lighten, bool merge) =>
+            !lighten ? LightweightLevel.None : merge ? LightweightLevel.Max : LightweightLevel.Standard;
+
+        internal static bool IsDefined(int value) => value >= (int)LightweightLevel.None && value <= (int)LightweightLevel.Max;
+    }
+
     internal sealed class ExportSettings
     {
         internal readonly List<GameObject> ExcludedObjects = new List<GameObject>();
@@ -23,9 +50,8 @@ namespace VRVlog.LilToonExporter
         internal readonly List<Component> IncludedGimmickComponents = new List<Component>();
         internal BlinkExportOptions Blink = new BlinkExportOptions();
         internal PoseExportOptions Poses = new PoseExportOptions();
-        // 自動で軽量化する: textures more detailed than the screen shows are
-        // written smaller (TexelDensity). On unless the avatar saved it off.
-        internal bool AutoLightweight = true;
+        // 軽量化. Standard unless the avatar saved another level.
+        internal LightweightLevel Lightweight = LightweightLevel.Standard;
         // 視線の動く範囲. Its default keeps the avatar's own range.
         internal GazeRangeOptions Gaze = new GazeRangeOptions();
         internal AvatarLicenseOptions License = new AvatarLicenseOptions();
@@ -46,7 +72,7 @@ namespace VRVlog.LilToonExporter
                 AutoExcludeGimmicks = AutoExcludeGimmicks,
                 Blink = (Blink ?? new BlinkExportOptions()).Copy(),
                 Poses = (Poses ?? new PoseExportOptions()).Copy(),
-                AutoLightweight = AutoLightweight,
+                Lightweight = Lightweight,
                 Gaze = (Gaze ?? new GazeRangeOptions()).Copy(),
                 License = (License ?? new AvatarLicenseOptions()).Copy()
             };
@@ -70,7 +96,7 @@ namespace VRVlog.LilToonExporter
             Poses.Manual.Clear(); Poses.Manual.AddRange(other.Poses.Manual);
             Poses.Excluded.Clear(); Poses.Excluded.UnionWith(other.Poses.Excluded);
             Poses.Names.Clear(); foreach (var item in other.Poses.Names) Poses.Names[item.Key] = item.Value;
-            AutoLightweight = other.AutoLightweight;
+            Lightweight = other.Lightweight;
             Gaze = other.Gaze;
             License = other.License;
         }
@@ -106,7 +132,7 @@ namespace VRVlog.LilToonExporter
             }
             text.Append('|').Append(string.Join("\u001f", poses.Excluded.OrderBy(item => item, StringComparer.Ordinal)));
             text.Append('|').Append(string.Join("\u001f", poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "\u001e" + item.Value)));
-            text.Append('|').Append(AutoLightweight);
+            text.Append('|').Append((int)Lightweight);
             text.Append('|').Append((Gaze ?? new GazeRangeOptions()).Key());
             text.Append('|').Append(JsonUtility.ToJson(License ?? new AvatarLicenseOptions()));
             return text.ToString();

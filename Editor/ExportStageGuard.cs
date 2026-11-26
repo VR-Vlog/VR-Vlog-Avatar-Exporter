@@ -23,6 +23,9 @@ namespace VRVlog.LilToonExporter
         // NDMF's Optimizing phase only: left out first, the outfit and mesh
         // edits of the earlier phases stay in the file.
         Optimizing,
+        // The mesh merge the exporter adds for AAO: left out before Optimizing,
+        // so a merge the optimizer cannot handle only costs the speed-up.
+        MeshMerge,
         Expressions,
         OptimizerEvidence,
         LilToonSnapshot,
@@ -141,6 +144,16 @@ namespace VRVlog.LilToonExporter
             OnOmit?.Invoke(stage, error);
         }
 
+        // Takes back a stage left out in place, for a failure that restarts the
+        // export without an earlier stage whose omission covers it: the result
+        // list then shows the one cause once. Only for a stage that the restarted
+        // export does not reach again, so the attempts stay bounded.
+        internal void Forget(ExportStage stage)
+        {
+            if (!omitted.Remove(stage)) return;
+            omissions.RemoveAll(omission => omission.Stage == stage);
+        }
+
         // Runs attempt until it succeeds. Each failure that names a stage which
         // was not yet left out restarts the export without that stage. Anything
         // else (strict mode, cancellation, a stage that cannot be left out, or a
@@ -184,6 +197,7 @@ namespace VRVlog.LilToonExporter
                 [ExportStage.FaceEmo] = ("FaceEmoの表情", ExportPhase.Expressions, ExportOutcome.Omitted),
                 [ExportStage.BuildProcess] = ("Modular Avatar / NDMFの処理", ExportPhase.Skeleton, ExportOutcome.Approximated),
                 [ExportStage.Optimizing] = ("最適化ツールの処理", ExportPhase.Skeleton, ExportOutcome.Approximated),
+                [ExportStage.MeshMerge] = ("メッシュの自動結合", ExportPhase.Skeleton, ExportOutcome.Omitted),
                 [ExportStage.Expressions] = ("メニュー由来の表情", ExportPhase.Expressions, ExportOutcome.Omitted),
                 [ExportStage.OptimizerEvidence] = ("最適化ツールのマテリアルの照合", ExportPhase.Materials, ExportOutcome.Approximated),
                 [ExportStage.LilToonSnapshot] = ("lilToonのマテリアル情報", ExportPhase.Materials, ExportOutcome.Approximated),

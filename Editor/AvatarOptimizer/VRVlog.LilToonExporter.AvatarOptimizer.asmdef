@@ -4,6 +4,7 @@
   "references": [
     "VRVlog.LilToonExporter.Runtime",
     "com.anatawa12.avatar-optimizer.api.editor",
+    "com.anatawa12.avatar-optimizer.runtime",
     "VRVlog.LilToonExporter.Vendor.UniGLTF",
     "VRVlog.LilToonExporter.Vendor.UniGLTF.Utils",
     "VRVlog.LilToonExporter.Vendor.UniHumanoid",

@@ -84,14 +84,14 @@ namespace VRVlog.LilToonExporter
         // succeeded, leaves out only that phase: the retry keeps the outfit and
         // mesh edits. A pass that NDMF records as failed earlier is left out alone
         // by the preparation; any other build failure leaves out every build pass.
-        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<T> prepare)
+        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<bool> merged, Func<T> prepare)
         {
             try { return prepare(); }
             catch (Exception error) when (guard.ContinueOnFailure && !guard.IsOmitted(ExportStage.Optimizing) &&
                                           !ExportStageGuard.IsCancellation(error) && ExportStageFailure.Find(error) == null &&
                                           NdmfExportPreparation.FailedInOptimizing(error))
             {
-                throw new ExportStageFailure(ExportStage.Optimizing, error);
+                throw new ExportStageFailure(merged() ? ExportStage.MeshMerge : ExportStage.Optimizing, error);
             }
         }
 
@@ -140,7 +140,7 @@ namespace VRVlog.LilToonExporter
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
             IReadOnlyList<AnimationClip> listFaceSources = null, bool autoLightweight = false, IReadOnlyCollection<AnimationClip> bonesOnlyFaces = null,
             IReadOnlyCollection<AnimationClip> gestureFaces = null, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones = null,
-            GazeRangeOptions gazeRange = null)
+            GazeRangeOptions gazeRange = null, bool mergeMeshes = false)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -170,7 +170,7 @@ namespace VRVlog.LilToonExporter
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
                     authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps, autoLightweight, bonesOnlyFaces, gestureFaces,
-                    presetBones, gazeRange);
+                    presetBones, gazeRange, mergeMeshes);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -453,7 +453,7 @@ namespace VRVlog.LilToonExporter
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps, bool autoLightweight, IReadOnlyCollection<AnimationClip> bonesOnlyFaces,
             IReadOnlyCollection<AnimationClip> gestureFaces, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones,
-            GazeRangeOptions gazeRange)
+            GazeRangeOptions gazeRange, bool mergeMeshes)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -572,7 +572,11 @@ namespace VRVlog.LilToonExporter
                 // optimizer would have broken leaves out the build passes.
                 var optimizes = !guard.IsOmitted(ExportStage.BuildProcess) && !guard.IsOmitted(ExportStage.Optimizing);
                 var optimizerStage = optimizes ? ExportStage.Optimizing : ExportStage.BuildProcess;
-                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
+                // Set when the automatic mesh merge was added for AAO. A failure
+                // of the optimizer or of a later check then leaves out the merge
+                // first and Optimizing only if the export fails again.
+                var merged = false;
+                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => merged, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
@@ -752,8 +756,11 @@ namespace VRVlog.LilToonExporter
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
+                    if (mergeMeshes && optimizes && optimizerBindings != null)
+                        merged = guard.Step(ExportStage.MeshMerge, () => ExportMeshMerge.Apply(clone, optimizerBindings.RoutedRenderers), () => false);
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
                     stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing), tolerateFailedPasses: guard.ContinueOnFailure)));
+                if (merged) optimizerStage = ExportStage.MeshMerge;
                 if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
@@ -880,8 +887,12 @@ namespace VRVlog.LilToonExporter
                 try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
                 catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var matcapBakes = new MatcapApproximation.Bakes(bakeMatcaps);
+                // Without the lilToon snapshot the app draws the standard materials,
+                // so none is hidden then (see the retry below).
+                var offByDefault = OffByDefaultSlots(objectToggles, fullSnapshot);
+                var hiddenFallbacks = new List<Material>();
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
-                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes);
+                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes, offByDefault: offByDefault, hiddenFallbacks: hiddenFallbacks);
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -1020,6 +1031,18 @@ namespace VRVlog.LilToonExporter
                     }
                     else
                     {
+                        // The app would draw the default-off meshes with the invisible
+                        // standard materials, and showing them would show nothing:
+                        // export again without hiding them. The retry leaves out the
+                        // snapshot, so the extension is not written then either: the
+                        // result list names that one stage, not both.
+                        if (hiddenFallbacks.Count > 0)
+                        {
+                            var cause = guard.Omissions.LastOrDefault(omission => omission.Stage == ExportStage.LilToonExtension).Error ??
+                                new InvalidOperationException(ExporterLocalization.T(StageOmittedWarning));
+                            guard.Forget(ExportStage.LilToonExtension);
+                            throw new ExportStageFailure(ExportStage.LilToonSnapshot, cause);
+                        }
                         // The save check accepts a file without the extension only when marked.
                         exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                         foreach(var warning in fallbackWarnings)warnings?.Add(warning);
@@ -1281,10 +1304,67 @@ namespace VRVlog.LilToonExporter
             return meta;
         }
 
+        // The slots of meshes an Expression Menu toggle hides by default that
+        // the app draws with lilToon. Viewers that read only the standard VRM
+        // material would show them over the default outfit; the app shows and
+        // hides them with lilToon. A slot the app draws with its standard
+        // material keeps it visible, so turning the toggle on still shows it.
+        internal static Func<Renderer, int, bool> OffByDefaultSlots(ObjectToggleCapture toggles, LilToonFullSnapshot snapshot)
+        {
+            if (toggles == null || snapshot == null) return null;
+            var hidden = new HashSet<Transform>(toggles.OffByDefault.Where(target => target != null).Select(target => target.transform));
+            if (hidden.Count == 0) return null;
+            bool Under(Transform transform)
+            {
+                for (; transform != null; transform = transform.parent)
+                    if (hidden.Contains(transform)) return true;
+                return false;
+            }
+            return (renderer, slot) => Under(renderer.transform) && snapshot.Carries(renderer, slot);
+        }
+
+        // A material that shown and hidden slots share is written twice. When
+        // the copies would take the file over the app's material limit, which
+        // drops the lilToon extension, the shared materials stay visible.
+        static Func<Renderer, int, bool> WithinMaterialLimit(GameObject clone, Func<Renderer, int, bool> offByDefault)
+        {
+            if (offByDefault == null) return null;
+            var hidden = new HashSet<(Renderer, int)>();
+            var shown = new HashSet<Material>();
+            var hiddenMaterials = new HashSet<Material>();
+            var all = new HashSet<Material>();
+            foreach (var renderer in ExportRendererSelection.Enumerate(clone))
+            {
+                var slots = renderer.sharedMaterials;
+                for (var i = 0; i < slots.Length; i++)
+                {
+                    if (slots[i] == null) continue;
+                    all.Add(slots[i]);
+                    if (LilToonMaterialReader.IsLilToon(slots[i]) && !HiddenInFallback(slots[i]) && offByDefault(renderer, i))
+                    {
+                        hidden.Add((renderer, i));
+                        hiddenMaterials.Add(slots[i]);
+                    }
+                    else shown.Add(slots[i]);
+                }
+            }
+            var shared = new HashSet<Material>(hiddenMaterials.Where(shown.Contains));
+            if (shared.Count == 0 || all.Count + shared.Count <= LilToonMobileProfile.MaximumMaterials)
+                return (renderer, slot) => hidden.Contains((renderer, slot));
+            Debug.LogWarning("VR Vlog: the materials that default-off meshes share with shown ones stay visible in other VRM apps; copies would exceed the material limit.");
+            return (renderer, slot) => hidden.Contains((renderer, slot)) && !shared.Contains(renderer.sharedMaterials[slot]);
+        }
+
         internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
-            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null, MatcapApproximation.Bakes matcapBakes = null)
+            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null, MatcapApproximation.Bakes matcapBakes = null,
+            Func<Renderer, int, bool> offByDefault = null, ICollection<Material> hiddenFallbacks = null)
         {
             var converted = new Dictionary<Material, Material>();
+            // Slots of meshes a toggle hides by default get their own invisible
+            // fallback, also when a shown mesh shares the material (Documentation~/decisions/2026-11-23-hide-default-off-outfits.md).
+            var hiddenConverted = new Dictionary<Material, Material>();
+            HashSet<string> usedNames = null;
+            offByDefault = WithinMaterialLimit(clone, offByDefault);
             // Shared masks are converted once per export and owned until all
             // fallback materials have been serialized. Never cache across exports.
             var outlineMasks = new Dictionary<Texture, Texture2D>();
@@ -1319,12 +1399,15 @@ namespace VRVlog.LilToonExporter
                         fallbacks?.Add(ExportFallbackKind.NonLilToonMaterials, null, clone.transform, renderer.transform);
                         continue;
                     }
-                    if (!converted.TryGetValue(source, out var fallback))
+                    // Already invisible materials need no copy of their own.
+                    var hide = offByDefault != null && !HiddenInFallback(source) && offByDefault(renderer, i);
+                    var cache = hide ? hiddenConverted : converted;
+                    if (!cache.TryGetValue(source, out var fallback))
                     {
                         try
                         {
                             var outlineScale = outlineScales != null && outlineScales.TryGetValue(source, out var scale) ? scale : 1f;
-                            fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes);
+                            fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes, hide);
                         }
                         catch (Exception error) when (lenient && !(error is OperationCanceledException))
                         {
@@ -1332,8 +1415,17 @@ namespace VRVlog.LilToonExporter
                             fallback = CreateMToonDefault(source, created);
                             warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + source.name + " — " + error.Message);
                             fallbacks?.Add(ExportFallbackKind.MaterialApproximated, source.name, reason: error.Message);
+                            if (hide) HideFallback(fallback);
                         }
-                        converted.Add(source, fallback);
+                        if (hide)
+                        {
+                            // Expression bindings name materials; the copy must not take the shown one's.
+                            usedNames = usedNames ?? new HashSet<string>(clone.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                                .Where(material => material != null).Select(material => material.name), StringComparer.Ordinal);
+                            fallback.name = DeterministicNames.Unique(source.name + HiddenByDefaultSuffix, usedNames);
+                            hiddenFallbacks?.Add(fallback);
+                        }
+                        cache.Add(source, fallback);
                     }
                     materials[i] = fallback;
                     changed = true;
@@ -1347,10 +1439,11 @@ namespace VRVlog.LilToonExporter
             if (!lenient && !assigned && unassigned.Count > 0)
                 throw new InvalidOperationException(MissingMaterialsError + string.Join(", ", unassigned.Take(5)) +
                     (unassigned.Count > 5 ? ", …" : ""));
-            if (converted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
+            if (converted.Count == 0 && hiddenConverted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
             return converted;
         }
 
+        internal const string HiddenByDefaultSuffix = "__VRVlog_HiddenByDefault";
         internal const string MissingMaterialsError = "表示中のメッシュにマテリアルが1つも割り当てられていないため、書き出せません。マテリアルの参照が切れている可能性があります。元のアバターでマテリアルを割り当ててください: ";
         internal const string StageOmittedWarning = "書き出しの一部を省略しました";
         internal const string MaterialApproximatedWarning = "変換できなかったマテリアルをMToonの既定値で書き出しました（色とメイン画像のみ）: ";
@@ -1403,8 +1496,12 @@ namespace VRVlog.LilToonExporter
             return material;
         }
 
+        // offByDefault: the slot is on a mesh an Expression Menu toggle hides
+        // by default, which the app draws with lilToon. Its portable fallback
+        // is invisible, as for HiddenInFallback, so viewers that read only
+        // the standard VRM material do not show it over the default outfit.
         internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null, float outlineScale = 1f,
-            MatcapApproximation.Bakes matcapBakes = null)
+            MatcapApproximation.Bakes matcapBakes = null, bool offByDefault = false)
         {
             // Validate the full mobile subset before producing any fallback output.
             LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);
@@ -1414,21 +1511,25 @@ namespace VRVlog.LilToonExporter
             created.Add(material);
             var shadowEnabled = Enabled(source, "_UseShadow");
             var backlightEnabled = Enabled(source, "_UseBacklight");
-            var normalEnabled = EnabledOrTexture(source, "_UseBumpMap", "_BumpMap");
-            var emissionEnabled = EnabledOrTexture(source, "_UseEmission", "_EmissionMap") &&
+            // A slot hidden only because its toggle is off by default draws
+            // nothing in MToon either, so it carries no images: a copy shared
+            // with a shown slot would otherwise add its own baked textures.
+            var bare = offByDefault;
+            var normalEnabled = !bare && EnabledOrTexture(source, "_UseBumpMap", "_BumpMap");
+            var emissionEnabled = !bare && EnabledOrTexture(source, "_UseEmission", "_EmissionMap") &&
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
             // Without a graphics device the mask, main-color tint and gradation
             // are not read: the emission keeps lilToon's own image and color.
             if (emissionEnabled && !GpuReadback.Available && LilToonEmissionPolicy.BakesOnGpu(source))
                 warnings?.Add(source.name + ": GPUを使えないため、発光のマスク・色付け・グラデーションの焼き込みを省略しました。標準MToonの発光が元と違う場合があります。");
-            var matcapAdditive = MatcapAdditive(source);
+            var matcapAdditive = !bare && MatcapAdditive(source);
             var rimEnabled = Enabled(source, "_UseRim");
-            var hidden = HiddenInFallback(source);
+            var hidden = offByDefault || HiddenInFallback(source);
             var outlineEnabled = !hidden && LilToonMaterialReader.HasPortableOutline(source);
-            var shadeTexture = ShadeTexture(source);
+            var shadeTexture = bare ? null : ShadeTexture(source);
             // MToon cannot darken with its MatCap; normal and multiply MatCaps
             // are averaged into the main image (lilToon 2.3.4 lilGetMatCap).
-            var baseTexture = (hidden ? null : MatcapApproximation.Darkened(source, textures, matcapBakes)) ?? Texture(source, "_MainTex");
+            var baseTexture = bare ? null : (hidden ? null : MatcapApproximation.Darkened(source, textures, matcapBakes)) ?? Texture(source, "_MainTex");
             var parametricRim = FallbackColor(source, MaterialColorType.rimColor, suppressSharedTextureEmission);
             // MToon's rim image also scales its MatCap. Without a parametric rim
             // it carries the MatCap mask and main-color tint instead. A MatCap
@@ -1467,7 +1568,7 @@ namespace VRVlog.LilToonExporter
                 ParametricRimLiftFactor = 0f,
                 RimLightingMixFactor = Mathf.Clamp01(rimEnabled ? Float(source, "_RimEnableLighting", 1f) :
                     matcapAdditive ? Float(source, "_MatCapEnableLighting", 1f) : 1f),
-                RimMultiplyTexture = matcapWeight ?? (rimEnabled ? Texture(source, "_RimColorTex") : null),
+                RimMultiplyTexture = matcapWeight ?? (rimEnabled && !bare ? Texture(source, "_RimColorTex") : null),
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10
@@ -1495,18 +1596,28 @@ namespace VRVlog.LilToonExporter
             // unless TransparentWithZWrite is on.
             if (context.AlphaMode == MToon10AlphaMode.Transparent && Float(source, "_ZWrite", 0f) > 0.5f)
                 context.TransparentWithZWriteMode = MToon10TransparentWithZWriteMode.On;
-            if (hidden)
-            {
-                // MToon has no stencil, so FakeShadow would cover the whole mesh
-                // it shares geometry with, and a ColorMask 0 stencil writer would
-                // draw a shell it never draws. Keep its slot (the lilToon extension
-                // still references it) but make the portable fallback invisible:
-                // FallbackColor gives alpha 0, which MToon blending clips.
-                context.AlphaMode = MToon10AlphaMode.Transparent;
-                context.TransparentWithZWriteMode = MToon10TransparentWithZWriteMode.Off;
-            }
             context.Validate();
+            // MToon has no stencil, so FakeShadow would cover the whole mesh
+            // it shares geometry with, and a ColorMask 0 stencil writer would
+            // draw a shell it never draws. Keep its slot (the lilToon extension
+            // still references it) but make the portable fallback invisible:
+            // FallbackColor gives alpha 0, which MToon blending clips.
+            if (hidden) HideFallback(material);
             return material;
+        }
+
+        // Alpha 0, Transparent without depth: MToon draws nothing.
+        static void HideFallback(Material material)
+        {
+            var context = new MToon10Context(material)
+            {
+                AlphaMode = MToon10AlphaMode.Transparent,
+                TransparentWithZWriteMode = MToon10TransparentWithZWriteMode.Off,
+                OutlineWidthMode = MToon10OutlineMode.None,
+            };
+            var color = context.BaseColorFactorSrgb;
+            context.BaseColorFactorSrgb = new UnityEngine.Color(color.r, color.g, color.b, 0f);
+            context.Validate();
         }
 
         // Materials that MToon cannot draw the way lilToon does; their portable

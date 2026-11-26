@@ -54,6 +54,42 @@ TAG_GATE = "github.event_name == 'workflow_dispatch' && startsWith(github.ref, '
 TAG_AUTHENTICATION = {"name": "Authenticate published beta tag", "if": TAG_GATE,
                       "env": {"GH_TOKEN": "${{ github.token }}"},
                       "run": "python3 Tools/resolve-staging-beta.py --verify-published-tag"}
+# Public issues, pull requests and comments are written by anyone; no workflow may hand them to an AI model.
+AI_MARKERS = re.compile(
+    r"anthropics/|openai/|actions/ai-inference|run-gemini-cli|github/copilot|api\.anthropic\.com|api\.openai\.com"
+    r"|generativelanguage\.googleapis\.com|aiplatform\.googleapis\.com|models\.github\.ai|models\.inference\.ai\.azure\.com"
+    r"|openrouter\.ai|bedrock-runtime|ANTHROPIC_|OPENAI_|CLAUDE_CODE_|GEMINI_|@anthropic-ai/"
+    r"|\b(?:claude|codex|gemini|copilot|llm|anthropic|openai|gpt-?[0-9][\w.]*|mistral|ollama|deepseek|grok|groq|cohere"
+    r"|huggingface)\b",
+    re.IGNORECASE)
+# Every event value a workflow reads must be one of these reviewed fields; titles, bodies, comments,
+# branch names and the raw payload are written by whoever opened the pull request or issue.
+EVENT_REFERENCE = re.compile(r"github\s*\.\s*(?:event_path|event_name|head_ref|event)\b(?:\s*\.\s*[\w-]+|\s*\[[^\]]*\])*",
+                             re.IGNORECASE)
+APPROVED_EVENT_FIELDS = {
+    "github.event_name", "github.event.pull_request.number", "github.event.release.draft",
+    "github.event.workflow_run.conclusion", "github.event.workflow_run.event", "github.event.workflow_run.head_branch",
+    "github.event.workflow_run.head_repository.full_name", "github.event.workflow_run.head_sha",
+}
+EVENT_PATH = re.compile(r"github_event_path", re.IGNORECASE)
+EVENT_PATH_READER = 'event = json.loads(Path(os.environ[\\"GITHUB_EVENT_PATH\\"]).read_text())\\nnumber = int(event[\\"pull_request\\"][\\"number\\"])'
+USES = re.compile(r'"uses":\s*"([^"]*)"')
+
+
+def event_field(reference):
+    field = re.sub(r"\[\s*['\"]?([\w-]+)['\"]?\s*\]", r".\1", re.sub(r"\s+", "", reference)).lower()
+    return field if field in APPROVED_EVENT_FIELDS else None
+
+
+def check_untrusted_input(name, text):
+    require(not AI_MARKERS.search(text), name + ": AI actions and model APIs are not approved in public workflows")
+    require(all(event_field(item) for item in EVENT_REFERENCE.findall(text)),
+            name + ": only reviewed event fields may enter workflows (no titles, bodies, comments or branch names)")
+    readers = len(EVENT_PATH.findall(text))
+    require(readers == 0 or (name == "build-listing.yml" and readers == 1 and EVENT_PATH_READER in text),
+            name + ": the raw event payload may only be read for the pull request number")
+    require(all(action.startswith("actions/") for action in USES.findall(text)),
+            name + ": only actions published by GitHub are approved")
 GITFLOW_STEP = {"name": "Check Gitflow pull request target", "if": "github.event_name == 'pull_request'",
                 "env": {"GH_TOKEN": "${{ github.token }}"}, "run": "python3 Tools/check-gitflow.py"}
 
@@ -282,6 +318,7 @@ def check(name, workflow):
     if name == "release-vpm.yml":
         allowed.add("workflow_run")
     require(set(events) <= allowed, name + ": unsafe or unreviewed trigger")
+    check_untrusted_input(name, json.dumps(workflow))
     require(workflow.get("permissions") in ({}, {"contents": "read"}), name + ": default permissions must be read-only")
     require(isinstance(workflow.get("concurrency"), dict), name + ": concurrency required")
     jobs = workflow.get("jobs", {})

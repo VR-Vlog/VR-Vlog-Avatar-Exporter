@@ -55,9 +55,18 @@ namespace VRVlog.LilToonExporter
             public List<string> ExcludedPoses = new List<string>();
             public List<PoseName> PoseNames = new List<PoseName>();
             public AvatarLicenseOptions License = new AvatarLicenseOptions();
-            // Missing in entries saved before the option existed: on, the
-            // default, because nobody chose. A written false stays off.
+            // 軽量化 as a LightweightLevel. Missing (-1) in entries saved
+            // before the levels existed: the level is read once from the two
+            // switches below, so an avatar keeps what it had chosen.
+            public int Lightweight = -1;
+            // The two switches older versions saved (自動で軽量化する and
+            // メッシュをまとめて表示を速くする). Missing in still older
+            // entries, where nobody chose: 自動で軽量化する on and no merge, so
+            // the level is Standard, the default. Released versions before the
+            // levels saved only the first. They are written to match the level
+            // so an older version reads the same choice.
             public bool AutoLightweight = true;
+            public bool MergeMeshes;
             // 視線の動く範囲. Missing in older entries: all 0, the avatar's own range.
             public GazeRangeOptions Gaze = new GazeRangeOptions();
             // The name of the last successful "アプリに転送". It is not part of
@@ -258,7 +267,9 @@ namespace VRVlog.LilToonExporter
                 ExcludedPoses = poses.Excluded.OrderBy(item => item, StringComparer.Ordinal).ToList(),
                 PoseNames = poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => new PoseName { Key = item.Key, Value = item.Value }).ToList(),
                 License = (settings.License ?? new AvatarLicenseOptions()).Copy(),
-                AutoLightweight = settings.AutoLightweight,
+                Lightweight = (int)settings.Lightweight,
+                AutoLightweight = settings.Lightweight.Lightens(),
+                MergeMeshes = settings.Lightweight.MergesMeshes(),
                 Gaze = (settings.Gaze ?? new GazeRangeOptions()).Validated()
             };
         }
@@ -300,7 +311,9 @@ namespace VRVlog.LilToonExporter
 
             var settings = new ExportSettings
             {
-                AutoExcludeGimmicks = entry.AutoExcludeGimmicks, AutoLightweight = entry.AutoLightweight,
+                AutoExcludeGimmicks = entry.AutoExcludeGimmicks,
+                Lightweight = LightweightLevels.IsDefined(entry.Lightweight) ? (LightweightLevel)entry.Lightweight
+                    : LightweightLevels.FromSwitches(entry.AutoLightweight, entry.MergeMeshes),
                 Gaze = (entry.Gaze ?? new GazeRangeOptions()).Validated()
             };
             settings.ExcludedObjects.AddRange((entry.Excluded ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());

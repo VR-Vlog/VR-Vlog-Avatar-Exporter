@@ -247,6 +247,108 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A mesh an Expression Menu toggle hides by default: its slots get an
+        // invisible fallback of their own, and a shown mesh that shares the
+        // material keeps the opaque one (decisions/2026-11-23-hide-default-off-outfits.md).
+        [Test]
+        public void DefaultOffSlotsGetTheirOwnInvisibleFallback()
+        {
+            var shader = Shader.Find("lilToon");
+            Assert.That(shader, Is.Not.Null);
+            var shared = new Material(shader) { name = "Shared" };
+            var only = new Material(shader) { name = "Only" };
+            var image = new Texture2D(4, 4) { name = "Image" };
+            shared.SetTexture("_MainTex", image);
+            shared.SetFloat("_UseEmission", 1f);
+            shared.SetTexture("_EmissionMap", image);
+            var root = new GameObject("Avatar");
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                Renderer Part(string name, params Material[] materials)
+                {
+                    var part = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                    part.name = name;
+                    part.transform.SetParent(root.transform, false);
+                    var renderer = part.GetComponent<Renderer>();
+                    renderer.sharedMaterials = materials;
+                    return renderer;
+                }
+                var shown = Part("Shown", shared);
+                var hidden = Part("Hidden", shared, only);
+                var fallbacks = new List<Material>();
+                UniVrmOneClickExporter.ReplaceLilToonMaterials(root, created, textures, new List<string>(), false,
+                    offByDefault: (renderer, slot) => renderer == hidden, hiddenFallbacks: fallbacks);
+
+                var opaque = shown.sharedMaterials[0];
+                Assert.AreEqual("Shared", opaque.name);
+                Assert.AreEqual(0, opaque.GetInt("_AlphaMode"));
+                Assert.AreEqual(1f, opaque.GetColor("_Color").a);
+                Assert.AreNotSame(opaque, hidden.sharedMaterials[0]);
+                foreach (var material in hidden.sharedMaterials)
+                {
+                    Assert.AreEqual(2, material.GetInt("_AlphaMode"), material.name);
+                    Assert.AreEqual(0, material.GetInt("_TransparentWithZWrite"), material.name);
+                    Assert.AreEqual(0, material.GetInt("_OutlineWidthMode"), material.name);
+                    Assert.AreEqual(0f, material.GetColor("_Color").a, material.name);
+                    // Nothing drawn, so no images (and no baked copies).
+                    Assert.That(material.GetTexturePropertyNameIDs().Select(material.GetTexture).Where(texture => texture != null), Is.Empty, material.name);
+                }
+                Assert.That(opaque.GetTexture("_MainTex"), Is.SameAs(image));
+                Assert.That(hidden.sharedMaterials.Select(material => material.name),
+                    Is.EqualTo(new[] { "Shared" + UniVrmOneClickExporter.HiddenByDefaultSuffix, "Only" + UniVrmOneClickExporter.HiddenByDefaultSuffix }));
+                Assert.That(fallbacks, Is.EqualTo(hidden.sharedMaterials));
+                // The lilToon materials the extension reads stay as authored.
+                Assert.AreEqual(1f, shared.GetColor("_Color").a);
+                Assert.AreEqual(1f, only.GetColor("_Color").a);
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(shared);
+                Object.DestroyImmediate(only);
+                foreach (var texture in textures) Object.DestroyImmediate(texture);
+                Object.DestroyImmediate(image);
+            }
+        }
+
+        // Copies that would take the file over the app's material limit would
+        // drop the lilToon extension: a shared material then stays visible.
+        [Test]
+        public void ASharedMaterialStaysVisibleWhenItsCopyWouldExceedTheMaterialLimit()
+        {
+            var shader = Shader.Find("lilToon");
+            Assert.That(shader, Is.Not.Null);
+            var materials = Enumerable.Range(0, LilToonMobileProfile.MaximumMaterials).Select(index => new Material(shader) { name = "M" + index }).ToArray();
+            var root = new GameObject("Avatar");
+            var created = new List<Material>();
+            try
+            {
+                var shown = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                shown.transform.SetParent(root.transform, false);
+                shown.GetComponent<Renderer>().sharedMaterials = materials;
+                var hidden = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                hidden.transform.SetParent(root.transform, false);
+                var renderer = hidden.GetComponent<Renderer>();
+                renderer.sharedMaterials = new[] { materials[0] };
+                var fallbacks = new List<Material>();
+                UniVrmOneClickExporter.ReplaceLilToonMaterials(root, created, new List<Texture2D>(), new List<string>(), false,
+                    offByDefault: (candidate, slot) => candidate == renderer, hiddenFallbacks: fallbacks);
+
+                Assert.That(fallbacks, Is.Empty);
+                Assert.AreSame(shown.GetComponent<Renderer>().sharedMaterials[0], renderer.sharedMaterial);
+                Assert.AreEqual(0, renderer.sharedMaterial.GetInt("_AlphaMode"));
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(root);
+                foreach (var material in materials) Object.DestroyImmediate(material);
+            }
+        }
+
         [TestCase(1f, 1)]
         [TestCase(0f, 0)]
         public void TransparentFallbackWritesDepthWhenLilToonDoes(float zWrite, int expected)

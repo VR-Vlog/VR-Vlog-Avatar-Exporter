@@ -98,8 +98,12 @@ namespace VRVlog.LilToonExporter
             var graphicsFormat = GraphicsFormatUtility.GetGraphicsFormat(format, srgb);
             if (!SystemInfo.IsFormatSupported(graphicsFormat, FormatUsage.Sample))
                 throw Invalid("このEditorではVRM内の画像形式を表示できません: " + formatName);
+            // Like the app, a 2D image stored as mip 0 alone gets its chain here
+            // unless it is point-filtered (Documentation~/decisions/2026-11-09-lightweight-mips.md).
+            var built = faces == 1 && mips == 1 && F.Int(spec, "filter") != (int)FilterMode.Point && Math.Max(width, height) > 1;
+            var count = built ? LilToonFullTexture.MipCount(width, height) : mips;
             Texture texture = faces == 1
-                ? owner.Own(new Texture2D(width, height, format, mips, !srgb))
+                ? owner.Own(new Texture2D(width, height, format, count, !srgb))
                 : owner.Own(new Cubemap(width, graphicsFormat, mips > 1 ? TextureCreationFlags.MipChain : TextureCreationFlags.None, mips));
             var chunks = F.List(spec, "chunks");
             for (var face = 0; face < faces; face++)
@@ -110,11 +114,11 @@ namespace VRVlog.LilToonExporter
                     if (texture is Texture2D two) two.SetPixelData(pixels, mip);
                     else ((Cubemap)texture).SetPixelData(pixels, mip, (CubemapFace)face);
                 }
-            if (texture is Texture2D image) image.Apply(false, true); else ((Cubemap)texture).Apply(false, true);
+            if (texture is Texture2D image) image.Apply(built, true); else ((Cubemap)texture).Apply(false, true);
             if (normal)
             {
                 var canonical = (Texture2D)texture;
-                texture = EncodeNormal(canonical, format, mips, owner);
+                texture = EncodeNormal(canonical, format, count, owner);
                 Object.DestroyImmediate(canonical);
             }
             texture.name = F.Text(spec, "name");

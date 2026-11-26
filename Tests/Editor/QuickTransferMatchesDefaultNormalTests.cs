@@ -204,7 +204,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
             Board.GetField("configuredBlink", Flags).SetValue(window, new BlinkExportOptions { Mode = BlinkExportMode.None });
-            Board.GetField("autoLightweight", Flags).SetValue(window, false);
+            Board.GetField("lightweight", Flags).SetValue(window, LightweightLevel.None);
             Board.GetField("gazeRange", Flags).SetValue(window, new GazeRangeOptions { Up = 25 });
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
@@ -219,7 +219,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssertSame(quick, normal);
         }
 
-        // 自動で軽量化する saved on for the avatar: both boards start from it, and
+        // 軽量化 最大 saved for the avatar: both boards start from it, and
         // both make the same texture smaller. The fixture's triangle has 5 UV
         // units per metre; tiled twice, a 512px main texture has 5120 texels per
         // metre and is written at 256px.
@@ -235,10 +235,10 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var i = 0; i < pixels.Length; i++) pixels[i] = new Color32((byte)(i % 251), (byte)(i / 512 % 253), 128, 255);
                 texture.SetPixels32(pixels); texture.Apply(true, false);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) { skin.sharedMaterial.SetTexture("_MainTex", texture); skin.sharedMaterial.SetTextureScale("_MainTex", new Vector2(2, 2)); }
-                var settings = new ExportSettings { AutoLightweight = true };
+                var settings = new ExportSettings { Lightweight = LightweightLevel.Max };
                 ExportSettingsStore.Save(fixture.Source, settings);
                 var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
-                try { Assert.That(Defaults(hidden), Has.Member("autoLightweight True")); }
+                try { Assert.That(Defaults(hidden), Has.Member("lightweight Max")); }
                 finally { Object.DestroyImmediate(hidden); }
 
                 var (quick, normal) = ExportBoth(fixture.Source);
@@ -249,18 +249,21 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(texture); }
         }
 
-        // 自動で軽量化する starts on; saved off, both boards start from off.
-        [Test]
-        public void LightweightStartsOnUnlessSavedOff()
+        // 軽量化 starts at 標準; saved otherwise, both boards start from it. The
+        // fixture has no AAO, so 最大 merges nothing here.
+        [TestCase((int)LightweightLevel.None)]
+        [TestCase((int)LightweightLevel.Max)]
+        public void LightweightStartsAtStandardUnlessSavedOtherwise(int value)
         {
+            var level = (LightweightLevel)value;
             NoGraphicsDevice.AllowErrorLogs();
             using var fixture = new AppTransferQuickExportTests.SavedFixture();
             var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
-            try { Assert.That(Defaults(hidden), Has.Member("autoLightweight True")); }
+            try { Assert.That(Defaults(hidden), Has.Member("lightweight Standard")); }
             finally { Object.DestroyImmediate(hidden); }
-            ExportSettingsStore.Save(fixture.Source, new ExportSettings { AutoLightweight = false });
+            ExportSettingsStore.Save(fixture.Source, new ExportSettings { Lightweight = level });
             hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
-            try { Assert.That(Defaults(hidden), Has.Member("autoLightweight False")); }
+            try { Assert.That(Defaults(hidden), Has.Member("lightweight " + level)); }
             finally { Object.DestroyImmediate(hidden); }
             var (quick, normal) = ExportBoth(fixture.Source);
             AssertSame(quick, normal);
@@ -437,7 +440,7 @@ namespace VRVlog.LilToonExporter.Tests
             return new[]
             {
                 "page " + window.Page,
-                "autoLightweight " + Board.GetField("autoLightweight", Flags).GetValue(window),
+                "lightweight " + Board.GetField("lightweight", Flags).GetValue(window),
                 "gaze " + ((GazeRangeOptions)Board.GetField("gazeRange", Flags).GetValue(window)).Key(),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),
