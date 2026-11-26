@@ -928,6 +928,7 @@ BEHAVIOR_CASES = {
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'TheSavedLightweightChoiceMatches': 1,
         'LightweightStartsAtStandardUnlessSavedOtherwise': 2,
+        'ALevelChosenInTheQuickTransferIsWhatTheOpenBoardExports': 2,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
         'TheSavedGazeRangeMatches': 1,
