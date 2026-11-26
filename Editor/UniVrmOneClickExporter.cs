@@ -1324,12 +1324,12 @@ namespace VRVlog.LilToonExporter
                         if (VertexDataLightweight.ResultLine(saved) is string packed) warnings?.Add(packed);
                     }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
-                    // The MToon images only other VRM apps show. A failure
-                    // keeps the file as it is.
+                    // The MToon images only other VRM apps show (and the app on a
+                    // mesh with no lilToon material). A failure keeps the file as it is.
                     try
                     {
                         var skipped = new List<string>();
-                        exported = FallbackImageLightweight.Apply(exported, skipped, out var count, out var saved);
+                        exported = FallbackImageLightweight.Apply(exported, skipped, out var count, out var saved, VertexDataLightweight.MenuMaterials(avatarAnimatorData));
                         foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
                         if (FallbackImageLightweight.ResultLine(count, saved) is string smaller) warnings?.Add(smaller);
                     }
