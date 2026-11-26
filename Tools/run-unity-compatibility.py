@@ -982,7 +982,7 @@ BEHAVIOR_CASES = {
         'TheMaterialsFollowTheAppsFullyBoundRule': 1,
         'AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept': 1,
         'AFileWithoutTheExtensionOrWithAnUnknownOneIsKept': 1,
-        'TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile': 2,
+        'TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile': 4,
         'TheExportShrinksTheImagesOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },

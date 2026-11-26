@@ -13,9 +13,12 @@ namespace VRVlog.LilToonExporter
     // decodes these images, so only other VRM apps show them, at a lower
     // resolution. Which materials count follows the app
     // (LilToonLoadSession.FullyBoundMaterials): a material with an extension
-    // record that no node without a binding draws. An image anything else
-    // uses (another material, the thumbnail) keeps its size. A file this
-    // class cannot fully account for is returned unchanged.
+    // record that no node without a binding draws. The materials only the
+    // menu sets count too: no mesh draws them, and the app draws them from
+    // their lilToon record, using the MToon images only when that record
+    // fails to load. An image anything else uses (another material, the
+    // thumbnail) keeps its size. A file this class cannot fully account for
+    // is returned unchanged.
     internal static class FallbackImageLightweight
     {
         internal const int Maximum = 256;
@@ -28,9 +31,7 @@ namespace VRVlog.LilToonExporter
         internal const string StorageWarning = "Kept the MToon images because the file's binary data is not one GLB chunk this step can pack again";
 
         // The one for the materials only the menu sets points to materials and
-        // to the full one's textures by index, never to an image. Its
-        // materials have no record in the full one, so their images keep
-        // their size.
+        // to the full one's textures by index, never to an image.
         static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions
             .Append(LilToonFullContract.ExtensionName).Append(LilToonFullContract.UnboundExtensionName).ToArray();
 
@@ -113,6 +114,7 @@ namespace VRVlog.LilToonExporter
             var materials = List(json, "materials");
             if (images == null || textures == null || materials == null) return result;
             var fully = FullyBoundMaterials(json);
+            fully.UnionWith(MenuOnlyMaterials(json));
             var face = FaceMaterials(json);
             var kept = new HashSet<int>();
             var vrm = Object(Object(json, "extensions"), "VRMC_vrm");
@@ -178,6 +180,23 @@ namespace VRVlog.LilToonExporter
                 foreach (var primitive in Objects(List(meshes[mesh] as Dictionary<string, object>, "primitives")))
                     if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Remove(material);
             }
+            return result;
+        }
+
+        // The materials with a record in the extension for the materials only
+        // the menu sets, less any a primitive draws: a drawn one is shown in
+        // MToon by a reader that has no record for it.
+        internal static HashSet<int> MenuOnlyMaterials(Dictionary<string, object> json)
+        {
+            var result = new HashSet<int>();
+            var materials = List(json, "materials");
+            if (materials == null) return result;
+            var root = Object(Object(json, "extensions"), LilToonFullContract.UnboundExtensionName);
+            foreach (var record in Objects(List(root, "materials")))
+                if (record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index && index < materials.Count) result.Add(index);
+            foreach (var mesh in Objects(List(json, "meshes")))
+                foreach (var primitive in Objects(List(mesh, "primitives")))
+                    if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Remove(material);
             return result;
         }
 
