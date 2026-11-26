@@ -28,7 +28,7 @@ listing = json.loads((root / "source.json").read_text(encoding="utf-8"))
 assert package["name"] == "com.vrvlog.liltoon-vrm-exporter"
 assert package["unity"] == "2022.3"
 number = r"(?:0|[1-9][0-9]*)"
-assert re.fullmatch(rf"{number}\.{number}\.{number}(?:-beta\.{number})?", package["version"])
+assert re.fullmatch(rf"{number}\.{number}\.{number}(?:-(?:alpha|beta)\.{number})?", package["version"])
 assert one_click.index("AvatarBaseShape.Preserve(clone, clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
 assert "foreach (var mesh in temporaryMeshes) UnityEngine.Object.DestroyImmediate(mesh);" in one_click
 # UniVRM is bundled under Editor/Vendor/UniVRM; the Unity modules it needs come from the Unity registry.
@@ -204,7 +204,7 @@ assert "NdmfExportPreparation.InstantiateOwnedCopy(source)" in one_click
 assert "ReplaceLilToonMaterials(clone" in one_click
 assert "DestroyImmediate(clone)" in one_click
 assert "MToon10Meta.UnityShaderName" in one_click
-assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes)" in one_click
+assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes, hide)" in one_click
 assert "created.Add(material)" in one_click
 assert 'Float(source, "_Cull", 2f) == 2f' in one_click
 assert "context.Validate()" in one_click
