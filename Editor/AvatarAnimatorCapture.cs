@@ -486,11 +486,44 @@ namespace VRVlog.LilToonExporter
         // target changes nothing unless something else keeps its shape.
         internal IReadOnlyList<Dictionary<string, object>> SoftMorphBinds => morphBinds.Where(bind => bind.Soft).Select(bind => bind.Bind).ToList();
 
+        // The index Strip gave each bind, by its node and index before Strip.
+        // A Resolve after Strip (a table the file cannot write) builds the
+        // targets on the copy's meshes again, with the indices before Strip.
+        Dictionary<(int Node, int Morph), int> renumbered;
+
         // Takes the indices Strip gave the binds back into the targets. A soft
         // target whose shape Strip left out goes, with its tracks.
         internal void RenumberMorphs()
         {
-            foreach (var (target, bind, _) in morphBinds) target.Morph = (int)Convert.ToInt64(bind["index"]);
+            renumbered = new Dictionary<(int Node, int Morph), int>();
+            foreach (var (target, bind, _) in morphBinds)
+            {
+                var index = (int)Convert.ToInt64(bind["index"]);
+                renumbered[(target.Node, target.Morph)] = index;
+                target.Morph = index;
+            }
+            RemoveMorphTargets(new HashSet<AvatarAnimatorData.Target>(morphBinds.Where(bind => bind.Soft && bind.Target.Morph < 0).Select(bind => bind.Target)), false);
+        }
+
+        // After Strip, a target built again takes the index Strip gave it. One
+        // Strip did not see (DropMorphsNotIn left it out of the file) goes,
+        // with its tracks counted as missingNode; a soft one Strip left out
+        // goes uncounted, as in RenumberMorphs.
+        void RenumberAgain()
+        {
+            if (renumbered == null) return;
+            var unseen = new HashSet<AvatarAnimatorData.Target>();
+            foreach (var (target, bind, _) in morphBinds)
+            {
+                if (!renumbered.TryGetValue((target.Node, target.Morph), out var index))
+                {
+                    unseen.Add(target);
+                    continue;
+                }
+                bind["index"] = (long)index;
+                target.Morph = index;
+            }
+            RemoveMorphTargets(unseen, true);
             RemoveMorphTargets(new HashSet<AvatarAnimatorData.Target>(morphBinds.Where(bind => bind.Soft && bind.Target.Morph < 0).Select(bind => bind.Target)), false);
         }
 
@@ -571,6 +604,7 @@ namespace VRVlog.LilToonExporter
                 Build(node, sources, material, constraint, true, part = null);
             if (morphBinds.Count > 0 && OverMaximumBytes())
                 Build(node, sources, material, constraint, false, part);
+            RenumberAgain();
             return data;
         }
 

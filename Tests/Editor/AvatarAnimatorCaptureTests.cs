@@ -1375,6 +1375,47 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(written, "enabled") + 1), "The light's own curve counts as before the table.");
         }
 
+        // The FX built again for a table the export cannot write names the
+        // BlendShape by the index Strip gave it. Before, it took the index on
+        // the copy's mesh again: here past the file's targets, so the FX was
+        // left out; with more shapes, another shape than the one it moves.
+        [Test]
+        public void AnFxBuiltAgainKeepsTheIndicesStripGave()
+        {
+            using var avatar = new AnimatorAvatar();
+            var front = avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var mesh = Object.Instantiate(front.sharedMesh);
+            mesh.ClearBlendShapes();
+            mesh.AddBlendShapeFrame("Unused", 100, Enumerable.Repeat(new Vector3(0, .01f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            mesh.AddBlendShapeFrame("Hair detail", 100, Enumerable.Repeat(new Vector3(.02f, .01f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            front.sharedMesh = mesh;
+            front.SetBlendShapeWeight(1, 35);
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            var clip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", clip);
+            try
+            {
+                ExportTestHooks.TableFaultInjection = name => { if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects"); };
+                var warnings = new List<string>();
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+                Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarEffectsExport.Extension), Is.False);
+                Assert.That(warnings.Any(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.False, string.Join("\n", warnings));
+                var data = Read(json);
+                var morph = data.Targets.Single(t => t.Property == "morph");
+                Assert.That(Nodes(json)[morph.Node], Is.EqualTo("Front"));
+                Assert.That(TargetName(json, morph), Is.EqualTo("Hair detail"));
+                Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Unused"), Is.False, "Strip left the unused shape out.");
+                Assert.That(Omitted(data, "missingNode"), Is.EqualTo(0));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
         [Test]
         public void AContactsTableTheExportCannotWriteIsNotNamed()
         {
