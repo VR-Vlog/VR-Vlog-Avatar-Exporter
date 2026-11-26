@@ -152,6 +152,23 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That((result.Compared, result.OutOfTime), Is.EqualTo((1, 8)), "The first input always runs.");
         }
 
+        // The Hat's On runs a Playable Layer Control: on the FX, the evaluator
+        // tells before Unity plays the toggle, which is skipped though Unity
+        // runs no Layer Control here; on another playable it is compared.
+        [TestCase("fx", 8, 1)]
+        [TestCase("action", 9, 0)]
+        public void AnInputTheEvaluatorRunsAnFxLayerControlForIsSkipped(string playable, int compared, int skipped)
+        {
+            var (root, controller, data, bindings) = Build();
+            data.Controllers[0].Layers[0].States[1].Behaviours.Add(new AvatarAnimatorData.Behaviour { Type = "playableLayerControl", Playable = playable, GoalWeight = 1 });
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
+
+            Assert.That(result.Unsupported, Is.Null);
+            Assert.That((result.Inputs, result.Compared, result.Skipped.Count, result.OutOfTime), Is.EqualTo((9, compared, skipped, 0)));
+            if (skipped > 0) Assert.That(result.Skipped, Is.EqualTo(new[] { ExporterLocalization.Format(AvatarAnimatorCrossCheck.MenuInput, "Hat") }));
+            Assert.That(result.Mismatches, Is.Empty);
+        }
+
         // The time runs out 10 frames into the second input: that input
         // stops there and is not compared, nor are the ones after it. The
         // second input reads the clock once before it starts and once at
