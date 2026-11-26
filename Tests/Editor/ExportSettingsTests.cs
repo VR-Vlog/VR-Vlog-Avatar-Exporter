@@ -316,23 +316,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(copy.License.CopyrightInformation, Is.EqualTo("Sample copyright"));
         }
 
-        // The app transfer sends a lightweight model as a second file only while it writes something else.
-        [Test]
-        public void TheLightweightModelIsASecondFileOnlyWhileItWritesSomethingElse()
-        {
-            Assert.That(LightModelChoices.Of(LightweightLevel.Standard).Light().Lightweight, Is.EqualTo(LightweightLevel.Max));
-            Assert.That(LightModelChoices.LightDiffers(LightweightLevel.None, false), Is.True);
-            Assert.That(LightModelChoices.LightDiffers(LightweightLevel.None, true), Is.True);
-            Assert.That(LightModelChoices.LightDiffers(LightweightLevel.Standard, true), Is.True);
-            // Max merges meshes only with Avatar Optimizer, so without it Standard and Max write the same.
-            Assert.That(LightModelChoices.LightDiffers(LightweightLevel.Standard, false), Is.False);
-            Assert.That(LightModelChoices.LightDiffers(LightweightLevel.Max, false), Is.False);
-            Assert.That(LightModelChoices.LightDiffers(LightweightLevel.Max, true), Is.False);
-            var light = LightModelChoices.Of(LightweightLevel.Max).Light();
-            Assert.That(light.WritesTheSameAs(LightModelChoices.Of(LightweightLevel.Max), true), Is.True);
-            Assert.That(light.WritesTheSameAs(LightModelChoices.Of(LightweightLevel.None), true), Is.False);
-        }
-
         [Test]
         public void ReloadingKeepsThePoseOptionsAnOpenPoseWindowEdits()
         {

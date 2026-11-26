@@ -25,9 +25,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         internal Action<GameObject, Rect> DrawLightweight;
         internal Func<GameObject, string, string, Action, string> Export;
         internal Func<GameObject, string, string, Action, string> ExportDetailed;
-        // Given the lightweight model's destination, before saved runs, when the transfer asks for one.
-        internal Action<string> WriteLight;
-        internal Func<GameObject, bool, bool> LightModelDiffers;
         internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
         internal Func<GameObject, string> SaveFileName;
         internal Func<string> TermsKey;
@@ -56,12 +53,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         void IAppTransferExport.DrawTerms(bool markAuthor) => DrawTerms(markAuthor);
         string IAppTransferExport.LightweightNote(GameObject avatar) => LightweightNote?.Invoke(avatar) ?? "";
         void IAppTransferExport.DrawLightweight(GameObject avatar, Rect rect) => DrawLightweight?.Invoke(avatar, rect);
-        string IAppTransferExport.Export(GameObject avatar, string name, string destination, Action saved, string lightDestination) =>
-            Export(avatar, name, destination, WithLight(saved, lightDestination));
-        string IAppTransferExport.ExportDetailed(GameObject avatar, string name, string destination, Action saved, string lightDestination) =>
-            ExportDetailed(avatar, name, destination, WithLight(saved, lightDestination));
-        bool IAppTransferExport.LightModelDiffers(GameObject avatar, bool detailed) => LightModelDiffers?.Invoke(avatar, detailed) ?? false;
-        private Action WithLight(Action saved, string lightDestination) => lightDestination == null || saved == null ? saved : () => { WriteLight?.Invoke(lightDestination); saved(); };
+        string IAppTransferExport.Export(GameObject avatar, string name, string destination, Action saved) => Export(avatar, name, destination, saved);
+        string IAppTransferExport.ExportDetailed(GameObject avatar, string name, string destination, Action saved) => ExportDetailed(avatar, name, destination, saved);
         string IAppTransferExport.SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved) => SaveCopy(avatar, name, detailed, saved);
         string IAppTransferExport.SaveFileName(GameObject avatar) => SaveFileName(avatar);
         string IAppTransferExport.TermsKey() => TermsKey();

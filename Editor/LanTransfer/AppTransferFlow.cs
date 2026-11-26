@@ -26,10 +26,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Name = "名前";
         internal const string NameHint = "アプリのアバター一覧での名前";
         internal const string Lightweight = "軽量化";
-        internal const string SendLightModel = "複数人撮影用の軽量モデルも送る";
-        internal const string LightModelNeedsNewApp = "古いバージョンのアプリでは読み取れません";
-        internal const string LightModelSame = "軽量化しても変わらないため通常のモデルだけ送ります";
-        internal const string LightModelFailed = "軽量モデルを送れなかったため通常のモデルだけ送ります";
         internal const string Terms = "規約";
         internal const string ReadTerms = "利用規約を読む";
         internal const string Create = "QRコードを作る";
@@ -151,16 +147,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private const int MaximumNameLength = 256;
         // "QRができたら音を鳴らす" is on until the user turns it off.
         internal const bool QrReadySoundByDefault = true;
-        // "複数人撮影用の軽量モデルも送る" is off: an app that cannot read the link with both files says nothing about it.
-        internal const bool SendLightModelByDefault = false;
 
-        private readonly Func<CloudVrmTransferSource, CloudVrmTransferSource, CloudVrmTransferSession> createSession;
+        private readonly Func<CloudVrmTransferSource, CloudVrmTransferSession> createSession;
         private readonly Func<long> now;
         private CloudVrmTransferSource source;
-        // The lightweight file sent with the normal one, when the user asked for it and it was written.
-        private CloudVrmTransferSource lightSource;
-        // Asked for, but not written or not readable: the normal file goes alone.
-        private bool lightWanted, lightMissing;
         private CloudVrmTransferSession session;
         private Task uploading, polling;
         private double nextPoll;
@@ -178,13 +168,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Null unless something failed outside the session; empty when there is no reason to add.
         private string failure;
 
-        // createSession makes a session for the normal file only; createPair, when given, also receives the lightweight file.
-        internal AppTransferFlow(Func<CloudVrmTransferSource, CloudVrmTransferSession> createSession = null, Func<long> now = null,
-            Func<CloudVrmTransferSource, CloudVrmTransferSource, CloudVrmTransferSession> createPair = null)
+        internal AppTransferFlow(Func<CloudVrmTransferSource, CloudVrmTransferSession> createSession = null, Func<long> now = null)
         {
             this.now = now ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            this.createSession = createPair ?? (createSession != null ? (owned, light) => createSession(owned)
-                : (Func<CloudVrmTransferSource, CloudVrmTransferSource, CloudVrmTransferSession>)((owned, light) => new CloudVrmTransferSession(owned, null, this.now, null, light)));
+            this.createSession = createSession ?? (owned => new CloudVrmTransferSession(owned, null, this.now));
         }
 
         // Why the primary button is disabled, or null when it can be pressed.
@@ -273,17 +260,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // The link with the longest values a transfer can have and no secret.
         // It sizes the QR area before the upload; nothing draws it as a QR.
-        // With the lightweight file it is the version 4 link, which is longer.
-        internal static string PlaceholderLink(string transferName, bool withLight = false) => withLight
-            ? CloudTransferProtocol.ImportLink(new string('0', 32), new string('A', 43), transferName, CloudTransferProtocol.MaximumSize, new string('0', 64), 9999999999L, new string('A', 86),
-                new string('1', 32), new string('A', 43), CloudTransferProtocol.MaximumSize, new string('0', 64), new string('A', 86))
-            : CloudTransferProtocol.ImportLink(new string('0', 32), new string('A', 43),
+        internal static string PlaceholderLink(string transferName) => CloudTransferProtocol.ImportLink(new string('0', 32), new string('A', 43),
             transferName, CloudTransferProtocol.MaximumSize, new string('0', 64), 9999999999L, new string('A', 86));
 
         // Whether a QR can exist for this name: the link bound, then what one QR symbol holds.
-        internal static bool NameFits(string name, bool withLight = false)
+        internal static bool NameFits(string name)
         {
-            try { TransferQrCode.Encode(PlaceholderLink(TransferName(name), withLight)); return true; }
+            try { TransferQrCode.Encode(PlaceholderLink(TransferName(name))); return true; }
             catch (InvalidOperationException) { return false; }
             catch (WriterException) { return false; }
         }
@@ -456,31 +439,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             endResult = open; shownFailure = shown;
         }
 
-        // Adopts the exported snapshot: from here this flow deletes it. lightWanted says the user asked for the
-        // lightweight file; ownedLightPath is that file, or null when it could not be written. Without it, or
-        // when it cannot be read, the normal file goes alone.
-        internal void Upload(string ownedSnapshotPath, string transferName, bool lightWanted = false, string ownedLightPath = null)
+        // Adopts the exported snapshot: from here this flow deletes it.
+        internal void Upload(string ownedSnapshotPath, string transferName)
         {
             Stop();
             try { source = new CloudVrmTransferSource(ownedSnapshotPath, transferName); }
             catch (InvalidOperationException) { failure = AppTransferText.SnapshotTooLarge; }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException) { failure = AppTransferText.SnapshotUnreadable; }
-            if (source == null) { Discard(ownedSnapshotPath); if (ownedLightPath != null) Discard(ownedLightPath); return; }
-            this.lightWanted = lightWanted;
-            if (lightWanted && ownedLightPath != null)
-            {
-                try { lightSource = new CloudVrmTransferSource(ownedLightPath, transferName); }
-                catch (Exception exception) when (exception is InvalidOperationException || exception is IOException || exception is UnauthorizedAccessException) { Discard(ownedLightPath); }
-            }
-            else if (ownedLightPath != null) Discard(ownedLightPath);
-            lightMissing = lightWanted && lightSource == null;
+            if (source == null) { Discard(ownedSnapshotPath); return; }
             StartSession();
         }
-
-        // The user asked for the lightweight file with this transfer.
-        internal bool LightWanted => lightWanted;
-        // It was asked for and is not sent: not written, not readable, or dropped by the session.
-        internal bool LightFailed => lightWanted && (lightMissing || session?.LightFailed == true);
 
         internal void Regenerate()
         {
@@ -493,7 +461,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Abandon(ref uploading); Abandon(ref polling);
             failure = null; StatusUnknown = false; shownRemaining = 0;
             revealed = announced = false;
-            session = createSession(source, lightSource);
+            session = createSession(source);
             // File I/O and the multipart upload run away from the Editor thread.
             var current = session;
             uploading = Task.Run(() => current.UploadAsync());
@@ -532,7 +500,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             session?.Dispose(); session = null;
             Abandon(ref uploading); Abandon(ref polling);
             source?.Dispose(); source = null;
-            lightSource?.Dispose(); lightSource = null; lightWanted = lightMissing = false;
             exporting = false; failure = null; StatusUnknown = false; ExportDidFail = false; shownRemaining = 0;
             revealed = announced = false;
             endResult = null; shownFailure = null;

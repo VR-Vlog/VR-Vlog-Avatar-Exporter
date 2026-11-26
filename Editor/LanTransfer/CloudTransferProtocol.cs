@@ -117,22 +117,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return link.ToString();
         }
 
-        // Version 4 carries a second, lightweight transfer of the same avatar: the
-        // v3 members in their order, then lid, ltoken, lsize, lsha256 and lkey,
-        // checked as their v3 counterparts are. The name is shared by both files.
-        internal static string ImportLink(string id, string token, string name, long size, string hash, long expiresAt, string key,
-            string lightId, string lightToken, long lightSize, string lightHash, string lightKey)
-        {
-            if (!IsHex(lightId, 32) || !IsToken(lightToken) || lightSize < 1 || !IsHex(lightHash, 64) || !IsKey(lightKey) || lightId == id)
-                throw new InvalidOperationException("転送リンクの項目が正しくありません。");
-            var normal = ImportLink(id, token, name, size, hash, expiresAt, key);
-            var link = new StringBuilder(ImportLinkPrefix).Append("v=4").Append(normal, ImportLinkPrefix.Length + 3, normal.Length - ImportLinkPrefix.Length - 3)
-                .Append("&lid=").Append(lightId).Append("&ltoken=").Append(lightToken)
-                .Append("&lsize=").Append(lightSize.ToString(CultureInfo.InvariantCulture)).Append("&lsha256=").Append(lightHash).Append("&lkey=").Append(lightKey);
-            if (link.Length > MaximumImportLinkLength) throw new InvalidOperationException("転送リンクのサイズ上限を超えました。");
-            return link.ToString();
-        }
-
         // The service contract is a bounded flat JSON object. Reject duplicate
         // fields, arrays, nested objects and number coercions before using it.
         internal sealed class Fields

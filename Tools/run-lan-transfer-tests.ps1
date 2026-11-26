@@ -37,7 +37,6 @@ $sources = @(
     (Join-Path $repoRoot 'Editor/LanTransfer/TransferNotes.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/TransferSizeText.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/CloudTransferTests.cs'),
-    (Join-Path $repoRoot 'Tests/LanTransfer/CloudTransferPairTests.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/AppTransferFlowTests.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/TransferNotesTests.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/TransferSizeTextTests.cs'),
