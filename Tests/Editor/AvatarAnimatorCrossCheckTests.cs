@@ -34,7 +34,8 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var value in owned.Where(value => value != null && !EditorUtility.IsPersistent(value))) Object.DestroyImmediate(value);
             owned.Clear();
             folder.Dispose();
-            AvatarAnimatorCrossCheck.BudgetSeconds = 60;
+            AvatarAnimatorCrossCheck.BudgetSeconds = 30;
+            AvatarAnimatorCrossCheck.ElapsedSeconds = clock => clock.Elapsed.TotalSeconds;
         }
 
         [Test]
@@ -149,6 +150,22 @@ namespace VRVlog.LilToonExporter.Tests
             var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
 
             Assert.That((result.Compared, result.OutOfTime), Is.EqualTo((1, 8)), "The first input always runs.");
+        }
+
+        // The time runs out 10 frames into the second input: that input
+        // stops there and is not compared, nor are the ones after it. The
+        // second input reads the clock once before it starts and once at
+        // each frame, frame 0 included, so the 12th read is frame 10.
+        [Test]
+        public void AnInputUnderWayWhenTheTimeRunsOutStops()
+        {
+            var (root, controller, data, bindings) = Build();
+            var reads = 0;
+            AvatarAnimatorCrossCheck.ElapsedSeconds = clock => ++reads <= 11 ? 0 : double.MaxValue;
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
+
+            Assert.That((result.Compared, result.OutOfTime), Is.EqualTo((1, 8)));
+            Assert.That(reads, Is.EqualTo(12 + 7), "Each input after the second reads the clock once.");
         }
 
         [Test]
