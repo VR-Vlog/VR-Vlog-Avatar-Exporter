@@ -23,6 +23,8 @@ namespace VRVlog.LilToonExporter
         bool DetailedNeedsFix(GameObject avatar);
         bool EditDetails(GameObject avatar);
         void DrawTerms(bool markAuthor);
+        string LightweightNote(GameObject avatar);
+        void DrawLightweight(GameObject avatar, Rect rect);
         string Export(GameObject avatar, string name, string destination, Action saved);
         string ExportDetailed(GameObject avatar, string name, string destination, Action saved);
         string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved);
@@ -332,6 +334,46 @@ namespace VRVlog.LilToonExporter
         private readonly QuickTransferPreview quickPreview = new QuickTransferPreview();
 
         public bool DrawQuickPreview(GameObject avatar, Rect rect) => quickPreview.Draw(avatar, rect);
+
+        // 軽量化 of the quick transfer: the avatar's saved level, the one the
+        // board shows and saves, so both transfers write the same level. Whether
+        // the avatar uses Avatar Optimizer is looked up once per avatar, as the
+        // board does when it opens.
+        private GameObject optimizerAvatar, levelAvatar;
+        private bool optimizerUsed;
+        private int levelRevision = -1;
+        private LightweightLevel level;
+
+        // Read again only after a save, like the summary.
+        private LightweightLevel Level(GameObject avatar)
+        {
+            if (avatar != levelAvatar || levelRevision != ExportSettingsStore.Revision)
+            {
+                levelAvatar = avatar;
+                levelRevision = ExportSettingsStore.Revision;
+                level = LightweightChoice.Saved(avatar);
+            }
+            return level;
+        }
+
+        private bool UsesAvatarOptimizer(GameObject avatar)
+        {
+            if (avatar != optimizerAvatar)
+            {
+                optimizerAvatar = avatar;
+                optimizerUsed = avatar != null && ExportMeshMerge.UsesAvatarOptimizer(avatar);
+            }
+            return optimizerUsed;
+        }
+
+        public string LightweightNote(GameObject avatar) =>
+            avatar == null ? "" : LightweightChoice.Note(Level(avatar), UsesAvatarOptimizer(avatar));
+
+        public void DrawLightweight(GameObject avatar, Rect rect)
+        {
+            using (new EditorGUI.DisabledScope(avatar == null))
+                LightweightChoice.Draw(rect, avatar, Level(avatar), UsesAvatarOptimizer(avatar));
+        }
 
         // Cheap: whether the next paint would show another avatar or other exclusions.
         public bool QuickPreviewChanged(GameObject avatar) => quickPreview.Stale(avatar);
