@@ -153,7 +153,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The time runs out 10 frames into the second input: that input
-        // stops there and is not compared, nor are the ones after it.
+        // stops there and is not compared, nor are the ones after it. The
+        // second input reads the clock once before it starts and once at
+        // each frame, frame 0 included, so the 12th read is frame 10.
         [Test]
         public void AnInputUnderWayWhenTheTimeRunsOutStops()
         {
