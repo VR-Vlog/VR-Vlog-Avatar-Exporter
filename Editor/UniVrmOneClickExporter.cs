@@ -142,6 +142,8 @@ namespace VRVlog.LilToonExporter
             IReadOnlyCollection<AnimationClip> gestureFaces = null, IReadOnlyList<(string Preset, string Label, AnimationClip Clip)> presetBones = null,
             GazeRangeOptions gazeRange = null, bool mergeMeshes = false)
         {
+            // The bar names each stage while the export holds the editor.
+            using var progress = ExportProgress.Scope();
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
             report.DiagnosticSource = recoverySource;

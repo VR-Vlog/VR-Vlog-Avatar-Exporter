@@ -99,6 +99,7 @@ namespace VRVlog.LilToonExporter
         internal T Run<T>(ExportStage stage, Func<T> body, Func<T> fallback)
         {
             if (omitted.Contains(stage)) return fallback();
+            ExportProgress.Step(Label(stage));
             try
             {
                 ExportTestHooks.FaultInjection?.Invoke(stage);
@@ -121,6 +122,7 @@ namespace VRVlog.LilToonExporter
         internal T Optional<T>(ExportStage stage, Func<T> body, Func<T> fallback)
         {
             if (omitted.Contains(stage)) return fallback();
+            ExportProgress.Step(Label(stage));
             try
             {
                 ExportTestHooks.FaultInjection?.Invoke(stage);
@@ -139,6 +141,7 @@ namespace VRVlog.LilToonExporter
         internal T Step<T>(ExportStage stage, Func<T> body, Func<T> fallback)
         {
             if (omitted.Contains(stage)) return fallback();
+            ExportProgress.Step(Label(stage));
             try
             {
                 ExportTestHooks.FaultInjection?.Invoke(stage);
