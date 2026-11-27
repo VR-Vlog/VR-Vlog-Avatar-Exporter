@@ -185,6 +185,7 @@ namespace VRVlog.LilToonExporter
                 }
                 CopyWarnings(attemptWarnings, !guard.ContinueOnFailure, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
+                ExportProgress.Finish();
                 report.Stage = "完了";
                 report.Phase = ExportPhase.ResultList;
                 report.Succeeded = true;

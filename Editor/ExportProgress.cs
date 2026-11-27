@@ -38,6 +38,7 @@ namespace VRVlog.LilToonExporter
         const double RedrawInterval = 0.25;
         static int depth;
         static bool canceled;
+        static bool finished;
         static string shown;
         static double shownAt;
         static readonly HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
@@ -51,7 +52,7 @@ namespace VRVlog.LilToonExporter
         // clears it.
         internal static IDisposable Scope()
         {
-            if (depth++ == 0) { canceled = false; shown = null; seen.Clear(); }
+            if (depth++ == 0) { canceled = false; finished = false; shown = null; seen.Clear(); }
             return new Exit();
         }
 
@@ -61,7 +62,7 @@ namespace VRVlog.LilToonExporter
         // the export cannot keep it going.
         internal static void Step(string label)
         {
-            if (depth == 0 || string.IsNullOrEmpty(label)) return;
+            if (depth == 0 || finished || string.IsNullOrEmpty(label)) return;
             if (canceled) throw new OperationCanceledException();
             seen.Add(label);
             var now = EditorApplication.timeSinceStartup;
@@ -72,6 +73,13 @@ namespace VRVlog.LilToonExporter
             if (!Display(ExporterLocalization.T(label), fraction)) return;
             canceled = true;
             throw new OperationCanceledException();
+        }
+
+        // The file is made: a cancel pressed now would only throw it away, so
+        // the steps after this neither draw nor stop the export.
+        internal static void Finish()
+        {
+            if (depth > 0) finished = true;
         }
 
         sealed class Exit : IDisposable

@@ -86,6 +86,18 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AFinishedExportKeepsItsFileWhenCancelIsPressedLate()
+        {
+            NoGraphicsDevice.AllowErrorLogs();
+            using var fixture = Avatar();
+            var done = ExporterLocalization.T("完了");
+            ExportProgress.Display = (text, fraction) => { shown.Add((text, fraction)); return text == done; };
+
+            Assert.That(Export(fixture.Source), Is.Not.Null.And.Not.Empty, "A cancel after the file is made must not throw the file away.");
+            Assert.That(shown.Select(step => step.Text), Has.None.EqualTo(done));
+        }
+
+        [Test]
         public void ACanceledSaveWritesNoFileAndOpensNoRecovery()
         {
             NoGraphicsDevice.AllowErrorLogs();
