@@ -32,9 +32,9 @@ namespace VRVlog.LilToonExporter
             exclusions?.Apply(clone, warnings);
             components = components.Where(c => c != null).ToArray();
             if (components.Length == 0) return;
-            // The reflected preview API exists only in the supported MA range;
+            // The reflected preview API is not there before ModularAvatarMinimum;
             // name it before touching that API rather than failing on a missing member.
-            // A version that cannot be read does not stop here; the API decides.
+            // A newer or unreadable version does not stop here; the API decides.
             var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(components[0].GetType().Assembly);
             var installed = package?.name == "nadena.dev.modular-avatar" ? package.version : null;
             var unsupported = Compatibility.DependencyPolicy.ModularAvatarAppearanceError(installed, ExporterLocalization.T);
@@ -176,7 +176,7 @@ namespace VRVlog.LilToonExporter
             {
                 if (unknownVersion)
                     throw new InvalidOperationException(Compatibility.DependencyPolicy.ModularAvatarUnknownVersionError(installed, ExporterLocalization.T), error);
-                throw new InvalidOperationException("Modular Avatar の現在の表示を固定できませんでした。MA " + Compatibility.DependencyPolicy.ModularAvatarReference + " / NDMF " + Compatibility.DependencyPolicy.NdmfReference + " で確認済みのプレビュー API が必要です。ALCOM でパッケージを確認してください。原本は変更していません。", error);
+                throw new InvalidOperationException(Compatibility.DependencyPolicy.ModularAvatarFreezeFailedError(installed, ExporterLocalization.T), error);
             }
         }
 
