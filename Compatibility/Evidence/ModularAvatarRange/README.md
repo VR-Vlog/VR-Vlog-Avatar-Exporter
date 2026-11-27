@@ -2,9 +2,10 @@
 
 The exporter freezes the current appearance of Modular Avatar Shape Changer,
 Object Toggle, Material Setter, Material Swap and Mesh Cutter on the export copy.
-The accepted range is `modularAvatarMinimum` (1.12.2) to below
-`modularAvatarBelow` (1.19.0), stable releases only. Avatars without these
-components are exported with any Modular Avatar version.
+When these runs were made the accepted range was `modularAvatarMinimum`
+(1.12.2) to below 1.19.0, stable releases only. Since 2026-11-27 there is no
+upper bound (see [the compatibility notes](../../README.md)). Avatars without
+these components are exported with any Modular Avatar version.
 
 The Unity projects were made with `Tools/create-liltoon-version-projects.py`.
 The package versions come from the public VPM listings, and each downloaded zip

@@ -35,14 +35,14 @@ namespace VRVlog.LilToonExporter.Compatibility
         static readonly int[] VrchatSdkHigh = ParseRelease(VrchatSdkBelow) ?? throw new InvalidOperationException("Invalid VrchatSdkBelow.");
 
         // Modular Avatar releases whose preview API (ReactiveObjectAnalyzer and
-        // each version's own mesh deletion) the appearance freeze reflects:
-        // ModularAvatarMinimum <= v < ModularAvatarBelow, plus the verified
-        // ModularAvatarPrereleases.
+        // each version's own mesh deletion) the appearance freeze reads:
+        // ModularAvatarMinimum or later, with no upper bound. A pre-release
+        // (X.Y.Z-pre) counts as its X.Y.Z. A newer MA that changed that API
+        // stops in MaAppearanceSnapshot with ModularAvatarFreezeFailedError.
         public static bool SupportsModularAvatarAppearance(string version)
         {
-            if (Listed(ModularAvatarPrereleases, version)) return true;
-            var parsed = version == null ? null : ParseRelease(version);
-            return parsed != null && CompareRelease(parsed, ModularAvatarLow) >= 0 && CompareRelease(parsed, ModularAvatarHigh) < 0;
+            var parsed = version == null ? null : ParseRelease(StripPreRelease(version));
+            return parsed != null && CompareRelease(parsed, ModularAvatarLow) >= 0;
         }
 
         // NDMF NdmfMajor.x from NdmfMinimum, plus the verified NdmfPrereleases.
@@ -59,31 +59,38 @@ namespace VRVlog.LilToonExporter.Compatibility
             !string.IsNullOrEmpty(version) && Array.IndexOf(list.Split(new[] { ", " }, StringSplitOptions.None), version) >= 0;
 
         static readonly int[] ModularAvatarLow = ParseRelease(ModularAvatarMinimum) ?? throw new InvalidOperationException("Invalid ModularAvatarMinimum.");
-        static readonly int[] ModularAvatarHigh = ParseRelease(ModularAvatarBelow) ?? throw new InvalidOperationException("Invalid ModularAvatarBelow.");
 
         // translate receives the Japanese format and returns the localized
-        // format; {0} is the installed version and {1}..{2} the supported range.
-        // A readable version outside the range stops here, including an
-        // X.Y.Z-pre that is not a verified pre-release. A missing or
-        // unreadable version (MA under Assets, +build) returns null so the
-        // caller tries MA's API and reports ModularAvatarUnknownVersionError
-        // if that API is not there.
+        // format; {0} is the installed version and {1} ModularAvatarMinimum.
+        // Only a readable version older than ModularAvatarMinimum stops here.
+        // A missing or unreadable version (MA under Assets, +build) returns
+        // null so the caller tries MA's API and reports
+        // ModularAvatarUnknownVersionError if that API is not there.
         public static string ModularAvatarAppearanceError(string version, Func<string, string> translate)
         {
             if (SupportsModularAvatarAppearance(version) || ModularAvatarVersionUnknown(version)) return null;
-            const string format = "Modular Avatar {0}では、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定できません。対応範囲は{1}以上{2}未満と、確認済みのプレリリース{3}です。VCC／ALCOMでModular Avatarを1.18.xに変更してください。アバターは変更していません。これらのMAコンポーネントを使っていないアバターは、どのMAのバージョンでも書き出せます。";
-            return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarMinimum, ModularAvatarBelow, ModularAvatarPrereleases);
+            const string format = "Modular Avatar {0}では、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定できません。{1}以上が必要です。VCC／ALCOMでModular Avatarを更新してください。アバターは変更していません。これらのMAコンポーネントを使っていないアバターは、どのMAのバージョンでも書き出せます。";
+            return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarMinimum);
         }
 
-        // X.Y.Z-pre counts as read: its X.Y.Z part is checked.
+        // X.Y.Z or X.Y.Z-pre counts as read; anything else (+build, other spellings) does not.
         public static bool ModularAvatarVersionUnknown(string version) =>
-            version == null || ParseRelease(version.Split(new[] { '-' }, 2)[0]) == null;
+            version == null || ParseRelease(StripPreRelease(version)) == null;
 
         // Shown when the version could not be read and MA's API then failed.
         public static string ModularAvatarUnknownVersionError(string version, Func<string, string> translate)
         {
-            const string format = "Modular Avatarのバージョンを読めなかったため（{0}）、バージョンを確かめずにShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定しようとしましたが、固定できませんでした。対応範囲は{1}以上{2}未満と、確認済みのプレリリース{3}です。VCC／ALCOMで入れた1.18.xのModular Avatarなら固定できます。アバターは変更していません。";
-            return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarMinimum, ModularAvatarBelow, ModularAvatarPrereleases);
+            const string format = "Modular Avatarのバージョンを読めなかったため（{0}）、バージョンを確かめずにShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定しようとしましたが、固定できませんでした。VCC／ALCOMで{1}以上のModular Avatarを入れてください。アバターは変更していません。";
+            return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarMinimum);
+        }
+
+        // Shown when a readable, supported version lacks the preview API the
+        // freeze reads (a newer MA that changed it). {1} is the release the
+        // freeze was checked with.
+        public static string ModularAvatarFreezeFailedError(string version, Func<string, string> translate)
+        {
+            const string format = "Modular Avatar {0}では、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定できませんでした。動作を確認しているのはModular Avatar {1}です。VCC／ALCOMでModular Avatarを{1}に変更してから、もう一度書き出してください。アバターは変更していません。";
+            return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarReference);
         }
 
         public enum LilToonSupport { Catalogue, Missing, Unreadable, Older, Newer }

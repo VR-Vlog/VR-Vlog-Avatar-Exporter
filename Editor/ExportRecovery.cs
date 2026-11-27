@@ -51,7 +51,9 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportRecoveryReport
     {
         internal GameObject DiagnosticSource;
-        internal string Stage = "環境確認";
+        // The step the export is in; the progress bar of an export shows it (ExportProgress).
+        string stage = "環境確認";
+        internal string Stage { get => stage; set { stage = value; ExportProgress.Step(value); } }
         // The phase Stage belongs to, for display. Null when only Stage is known.
         internal ExportPhase? Phase = ExportPhase.Precheck;
         internal bool Succeeded;
