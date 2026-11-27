@@ -1,9 +1,10 @@
 # 変更履歴
 
-## 未リリース
+## 2.0.1
 
-Modular Avatar 1.19以降でも、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターを書き出せるようになりました。今までは書き出しの前に止まっていました。パッケージの通常の一覧から更新できます。
+Modular Avatar 1.19以降を入れたプロジェクトでも、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターを書き出せるようにしました。今までは書き出しの前に止まっていました。パッケージの通常の一覧から更新できます。
 
+- 書き出しの間、いま進めている処理の名前とキャンセルのボタンをバーに出すようにしました。大きなアバターでUnityが止まって見えるときも、進み具合が分かり、途中で止められます。
 - 新しいModular Avatarで現在の表示を固定できなかったときは、書き出しを止め、動作を確認しているModular Avatarのバージョンを案内します。
 
 ## 2.0.0
