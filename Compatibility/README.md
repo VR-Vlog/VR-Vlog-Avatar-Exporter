@@ -55,10 +55,14 @@ Results:
 
 Modular Avatar has its own range only for the appearance freeze, which runs
 when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
-or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.12.2
-to below 1.19.0), plus the pre-releases in `modularAvatarPrereleases`
-(1.19.0-alpha.2 only; alpha.0 and alpha.1 merge animations differently and
-stop). The freeze reflects MA's preview API.
+or Mesh Cutter: `modularAvatarMinimum` (1.12.2) or later, with no upper bound.
+A pre-release `X.Y.Z-pre` counts as its `X.Y.Z`. The freeze reflects MA's
+preview API; a newer MA is tried, and if a type or member the freeze reads is
+missing, the export stops naming the installed version and the checked release
+`modularAvatarReference` (1.18.7). A newer MA that keeps those members but
+changes what they mean is not caught and can export a different appearance;
+new MA releases are checked when they come out
+(decision record `Documentation~/decisions/2026-11-27-ma-no-upper-bound.md`).
 Everything it reads is the same from 1.10.4 (the first release with
 `ReactiveObjectAnalyzer.OptimizeShapes`) through 1.18.7 except Shape Changer
 Delete and Mesh Cutter, which the freeze removes from the mesh with MA's own
@@ -74,8 +78,8 @@ threshold from 1.13.0, deleting above 0.5 before). Material Swap appears in
 1.13.0 and Mesh Cutter in 1.14.0; older versions simply have nothing of that
 kind to freeze. 1.19.0-alpha.1 replaces the `InitialStates` analysis with typed
 targets and `InitialActions`; the freeze reads either as the 1.18 property names
-and values. Other versions, including unlisted `X.Y.Z-pre` releases, stop before
-that API is touched, naming the installed version and the range.
+and values. Versions older than 1.12.2 stop before that API is touched,
+naming the installed version and the minimum.
 When the version cannot be read (MA placed under `Assets`, build metadata), the
 freeze tries the API and, if it is missing, stops saying the version was not
 read. Avatars without those components export with any MA
