@@ -307,5 +307,11 @@ namespace VRVlog.LilToonExporter
         public static string T(string source) => source;
         public static string Format(string template, params object[] values) => string.Format(T(template), values);
     }
+
+    // The stages name themselves on the export's progress bar; no bar is drawn here.
+    public static class ExportProgress
+    {
+        public static void Step(string label) { }
+    }
 }
 #endif
