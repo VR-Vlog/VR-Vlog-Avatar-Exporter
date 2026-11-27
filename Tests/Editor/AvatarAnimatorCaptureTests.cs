@@ -1,0 +1,3601 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEngine;
+using VRVlog.AvatarAnimator;
+using VRVlog.AvatarFormats;
+using VRVlog.AvatarPhysBones;
+using VRVlog.LilToon;
+using Object = UnityEngine.Object;
+
+namespace VRVlog.LilToonExporter.Tests
+{
+    // VRVLOG_avatar_animator in a real export: the FX controller, menus and
+    // parameters of a VRChat avatar, read from the prepared copy. The tests
+    // use the real SDK types through reflection and skip without them.
+    public sealed class AvatarAnimatorCaptureTests
+    {
+        [TearDown]
+        public void Reset()
+        {
+            ExportTestHooks.FaultInjection = null;
+            ExportTestHooks.TableFaultInjection = null;
+            AvatarAnimatorCapture.MaximumBytes = AvatarAnimatorCapture.MaximumMegabytes * 1024 * 1024;
+            AvatarAnimatorCapture.AppJsonBytes = AvatarAnimatorCapture.AppJsonMegabytes * 1024 * 1024;
+            AvatarAnimatorCrossCheck.HookBehaviours = true;
+        }
+
+        [Test]
+        public void ExportWritesTheToggleWithItsRestStateAndMenu()
+        {
+            using var avatar = new AnimatorAvatar();
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+
+            Assert.That((List<object>)json["extensionsUsed"], Has.Member(AvatarAnimatorData.Extension), string.Join("\n", warnings));
+            Assert.That(json.TryGetValue("extensionsRequired", out var required) && ((List<object>)required).Contains(AvatarAnimatorData.Extension), Is.False,
+                "Apps that do not read the extension still open the file.");
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey])[AvatarAnimatorData.Extension], Is.EqualTo("1.2.9"));
+
+            var data = Read(json);
+            var nodes = Nodes(json);
+            var hat = data.Targets.Single(target => target.Node >= 0 && nodes[target.Node] == "Hat");
+            Assert.That(hat.Property, Is.EqualTo("active"));
+            Assert.That(hat.Rest, Is.EqualTo(0), "Hat is off by default, though the export turns its mesh on.");
+            Assert.That(data.Targets.Single(target => target.Node >= 0 && nodes[target.Node] == "Glasses").Rest, Is.EqualTo(1));
+
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Hat");
+            double[] Values(string state)
+            {
+                var motion = data.Motions[layer.States.Single(s => s.Name == state).Motion];
+                var track = data.Clips[motion.Clip].Tracks.Single(t => t.Target == data.Targets.IndexOf(hat));
+                return track.Curves.Single().Keys.Select(key => key.Value).ToArray();
+            }
+            Assert.That(Values("Hat 0"), Is.EqualTo(new[] { 0d, 0d }));
+            Assert.That(Values("Hat 1"), Is.EqualTo(new[] { 1d, 1d }));
+            Assert.That(layer.States.Single(s => s.Name == "Hat 1").WriteDefaults, Is.False);
+
+            var parameters = data.Parameters.ToDictionary(p => p.Name);
+            Assert.That((parameters["Hat"].Origin, parameters["Hat"].Type, parameters["Hat"].Default, parameters["Hat"].Saved), Is.EqualTo(("expression", "bool", 0d, true)));
+            Assert.That((parameters["Blend"].Origin, parameters["Blend"].Type, parameters["Blend"].Default), Is.EqualTo(("expression", "float", .5)));
+            Assert.That((parameters["BlendX"].Origin, parameters["BlendX"].Type), Is.EqualTo(("animator", "float")));
+            Assert.That(parameters["GestureLeft"].Origin, Is.EqualTo("builtin"));
+
+            Assert.That(data.Menus, Has.Count.EqualTo(2));
+            var toggle = data.Menus[0].Controls[0];
+            Assert.That((toggle.Name, toggle.Type, toggle.Value), Is.EqualTo(("Hat", "toggle", 1d)));
+            Assert.That(data.Parameters[toggle.Parameter.Value].Name, Is.EqualTo("Hat"));
+            Assert.That((data.Menus[0].Controls[1].Type, data.Menus[0].Controls[1].Menu), Is.EqualTo(("subMenu", (int?)1)));
+            var radial = data.Menus[1].Controls.Single();
+            Assert.That(radial.Type, Is.EqualTo("radial"));
+            Assert.That(radial.SubParameters.Select(index => data.Parameters[index].Name), Is.EqualTo(new[] { "Blend" }));
+
+            Assert.That(avatar.Source.transform.Find("Hat").gameObject.activeSelf, Is.False, "The source is left as it was.");
+        }
+
+        // The FX parameters VRChat writes for a PhysBone are builtin, and the
+        // PhysBone's settings go to VRVLOG_avatar_physbones under its root's node.
+        [Test]
+        public void ExportMarksPhysBoneParametersBuiltinAndWritesTheirTable()
+        {
+            using var avatar = new AnimatorAvatar();
+            var physBoneType = OptionalTools.Require(PhysBoneSpringExport.PhysBoneType, "Install the real VRChat SDK for PhysBones.");
+            var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var tail = new GameObject("Tail").transform;
+            tail.SetParent(head, false); tail.position = new Vector3(0, 1.75f, -.1f);
+            var tip = new GameObject("Tail tip").transform;
+            tip.SetParent(tail, false); tip.position = new Vector3(0, 1.6f, -.15f);
+            var physBone = tail.gameObject.AddComponent(physBoneType);
+            AvatarPhysBonesExportTests.Set(physBone, "parameter", "Tail");
+            AvatarPhysBonesExportTests.Set(physBone, "maxStretch", .25f);
+            // Under EditorOnly, which VRChat removes at upload: no entry, so its names stay animator.
+            var editorOnly = new GameObject("Editor only").transform;
+            editorOnly.SetParent(head, false); editorOnly.tag = "EditorOnly";
+            new GameObject("Editor only tip").transform.SetParent(editorOnly, false);
+            AvatarPhysBonesExportTests.Set(editorOnly.gameObject.AddComponent(physBoneType), "parameter", "Hidden");
+            avatar.Fx.AddParameter("Hidden_Angle", AnimatorControllerParameterType.Float);
+            avatar.Fx.AddParameter("Tail_Angle", AnimatorControllerParameterType.Float);
+            avatar.Fx.AddParameter("Tail_IsGrabbed", AnimatorControllerParameterType.Bool);
+            avatar.Fx.AddParameter("Lone_Angle", AnimatorControllerParameterType.Float);
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+
+            var parameters = Read(json).Parameters.ToDictionary(p => p.Name);
+            Assert.That(parameters["Tail_Angle"].Origin, Is.EqualTo("builtin"), string.Join("\n", warnings));
+            Assert.That(parameters["Tail_IsGrabbed"].Origin, Is.EqualTo("builtin"));
+            Assert.That(parameters["Lone_Angle"].Origin, Is.EqualTo("animator"), "No PhysBone has the prefix Lone.");
+            Assert.That(parameters["Hidden_Angle"].Origin, Is.EqualTo("animator"), "The file does not carry the PhysBone that feeds it.");
+            Assert.That(parameters["BlendX"].Origin, Is.EqualTo("animator"));
+
+            Assert.That((List<object>)json["extensionsUsed"], Has.Member(AvatarPhysBonesData.Extension));
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey])[AvatarPhysBonesData.Extension], Is.EqualTo("1.2.8"));
+            var table = AvatarPhysBonesData.Read(((Dictionary<string, object>)json["extensions"])[AvatarPhysBonesData.Extension]);
+            var entry = table.PhysBones.Single();
+            Assert.That(Nodes(json)[entry.Node], Is.EqualTo("Tail"));
+            Assert.That((entry.Parameter, entry.MaxStretch, entry.LimitAngle), Is.EqualTo(("Tail", (double).25f, 180d)));
+        }
+
+        // AvatarAnimatorCrossCheck after the export: Unity's Animator on the
+        // copy and the app's player on the written extension show the same for
+        // every input. Driven: at the start a Parameter Driver sets Shown, which
+        // plays a clip that moves Hair detail while an Animator Layer Control
+        // blends the layer to half; plain Unity runs neither without the SDK's hooks.
+        [Test]
+        public void TheAppPlayerShowsWhatUnityShowsForEveryInput()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            // The app's player plays no 2D tree.
+            var blend = fx.layers.Single(l => l.name == "Blend").stateMachine;
+            blend.RemoveState(blend.states.Single(s => s.state.motion is BlendTree tree && tree.blendType != BlendTreeType.Simple1D).state);
+            fx.AddParameter("Shown", AnimatorControllerParameterType.Bool);
+            fx.AddLayer("Driven");
+            var layers = fx.layers;
+            var driven = layers.Length - 1;
+            layers[driven].defaultWeight = 1;
+            fx.layers = layers;
+            var machine = layers[driven].stateMachine;
+            var drive = machine.AddState("Drive");
+            machine.defaultState = drive;
+            ParameterDriverExpressionTests.Driver(drive, ParameterDriverExpressionTests.Op("Set", "Shown", 1));
+            var shown = machine.AddState("Shown");
+            var clip = new AnimationClip { name = "Shown" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1f / 60, 60));
+            AssetDatabase.AddObjectToAsset(clip, fx);
+            shown.motion = clip;
+            var go = drive.AddTransition(shown);
+            // No exit time: the transition waits only for Shown, which it sees
+            // from the frame after the driver sets it (M8), as in Unity.
+            go.hasExitTime = false;
+            go.duration = 0;
+            go.AddCondition(AnimatorConditionMode.If, 0, "Shown");
+            var control = shown.AddStateMachineBehaviour(VrcAvatar.ComponentType("VRCAnimatorLayerControl"));
+            using (var serialized = new SerializedObject(control))
+            {
+                var playable = serialized.FindProperty("playable");
+                playable.enumValueIndex = Array.IndexOf(playable.enumNames, "FX");
+                serialized.FindProperty("layer").intValue = driven;
+                serialized.FindProperty("goalWeight").floatValue = .5f;
+                serialized.FindProperty("blendDuration").floatValue = .5f;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            AssetDatabase.SaveAssets();
+            // Only the FX plays; a driver outside the FX, which would change
+            // Shown, makes the export refuse.
+            var descriptor = avatar.Source.GetComponent(VrcAvatar.DescriptorType);
+            VrcAvatar.SetFx(descriptor, fx);
+            using (var serialized = new SerializedObject(descriptor))
+            {
+                var special = serialized.FindProperty("specialAnimationLayers");
+                for (var i = 0; i < special.arraySize; i++)
+                {
+                    special.GetArrayElementAtIndex(i).FindPropertyRelative("isDefault").boolValue = true;
+                    special.GetArrayElementAtIndex(i).FindPropertyRelative("animatorController").objectReferenceValue = null;
+                }
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            List<string> Check(out List<string> warnings, out AvatarAnimatorData data)
+            {
+                var lines = new List<string>();
+                void Listen(string message, string stack, LogType type)
+                {
+                    if (message.StartsWith(AvatarAnimatorCrossCheck.LogPrefix, StringComparison.Ordinal)) lines.Add(message);
+                }
+                warnings = new List<string>();
+                Application.logMessageReceived += Listen;
+                try { data = Read(Unpacked(GlbDocument.Read(avatar.Export(warnings, null)))); }
+                finally { Application.logMessageReceived -= Listen; }
+                return lines;
+            }
+
+            var matched = Check(out var shownWarnings, out var written);
+            Assert.That(written.Targets.Count(t => t.Property == "morph"), Is.EqualTo(1));
+            Assert.That(written.Controllers.Single().Layers[driven].States.Single(s => s.Name == "Shown").Behaviours.Single().Type, Is.EqualTo("layerControl"));
+            // The start, Hat, the radial in the submenu and the seven gestures of the left hand.
+            Assert.That(matched.FirstOrDefault(), Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix +
+                "inputs 10 compared 10 mismatched 0 skipped 0 outOfTime 0 targets 4 unbound 0 "), string.Join("\n", matched));
+            var note = ExporterLocalization.T(AvatarAnimatorCrossCheck.MismatchNote);
+            Assert.That(shownWarnings.Where(w => w.StartsWith(note.Substring(0, note.IndexOf('{')), StringComparison.Ordinal)), Is.Empty);
+
+            // Without the hooks Unity never sets Shown, and every input differs from the start.
+            AvatarAnimatorCrossCheck.HookBehaviours = false;
+            var unhooked = Check(out var unhookedWarnings, out _);
+            Assert.That(unhooked.FirstOrDefault(), Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix + "inputs 10 compared 10 mismatched 10 "), string.Join("\n", unhooked));
+            var start = ExporterLocalization.T(AvatarAnimatorCrossCheck.StartInput);
+            Assert.That(unhooked[1], Does.Match("^" + Regex.Escape(AvatarAnimatorCrossCheck.LogPrefix + $"mismatch \"{start}\" frame ") + @"\d+ Front:Hair detail unity 35 evaluator 60"), string.Join("\n", unhooked));
+            Assert.That(unhookedWarnings.Count(w => w.StartsWith(note.Substring(0, note.IndexOf('{')), StringComparison.Ordinal)), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExportWritesSubMachinesAnyStateEntryBlendTreesAndDrivers()
+        {
+            using var avatar = new AnimatorAvatar();
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            var parameters = data.Parameters.Select(p => p.Name).ToList();
+            var layers = data.Controllers.Single().Layers;
+
+            var hat = layers.Single(l => l.Name == "Hat");
+            var any = hat.Machines.Single().AnyStateTransitions;
+            Assert.That(any.Select(t => hat.States[t.ToState.Value].Name), Is.EqualTo(new[] { "Hat 0", "Hat 1" }));
+            Assert.That(any.Select(t => t.Conditions.Single().Mode), Is.EqualTo(new[] { "ifNot", "if" }));
+            Assert.That(any.All(t => t.Timed && !t.HasExitTime && parameters[t.Conditions[0].Parameter] == "Hat"), Is.True);
+
+            var nested = layers.Single(l => l.Name == "Nested");
+            Assert.That(nested.Machines.Select(m => (m.Name, m.Parent)), Is.EqualTo(new[] { ("Nested", -1), ("Inner", 0) }));
+            var entry = nested.Machines[0].EntryTransitions.Single();
+            Assert.That((entry.ToMachine, entry.Timed), Is.EqualTo(((int?)1, false)));
+            var exit = nested.Machines[1].ExitTransitions.Single();
+            Assert.That((exit.Exit, exit.Timed), Is.EqualTo((true, false)));
+            var inner = nested.States.Single();
+            Assert.That((inner.Name, inner.Machine), Is.EqualTo(("Inner", 1)));
+            Assert.That(nested.Machines[1].DefaultState, Is.EqualTo(0));
+            Assert.That((inner.Transitions.Single().Exit, inner.Transitions.Single().Timed), Is.EqualTo((true, true)));
+            var driver = inner.Behaviours.Single();
+            Assert.That(driver.Type, Is.EqualTo("parameterDriver"));
+            var set = driver.Operations.Single();
+            Assert.That((set.Type, parameters[set.Parameter], set.Value, set.Source), Is.EqualTo(("set", "BlendY", 1d, (int?)null)));
+
+            var blend = layers.Single(l => l.Name == "Blend");
+            var oneD = data.Motions[blend.States.Single(s => s.Name == "1D").Motion];
+            Assert.That((oneD.Type, oneD.BlendType), Is.EqualTo(("blendTree", "1d")));
+            Assert.That(oneD.Parameters.Select(p => parameters[p]), Is.EqualTo(new[] { "Blend" }));
+            Assert.That(oneD.Children.Select(c => c.Threshold), Is.EqualTo(new[] { 0d, 1d }));
+            var twoD = data.Motions[blend.States.Single(s => s.Name == "2D").Motion];
+            Assert.That(twoD.BlendType, Is.EqualTo("2dSimpleDirectional"));
+            Assert.That(twoD.Parameters.Select(p => parameters[p]), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            Assert.That(twoD.Children.Select(c => (c.X, c.Y)), Is.EqualTo(new[] { (1d, 0d), (-1d, 0d) }));
+            Assert.That(twoD.Children.Select(c => data.Motions[c.Motion].Type), Is.EqualTo(new[] { "clip", "clip" }));
+            Assert.That(oneD.Children[1].Motion, Is.EqualTo(twoD.Children[0].Motion), "A clip used twice is written once.");
+        }
+
+        // Unity plays the first layer at weight 1 and as an override layer,
+        // whatever its default weight and blending mode say; a later layer keeps
+        // both. A synced layer keeps its source and Timing option with a copy
+        // of the source's machines and its own motions; a clip its Cycle Offset.
+        [Test]
+        public void ExportWritesTheFirstLayerAsUnityPlaysItSyncedLayersAndCycleOffsets()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var hatIndex = Array.FindIndex(fx.layers, l => l.name == "Hat");
+            var synced = avatar.Clip("Synced");
+            var settings = AnimationUtility.GetAnimationClipSettings(synced);
+            settings.cycleOffset = .25f;
+            AnimationUtility.SetAnimationClipSettings(synced, settings);
+            fx.AddLayer("Hat synced");
+            var layers = fx.layers;
+            var syncedIndex = layers.Length - 1;
+            layers[0].defaultWeight = 0;
+            layers[0].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[hatIndex].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[syncedIndex].defaultWeight = 0;
+            layers[syncedIndex].syncedLayerIndex = hatIndex;
+            layers[syncedIndex].syncedLayerAffectsTiming = true;
+            fx.layers = layers;
+            foreach (var child in layers[hatIndex].stateMachine.states) fx.SetStateEffectiveMotion(child.state, synced, syncedIndex);
+
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            var written = data.Controllers.Single().Layers;
+            Assert.That((written[0].Weight, written[0].Blending, written[0].SyncedLayer, written[0].SyncedLayerAffectsTiming), Is.EqualTo((1d, "override", -1, false)));
+            var hat = written[hatIndex];
+            Assert.That((hat.Blending, hat.SyncedLayer, hat.SyncedLayerAffectsTiming), Is.EqualTo(("additive", -1, false)));
+            var copy = written[syncedIndex];
+            Assert.That((copy.Name, copy.Weight, copy.Blending, copy.SyncedLayer, copy.SyncedLayerAffectsTiming), Is.EqualTo(("Hat synced", 0d, "override", hatIndex, true)));
+            Assert.That(copy.States.Select(s => s.Name), Is.EqualTo(hat.States.Select(s => s.Name)), "The synced layer holds a copy of its source's machines.");
+            Assert.That(copy.Machines.Single().AnyStateTransitions, Has.Count.EqualTo(2));
+            foreach (var state in copy.States)
+            {
+                var clip = data.Clips[data.Motions[state.Motion].Clip];
+                // Saving the clip as an asset names it after its file.
+                Assert.That((clip.Name, clip.CycleOffset), Is.EqualTo((synced.name, .25)), "The synced layer plays its own motions.");
+            }
+            Assert.That(hat.States.Select(s => data.Clips[data.Motions[s.Motion].Clip].CycleOffset), Is.EqualTo(new[] { 0d, 0d }));
+        }
+
+        // Unity runs a layer synced to a synced layer on the machines at the end
+        // of the chain, with the layer's own motions.
+        [Test]
+        public void ALayerSyncedToASyncedLayerIsWrittenWithTheLayerThatOwnsTheMachines()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var hatIndex = Array.FindIndex(fx.layers, l => l.name == "Hat");
+            var once = avatar.Clip("Once");
+            var twice = avatar.Clip("Twice");
+            fx.AddLayer("Hat synced");
+            fx.AddLayer("Hat synced twice");
+            var layers = fx.layers;
+            var first = layers.Length - 2;
+            layers[first].defaultWeight = 0;
+            layers[first].syncedLayerIndex = hatIndex;
+            layers[first + 1].defaultWeight = 0;
+            layers[first + 1].syncedLayerIndex = first;
+            fx.layers = layers;
+            foreach (var child in layers[hatIndex].stateMachine.states)
+            {
+                fx.SetStateEffectiveMotion(child.state, once, first);
+                fx.SetStateEffectiveMotion(child.state, twice, first + 1);
+            }
+
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            var written = data.Controllers.Single().Layers;
+            Assert.That(written.Skip(first).Select(l => l.SyncedLayer), Is.EqualTo(new[] { hatIndex, hatIndex }));
+            var copy = written[first + 1];
+            Assert.That(copy.States.Select(s => s.Name), Is.EqualTo(written[hatIndex].States.Select(s => s.Name)));
+            Assert.That(copy.States, Is.Not.Empty);
+            foreach (var state in copy.States)
+                Assert.That(data.Clips[data.Motions[state.Motion].Clip].Name, Is.EqualTo(twice.name), "The layer plays its own motions.");
+        }
+
+        // -1 is a layer that is not synced. A source outside the layers counts as
+        // none, and a chain that comes back to a layer it passed is not synced.
+        [Test]
+        public void TheOwnerOfASyncedLayersMachinesIsTheEndOfTheChain()
+        {
+            AnimatorControllerLayer[] Layers(params int[] sources) =>
+                sources.Select(source => new AnimatorControllerLayer { syncedLayerIndex = source }).ToArray();
+            int[] Owners(params int[] sources) =>
+                Enumerable.Range(0, sources.Length).Select(index => AvatarAnimatorCapture.MachineOwner(Layers(sources), index)).ToArray();
+
+            Assert.That(Owners(-1, 0, 1, 2), Is.EqualTo(new[] { -1, 0, 0, 0 }));
+            Assert.That(Owners(-1, 1, 9, 2), Is.EqualTo(new[] { -1, -1, -1, 2 }), "Itself, outside the layers, and a source whose own source is outside.");
+            Assert.That(Owners(1, 2, 0, 0, -1), Is.EqualTo(new[] { -1, -1, -1, -1, -1 }), "A loop, and a layer whose chain ends in one.");
+        }
+
+        // Only copy reads its source: a name left in another type's source
+        // adds no parameter.
+        [Test]
+        public void ADriverSourceIsWrittenForCopyOnly()
+        {
+            using var avatar = new AnimatorAvatar();
+            var nested = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine;
+            var inner = nested.stateMachines.Single().stateMachine.states.Single().state;
+            ParameterDriverExpressionTests.Driver(inner, ParameterDriverExpressionTests.Op("Set", "BlendY", 1, "Stale source"));
+
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Stale source"));
+            var behaviours = data.Controllers.Single().Layers.Single(l => l.Name == "Nested").States.Single().Behaviours;
+            Assert.That(behaviours.Select(b => b.Operations.Single().Source), Is.EqualTo(new int?[] { null, null }));
+        }
+
+        // Hat on moves Front's Hair detail to 80. The scene holds it at 35,
+        // which the export bakes into the base, and its one frame is at 100.
+        // The file keeps the target the extension names, though no face uses it.
+        // Hat on also moves a property only another shader has, which is counted.
+        [Test]
+        public void BlendShapeCurvesAreWrittenAndMaterialCurvesCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var hatOnClip = avatar.ClipNamed("Hat on");
+            foreach (var property in new[] { "material._NotLilToon" })
+                AnimationUtility.SetEditorCurve(hatOnClip, EditorCurveBinding.FloatCurve("Hat", typeof(MeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, 1));
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            var data = Read(json);
+            var nodes = Nodes(json);
+
+            // "other" is the root's activeSelf curve, whose last key is past the hour the contract allows.
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("other", 1), ("materialProperty", 1) }));
+            // The result lists the curves left out, by kind.
+            var line = ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurvesNote, string.Join(ExporterLocalization.T("、"), new[]
+            {
+                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("その他"), 1),
+                ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("アプリで扱わないマテリアルのプロパティ"), 1),
+            }));
+            Assert.That(warnings.Count(warning => warning == line), Is.EqualTo(1), string.Join("\n", warnings));
+            Assert.That(data.Targets.Where(t => t.Property == "active").Select(t => nodes[t.Node]).OrderBy(name => name), Is.EqualTo(new[] { "Glasses", "Hat" }));
+            var morph = data.Targets.Single(t => t.Property == "morph");
+            Assert.That(nodes[morph.Node], Is.EqualTo("Front"));
+            Assert.That((morph.Rest, morph.Baked, morph.End), Is.EqualTo((35d, 35d, 100d)));
+            Assert.That(TargetName(json, morph), Is.EqualTo("Hair detail"));
+
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            var track = hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph));
+            Assert.That(track.Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 80d, 80d }));
+            Assert.That(data.Clips.Where(clip => clip != hatOn).SelectMany(clip => clip.Tracks).Any(t => t.Target == data.Targets.IndexOf(morph)), Is.False);
+        }
+
+        // Curves that only hold a shape at the weight the base shows change
+        // nothing by themselves: they go with the shape when nothing else keeps it.
+        [Test]
+        public void AShapeOnlyHeldAtItsSceneWeightGoesWithItsUnusedShape()
+        {
+            using var avatar = new AnimatorAvatar();
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 35));
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
+            var data = Read(json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False, "Holding the weight the base shows changes nothing.");
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            Assert.That(hatOn.Tracks.Select(t => data.Targets[t.Target].Property), Has.No.Member("morph"));
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "other" }), "Nothing is lost, so nothing is counted.");
+            Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Hair detail"), Is.False, "Nothing else keeps the shape.");
+        }
+
+        // The scene holds Front's Hair detail at 100, its one frame, so the base
+        // shows it whole and its target shows nothing. Hat on takes it to 80:
+        // the export adds a shape that takes the base back to 0, and the
+        // extension names that one, from baked 100 to end 0.
+        [Test]
+        public void AShapeTheBaseHoldsAtItsEndIsWrittenThroughAReverseTarget()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 100);
+            var glb = GlbDocument.Read(avatar.Export(new List<string>(), null));
+            var json = Unpacked(glb);
+            var data = Read(json);
+
+            var morph = data.Targets.Single(t => t.Property == "morph");
+            Assert.That(Nodes(json)[morph.Node], Is.EqualTo("Front"));
+            Assert.That((morph.Rest, morph.Baked, morph.End), Is.EqualTo((100d, 100d, 0d)));
+            Assert.That(TargetName(json, morph), Does.StartWith("__VRVlog_Reverse_"));
+            // Hair detail moves every vertex by (.02, .01, 0); the reverse target
+            // takes that off again (one horizontal axis is mirrored into glTF).
+            foreach (var delta in TargetPositions(glb, morph))
+            {
+                Assert.That(delta.y, Is.EqualTo(-.01f).Within(1e-4f));
+                Assert.That(Mathf.Abs(delta.x) + Mathf.Abs(delta.z), Is.EqualTo(.02f).Within(1e-4f));
+            }
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(new[] { "other" }), "Nothing is lost, so nothing is counted.");
+            var hatOn = data.Clips.Single(clip => clip.Name == avatar.ClipNamed("Hat on").name);
+            var track = hatOn.Tracks.Single(t => t.Target == data.Targets.IndexOf(morph));
+            Assert.That(track.Curves.Single().Keys.Select(key => key.Value), Is.EqualTo(new[] { 80d, 80d }));
+        }
+
+        // Curves that keep the shape where the base holds it at its end change
+        // nothing, so no reverse shape is added and the shape is counted as before.
+        [Test]
+        public void AShapeOnlyHeldAtItsEndGetsNoReverseTarget()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 100);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
+            var data = Read(json);
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1));
+            Assert.That(JsonDom.Serialize(json["meshes"]).Contains("__VRVlog_Reverse_"), Is.False);
+        }
+
+        // A curve on a shape the mesh lacks is a blendShape the file cannot
+        // carry; one on a path with no SkinnedMeshRenderer has no node.
+        [Test]
+        public void AShapeCurveWithoutItsShapeOrRendererIsCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.ClipNamed("Hat on");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Gone"), AnimationCurve.Constant(0, 1f / 60, 50));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Nowhere", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1f / 60, 50));
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
+            var data = Read(json);
+
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1), ("missingNode", 1) }));
+            Assert.That(Nodes(json)[data.Targets.Single(t => t.Property == "morph").Node], Is.EqualTo("Front"));
+        }
+
+        // A merge may put a same-named shape the FX never moved into the output
+        // of one it moves, and one weight would move both. A shape another mesh
+        // also has is written only while it stays on its own renderer.
+        [Test]
+        public void AShapeAnotherMeshAlsoHasIsUnknownOnceMerged()
+        {
+            var root = new GameObject("Root");
+            try
+            {
+                SkinnedMeshRenderer Skin(string name, params string[] shapes)
+                {
+                    var go = new GameObject(name);
+                    go.transform.SetParent(root.transform);
+                    var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }, triangles = new[] { 0, 1, 2 } };
+                    foreach (var shape in shapes) mesh.AddBlendShapeFrame(shape, 100, new[] { Vector3.up, Vector3.up, Vector3.up }, null, null);
+                    var skin = go.AddComponent<SkinnedMeshRenderer>();
+                    skin.sharedMesh = mesh;
+                    return skin;
+                }
+                var face = Skin("Face", "Slim", "Smile");
+                var body = Skin("Body", "Slim", "Smile");
+                var shared = UniVrmOneClickExporter.SharedAnimatorMorphs(root, new[] { (face, "Slim"), (face, "Smile"), (body, "Smile") });
+                Assert.That(shared, Is.EquivalentTo(new[] { (face.GetInstanceID(), "Slim") }));
+                var merged = Skin("Merged", "Slim", "Smile");
+
+                var rest = new Dictionary<(int, string), float> { [(face.GetInstanceID(), "Slim")] = 0, [(face.GetInstanceID(), "Smile")] = 0 };
+                var ends = new Dictionary<(int, string), (double, double)> { [(face.GetInstanceID(), "Slim")] = (0, 100), [(face.GetInstanceID(), "Smile")] = (0, 100) };
+                var stays = UniVrmOneClickExporter.AnimatorMorphSources(new[] { (face.GetInstanceID(), "Slim", face, "Slim") }, rest, ends, shared);
+                Assert.That(stays(face, "Slim").Single().End, Is.EqualTo(100));
+                var moved = UniVrmOneClickExporter.AnimatorMorphSources(new[]
+                {
+                    (face.GetInstanceID(), "Slim", merged, "Slim"), (face.GetInstanceID(), "Smile", merged, "Smile"),
+                }, rest, ends, shared);
+                Assert.That(moved(merged, "Slim"), Is.Empty);
+                Assert.That(moved(merged, "Smile").Single().End, Is.EqualTo(100));
+            }
+            finally
+            {
+                foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(skin.sharedMesh);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        // A shape of several frames need not be linear, so no weight may put
+        // its base back: a curve on one is counted as blendShape.
+        [Test]
+        public void AShapeOfSeveralFramesIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var mesh = avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(r => r.name == "Front").sharedMesh;
+            var deltas = new Vector3[mesh.vertexCount];
+            deltas[0] = Vector3.right;
+            mesh.AddBlendShapeFrame("Frames", 50, deltas, null, null);
+            deltas[0] = Vector3.right + Vector3.up;
+            mesh.AddBlendShapeFrame("Frames", 100, deltas, null, null);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, null);
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frames"),
+                AnimationCurve.Constant(0, 1f / 60, 80));
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1) }));
+        }
+
+        // An additive layer adds a shape's curve less its reference pose,
+        // which the extension does not carry: a shape that a clip of such a
+        // layer moves is counted as blendShape, though an override layer plays
+        // the same clip.
+        [Test]
+        public void AShapeAnAdditiveLayerMovesIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            avatar.Fx.AddLayer("Added");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState("On").motion = avatar.ClipNamed("Hat on");
+            avatar.Fx.layers = layers;
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+
+            Assert.That(data.Controllers.Single().Layers.Last().Blending, Is.EqualTo("additive"));
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("material", 1), ("other", 1) }));
+        }
+
+        // The base geometry takes the other Lip Sync shapes and the default
+        // mouth off a Lip Sync shape too, which baked and end cannot carry:
+        // a curve on one is counted as blendShape.
+        [Test]
+        public void ALipSyncShapeIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var descriptor = avatar.Source.GetComponent(VrcAvatar.DescriptorType);
+            var type = descriptor.GetType();
+            var lipSync = type.GetField("lipSync");
+            lipSync.SetValue(descriptor, Enum.Parse(lipSync.FieldType, "VisemeBlendShape"));
+            type.GetField("VisemeSkinnedMesh").SetValue(descriptor, avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(r => r.name == "Front"));
+            var visemes = new string[15];
+            visemes[10] = "Hair detail";
+            type.GetField("VisemeBlendShapes").SetValue(descriptor, visemes);
+            var data = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("blendShape", 1), ("other", 1) }));
+        }
+
+        // What the export made of the shape decides whether it is written.
+        // Sources that agree are one; none, a disagreement or a target that
+        // shows no change (baked equals end) count as blendShape.
+        [Test]
+        public void AShapeIsWrittenOnlyFromSourcesThatAgreeAndShowAChange()
+        {
+            using var avatar = new AnimatorAvatar();
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            AvatarAnimatorCapture.MorphSource Source(double baked) => new AvatarAnimatorCapture.MorphSource(35, baked, 100);
+            foreach (var (sources, written) in new[]
+            {
+                (new[] { Source(35) }, true),
+                (new[] { Source(35), Source(35) }, true),
+                (new AvatarAnimatorCapture.MorphSource[0], false),
+                (new[] { Source(35), Source(0) }, false),
+                (new[] { Source(100) }, false),
+            })
+            {
+                var data = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) =>
+                    renderer.gameObject == front && shape == "Hair detail" ? sources : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+                var label = string.Join(",", sources.Select(s => s.Baked));
+                var morph = data.Targets.SingleOrDefault(t => t.Property == "morph");
+                Assert.That(morph != null, Is.EqualTo(written), label);
+                Assert.That(data.Omitted.Any(o => o.Kind == "blendShape"), Is.EqualTo(!written), label);
+                Assert.That(capture.MorphBinds.Count, Is.EqualTo(written ? 1 : 0), label);
+                if (written) Assert.That((morph.Node, morph.Morph, morph.Rest, morph.Baked, morph.End), Is.EqualTo((0, 0, 35d, 35d, 100d)));
+            }
+            Assert.That(capture.Resolve(o => o == front ? 0 : -1).Targets.Any(t => t.Property == "morph"), Is.False, "No sources at all.");
+            // With a reverse shape, a source that shows no change is written
+            // through it: the reverse shape's node and index, from baked to 0.
+            var skin = front.GetComponent<SkinnedMeshRenderer>();
+            var reversed = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) => renderer == skin && shape == "Hair detail"
+                ? new[] { new AvatarAnimatorCapture.MorphSource(100, 100, 100, skin, "Hair detail") } : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+            var target = reversed.Targets.Single(t => t.Property == "morph");
+            Assert.That((target.Node, target.Morph, target.Rest, target.Baked, target.End), Is.EqualTo((0, 0, 100d, 100d, 0d)));
+            Assert.That(reversed.Omitted.Any(o => o.Kind == "blendShape"), Is.False);
+            var lost = capture.Resolve(o => o == front ? 0 : -1, (renderer, shape) => renderer == skin && shape == "Hair detail"
+                ? new[] { new AvatarAnimatorCapture.MorphSource(100, 100, 100, skin, "No such shape") } : Array.Empty<AvatarAnimatorCapture.MorphSource>());
+            Assert.That(lost.Targets.Any(t => t.Property == "morph"), Is.False, "A reverse shape that is gone carries nothing.");
+            Assert.That(lost.Omitted.Single(o => o.Kind == "blendShape").Count, Is.GreaterThan(0));
+        }
+
+        // Shapes that would take the extension past the limit are all
+        // counted, and the extension is written with activeSelf alone.
+        [Test]
+        public void ShapesOverTheSizeLimitAreCountedAndTheRestWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            int Node(GameObject o) => o == front ? 0 : -1;
+            IReadOnlyList<AvatarAnimatorCapture.MorphSource> Sources(SkinnedMeshRenderer renderer, string shape) =>
+                new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
+            int Size(AvatarAnimatorData data) => System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+            var without = Size(capture.Resolve(Node));
+            Assert.That(Size(capture.Resolve(Node, Sources)), Is.GreaterThan(without));
+
+            AvatarAnimatorCapture.MaximumBytes = without;
+            var data = capture.Resolve(Node, Sources);
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1));
+            Assert.That(capture.MorphBinds, Is.Empty);
+            Assert.That(Size(data), Is.EqualTo(without));
+        }
+
+        // A morph target must name one of its node's mesh's targets.
+        [Test]
+        public void InjectRejectsAMorphTargetItsNodeDoesNotHave()
+        {
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), null);
+            var json = Unpacked(GlbDocument.Read(exported));
+            var nodes = (List<object>)json["nodes"];
+            Assert.That(AvatarAnimatorCapture.Inject(exported, Read(json)), Is.Not.Null);
+
+            var data = Read(json);
+            data.Targets.Single(t => t.Property == "morph").Morph = 1000;
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("morph target"));
+            data = Read(json);
+            data.Targets.Single(t => t.Property == "morph").Node = nodes.FindIndex(node => !((Dictionary<string, object>)node).ContainsKey("mesh"));
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("morph target"));
+        }
+
+        // A morph target on a node the file wrote without that mesh (a
+        // renderer that is off or empty) goes with its tracks, which are
+        // counted, before Strip would keep its shape.
+        [Test]
+        public void MorphTargetsTheFileHasNoMeshForAreLeftOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), null);
+            var json = Unpacked(GlbDocument.Read(exported));
+            var front = avatar.Source.transform.Find("Front").gameObject;
+            IReadOnlyList<AvatarAnimatorCapture.MorphSource> Sources(SkinnedMeshRenderer renderer, string shape) =>
+                new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
+            int Missing(AvatarAnimatorData d) => d.Omitted.Where(o => o.Kind == "missingNode").Sum(o => o.Count);
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+
+            var withMesh = Nodes(json).IndexOf("Front");
+            var data = capture.Resolve(o => o == front ? withMesh : -1, Sources);
+            var before = Missing(data);
+            capture.DropMorphsNotIn(exported);
+            Assert.That(data.Targets.Count(t => t.Property == "morph"), Is.EqualTo(1), "Front's mesh has the shape.");
+            Assert.That(Missing(data), Is.EqualTo(before));
+
+            var meshless = ((List<object>)json["nodes"]).FindIndex(node => !((Dictionary<string, object>)node).ContainsKey("mesh"));
+            data = capture.Resolve(o => o == front ? meshless : -1, Sources);
+            before = Missing(data);
+            capture.DropMorphsNotIn(exported);
+            Assert.That(data.Targets.Any(t => t.Property == "morph"), Is.False);
+            Assert.That(capture.MorphBinds.Concat(capture.SoftMorphBinds), Is.Empty);
+            Assert.That(data.Clips.SelectMany(clip => clip.Tracks).All(track => track.Target < data.Targets.Count), Is.True);
+            Assert.That(Missing(data), Is.EqualTo(before + 1), "Hat on's one curve on the shape.");
+            Assert.That(AvatarAnimatorCapture.Inject(exported, data), Is.Not.Null);
+        }
+
+        // BlendShape curves take the keys and tracks activeSelf leaves in
+        // their clip, whatever order Unity lists the curves in.
+        [Test]
+        public void ShapeCurvesTakeWhatActiveSelfLeavesOfTheClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            (int Shape, int Kept) Counts()
+            {
+                var data = Captured(avatar);
+                int Count(string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
+                return (Count("blendShape"), Count("missingNode"));
+            }
+            var before = Counts();
+            var clip = avatar.Clip("Long");
+            AnimationUtility.SetEditorCurve(clip, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 50));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"),
+                new AnimationCurve(Enumerable.Range(0, AvatarAnimatorData.MaximumKeysPerClip - 1).Select(index => new Keyframe(index / 60f, index % 2)).ToArray()));
+            avatar.Fx.AddLayer("Long");
+            avatar.Fx.layers.Last().stateMachine.AddState("Long").motion = clip;
+            var after = Counts();
+            // No object has a node here: the activeSelf curve kept is counted as missingNode.
+            Assert.That((after.Shape - before.Shape, after.Kept - before.Kept), Is.EqualTo((1, 1)));
+
+            // One track over the clip's limit.
+            var wide = avatar.Clip("Wide");
+            var bindings = Enumerable.Range(0, AvatarAnimatorData.MaximumTracksPerClip + 1)
+                .Select(index => EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Shape " + index)).ToArray();
+            AnimationUtility.SetEditorCurves(wide, bindings, bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Wide");
+            avatar.Fx.layers.Last().stateMachine.AddState("Wide").motion = wide;
+            var data = Captured(avatar);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count - after.Shape, Is.EqualTo(1));
+        }
+
+        // Unity moves a float FX parameter by a curve on the avatar root and
+        // holds an int, bool or trigger at the controller's default. Each is a
+        // target with that default as its rest; only the float has a track.
+        [Test]
+        public void ACurveOnAFloatParameterIsWrittenWithTheControllersDefault()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Parameters");
+            foreach (var (name, value) in new[] { ("GestureLeft", 3f), ("Blend", .75f), ("Hat", 1f) })
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), name), AnimationCurve.Constant(0, 1f / 60, value));
+            avatar.Fx.AddLayer("Parameters");
+            avatar.Fx.layers.Last().stateMachine.AddState("Parameters").motion = clip;
+            // A default a float cannot hold is written as it is. Blend's
+            // differs from the one Expression Parameters declare (.5): Unity
+            // returns to the controller's.
+            var parameters = avatar.Fx.parameters;
+            parameters.Single(p => p.name == "GestureLeft").defaultInt = 16777217;
+            parameters.Single(p => p.name == "Blend").defaultFloat = .25f;
+            avatar.Fx.parameters = parameters;
+
+            var data = Captured(avatar);
+            var targets = data.Targets.Select(t => (t.Property, data.Parameters[t.Parameter].Name, t.Rest));
+            Assert.That(targets, Is.EqualTo(new[] { ("parameter", "Hat", 0d), ("parameter", "Blend", .25), ("parameter", "GestureLeft", 16777217d) }),
+                "In the order of the parameters, each at the controller's default.");
+            Assert.That(data.Parameters.Single(p => p.Name == "Blend").Default, Is.EqualTo(.5), "The parameter keeps the Expression Parameters default.");
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Parameters");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "Blend" }));
+            Assert.That(tracks.Single().Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter"), Is.Empty);
+        }
+
+        // An active track comes before the parameter tracks in a clip, and
+        // the node targets before the parameter targets.
+        [Test]
+        public void ParameterTracksAndTargetsFollowTheActiveOnes()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Both", ("Hat", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Both");
+            avatar.Fx.layers.Last().stateMachine.AddState("Both").motion = clip;
+
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
+            var data = Read(json);
+            var nodes = Nodes(json);
+            string Name(AvatarAnimatorData.Target t) => t.Property == "active" ? nodes[t.Node] : data.Parameters[t.Parameter].Name;
+            // Hat on also moves a BlendShape, a node target too, and a color channel of Hat's material.
+            Assert.That(data.Targets.Select(t => t.Property), Is.EqualTo(new[] { "active", "active", "morph", "parameter", "parameter", "materialColor" }));
+            Assert.That(data.Targets.Skip(3).Take(2).Select(Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Both");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => Name(data.Targets[t.Target])), Is.EqualTo(new[] { "Hat", "BlendX", "BlendY" }));
+        }
+
+        // A parameter a clip animates is held by Unity even when its curve is
+        // left out, when the clip is under a tree Unity cannot read, or when a
+        // direct child has no weight: it is a target in each case. A curve on
+        // a name the controller does not declare, or below the root, is not.
+        [Test]
+        public void AParameterAClipDrivesIsATargetEvenWhenItsCurveIsLeftOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var tooLong = avatar.Clip("Too long");
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 7200, 1));
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("", typeof(Animator), "Gone"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(tooLong, EditorCurveBinding.FloatCurve("Hat", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Too long");
+            fx.layers.Last().stateMachine.AddState("Too long").motion = tooLong;
+
+            // A 1D tree on an int, which Unity cannot read.
+            var unread = avatar.Clip("Unread");
+            AnimationUtility.SetEditorCurve(unread, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Unread");
+            fx.CreateBlendTreeInController("Unread", out var tree, fx.layers.Length - 1);
+            tree.blendType = BlendTreeType.Simple1D;
+            tree.blendParameter = "GestureLeft";
+            tree.AddChild(unread, 0);
+
+            // A direct child weighted by a name the controller does not declare.
+            var unweighted = avatar.Clip("Unweighted");
+            AnimationUtility.SetEditorCurve(unweighted, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            fx.AddLayer("Unweighted");
+            fx.CreateBlendTreeInController("Unweighted", out var direct, fx.layers.Length - 1);
+            direct.blendType = BlendTreeType.Direct;
+            direct.AddChild(unweighted);
+            var children = direct.children;
+            children[0].directBlendParameter = "Nobody";
+            direct.children = children;
+
+            var data = Captured(avatar);
+            Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "Blend", "BlendX", "BlendY" }));
+            Assert.That(data.Clips.SelectMany(c => c.Tracks), Is.Empty);
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1), "The float curve past an hour.");
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // On an Additive layer Unity adds a parameter curve's value less its
+        // value at the reference pose. A clip that names its own reference
+        // pose leaves its parameter curves out: the parameter is still a
+        // target and the clip's activeSelf curves are kept.
+        [Test]
+        public void AClipWithItsOwnReferencePoseLeavesItsParameterCurvesOut()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Referenced", ("Glasses", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Linear(0, 0, 1, 1));
+            AnimationUtility.SetAdditiveReferencePose(clip, clip, 1);
+            avatar.Fx.AddLayer("Referenced");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            avatar.Fx.layers = layers;
+            avatar.Fx.layers.Last().stateMachine.AddState("Referenced").motion = clip;
+
+            var data = CapturedWithNodes(avatar);
+            Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Referenced");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active" }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
+        // A clip holds at most 4096 tracks. With one left after its activeSelf
+        // curves, one parameter curve is written and the next left out, and
+        // the activeSelf curves are all kept.
+        [Test]
+        public void ParameterCurvesLeaveTheTrackRoomToActiveSelfCurves()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Full");
+            var bindings = new List<EditorCurveBinding>();
+            for (var i = 0; i < AvatarAnimatorData.MaximumTracksPerClip - 1; i++)
+            {
+                new GameObject("Part" + i).transform.SetParent(avatar.Source.transform, false);
+                bindings.Add(EditorCurveBinding.FloatCurve("Part" + i, typeof(GameObject), "m_IsActive"));
+            }
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"));
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"));
+            AnimationUtility.SetEditorCurves(clip, bindings.ToArray(), bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Full");
+            avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
+
+            var data = CapturedWithNodes(avatar);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 1));
+            Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }).Or.EqualTo(new[] { "BlendY" }));
+            Assert.That(data.Targets.Where(t => t.Property == "parameter").Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendX", "BlendY" }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(1));
+        }
+
+        // The track room activeSelf leaves goes to parameter curves before
+        // BlendShape curves: with two tracks left, the parameter curve takes
+        // one and a shape the other, whatever order Unity lists the curves in.
+        [Test]
+        public void ShapeCurvesTakeWhatParameterCurvesLeaveOfTheClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Full");
+            var bindings = new List<EditorCurveBinding> { FrontDetail, BackDetail };
+            for (var i = 0; i < AvatarAnimatorData.MaximumTracksPerClip - 2; i++)
+            {
+                new GameObject("Part" + i).transform.SetParent(avatar.Source.transform, false);
+                bindings.Add(EditorCurveBinding.FloatCurve("Part" + i, typeof(GameObject), "m_IsActive"));
+            }
+            bindings.Add(EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"));
+            AnimationUtility.SetEditorCurves(clip, bindings.ToArray(), bindings.Select(_ => AnimationCurve.Constant(0, 1f / 60, 1)).ToArray());
+            avatar.Fx.AddLayer("Full");
+            avatar.Fx.layers.Last().stateMachine.AddState("Full").motion = clip;
+
+            var data = CapturedWithNodes(avatar, EveryShape);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Full");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active"), Is.EqualTo(AvatarAnimatorData.MaximumTracksPerClip - 2));
+            Assert.That(tracks.Where(t => data.Targets[t.Target].Property == "parameter").Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendX" }));
+            Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "morph"), Is.EqualTo(1));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter"), Is.Empty);
+            Assert.That(data.Omitted.Single(o => o.Kind == "blendShape").Count, Is.EqualTo(1), "The shape past the room.");
+        }
+
+        // activeSelf, parameter and BlendShape curves of one clip go into the
+        // extension together and read back as written: node targets (active,
+        // then morph) before parameter targets, and the clip's tracks in that order.
+        [Test]
+        public void ActiveParameterAndShapeCurvesOfOneClipRoundTripThroughTheExtension()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Mixed");
+            AnimationUtility.SetEditorCurve(clip, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 60));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, .75f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Mixed");
+            avatar.Fx.layers.Last().stateMachine.AddState("Mixed").motion = clip;
+
+            var nodes = new Dictionary<GameObject, int>();
+            var written = AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, EveryShape);
+            var text = JsonDom.Serialize(AvatarAnimatorData.Write(written));
+            var data = AvatarAnimatorData.Read(JsonDom.Parse(text));
+            Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(data)), Is.EqualTo(text), "Writing what was read must give the same JSON.");
+
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Active, then morph, then parameter targets.");
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Mixed");
+            var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "morph", "parameter" }));
+            string Node(int index) => nodes.Single(pair => pair.Value == index).Key.name;
+            Assert.That(Node(data.Targets[tracks[0].Target].Node), Is.EqualTo("Hat"));
+            Assert.That(Node(data.Targets[tracks[1].Target].Node), Is.EqualTo("Front"));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 60d, 60d }));
+            Assert.That(data.Targets[tracks[2].Target].Node, Is.EqualTo(-1));
+            Assert.That(data.Parameters[data.Targets[tracks[2].Target].Parameter].Name, Is.EqualTo("Blend"));
+            Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .75, .75 }));
+        }
+
+        static EditorCurveBinding Muscle(string name) => EditorCurveBinding.FloatCurve("", typeof(Animator), name);
+
+        static int MuscleIndex(string name) => Array.IndexOf(HumanTrait.MuscleName, name);
+
+        // An Animator curve on the avatar root named after a Humanoid muscle is
+        // a muscle target, after the other kinds, resting at 0 and with no
+        // node; a clip names a finger muscle as LeftHand.Thumb.1 Stretched.
+        // The root's position and the IK goals are counted as humanoidRoot, a
+        // translation DoF and a muscle of an additive layer as muscle.
+        [Test]
+        public void MuscleCurvesAreWrittenAndRootAndIkCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var pose = avatar.Clip("Pose", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(pose, Muscle("Spine Front-Back"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(pose, Muscle("LeftHand.Thumb.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, -.5f));
+            AnimationUtility.SetEditorCurve(pose, Muscle("RootT.y"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(pose, Muscle("LeftFootT.x"), AnimationCurve.Constant(0, 1f / 60, .2f));
+            AnimationUtility.SetEditorCurve(pose, Muscle("LeftFootTDOF.x"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Pose", pose);
+            var lean = avatar.Clip("Lean");
+            AnimationUtility.SetEditorCurve(lean, Muscle("Chest Front-Back"), AnimationCurve.Constant(0, 1f / 60, .2f));
+            AddLayer(avatar, "Lean", lean, AnimatorLayerBlendingMode.Additive);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var spine = MuscleIndex("Spine Front-Back");
+            var thumb = MuscleIndex("Left Thumb 1 Stretched");
+            Assert.That(spine, Is.GreaterThanOrEqualTo(0));
+            Assert.That(thumb, Is.GreaterThan(spine));
+            Assert.That(data.Targets.Where(t => t.Property == "muscle").Select(t => (t.Node, t.Muscle, t.Rest)), Is.EqualTo(new[] { (-1, spine, 0d), (-1, thumb, 0d) }));
+            var tracks = ClipOf(data, "Pose").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "muscle", "muscle" }));
+            Assert.That(tracks.Skip(1).Select(t => (data.Targets[t.Target].Muscle, t.Curves.Single().Keys[0].Value)), Is.EqualTo(new[] { (spine, .25), (thumb, -.5) }));
+            Assert.That(ClipOf(data, "Lean").Tracks, Is.Empty);
+            Assert.That(Omitted(data, "humanoidRoot"), Is.EqualTo(2), "RootT.y and LeftFootT.x.");
+            Assert.That(Omitted(data, "muscle"), Is.EqualTo(2), "LeftFootTDOF.x and the additive Chest Front-Back.");
+            Assert.That(AvatarAnimatorData.Read(AvatarAnimatorData.Write(data)).Targets.Count, Is.EqualTo(data.Targets.Count));
+            Assert.That(AvatarAnimatorCapture.Muscle("LeftHand.Little.3 Stretched"), Is.EqualTo(MuscleIndex("Left Little 3 Stretched")));
+            Assert.That(AvatarAnimatorCapture.Muscle("RightHand.Index.Spread"), Is.EqualTo(MuscleIndex("Right Index Spread")));
+            Assert.That(AvatarAnimatorCapture.Muscle("RootT.x"), Is.EqualTo(-1));
+        }
+
+        // A custom Gesture and Action are written after the FX, each with the
+        // clips its own override controller gives and the parameters it
+        // declares (a name the FX declares keeps the FX's type). A layer's mask
+        // names the body parts and the nodes it lets move; a transform without
+        // a node is left out, and a mask that lets everything move is no mask.
+        // A default playable layer, and the Additive, are not read.
+        [Test]
+        public void GestureAndActionControllersAreWrittenWithMasks()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fist = avatar.Clip("Fist");
+            AnimationUtility.SetEditorCurve(fist, Muscle("LeftHand.Index.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, -1));
+            var open = avatar.Clip("Open");
+            AnimationUtility.SetEditorCurve(open, Muscle("LeftHand.Index.1 Stretched"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(open, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Constant(0, 1f / 60, 1));
+            var wave = avatar.Clip("Wave", ("Hat", true));
+
+            var hands = new AvatarMask();
+            for (var part = AvatarMaskBodyPart.Root; part < AvatarMaskBodyPart.LastBodyPart; part++)
+                hands.SetHumanoidBodyPartActive(part, part == AvatarMaskBodyPart.LeftFingers || part == AvatarMaskBodyPart.RightFingers);
+            hands.transformCount = 3;
+            foreach (var (i, path, active) in new[] { (0, "Glasses", true), (1, "Hat", false), (2, "Missing", true) })
+            {
+                hands.SetTransformPath(i, path);
+                hands.SetTransformActive(i, active);
+            }
+            avatar.Asset(hands, "Hands.mask");
+            var everything = avatar.Asset(new AvatarMask(), "Everything.mask");
+
+            var gesture = avatar.Controller("Gesture");
+            gesture.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+            gesture.AddParameter("Blend", AnimatorControllerParameterType.Int);
+            var layers = gesture.layers;
+            layers[0].avatarMask = hands;
+            layers[0].stateMachine.AddState("Fist").motion = fist;
+            gesture.layers = layers;
+            var overrides = avatar.Asset(new AnimatorOverrideController(gesture), "Gesture.overrideController");
+            overrides[fist] = open;
+            var action = avatar.Controller("Action");
+            layers = action.layers;
+            layers[0].avatarMask = everything;
+            layers[0].stateMachine.AddState("Wave").motion = wave;
+            action.layers = layers;
+            var additive = avatar.Controller("Additive");
+            additive.layers[0].stateMachine.AddState("Wave").motion = wave;
+            avatar.Playables(("Base", null), ("Additive", additive), ("Gesture", overrides), ("Action", action), ("FX", avatar.Fx));
+            // The FX plays the clip the Gesture overrides.
+            AddLayer(avatar, "Fist", fist);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            Assert.That(data.Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture", "action" }));
+            Assert.That(data.Controllers[0].Layers.All(l => l.Mask == null), Is.True);
+            var held = data.Controllers[1].Layers.Single();
+            Assert.That(held.Mask.Humanoid, Is.EqualTo(new[] { (int)AvatarMaskBodyPart.LeftFingers, (int)AvatarMaskBodyPart.RightFingers }));
+            Assert.That(held.Mask.Nodes, Is.EqualTo(new[] { nodes[avatar.Source.transform.Find("Glasses").gameObject] }));
+            Assert.That(data.Controllers[2].Layers.Single().Mask, Is.Null, "A mask that lets everything move.");
+            var clip = data.Clips[data.Motions[held.States.Single().Motion].Clip];
+            Assert.That(clip.Tracks.Select(t => (data.Targets[t.Target].Property, data.Targets[t.Target].Muscle, t.Curves.Single().Keys[0].Value)),
+                Is.EqualTo(new[] { ("muscle", MuscleIndex("Left Index 1 Stretched"), 1d) }), "The override controller's clip, and Blend is an int there.");
+            var fxFist = data.Clips[data.Motions[data.Controllers[0].Layers.Single(l => l.Name == "Fist").States.Single().Motion].Clip];
+            Assert.That(fxFist.Tracks.Single().Curves.Single().Keys[0].Value, Is.EqualTo(-1d), "The FX reads the clip without the Gesture's override.");
+            Assert.That(Omitted(data, "parameter"), Is.EqualTo(0), "The Gesture's Blend curve is the Gesture's.");
+            Assert.That(data.Controllers[1].Omitted.Select(o => (o.Kind, o.Count)), Is.EqualTo(new[] { ("parameter", 1) }));
+            Assert.That(data.Controllers[2].Omitted, Is.Empty);
+            Assert.That(AvatarAnimatorCapture.OmittedCurvesLine(data),
+                Does.Contain(ExporterLocalization.Format(AvatarAnimatorCapture.OmittedCurveCount, ExporterLocalization.T("パラメーター"), 1)), "The result still counts it.");
+            var gestureLeft = data.Parameters.Single(p => p.Name == "GestureLeft");
+            Assert.That((gestureLeft.Type, gestureLeft.Origin), Is.EqualTo(("int", "builtin")));
+            Assert.That(data.Parameters.Single(p => p.Name == "Blend").Type, Is.EqualTo("float"), "The FX declares Blend first.");
+            Assert.That(data.Controllers.Skip(1).SelectMany(c => c.Layers).Select(l => l.Name), Is.EqualTo(new[] { "Base Layer", "Base Layer" }));
+
+            // A default Action is not read.
+            avatar.Playables(("Gesture", overrides), ("Action", null), ("FX", avatar.Fx));
+            Assert.That(CapturedWithMaterials(avatar, nodes).Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture" }));
+        }
+
+        // What a Gesture or an Action leaves out that changes its own
+        // transitions is written on that controller, so the evaluator skips
+        // only it and plays the FX; on the FX it stays in the data's omitted
+        // and refuses the whole. Here each reads Blend, a float, from a state
+        // option while it declares Blend an int (unreadParameter). What it
+        // leaves out of its clips (a curve of no muscle) counts with the
+        // data's omitted, as before.
+        [Test]
+        public void AGestureOrActionKeepsWhatItLeavesOutOfItsTransitions()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Wave", ("Hat", true));
+            var odd = avatar.Clip("Odd", ("Hat", true));
+            AnimationUtility.SetEditorCurve(odd, EditorCurveBinding.FloatCurve("", typeof(Animator), "NoSuchMuscle"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimatorController Reading(string name, int states)
+            {
+                var controller = avatar.Controller(name);
+                controller.AddParameter("Blend", AnimatorControllerParameterType.Int);
+                var machine = controller.layers[0].stateMachine;
+                for (var i = 0; i < states; i++)
+                {
+                    var state = machine.AddState("Speed " + i);
+                    state.motion = odd;
+                    state.speedParameterActive = true;
+                    state.speedParameter = "Blend";
+                }
+                return controller;
+            }
+            avatar.Playables(("Gesture", Reading("Gesture", 1)), ("Action", Reading("Action", 2)), ("FX", avatar.Fx));
+            AddLayer(avatar, "Wave", clip);
+
+            var data = Captured(avatar);
+            Assert.That(data.Controllers.Select(c => c.Playable), Is.EqualTo(new[] { "fx", "gesture", "action" }));
+            Assert.That(Omitted(data, "unreadParameter"), Is.EqualTo(0));
+            Assert.That(Omitted(data, "muscle"), Is.EqualTo(2), "The Odd clip, read once by each.");
+            Assert.That(data.Controllers.Select(c => string.Join(" ", c.Omitted.Select(o => o.Kind + ":" + o.Count))),
+                Is.EqualTo(new[] { "", "unreadParameter:1", "unreadParameter:2" }));
+            Assert.That(AvatarAnimatorEvaluator.Supports(data, out var reason), Is.True, reason);
+            var evaluator = new AvatarAnimatorEvaluator(data, () => 0);
+            Assert.That((evaluator.SkipReason(0), evaluator.SkipReason(1) != null, evaluator.SkipReason(2) != null), Is.EqualTo(((string)null, true, true)));
+
+            // The same on the FX: GestureLeft is an int there.
+            var fxState = avatar.Fx.layers.Single(l => l.name == "Wave").stateMachine.states.Single().state;
+            fxState.speedParameterActive = true;
+            fxState.speedParameter = "GestureLeft";
+            data = Captured(avatar);
+            Assert.That(Omitted(data, "unreadParameter"), Is.EqualTo(1));
+            Assert.That(data.Controllers.Select(c => c.Omitted.Count), Is.EqualTo(new[] { 0, 1, 1 }));
+            Assert.That(AvatarAnimatorEvaluator.Supports(data, out _), Is.False);
+        }
+
+        static int Omitted(AvatarAnimatorData data, string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
+
+        static EditorCurveBinding Enabled(string path) => EditorCurveBinding.FloatCurve(path, typeof(MeshRenderer), "m_Enabled");
+
+        static EditorCurveBinding Cutoff(string path) => EditorCurveBinding.FloatCurve(path, typeof(MeshRenderer), "material._Cutoff");
+
+        // Every object is a node and the fixture's one material is glTF material 0.
+        static AvatarAnimatorData CapturedWithMaterials(AnimatorAvatar avatar, Dictionary<GameObject, int> nodes) =>
+            AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, null,
+                    material => material.name == "Animator" ? 0 : -1)));
+
+        // A layer of its own name that plays the clip in its one state.
+        static void AddLayer(AnimatorAvatar avatar, string name, AnimationClip clip, AnimatorLayerBlendingMode blending = AnimatorLayerBlendingMode.Override)
+        {
+            avatar.Fx.AddLayer(name);
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = blending;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState(name).motion = clip;
+            avatar.Fx.layers = layers;
+        }
+
+        // The clip the one state of the layer plays.
+        static AvatarAnimatorData.Clip ClipOf(AvatarAnimatorData data, string layer) =>
+            data.Clips[data.Motions[data.Controllers.Single().Layers.Single(l => l.Name == layer).States.Single().Motion].Clip];
+
+        // A mesh renderer's enabled curve is an enabled target of its node
+        // and a material float curve a materialFloat target of each glTF
+        // material the renderer draws with, after the kinds written before,
+        // in the target table and in the clip. Rest is what the avatar holds.
+        [Test]
+        public void RendererEnabledAndMaterialFloatCurvesAreWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Switch", ("Hat", true));
+            AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Switch", clip);
+            var before = CapturedWithNodes(avatar);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var enabled = data.Targets.Single(t => t.Property == "enabled");
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            Assert.That((enabled.Node, enabled.Component, enabled.Rest), Is.EqualTo((nodes[glasses], "renderer", 1d)));
+            var material = data.Targets.Single(t => t.Property == "materialFloat");
+            var shared = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            Assert.That((material.Node, material.Material, material.Name, material.Rest), Is.EqualTo((-1, 0, "_Cutoff", (double)shared.GetFloat("_Cutoff"))));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "active", "enabled", "materialFloat" }));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 0d }));
+            Assert.That(tracks[2].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .25, .25 }));
+            // The fixture's color channel curve is a materialColor target; both
+            // curves are counted when the file's materials are not given.
+            Assert.That(Omitted(data, "material"), Is.EqualTo(0));
+            Assert.That(Omitted(before, "material"), Is.EqualTo(2));
+            Assert.That(before.Targets.Any(t => t.Property == "materialFloat"), Is.False);
+            Assert.That(before.Targets.Count(t => t.Property == "enabled"), Is.EqualTo(1));
+        }
+
+        // A constraint enabled curve is an enabled target of component
+        // constraint on the node the constraint moves, with index its
+        // VRVLOG_avatar_constraints entry, after the material targets in the
+        // clip. The shared reader reads node and index.
+        // A constraint the extension does not write keeps its curve counted.
+        [Test]
+        public void ConstraintEnabledCurvesBindToTheirExtensionEntry()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var constraint = glasses.AddComponent<UnityEngine.Animations.ScaleConstraint>();
+            var clip = avatar.Clip("Switch");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(UnityEngine.Animations.ScaleConstraint), "m_Enabled"),
+                AnimationCurve.Constant(0, 1f / 60, 0));
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(UnityEngine.Animations.RotationConstraint), "m_Enabled"),
+                AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(Node, null, material => material.name == "Animator" ? 0 : -1, component => component == constraint ? 3 : -1)));
+            var target = data.Targets.Single(t => t.Component == "constraint");
+            Assert.That(target.Known, Is.True);
+            Assert.That((target.Property, target.Node, target.Index, target.Rest), Is.EqualTo(("enabled", nodes[glasses], 3, 1d)));
+            Assert.That(target.Fields, Is.Null);
+            var tracks = ClipOf(data, "Switch").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "enabled" }));
+            Assert.That(tracks[1].Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 0d }));
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(1), "The curve on a constraint Hat does not have.");
+
+            var without = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(without.Targets.Any(t => t.Component == "constraint"), Is.False);
+            Assert.That(ClipOf(without, "Switch").Tracks.Select(t => without.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat" }));
+            Assert.That(Omitted(without, "enabled"), Is.EqualTo(2));
+        }
+
+        static GameObject Child(Transform parent, string name)
+        {
+            var child = new GameObject(name);
+            child.transform.SetParent(parent, false);
+            return child;
+        }
+
+        static AvatarAnimatorData WithParts(AnimatorAvatar avatar, IEnumerable<AvatarAnimatorCapture.Part> parts, Func<GameObject, int> node,
+            Func<Component, (int, int)> part) =>
+            AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null, null, parts)
+                .Resolve(node, null, material => material.name == "Animator" ? 0 : -1, null, null, part)));
+
+        // The part enabled targets as (component, index, rest, node), in the target table's order.
+        static (string, long, long, long)[] PartTargets(AvatarAnimatorData data) =>
+            data.Targets.Where(t => !t.Known).Select(t => ((string)t.Fields["component"], Convert.ToInt64(t.Fields["index"]),
+                Convert.ToInt64(t.Fields["rest"]), Convert.ToInt64(t.Fields["node"]))).ToArray();
+
+        // The own enabled curve of a part the effects table writes is an
+        // enabled target of its component and its index in that table, its
+        // keys in Fields; a particle system has two (emission and its
+        // renderer). They come after every other target and track. A part
+        // a table left out (index -1) gets none and its curve counts as before.
+        [Test]
+        public void PartEnabledCurvesAreTargetsOfTheirTableEntry()
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var glasses = root.Find("Glasses");
+            var system = Child(glasses, "Spark").AddComponent<ParticleSystem>();
+            var trail = Child(glasses, "Trail").AddComponent<TrailRenderer>();
+            var line = Child(root.Find("Hat"), "Line").AddComponent<LineRenderer>();
+            var light = Child(glasses, "Lamp").AddComponent<Light>();
+            light.enabled = false;
+            var clip = avatar.Clip("Switch");
+            void Curve(string path, Type type, string property, float value) =>
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, type, property), AnimationCurve.Constant(0, 1f / 60, value));
+            Curve("Glasses/Spark", typeof(ParticleSystem), "EmissionModule.enabled", 0);
+            Curve("Glasses/Spark", typeof(ParticleSystemRenderer), "m_Enabled", 0);
+            Curve("Glasses/Trail", typeof(TrailRenderer), "m_Enabled", 0);
+            Curve("Hat/Line", typeof(LineRenderer), "m_Enabled", 0);
+            Curve("Glasses/Lamp", typeof(Light), "m_Enabled", 1);
+            // Glasses holds no light: no part takes it.
+            Curve("Glasses", typeof(Light), "m_Enabled", 1);
+            AddLayer(avatar, "Switch", clip);
+            var parts = new[]
+            {
+                AvatarAnimatorCapture.ReadPart("particle", system, root), AvatarAnimatorCapture.ReadPart("trail", trail, root),
+                AvatarAnimatorCapture.ReadPart("line", line, root), AvatarAnimatorCapture.ReadPart("light", light, root),
+            };
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            (int, int) Part(Component component) =>
+                ReferenceEquals(component, system) ? (1, 9) : ReferenceEquals(component, trail) ? (0, -1) : ReferenceEquals(component, light) ? (2, -1) : (-1, -1);
+
+            var data = WithParts(avatar, parts, Node, Part);
+            Assert.That(PartTargets(data), Is.EquivalentTo(new[] { ("particle", 1L, 1L, 9L), ("particle", 1L, 1L, 9L), ("trail", 0L, 1L, -1L), ("light", 2L, 0L, -1L) }));
+            var first = data.Targets.FindIndex(t => !t.Known);
+            Assert.That(data.Targets.Skip(first).All(t => !t.Known), "After every other target.");
+            Assert.That(data.Targets.Where(t => !t.Known).All(t => (string)t.Fields["property"] == "enabled"));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Known), Is.EqualTo(new[] { false, false, false, false }));
+            var lamp = tracks.Single(t => (string)data.Targets[t.Target].Fields["component"] == "light");
+            Assert.That(lamp.Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 1d, 1d }));
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(2), "The line the table left out and the light Glasses does not have.");
+
+            // Without the tables the file is as before.
+            var without = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(without.Targets.All(t => t.Known), Is.True);
+            Assert.That(ClipOf(without, "Switch").Tracks, Is.Empty);
+            Assert.That(Omitted(without, "enabled"), Is.EqualTo(5));
+            Assert.That(Omitted(without, "other") - Omitted(data, "other"), Is.EqualTo(1), "EmissionModule.enabled; the fixture counts other curves of its own.");
+            // Parts with no index count their curves as before.
+            var unwritten = WithParts(avatar, parts, Node, _ => (-1, -1));
+            Assert.That(PartTargets(unwritten), Is.Empty);
+            Assert.That((Omitted(unwritten, "enabled"), Omitted(unwritten, "other")), Is.EqualTo((5, Omitted(without, "other"))));
+        }
+
+        // Through the exporter: a light the effects table writes gets the
+        // enabled targets of component light at its index there, for its own
+        // curve and, when the file has no node for the object over it, for
+        // that object's activeSelf curve; with a node the object keeps its
+        // active target.
+        [Test]
+        public void ExportWritesPartEnabledTargetsOfTheEffectsTable()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            fx.SetActive(false);
+            var clip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", clip);
+
+            var json = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
+            var extensions = (Dictionary<string, object>)json["extensions"];
+            Assert.That(((List<object>)((Dictionary<string, object>)extensions["VRVLOG_avatar_effects"])["lights"]).Count, Is.EqualTo(1));
+            var data = Read(json);
+            var parts = PartTargets(data).Select(p => (p.Item1, p.Item2, p.Item3)).ToArray();
+            var nodes = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            var fxNode = nodes.FindIndex(n => n.TryGetValue("name", out var name) && (string)name == "Fx");
+            var tracks = ClipOf(data, "Lamp").Tracks;
+            if (fxNode < 0)
+            {
+                Assert.That(parts, Is.EquivalentTo(new[] { ("light", 0L, 0L), ("light", 0L, 1L) }), "Fx's activeSelf and the light's own.");
+                Assert.That(tracks.Count(t => !data.Targets[t.Target].Known), Is.EqualTo(2));
+            }
+            else
+            {
+                Assert.That(parts, Is.EqualTo(new[] { ("light", 0L, 1L) }));
+                Assert.That(tracks.Any(t => data.Targets[t.Target].Property == "active" && data.Targets[t.Target].Node == fxNode), Is.True);
+            }
+            Assert.That(Omitted(data, "missingNode"), Is.EqualTo(0));
+        }
+
+        // A table the export cannot write is not named by the FX: the FX is
+        // built again without its enabled targets, whose curves count as
+        // before, and the other extensions are written as without the table.
+        // Before, the targets kept indices into a table the file did not have.
+        [Test]
+        public void AnEffectsTableTheExportCannotWriteIsNotNamed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            var clip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", clip);
+            var written = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            Assert.That(PartTargets(written).Select(p => p.Item1), Has.Some.EqualTo("light"));
+
+            ExportTestHooks.TableFaultInjection = name => { if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects"); };
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            // Before, the failure was only in the console.
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects)) && warning.Contains("injected effects")), Is.EqualTo(1), string.Join("\n", warnings));
+            var extensions = (Dictionary<string, object>)json["extensions"];
+            Assert.That(extensions.ContainsKey(AvatarEffectsExport.Extension), Is.False);
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarEffectsExport.Extension), Is.False);
+            var data = Read(json);
+            Assert.That(PartTargets(data), Is.Empty);
+            Assert.That(ClipOf(data, "Lamp").Tracks.All(t => data.Targets[t.Target].Known), Is.True);
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(written, "enabled") + 1), "The light's own curve counts as before the table.");
+        }
+
+        // The FX built again for a table the export cannot write names the
+        // BlendShape by the index Strip gave it. Before, it took the index on
+        // the copy's mesh again: here past the file's targets, so the FX was
+        // left out; with more shapes, another shape than the one it moves.
+        [Test]
+        public void AnFxBuiltAgainKeepsTheIndicesStripGave()
+        {
+            using var avatar = new AnimatorAvatar();
+            var front = avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var mesh = Object.Instantiate(front.sharedMesh);
+            mesh.ClearBlendShapes();
+            mesh.AddBlendShapeFrame("Unused", 100, Enumerable.Repeat(new Vector3(0, .01f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            mesh.AddBlendShapeFrame("Hair detail", 100, Enumerable.Repeat(new Vector3(.02f, .01f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            front.sharedMesh = mesh;
+            front.SetBlendShapeWeight(1, 35);
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            var clip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", clip);
+            try
+            {
+                ExportTestHooks.TableFaultInjection = name => { if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects"); };
+                var warnings = new List<string>();
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+                Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarEffectsExport.Extension), Is.False);
+                Assert.That(warnings.Any(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.False, string.Join("\n", warnings));
+                var data = Read(json);
+                var morph = data.Targets.Single(t => t.Property == "morph");
+                Assert.That(Nodes(json)[morph.Node], Is.EqualTo("Front"));
+                Assert.That(TargetName(json, morph), Is.EqualTo("Hair detail"));
+                Assert.That(JsonDom.Serialize(json["meshes"]).Contains("Unused"), Is.False, "Strip left the unused shape out.");
+                Assert.That(Omitted(data, "missingNode"), Is.EqualTo(0));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void AContactsTableTheExportCannotWriteIsNotNamed()
+        {
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            using var avatar = new AnimatorAvatar();
+            var pad = Child(avatar.Source.transform, "Pad");
+            pad.AddComponent(receiverType);
+            var clip = avatar.Clip("Pad");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Pad", receiverType, "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Pad", clip);
+            var written = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            Assert.That(PartTargets(written).Select(p => p.Item1), Has.Some.EqualTo("contact"));
+
+            ExportTestHooks.TableFaultInjection = name => { if (name == VRVlog.AvatarContacts.AvatarContactsData.Extension) throw new InvalidOperationException("injected contacts"); };
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            var extensions = (Dictionary<string, object>)json["extensions"];
+            Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
+            var data = Read(json);
+            Assert.That(PartTargets(data), Is.Empty);
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(written, "enabled") + 1), "The Receiver's own curve counts as before the table.");
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts)) && warning.Contains("injected contacts")), Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
+        // A table that fails only when written again, after another table
+        // was left out, is left out too and the FX built once more: no FX
+        // target names a table the file does not have. Before, the FX was
+        // built again once, and the second failure left (contact, 0, …) in it.
+        [Test]
+        public void ATableThatFailsOnTheSecondWriteIsNotNamed()
+        {
+            var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+            using var avatar = new AnimatorAvatar();
+            var fx = Child(avatar.Source.transform, "Fx");
+            var light = Child(fx.transform, "Lamp").AddComponent<Light>();
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            var lampClip = avatar.Clip("Lamp", ("Fx", true));
+            AnimationUtility.SetEditorCurve(lampClip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Lamp", lampClip);
+            Child(avatar.Source.transform, "Pad").AddComponent(receiverType);
+            var padClip = avatar.Clip("Pad");
+            AnimationUtility.SetEditorCurve(padClip, EditorCurveBinding.FloatCurve("Pad", receiverType, "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Pad", padClip);
+            var written = Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null))));
+            Assert.That(PartTargets(written).Select(p => p.Item1), Is.SupersetOf(new[] { "light", "contact" }));
+
+            var contactWrites = 0;
+            ExportTestHooks.TableFaultInjection = name =>
+            {
+                if (name == AvatarEffectsExport.Extension) throw new InvalidOperationException("injected effects");
+                if (name == VRVlog.AvatarContacts.AvatarContactsData.Extension && ++contactWrites == 2) throw new InvalidOperationException("injected contacts");
+            };
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            var extensions = (Dictionary<string, object>)json["extensions"];
+            Assert.That(extensions.ContainsKey(AvatarEffectsExport.Extension), Is.False);
+            Assert.That(extensions.ContainsKey(VRVlog.AvatarContacts.AvatarContactsData.Extension), Is.False);
+            var data = Read(json);
+            Assert.That(PartTargets(data), Is.Empty);
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarEffects))), Is.EqualTo(1), string.Join("\n", warnings));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarContacts))), Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
+        // Through the exporter, a table tells what it left out only when it is
+        // written: past the light limit, the effects line; past the Receiver
+        // limit, the contacts line. A table that cannot be written is told by
+        // its stage alone, without the line, which would name a table the file
+        // does not have.
+        [TestCase("effects")]
+        [TestCase("contacts")]
+        public void ATableTellsWhatItLeftOutOnlyWhenWritten(string table)
+        {
+            using var avatar = new AnimatorAvatar();
+            string extension, note;
+            ExportStage stage;
+            if (table == "effects")
+            {
+                for (var i = 0; i <= AvatarEffectsExport.MaximumLights; i++)
+                    Child(avatar.Source.transform, "Lamp " + i).AddComponent<Light>().lightmapBakeType = LightmapBakeType.Realtime;
+                (extension, stage) = (AvatarEffectsExport.Extension, ExportStage.AvatarEffects);
+                note = ExporterLocalization.Format(AvatarEffectsExport.LimitCount, 1);
+            }
+            else
+            {
+                var receiverType = OptionalTools.Require(AvatarContactsExport.ReceiverType, "Real VRChat SDK integration test.");
+                for (var i = 0; i <= VRVlog.AvatarContacts.AvatarContactsData.MaximumReceivers; i++)
+                    Child(avatar.Source.transform, "Pad " + i).AddComponent(receiverType);
+                (extension, stage) = (VRVlog.AvatarContacts.AvatarContactsData.Extension, ExportStage.AvatarContacts);
+                note = ExporterLocalization.Format(AvatarContactsExport.LimitNote, 1, VRVlog.AvatarContacts.AvatarContactsData.MaximumReceivers);
+            }
+
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(extension), Is.True);
+            Assert.That(warnings.Count(warning => warning.Contains(note)), Is.EqualTo(1), string.Join("\n", warnings));
+            Assert.That(warnings.Any(warning => warning.Contains(ExportStageGuard.DisplayName(stage))), Is.False);
+
+            ExportTestHooks.TableFaultInjection = name => { if (name == extension) throw new InvalidOperationException("injected " + name); };
+            warnings.Clear();
+            json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(extension), Is.False);
+            Assert.That(warnings.Any(warning => warning.Contains(note)), Is.False, string.Join("\n", warnings));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(stage)) && warning.Contains("injected " + extension)), Is.EqualTo(1));
+        }
+
+        // The constraints and PhysBones tables are left out like the others
+        // when they cannot be written: the warnings name their stage and the
+        // FX is built again without what names them (the constraint's enabled
+        // target, the PhysBone parameters' builtin origin). Before, the failure
+        // was only in the console.
+        [Test]
+        public void AConstraintsTableTheExportCannotWriteIsNotNamed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var constraint = glasses.AddComponent<UnityEngine.Animations.ScaleConstraint>();
+            constraint.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = avatar.Source.transform.Find("Hat"), weight = 1 });
+            constraint.weight = 1; constraint.locked = true; constraint.constraintActive = true;
+            var clip = avatar.Clip("Switch");
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(UnityEngine.Animations.ScaleConstraint), "m_Enabled"),
+                AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+            var written = Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)));
+            Assert.That(((Dictionary<string, object>)written["extensions"]).ContainsKey(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.True);
+            Assert.That(Read(written).Targets.Count(t => t.Component == "constraint"), Is.EqualTo(1));
+
+            ExportTestHooks.TableFaultInjection = name =>
+            {
+                if (name == VRVlog.AvatarConstraints.AvatarConstraintsData.Extension) throw new InvalidOperationException("injected constraints");
+            };
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.False);
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(VRVlog.AvatarConstraints.AvatarConstraintsData.Extension), Is.False);
+            var data = Read(json);
+            Assert.That(data.Targets.Any(t => t.Component == "constraint"), Is.False);
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(Omitted(Read(written), "enabled") + 1), "The constraint's curve counts as before the table.");
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarConstraints)) && warning.Contains("injected constraints")),
+                Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
+        [Test]
+        public void APhysBonesTableTheExportCannotWriteIsNotNamed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var physBoneType = OptionalTools.Require(PhysBoneSpringExport.PhysBoneType, "Install the real VRChat SDK for PhysBones.");
+            var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var tail = new GameObject("Tail").transform;
+            tail.SetParent(head, false); tail.position = new Vector3(0, 1.75f, -.1f);
+            var tip = new GameObject("Tail tip").transform;
+            tip.SetParent(tail, false); tip.position = new Vector3(0, 1.6f, -.15f);
+            AvatarPhysBonesExportTests.Set(tail.gameObject.AddComponent(physBoneType), "parameter", "Tail");
+            avatar.Fx.AddParameter("Tail_Angle", AnimatorControllerParameterType.Float);
+            Assert.That(Read(Unpacked(GlbDocument.Read(avatar.Export(new List<string>(), null)))).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("builtin"));
+
+            ExportTestHooks.TableFaultInjection = name => { if (name == AvatarPhysBonesData.Extension) throw new InvalidOperationException("injected physbones"); };
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, null)));
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarPhysBonesData.Extension), Is.False);
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarPhysBonesData.Extension), Is.False);
+            Assert.That(Read(json).Parameters.Single(p => p.Name == "Tail_Angle").Origin, Is.EqualTo("animator"), "As before the table.");
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarPhysBones)) && warning.Contains("injected physbones")),
+                Is.EqualTo(1), string.Join("\n", warnings));
+        }
+
+        // The activeSelf curve of an object the file has no node for, removed
+        // or not, turns every part under it: one enabled target per part a
+        // table writes, resting at the object's activeSelf, separate from the
+        // part's own enabled target on the same index. An object whose parts
+        // no table writes counts its curve as before; an object the file has
+        // a node for keeps its active target only.
+        [TestCase("noNode")]
+        [TestCase("removed")]
+        [TestCase("written")]
+        public void ActiveCurvesOfObjectsWithoutANodeTurnThePartsUnderThem(string mode)
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var fx = Child(root, "Fx");
+            var lamp = Child(fx.transform, "Lamp").AddComponent<Light>();
+            var dropped = Child(fx.transform, "Dropped").AddComponent<Light>();
+            fx.SetActive(false);
+            var gone = Child(root, "Gone");
+            var goneLight = Child(gone.transform, "Lamp").AddComponent<Light>();
+            var clip = avatar.Clip("Switch", ("Fx", true), ("Gone", true));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+            var parts = new[] { lamp, dropped, goneLight }.Select(l => AvatarAnimatorCapture.ReadPart("light", l, root)).ToArray();
+            if (mode == "removed")
+            {
+                Object.DestroyImmediate(fx);
+                Object.DestroyImmediate(gone);
+            }
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject)
+            {
+                bool Under(GameObject parent) => parent != null && gameObject.transform.IsChildOf(parent.transform);
+                if (Under(gone) || Under(fx) && !(mode == "written" && gameObject == fx)) return -1;
+                return nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            }
+            (int, int) Part(Component component) => ReferenceEquals(component, lamp) ? (5, -1) : (-1, -1);
+
+            var data = WithParts(avatar, parts, Node, Part);
+            var tracks = ClipOf(data, "Switch").Tracks;
+            if (mode == "written")
+            {
+                Assert.That(PartTargets(data), Is.EqualTo(new[] { ("light", 5L, 1L, -1L) }), "Only its own enabled curve.");
+                Assert.That(tracks.Count(t => data.Targets[t.Target].Property == "active" && data.Targets[t.Target].Node == nodes[fx]), Is.EqualTo(1));
+                Assert.That(Omitted(data, "missingNode"), Is.EqualTo(1), "Gone.");
+                return;
+            }
+            Assert.That(PartTargets(data), Is.EquivalentTo(new[] { ("light", 5L, 0L, -1L), ("light", 5L, 1L, -1L) }));
+            var turns = tracks.Where(t => !data.Targets[t.Target].Known).Select(t => (Convert.ToInt64(data.Targets[t.Target].Fields["rest"]), t.Curves.Single().Keys.First().Value));
+            Assert.That(turns, Is.EquivalentTo(new[] { (0L, 1d), (1L, 0d) }), "The activeSelf curve and the light's own.");
+            Assert.That(Omitted(data, "missingNode"), Is.EqualTo(1), "Gone: no table writes its light.");
+
+            var without = WithParts(avatar, null, Node, null);
+            Assert.That(PartTargets(without), Is.Empty);
+            Assert.That(Omitted(without, "missingNode"), Is.EqualTo(2));
+        }
+
+        // Unity binds a path to the first child of each name, so a curve on a
+        // path two siblings share turns the parts of the first one only.
+        [Test]
+        public void CurvesOnASharedPathTurnTheFirstSiblingsParts()
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var first = Child(root, "Fx");
+            var second = Child(root, "Fx");
+            var lights = new[] { first, second }.Select(fx => Child(fx.transform, "Lamp").AddComponent<Light>()).ToArray();
+            var clip = avatar.Clip("Switch", ("Fx", false));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx/Lamp", typeof(Light), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Switch", clip);
+            var parts = lights.Select(l => AvatarAnimatorCapture.ReadPart("light", l, root)).ToArray();
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) =>
+                gameObject.transform.IsChildOf(first.transform) || gameObject.transform.IsChildOf(second.transform) ? -1
+                    : nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+            (int, int) Part(Component component) => (Array.IndexOf(lights, component), -1);
+
+            var data = WithParts(avatar, parts, Node, Part);
+            Assert.That(PartTargets(data).Select(p => p.Item2), Is.EqualTo(new[] { 0L, 0L }), "Fx's activeSelf and Fx/Lamp's own, on the first light.");
+
+            // With the first light left out, the curves turn none.
+            var left = WithParts(avatar, parts, Node, c => ReferenceEquals(c, lights[0]) ? (-1, -1) : (1, -1));
+            Assert.That(PartTargets(left), Is.Empty);
+        }
+
+        // The copies of a curve for each part take the clip's keys left: one
+        // that would go over MaximumKeysPerClip is not written and counts as
+        // enabled, and the file still reads.
+        [Test]
+        public void PartTracksStayWithinTheKeysOfAClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var root = avatar.Source.transform;
+            var fx = Child(root, "Fx");
+            var lights = Enumerable.Range(0, 3).Select(i => Child(fx.transform, "Lamp" + i).AddComponent<Light>()).ToArray();
+            var clip = avatar.Clip("Switch");
+            var keys = Enumerable.Range(0, 6000).Select(i => new Keyframe(i / 60f, i % 2, float.PositiveInfinity, float.PositiveInfinity)).ToArray();
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Fx", typeof(GameObject), "m_IsActive"), new AnimationCurve(keys));
+            AddLayer(avatar, "Switch", clip);
+            var parts = lights.Select(l => AvatarAnimatorCapture.ReadPart("light", l, root)).ToArray();
+            var nodes = new Dictionary<GameObject, int>();
+            int Node(GameObject gameObject) =>
+                gameObject.transform.IsChildOf(fx.transform) ? -1 : nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count;
+
+            var data = WithParts(avatar, parts, Node, c => (Array.IndexOf(lights, c), -1));
+            var tracks = ClipOf(data, "Switch").Tracks;
+            var copies = tracks.Count(t => !data.Targets[t.Target].Known);
+            var length = tracks.First(t => !data.Targets[t.Target].Known).Curves.Single().Keys.Count;
+            Assume.That(length * 3, Is.GreaterThan(AvatarAnimatorData.MaximumKeysPerClip), "The curve keeps its keys.");
+            Assert.That(tracks.Sum(t => t.Curves.Sum(c => c.Keys.Count)), Is.LessThanOrEqualTo(AvatarAnimatorData.MaximumKeysPerClip));
+            Assert.That(copies, Is.EqualTo(AvatarAnimatorData.MaximumKeysPerClip / length));
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(3 - copies));
+        }
+
+        static EditorCurveBinding Moves(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
+
+        // Local position, scale and rotation curves are translation, scale
+        // and rotation targets of their node, one per channel, after the
+        // other kinds, each resting at the node's local value: a quaternion
+        // channel for m_LocalRotation, an Euler angle for localEulerAnglesRaw.
+        // A curve on a Humanoid bone is counted as humanoidTransform, and one
+        // on the avatar root or of the baked Euler interpolation as transform.
+        [Test]
+        public void TransformCurvesAreWrittenAndHumanoidBonesCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses");
+            var hat = avatar.Source.transform.Find("Hat");
+            glasses.localPosition = new Vector3(.1f, .2f, .3f);
+            glasses.localScale = new Vector3(1, 2, 1);
+            hat.localRotation = Quaternion.Euler(0, 0, 30);
+            var head = avatar.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            Assert.That(head, Is.Not.Null, "The fixture is a Humanoid avatar.");
+            var headPath = AnimationUtility.CalculateTransformPath(head, avatar.Source.transform);
+            var clip = avatar.Clip("Move", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalPosition.y"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalScale.x"), AnimationCurve.Constant(0, 1f / 60, 3));
+            AnimationUtility.SetEditorCurve(clip, Moves("Hat", "localEulerAnglesRaw.z"), AnimationCurve.Linear(0, 0, 1, 90));
+            AnimationUtility.SetEditorCurve(clip, Moves(headPath, "m_LocalRotation.x"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(clip, Moves("", "m_LocalPosition.y"), AnimationCurve.Constant(0, 1f / 60, 1));
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Move", clip);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var moved = data.Targets.Where(t => AvatarAnimatorData.IsTransform(t.Property)).ToList();
+            Assert.That(moved.Select(t => (t.Node, t.Property, t.Channel, t.Euler)), Is.EqualTo(new[]
+            {
+                (nodes[glasses.gameObject], "translation", "y", false), (nodes[hat.gameObject], "rotation", "z", true), (nodes[glasses.gameObject], "scale", "x", false),
+            }));
+            Assert.That(moved.Single(t => t.Property == "translation").Rest, Is.EqualTo(.2).Within(1e-6));
+            Assert.That(moved.Single(t => t.Property == "scale").Rest, Is.EqualTo(1).Within(1e-6));
+            Assert.That(moved.Single(t => t.Property == "rotation").Rest, Is.EqualTo(30).Within(1e-3));
+            var tracks = ClipOf(data, "Move").Tracks;
+            Assert.That(tracks.Select(t => data.Targets[t.Target].Property).Take(2), Is.EqualTo(new[] { "active", "materialFloat" }));
+            Assert.That(tracks.Skip(2).Select(t => data.Targets[t.Target]), Is.EquivalentTo(moved));
+            var euler = tracks.Single(t => data.Targets[t.Target].Euler).Curves.Single();
+            Assert.That(euler.Keys.Select(k => k.Value), Is.EqualTo(new[] { 0d, 90d }));
+            Assert.That(Omitted(data, "humanoidTransform"), Is.EqualTo(1));
+            Assert.That(Omitted(data, "transform"), Is.EqualTo(1), "The curve on the avatar root.");
+            Assert.That(AvatarAnimatorData.Read(AvatarAnimatorData.Write(data)).Targets.Count, Is.EqualTo(data.Targets.Count));
+
+            // Without a node for the object, its curves are counted as missingNode.
+            AvatarAnimatorData WithoutHat() => AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => gameObject == hat.gameObject ? -1 : nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count)));
+            var without = WithoutHat();
+            Assert.That(without.Targets.Any(t => t.Property == "rotation"), Is.False);
+            AnimationUtility.SetEditorCurve(clip, Moves("Hat", "localEulerAnglesRaw.z"), null);
+            Assert.That(Omitted(without, "missingNode"), Is.EqualTo(Omitted(WithoutHat(), "missingNode") + 1));
+        }
+
+        // A node whose rotation one clip moves as Euler angles and another as
+        // a quaternion has its rotation curves left out as rotationMixed; its
+        // other channels, and other nodes, are still written.
+        [Test]
+        public void EulerAndQuaternionRotationOfOneNodeAreCountedAsMixed()
+        {
+            using var avatar = new AnimatorAvatar();
+            var euler = avatar.Clip("Euler");
+            AnimationUtility.SetEditorCurve(euler, Moves("Glasses", "localEulerAnglesRaw.y"), AnimationCurve.Constant(0, 1f / 60, 45));
+            AnimationUtility.SetEditorCurve(euler, Moves("Glasses", "m_LocalPosition.x"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(euler, Moves("Hat", "localEulerAnglesRaw.y"), AnimationCurve.Constant(0, 1f / 60, 45));
+            AddLayer(avatar, "Euler", euler);
+            var quaternion = avatar.Clip("Quaternion");
+            var turned = Quaternion.Euler(0, 45, 0);
+            foreach (var (channel, value) in new[] { ("x", turned.x), ("y", turned.y), ("z", turned.z), ("w", turned.w) })
+                AnimationUtility.SetEditorCurve(quaternion, Moves("Glasses", "m_LocalRotation." + channel), AnimationCurve.Constant(0, 1f / 60, value));
+            AddLayer(avatar, "Quaternion", quaternion);
+
+            var nodes = new Dictionary<GameObject, int>();
+            var data = CapturedWithMaterials(avatar, nodes);
+            var glasses = nodes[avatar.Source.transform.Find("Glasses").gameObject];
+            var hat = nodes[avatar.Source.transform.Find("Hat").gameObject];
+            Assert.That(data.Targets.Where(t => AvatarAnimatorData.IsTransform(t.Property)).Select(t => (t.Node, t.Property, t.Channel, t.Euler)),
+                Is.EquivalentTo(new[] { (glasses, "translation", "x", false), (hat, "rotation", "y", true) }));
+            Assert.That(Omitted(data, "rotationMixed"), Is.EqualTo(5), "The Euler curve and the four quaternion curves of Glasses.");
+            Assert.That(ClipOf(data, "Quaternion").Tracks, Is.Empty);
+            Assert.That(ClipOf(data, "Euler").Tracks.Select(t => data.Targets[t.Target].Property), Is.EquivalentTo(new[] { "translation", "rotation" }));
+        }
+
+        // Unity adds an additive layer's Transform curves to the pose, so they
+        // are counted as transform, and a node only they move has no target.
+        [Test]
+        public void TransformCurvesOfAnAdditiveLayerAreCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Grow");
+            AnimationUtility.SetEditorCurve(clip, Moves("Glasses", "m_LocalScale.x"), AnimationCurve.Constant(0, 1f / 60, 2));
+            avatar.Fx.AddLayer("Added");
+            var layers = avatar.Fx.layers;
+            layers[layers.Length - 1].blendingMode = AnimatorLayerBlendingMode.Additive;
+            layers[layers.Length - 1].defaultWeight = 1;
+            layers[layers.Length - 1].stateMachine.AddState("On").motion = clip;
+            avatar.Fx.layers = layers;
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(data.Targets.Any(t => AvatarAnimatorData.IsTransform(t.Property)), Is.False);
+            Assert.That(Omitted(data, "transform"), Is.EqualTo(1));
+        }
+
+        // Renderers that share a material share its target: clips on either
+        // move it, and a second curve of the same clip on it is counted.
+        [Test]
+        public void RenderersThatShareAMaterialShareItsTarget()
+        {
+            using var avatar = new AnimatorAvatar();
+            var both = avatar.Clip("Both");
+            AnimationUtility.SetEditorCurve(both, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(both, Cutoff("Hat"), AnimationCurve.Constant(0, 1f / 60, .75f));
+            AddLayer(avatar, "Both", both);
+            var one = avatar.Clip("One");
+            AnimationUtility.SetEditorCurve(one, Cutoff("Hat"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AddLayer(avatar, "One", one);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            var target = data.Targets.FindIndex(t => t.Property == "materialFloat");
+            Assert.That(data.Targets.Count(t => t.Property == "materialFloat"), Is.EqualTo(1));
+            Assert.That(ClipOf(data, "Both").Tracks.Single().Target, Is.EqualTo(target));
+            Assert.That(ClipOf(data, "One").Tracks.Single().Target, Is.EqualTo(target));
+            Assert.That(Omitted(data, "material"), Is.EqualTo(1), "The second curve of Both.");
+        }
+
+        // An additive layer adds a material float less its reference pose,
+        // which the extension does not carry: a target such a clip moves is
+        // left out with every track on it, and the curves are counted.
+        // Renderers the file does not write as meshes (particles) keep their
+        // enabled curves counted as enabled.
+        [Test]
+        public void AMaterialFloatAnAdditiveLayerMovesAndAParticleSwitchAreCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var added = avatar.Clip("Added");
+            AnimationUtility.SetEditorCurve(added, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AddLayer(avatar, "Added", added, AnimatorLayerBlendingMode.Additive);
+            var plain = avatar.Clip("Plain");
+            AnimationUtility.SetEditorCurve(plain, Cutoff("Hat"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(plain, EditorCurveBinding.FloatCurve("Sparks", typeof(ParticleSystemRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Plain", plain);
+
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            Assert.That(data.Targets.Any(t => t.Property == "materialFloat"), Is.False);
+            Assert.That(ClipOf(data, "Plain").Tracks, Is.Empty);
+            Assert.That(Omitted(data, "material"), Is.EqualTo(2), "Both curves on the left-out target.");
+            Assert.That(Omitted(data, "enabled"), Is.EqualTo(1));
+            Assert.That(data.Targets.Any(t => t.Property == "enabled"), Is.False);
+        }
+
+        // A color channel curve is a materialColor target and a channel of a
+        // texture's scale and offset (material.X_ST.x) a materialTextureST
+        // target named by the texture, after the materialFloat targets, and
+        // their tracks follow the clip's other tracks. Rest is the channel in
+        // the avatar's material. A curve on a name or type the app's material
+        // does not keep is counted as materialProperty, and a vector channel
+        // as material. A feature switch the app fixes on loading is a
+        // materialFloat target: the app keeps the code of a moved switch.
+        [Test]
+        public void MaterialColorAndTextureSTCurvesAreWrittenAndTheOthersCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var shared = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            shared.SetColor("_Color", new Color(1, .5f, .25f, 1));
+            shared.SetTextureScale("_MainTex", new Vector2(2, 3));
+            shared.SetTextureOffset("_MainTex", new Vector2(.125f, .375f));
+            // Off in the avatar, as a feature a menu turns on.
+            shared.SetFloat("_UseEmission", 0);
+            var clip = avatar.Clip("Tint");
+            void Set(string property, float value) =>
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(MeshRenderer), property), AnimationCurve.Constant(0, 1f / 60, value));
+            Set("material._MainTex_ST.w", .75f);
+            Set("material._MainTex_ST.x", 4);
+            Set("material._Color.g", .25f);
+            Set("material._Cutoff", .25f);
+            Set("material._UseEmission", 1);
+            Set("material._Color", 1);
+            Set("material._MainTex_ST", 1);
+            Set("material._NotLilToon", 1);
+            Set("material._NotLilToon.r", 1);
+            Set("material._Main2ndDissolveParams.x", 1);
+            AddLayer(avatar, "Tint", clip);
+
+            // 自動で軽量化する keeps the texture slots of the switch the menu turns on.
+            Assert.That(AvatarAnimatorCapture.Capture(avatar.Source, null).MovedMaterialFloats(), Is.EquivalentTo(new[] { "_Cutoff", "_UseEmission" }));
+            var data = CapturedWithMaterials(avatar, new Dictionary<GameObject, int>());
+            var kinds = data.Targets.Select(t => t.Property).ToList();
+            Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+            var tracks = ClipOf(data, "Tint").Tracks;
+            Assert.That(tracks.Select(t => (data.Targets[t.Target].Property, data.Targets[t.Target].Name, data.Targets[t.Target].Channel)), Is.EqualTo(new[]
+            {
+                ("materialFloat", "_Cutoff", (string)null),
+                ("materialFloat", "_UseEmission", (string)null),
+                ("materialColor", "_Color", "g"),
+                ("materialTextureST", "_MainTex", "w"),
+                ("materialTextureST", "_MainTex", "x"),
+            }));
+            Assert.That(tracks.Select(t => t.Curves.Single().Keys[0].Value), Is.EqualTo(new[] { .25, 1, .25, .75, 4 }));
+            Assert.That(tracks.Select(t => data.Targets[t.Target]).Select(t => (t.Node, t.Material, t.Rest)), Is.EqualTo(new[]
+            {
+                (-1, 0, (double)shared.GetFloat("_Cutoff")),
+                (-1, 0, (double)shared.GetFloat("_UseEmission")),
+                (-1, 0, .5),
+                (-1, 0, .375),
+                (-1, 0, 2d),
+            }));
+            // The fixture's own color channel curve, on the same material.
+            var red = data.Targets.Single(t => t.Property == "materialColor" && t.Channel == "r");
+            Assert.That((red.Material, red.Name, red.Rest), Is.EqualTo((0, "_Color", 1d)));
+            Assert.That(Omitted(data, "materialProperty"), Is.EqualTo(4), "_Color and _MainTex_ST as floats, and both curves on _NotLilToon.");
+            Assert.That(Omitted(data, "materialSwitch"), Is.Zero);
+            Assert.That(Omitted(data, "material"), Is.EqualTo(1), "The vector channel.");
+            Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(data.Omitted.Select(o => o.Kind).OrderBy(kind => Array.IndexOf(AvatarAnimatorData.OmittedKinds, kind))));
+
+            // Without the file's materials they reach no target and are counted
+            // as material; the others are counted the same.
+            var before = CapturedWithNodes(avatar);
+            Assert.That(before.Targets.Any(t => t.Property == "materialColor" || t.Property == "materialTextureST"), Is.False);
+            Assert.That(Omitted(before, "material"), Is.EqualTo(7), "Four channels, the two floats and the vector channel of Tint, and the fixture's color channel.");
+            Assert.That(Omitted(before, "materialProperty"), Is.EqualTo(4));
+            Assert.That(Omitted(before, "materialSwitch"), Is.Zero);
+        }
+
+        // Each switch the app fixes is a float the contract keeps for the
+        // app's material, so its curve is a materialFloat target and not
+        // counted as materialProperty: the app keeps the code of a moved switch.
+        [Test]
+        public void TheAppsFeatureSwitchesAreFloatsOfTheContract()
+        {
+            Assert.That(LilToonFullContract.Switches.Select(LilToonFullContract.RuntimeType), Is.All.EqualTo("float"));
+            foreach (var name in LilToonFullContract.Switches)
+            {
+                Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(SkinnedMeshRenderer), "material." + name), out var omitted), Is.EqualTo(("materialFloat", name, (string)null)), name);
+                Assert.That(omitted, Is.Null, name);
+            }
+            Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(MeshRenderer), "material._MainTex_ST.y"), out _), Is.EqualTo(("materialTextureST", "_MainTex", "y")));
+            Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(MeshRenderer), "material._Color.a"), out _), Is.EqualTo(("materialColor", "_Color", "a")));
+            Assert.That(AvatarAnimatorCapture.MaterialCurve(EditorCurveBinding.FloatCurve("", typeof(ParticleSystemRenderer), "material._Color.a"), out var other), Is.Null);
+            Assert.That(other, Is.Null, "Not a mesh renderer's material curve.");
+        }
+
+        // In a real export a materialFloat target names a material of the
+        // file's glTF materials table, and Inject takes no other. The export
+        // swaps the lilToon material for a fallback; a property only lilToon
+        // has is still written, with the lilToon value as rest.
+        [Test]
+        public void AnExportedMaterialFloatTargetNamesAGltfMaterial()
+        {
+            using var avatar = new AnimatorAvatar();
+            var lilToon = avatar.Source.transform.Find("Glasses").GetComponent<MeshRenderer>().sharedMaterial;
+            Assume.That(lilToon.HasFloat("_AlphaMaskValue"), Is.True, "lilToon has _AlphaMaskValue.");
+            lilToon.SetFloat("_AlphaMaskValue", .375f);
+            var clip = avatar.Clip("Glasses fade");
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Glasses", typeof(MeshRenderer), "material._AlphaMaskValue"), AnimationCurve.Constant(0, 1f / 60, .5f));
+            AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Glasses fade", clip);
+            var exported = avatar.Export(new List<string>(), null);
+            var json = Unpacked(GlbDocument.Read(exported));
+            var data = Read(json);
+            var materials = (List<object>)json["materials"];
+            var mask = data.Targets.Single(t => t.Property == "materialFloat" && t.Name == "_AlphaMaskValue");
+            Assert.That(mask.Rest, Is.EqualTo(.375).Within(1e-6));
+            var target = data.Targets.Single(t => t.Property == "materialFloat" && t.Name == "_Cutoff");
+            Assert.That(target.Material, Is.LessThan(materials.Count));
+            Assert.That(mask.Material, Is.EqualTo(target.Material));
+            var glasses = data.Targets.Single(t => t.Property == "enabled");
+            var meshIndex = (long)((Dictionary<string, object>)((List<object>)json["nodes"])[glasses.Node])["mesh"];
+            var primitives = (List<object>)((Dictionary<string, object>)((List<object>)json["meshes"])[(int)meshIndex])["primitives"];
+            Assert.That(primitives.Select(p => (long)((Dictionary<string, object>)p)["material"]), Does.Contain((long)target.Material), "The material the Glasses mesh draws with.");
+
+            target.Material = materials.Count;
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data), Throws.InvalidOperationException.With.Message.Contains("material"));
+        }
+
+        // A material float curve moves each slot of the renderer: a target per
+        // material. Whether a slot has the property and its rest come from the
+        // material read with the curve, though the slot later holds another
+        // (the export's fallback), whose index is written. A renderer that is
+        // off when the file is written is no mesh there: its enabled curves
+        // are counted as enabled.
+        [Test]
+        public void EachSlotIsATargetReadFromTheMaterialBeforeTheSwap()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").GetComponent<MeshRenderer>();
+            var fixture = glasses.sharedMaterial;
+            var first = new Material(fixture) { name = "First" };
+            var second = new Material(fixture) { name = "Second" };
+            first.SetFloat("_Cutoff", .125f);
+            second.SetFloat("_Cutoff", .625f);
+            glasses.sharedMaterials = new[] { first, second };
+            var clip = avatar.Clip("Fade");
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetEditorCurve(clip, Enabled("Glasses"), AnimationCurve.Constant(0, 1f / 60, 0));
+            AddLayer(avatar, "Fade", clip);
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var fallbacks = new[] { new Material(Shader.Find("Unlit/Color")) { name = "First fallback" }, new Material(Shader.Find("Unlit/Color")) { name = "Second fallback" } };
+            try
+            {
+                Assume.That(fallbacks[0].HasFloat("_Cutoff"), Is.False);
+                glasses.sharedMaterials = fallbacks;
+                glasses.enabled = false;
+                var nodes = new Dictionary<GameObject, int>();
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count,
+                    null, material => Array.IndexOf(fallbacks, material))));
+                var targets = data.Targets.Where(t => t.Property == "materialFloat").ToList();
+                Assert.That(targets.Select(t => (t.Material, t.Name, t.Rest)), Is.EqualTo(new[] { (0, "_Cutoff", .125), (1, "_Cutoff", .625) }));
+                Assert.That(ClipOf(data, "Fade").Tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "materialFloat" }));
+                Assert.That(data.Targets.Any(t => t.Property == "enabled"), Is.False);
+                Assert.That(Omitted(data, "enabled"), Is.EqualTo(1));
+            }
+            finally
+            {
+                foreach (var material in fallbacks.Concat(new[] { first, second })) UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        // The export drops an empty submesh with its slot after the curves
+        // were read; each slot left keeps the property and rest it had.
+        [Test]
+        public void ASlotDroppedWithItsEmptySubmeshShiftsTheSlotsAfterIt()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").GetComponent<MeshRenderer>();
+            var filter = glasses.GetComponent<MeshFilter>();
+            var mesh = Object.Instantiate(filter.sharedMesh);
+            var indices = mesh.GetIndices(0);
+            mesh.subMeshCount = 2;
+            mesh.SetIndices(Array.Empty<int>(), MeshTopology.Triangles, 0);
+            mesh.SetIndices(indices, MeshTopology.Triangles, 1);
+            filter.sharedMesh = mesh;
+            var fixture = glasses.sharedMaterial;
+            var first = new Material(fixture) { name = "First" };
+            var second = new Material(fixture) { name = "Second" };
+            first.SetFloat("_Cutoff", .125f);
+            second.SetFloat("_Cutoff", .625f);
+            glasses.sharedMaterials = new[] { first, second };
+            var clip = avatar.Clip("Fade");
+            AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 1),
+                new[] { new ObjectReferenceKeyframe { time = 0, value = second }, new ObjectReferenceKeyframe { time = 1f / 60, value = second } });
+            AddLayer(avatar, "Fade", clip);
+            var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+            var owned = new List<Mesh>();
+            var fallbacks = new[] { new Material(Shader.Find("Unlit/Color")) { name = "Fallback" } };
+            try
+            {
+                UniVrmOneClickExporter.DropEmptySubmeshes(avatar.Source, owned, null, capture.KeepSlots);
+                Assume.That(glasses.sharedMaterials, Is.EqualTo(new[] { second }));
+                glasses.sharedMaterials = fallbacks;
+                var nodes = new Dictionary<GameObject, int>();
+                var resolved = capture.Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count,
+                    null, material => Array.IndexOf(fallbacks, material));
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(resolved));
+                Assert.That(data.Targets.Where(t => t.Property == "materialFloat").Select(t => (t.Material, t.Name, t.Rest)), Is.EqualTo(new[] { (0, "_Cutoff", .625) }));
+                var slot = resolved.Targets.FindIndex(t => t.Property == "materialSlot");
+                Assert.That(data.Targets[slot].Slot, Is.EqualTo(0));
+                Assert.That(capture.Bindings(resolved)[slot], Is.Null);
+            }
+            finally
+            {
+                foreach (var material in fallbacks.Concat(new[] { first, second })) Object.DestroyImmediate(material);
+                foreach (var copy in owned.Append(mesh)) Object.DestroyImmediate(copy);
+            }
+        }
+
+        // Unity never reads the first key's in-tangent or the last key's
+        // out-tangent: a curve with not a number there is still written.
+        [Test]
+        public void AnUnreadTangentThatIsNotANumberKeepsTheCurve()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Proxy");
+            var curve = new AnimationCurve(new Keyframe(0, 0, float.NaN, 1), new Keyframe(1, 1, 1, float.NaN));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), curve);
+            avatar.Fx.AddLayer("Proxy");
+            avatar.Fx.layers.Last().stateMachine.AddState("Proxy").motion = clip;
+
+            var data = Captured(avatar);
+            var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Proxy");
+            var keys = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks.Single().Curves.Single().Keys;
+            Assert.That(keys.Select(k => (k.InTangent, k.OutTangent)), Is.EqualTo(new[] { ((double?)null, (double?)1), (1, null) }));
+            Assert.That(data.Omitted.Where(o => o.Kind == "parameter").Sum(o => o.Count), Is.EqualTo(0));
+        }
+
+        // With an override controller Unity binds the replacement clip: only
+        // its curves drive parameters and are written.
+        [Test]
+        public void AnOverrideControllersClipDrivesItsParameters()
+        {
+            using var avatar = new AnimatorAvatar();
+            var original = avatar.Clip("Original");
+            AnimationUtility.SetEditorCurve(original, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            var replacement = avatar.Clip("Replacement");
+            AnimationUtility.SetEditorCurve(replacement, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendY"), AnimationCurve.Constant(0, 1f / 60, .25f));
+            avatar.Fx.AddLayer("Swapped");
+            avatar.Fx.layers.Last().stateMachine.AddState("Swapped").motion = original;
+            var runtime = new AnimatorOverrideController(avatar.Fx);
+            try
+            {
+                runtime[original] = replacement;
+                VrcAvatar.SetFx(avatar.Source.GetComponent(VrcAvatar.DescriptorType), runtime);
+
+                var data = Captured(avatar);
+                Assert.That(data.Targets.Select(t => data.Parameters[t.Parameter].Name), Is.EqualTo(new[] { "BlendY" }));
+                var layer = data.Controllers.Single().Layers.Single(l => l.Name == "Swapped");
+                var tracks = data.Clips[data.Motions[layer.States.Single().Motion].Clip].Tracks;
+                Assert.That(tracks.Select(t => data.Parameters[data.Targets[t.Target].Parameter].Name), Is.EqualTo(new[] { "BlendY" }));
+                Assert.That(tracks.Single().Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { .25, .25 }));
+            }
+            finally { Object.DestroyImmediate(runtime); }
+        }
+
+        // A layer's Avatar Mask is written as the layer's mask (the body parts
+        // and nodes it lets move) and changes nothing else written.
+        [Test]
+        public void ALayersAvatarMaskIsWrittenAndChangesNothingElse()
+        {
+            using var avatar = new AnimatorAvatar();
+            var clip = avatar.Clip("Masked", ("Glasses", false));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlendX"), AnimationCurve.Constant(0, 1f / 60, 1));
+            avatar.Fx.AddLayer("Masked");
+            avatar.Fx.layers.Last().stateMachine.AddState("Masked").motion = clip;
+            var before = JsonDom.Serialize(AvatarAnimatorData.Write(Captured(avatar)));
+
+            var mask = new AvatarMask { name = "Mask" };
+            try
+            {
+                mask.transformCount = 1;
+                mask.SetTransformPath(0, "Glasses");
+                mask.SetTransformActive(0, false);
+                for (var part = AvatarMaskBodyPart.Root; part < AvatarMaskBodyPart.LastBodyPart; part++) mask.SetHumanoidBodyPartActive(part, false);
+                var layers = avatar.Fx.layers;
+                foreach (var index in new[] { 0, layers.Length - 1 }) layers[index].avatarMask = mask;
+                avatar.Fx.layers = layers;
+                Assert.That(avatar.Fx.layers.Last().avatarMask, Is.SameAs(mask));
+                var after = Captured(avatar);
+                var masked = after.Controllers.Single().Layers.Where(layer => layer.Mask != null).ToList();
+                Assert.That(masked.Select(layer => layer.Name), Is.EqualTo(new[] { avatar.Fx.layers[0].name, "Masked" }));
+                Assert.That(masked.Select(layer => (layer.Mask.Humanoid.Count, layer.Mask.Nodes.Count)), Is.EqualTo(new[] { (0, 0), (0, 0) }), "It lets nothing move.");
+                foreach (var layer in masked) layer.Mask = null;
+                Assert.That(JsonDom.Serialize(AvatarAnimatorData.Write(after)), Is.EqualTo(before));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mask);
+            }
+        }
+
+        // The SDK offers Prevent Repeats (3.10.2 and later) only on a random
+        // into an int; elsewhere, and on an SDK without it, it is off.
+        [Test]
+        public void PreventRepeatsIsWrittenForARandomIntoAnIntOnly()
+        {
+            var on = new PreventingOperation { preventRepeats = true };
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(on, "random", "int"), Is.True);
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(new PreventingOperation(), "random", "int"), Is.False);
+            Assert.That(AvatarAnimatorCapture.PreventRepeats(new OlderOperation(), "random", "int"), Is.False);
+            foreach (var (type, parameterType) in new[] { ("random", "bool"), ("random", "float"), ("set", "int"), ("add", "int"), ("copy", "int") })
+                Assert.That(AvatarAnimatorCapture.PreventRepeats(on, type, parameterType), Is.False, type + " into " + parameterType);
+        }
+
+        sealed class PreventingOperation { public bool preventRepeats; }
+        sealed class OlderOperation { public float chance; }
+
+        // A face read from the board names the clip it plays in the written
+        // FX, the build's copy of the board's clip, and the ways into the
+        // states that play it: an entry and an Any State transition into the
+        // state, and a state's transition into a blend tree that holds it. The
+        // first state plays nothing, so it is not a way in.
+        [Test]
+        public void AFaceListsTheWaysIntoTheStatesThatPlayItsClip()
+        {
+            using var avatar = new AnimatorAvatar();
+            var smile = avatar.Clip("Smile");
+            AnimationUtility.SetEditorCurve(smile, FrontDetail, AnimationCurve.Constant(0, 1f / 60, 100));
+            avatar.Fx.AddLayer("Face");
+            var layerIndex = avatar.Fx.layers.Length - 1;
+            // A face the evaluator cannot show is not written, and a layer
+            // added by script has no weight.
+            var faceLayers = avatar.Fx.layers;
+            faceLayers[layerIndex].defaultWeight = 1;
+            avatar.Fx.layers = faceLayers;
+            var machine = avatar.Fx.layers[layerIndex].stateMachine;
+            var neutral = machine.AddState("Neutral");
+            var smiling = machine.AddState("Smiling");
+            smiling.motion = smile;
+            var mix = avatar.Fx.CreateBlendTreeInController("Mix", out var tree, layerIndex);
+            tree.blendParameter = "Blend";
+            tree.AddChild(avatar.ClipNamed("Glasses off"), 0);
+            tree.AddChild(smile, 1);
+            machine.defaultState = neutral;
+            machine.AddEntryTransition(smiling).AddCondition(AnimatorConditionMode.Equals, 3, "GestureLeft");
+            var any = machine.AddAnyStateTransition(smiling);
+            any.AddCondition(AnimatorConditionMode.Equals, 3, "GestureLeft");
+            neutral.AddTransition(mix).AddCondition(AnimatorConditionMode.Equals, 2, "GestureLeft");
+
+            var warnings = new List<string>();
+            var json = Unpacked(GlbDocument.Read(UniVrmOneClickExporter.Export(avatar.Source, "Avatar animator", "Tests", warnings: warnings,
+                exporterVersion: "0.11.8", lilToonVersion: "2.3.4", gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, inferEmotionPresets: false,
+                listFaces: new[] { ("Face A", smile, 0f) })));
+            var data = Read(json);
+            var custom = ((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])["VRMC_vrm"])["expressions"])["custom"]).Keys;
+            var face = data.Expressions.Single();
+            Assert.That(custom, Has.Member(face.Name), string.Join("\n", warnings));
+            var layers = data.Controllers.Single().Layers;
+            var written = layers.Single(l => l.Name == "Face");
+            var states = written.States.Select(st => st.Name).ToList();
+            Assert.That(face.Clips, Is.EqualTo(new[] { data.Motions[written.States[states.IndexOf("Smiling")].Motion].Clip }));
+            var names = data.Parameters.Select(p => p.Name).ToList();
+            string Ways(AvatarAnimatorData.Entrance w) => states[w.State] + " " + w.From + (w.From == "state" ? " " + states[w.FromState] : "") + (w.From == "entry" ? " " + w.Machine : "")
+                + ": " + string.Join(", ", w.Conditions.Select(c => names[c.Parameter] + " " + c.Mode + " " + c.Threshold));
+            Assert.That(face.When.Select(w => w.Layer).Distinct(), Is.EqualTo(new[] { layers.IndexOf(written) }));
+            Assert.That(face.When.Select(Ways), Is.EqualTo(new[] { "Smiling entry 0: GestureLeft equals 3", "Smiling any: GestureLeft equals 3", "Mix state Neutral: GestureLeft equals 2" }));
+        }
+
+        [Test]
+        public void AnAvatarWithoutADescriptorHasNoExtension()
+        {
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+            using var avatar = new AttachmentConnectionTests.Fixture();
+            var material = new Material(shader) { name = "Plain" };
+            try
+            {
+                foreach (var renderer in avatar.Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                var json = Unpacked(GlbDocument.Read(Export(avatar.Source, new List<string>(), null)));
+                Assert.That(json.TryGetValue("extensionsUsed", out var used) && ((List<object>)used).Contains(AvatarAnimatorData.Extension), Is.False);
+                Assert.That(json.TryGetValue("extensions", out var extensions) && ((Dictionary<string, object>)extensions).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        // Without shapes to keep, the extension only adds: without it, its
+        // extensionsUsed entry and its required version, the file is the one
+        // written when the stage fails. The stage runs eight times (activeSelf
+        // and BlendShape snapshots, the shapes the FX moves, read, node
+        // mapping, the morph targets the file has, injection, the size of the
+        // finished file's JSON); a failure in any of them is left out, in
+        // strict mode too.
+        [TestCase(1, true)]
+        [TestCase(2, true)]
+        [TestCase(3, true)]
+        [TestCase(4, true)]
+        [TestCase(5, true)]
+        [TestCase(6, true)]
+        [TestCase(7, true)]
+        [TestCase(8, true)]
+        [TestCase(1, false)]
+        [TestCase(2, false)]
+        [TestCase(3, false)]
+        [TestCase(4, false)]
+        [TestCase(5, false)]
+        [TestCase(6, false)]
+        [TestCase(7, false)]
+        [TestCase(8, false)]
+        public void TheExtensionLeavesTheRestOfTheFileAsItIs(int failingCall, bool continueOnStageFailure)
+        {
+            using var avatar = new AnimatorAvatar();
+            AnimationUtility.SetEditorCurve(avatar.ClipNamed("Hat on"), FrontDetail, null);
+            var calls = 0;
+            ExportTestHooks.FaultInjection = stage => { if (stage == ExportStage.AvatarAnimator) calls++; };
+            var normal = avatar.Export(new List<string>(), null);
+            Assert.That(calls, Is.EqualTo(8), "Each of the eight runs once.");
+
+            calls = 0;
+            ExportTestHooks.FaultInjection = stage =>
+            {
+                if (stage == ExportStage.AvatarAnimator && ++calls == failingCall) throw new InvalidOperationException("injected avatar animator");
+            };
+            var report = new ExportRecoveryReport { ContinueOnStageFailure = continueOnStageFailure };
+            var warnings = new List<string>();
+            var faulted = avatar.Export(warnings, report);
+
+            Assert.That(report.Succeeded, Is.True);
+            Assert.That(calls, Is.EqualTo(failingCall), "An omitted stage does not run again.");
+            Assert.That(report.Fallbacks.Results.Single(result => result.Stage != null).Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+            Assert.That(warnings, Has.Some.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator)));
+            var withExtension = GlbDocument.Read(normal);
+            Assert.That(withExtension.Json.ContainsKey("extensions") && ((Dictionary<string, object>)withExtension.Json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.True);
+            var without = GlbDocument.Read(faulted);
+            Assert.That(((List<object>)without.Json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
+
+            var stripped = Strip(withExtension);
+            Assert.That(JsonDom.Serialize(stripped.Json), Is.EqualTo(JsonDom.Serialize(without.Json)));
+            Assert.That(stripped.Binary, Is.EqualTo(without.Binary));
+        }
+
+        [Test]
+        public void AnExtensionOverTheLimitIsLeftOutAndListedWithTheReason()
+        {
+            using var avatar = new AnimatorAvatar();
+            AvatarAnimatorCapture.MaximumBytes = 64;
+            var warnings = new List<string>();
+            var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+            var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
+
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+            var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+            Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+            Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.TooLarge));
+            Assert.That(entry.Reason, Does.Contain(AvatarAnimatorCapture.MaximumMegabytes + "MB"));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+        }
+
+        // An extension of exactly the limit is written; one byte less of
+        // room leaves it out.
+        [Test]
+        public void AnExtensionOfExactlyTheLimitIsWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), new ExportRecoveryReport());
+            var data = Read(Unpacked(GlbDocument.Read(exported)));
+            var size = System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+
+            AvatarAnimatorCapture.MaximumBytes = size;
+            var written = Read(Unpacked(GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data))));
+            Assert.That(written.Motions.Count, Is.EqualTo(data.Motions.Count));
+            AvatarAnimatorCapture.MaximumBytes = size - 1;
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data),
+                Throws.InvalidOperationException.With.Message.EqualTo(AvatarAnimatorCapture.TooLarge));
+        }
+
+        // The limit is 16MB: an extension past the former 4MB is written, one
+        // past 16MB is not. The added clips are long curves on a target the
+        // file has.
+        [Test]
+        public void AnExtensionOver4MBIsWrittenAndOneOver16MBIsNot()
+        {
+            Assert.That(AvatarAnimatorCapture.MaximumBytes, Is.EqualTo(16 * 1024 * 1024));
+            using var avatar = new AnimatorAvatar();
+            var exported = avatar.Export(new List<string>(), new ExportRecoveryReport());
+            var data = Read(Unpacked(GlbDocument.Read(exported)));
+            var target = data.Targets.FindIndex(t => t.Property == "active");
+            Assert.That(target, Is.GreaterThanOrEqualTo(0));
+            int Size() => System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(AvatarAnimatorData.Write(data)));
+            // Each its own (the first key's in tangent, which nothing plays),
+            // so that no clip is written as sameTracks of another.
+            AvatarAnimatorData.Clip Long()
+            {
+                var curve = new VRVlog.Expressions.ExpressionAnimationData.Curve();
+                for (var i = 0; i < AvatarAnimatorData.MaximumKeysPerClip; i++)
+                    curve.Keys.Add(new VRVlog.Expressions.ExpressionAnimationData.Key { Time = i / 60.0, Value = i % 2, InTangent = i == 0 ? data.Clips.Count : 0, OutTangent = 0 });
+                var clip = new AvatarAnimatorData.Clip { Name = "Long", Duration = (AvatarAnimatorData.MaximumKeysPerClip - 1) / 60.0 };
+                var track = new AvatarAnimatorData.Track { Target = target };
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+                return clip;
+            }
+            void GrowPast(int bytes)
+            {
+                var before = Size();
+                data.Clips.Add(Long());
+                var each = Size() - before;
+                for (var more = (bytes - before) / each; more > 0; more--) data.Clips.Add(Long());
+                while (Size() <= bytes) data.Clips.Add(Long());
+            }
+
+            GrowPast(4 * 1024 * 1024);
+            var withFive = GlbDocument.Read(AvatarAnimatorCapture.Inject(exported, data));
+            var written = (Dictionary<string, object>)AvatarAnimatorPacking.Document(withFive);
+            Assert.That(((List<object>)written["clips"]).Count, Is.EqualTo(data.Clips.Count));
+            Assert.That(Size(), Is.GreaterThan(4 * 1024 * 1024).And.LessThanOrEqualTo(AvatarAnimatorCapture.MaximumBytes));
+
+            GrowPast(AvatarAnimatorCapture.MaximumBytes);
+            Assert.That(() => AvatarAnimatorCapture.Inject(exported, data),
+                Throws.InvalidOperationException.With.Message.EqualTo(AvatarAnimatorCapture.TooLarge));
+            Assert.That(AvatarAnimatorCapture.TooLarge, Does.Contain("16MB"));
+        }
+
+        // The app reads a JSON chunk of up to 32MB. A file whose JSON chunk is
+        // exactly that is written as it is; one byte less of room leaves the
+        // extension out, with the reason, and the file is the one written
+        // without it.
+        [Test]
+        public void AFileWhoseJsonIsOverTheAppLimitLeavesTheExtensionOut()
+        {
+            Assert.That(AvatarAnimatorCapture.AppJsonBytes, Is.EqualTo(32 * 1024 * 1024));
+            using var avatar = new AnimatorAvatar();
+            var normal = avatar.Export(new List<string>(), new ExportRecoveryReport());
+            var chunk = (int)BitConverter.ToUInt32(normal, 12);
+
+            AvatarAnimatorCapture.AppJsonBytes = chunk;
+            Assert.That(avatar.Export(new List<string>(), new ExportRecoveryReport()), Is.EqualTo(normal));
+
+            AvatarAnimatorCapture.AppJsonBytes = chunk - 1;
+            var warnings = new List<string>();
+            var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+            var without = avatar.Export(warnings, report);
+            var json = Unpacked(GlbDocument.Read(without));
+            Assert.That(((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension), Is.False);
+            Assert.That(((Dictionary<string, object>)json["extensions"]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"];
+            Assert.That(((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).ContainsKey(AvatarAnimatorData.Extension), Is.False);
+            var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+            Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+            Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.JsonTooLarge));
+            Assert.That(entry.Reason, Does.Contain(AvatarAnimatorCapture.AppJsonMegabytes + "MB"));
+            Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+            var stripped = Strip(GlbDocument.Read(normal));
+            Assert.That(JsonDom.Serialize(stripped.Json), Is.EqualTo(JsonDom.Serialize(json)));
+            Assert.That(GlbDocument.Read(without).Binary, Is.EqualTo(stripped.Binary));
+        }
+
+        // Trees nested as deep as the format allows are written; one level more
+        // leaves the stage out, and the export still succeeds.
+        [Test]
+        public void BlendTreesNestedOverTheLimitLeaveTheStageOut()
+        {
+            foreach (var depth in new[] { AvatarAnimatorData.MaximumBlendTreeDepth, AvatarAnimatorData.MaximumBlendTreeDepth + 1 })
+            {
+                using var avatar = new AnimatorAvatar();
+                var fx = avatar.Fx;
+                fx.AddLayer("Deep");
+                fx.CreateBlendTreeInController("Deep", out var tree, fx.layers.Length - 1);
+                for (var level = 1; level < depth; level++)
+                {
+                    tree.blendType = BlendTreeType.Simple1D;
+                    tree.blendParameter = "Blend";
+                    tree = tree.CreateBlendTreeChild(0);
+                }
+                tree.blendType = BlendTreeType.Simple1D;
+                tree.blendParameter = "Blend";
+                tree.AddChild(avatar.Clip("Deep"), 0);
+
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
+                var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
+                Assert.That(written, Is.EqualTo(depth <= AvatarAnimatorData.MaximumBlendTreeDepth), "depth " + depth);
+                if (written)
+                {
+                    Assert.That(Read(json).Motions.Count(motion => motion.Type == "blendTree"), Is.GreaterThanOrEqualTo(depth));
+                    Assert.That(report.Fallbacks.Results.Any(result => result.Stage != null), Is.False);
+                }
+                else
+                {
+                    var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                    Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+                    Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.TooDeep));
+                    Assert.That(entry.Reason, Does.Contain(AvatarAnimatorData.MaximumBlendTreeDepth.ToString()));
+                    Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+                }
+            }
+        }
+
+        // A tree two parents share is written once and counted at the deeper
+        // of its two places: under the top tree it is 2 deep, at the end of
+        // the chain it is chain + 2 deep.
+        [Test]
+        public void ASharedBlendTreeCountsAtItsDeepestPlace()
+        {
+            foreach (var chain in new[] { AvatarAnimatorData.MaximumBlendTreeDepth - 2, AvatarAnimatorData.MaximumBlendTreeDepth - 1 })
+            {
+                using var avatar = new AnimatorAvatar();
+                var fx = avatar.Fx;
+                fx.AddLayer("Shared");
+                fx.CreateBlendTreeInController("Shared", out var top, fx.layers.Length - 1);
+                top.blendType = BlendTreeType.Simple1D;
+                top.blendParameter = "Blend";
+                var shared = top.CreateBlendTreeChild(0);
+                shared.blendType = BlendTreeType.Simple1D;
+                shared.blendParameter = "Blend";
+                var clip = avatar.Clip("Shared");
+                shared.AddChild(clip, 0);
+                var tree = top;
+                for (var level = 0; level < chain; level++)
+                {
+                    tree = tree.CreateBlendTreeChild(1);
+                    tree.blendType = BlendTreeType.Simple1D;
+                    tree.blendParameter = "Blend";
+                }
+                tree.AddChild(shared, 0);
+                Assert.That(top.children[0].motion, Is.EqualTo(shared), "the shared tree is walked under the top tree first");
+
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
+                var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
+                Assert.That(written, Is.EqualTo(chain + 2 <= AvatarAnimatorData.MaximumBlendTreeDepth), "chain " + chain);
+                if (written)
+                {
+                    var data = Read(json);
+                    var clipIndex = data.Clips.FindIndex(candidate => candidate.Name == clip.name);
+                    var clipMotion = data.Motions.FindIndex(motion => motion.Type == "clip" && motion.Clip == clipIndex);
+                    var sharedIndex = data.Motions.FindIndex(motion => motion.Children.Any(child => child.Motion == clipMotion));
+                    Assert.That(data.Motions.Sum(motion => motion.Children.Count(child => child.Motion == sharedIndex)), Is.EqualTo(2));
+                }
+                else Assert.That(report.Fallbacks.Results.Single(result => result.Stage != null).Reason, Is.EqualTo(AvatarAnimatorCapture.TooDeep));
+            }
+        }
+
+        // Machines are written root first, each before its children and the
+        // children in Unity's order. A machine two parents hold is written
+        // once, under the parent reached first: here A, which is walked
+        // before the root's second child.
+        [Test]
+        public void MachinesAreWrittenEachBeforeItsChildrenAndASharedOneUnderTheParentReachedFirst()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            fx.AddLayer("Tree");
+            var root = fx.layers.Last().stateMachine;
+            var a = root.AddStateMachine("A");
+            var b = root.AddStateMachine("B");
+            var c = a.AddStateMachine("C");
+            a.AddStateMachine(b, Vector3.zero);
+            // States are made in another order than the machines: the walk decides.
+            foreach (var machine in new[] { b, c, a, root }) machine.AddState(machine.name + " state");
+            root.AddEntryTransition(b);
+
+            var tree = Captured(avatar).Controllers.Single().Layers.Last();
+            Assert.That(tree.Machines.Select(m => (m.Name, m.Parent)), Is.EqualTo(new[] { ("Tree", -1), ("A", 0), ("C", 1), ("B", 1) }));
+            Assert.That(tree.States.Select(s => (s.Name, s.Machine)), Is.EqualTo(new[] { ("Tree state", 0), ("A state", 1), ("C state", 2), ("B state", 3) }));
+            Assert.That(tree.Machines[0].EntryTransitions.Single().ToMachine, Is.EqualTo(3));
+        }
+
+        // A state on a synced layer is written with the behaviours that layer
+        // itself sets for it. They are the ones Unity reports as effective for
+        // the state on that layer: none without an override, and not those of
+        // the layer it is synced to.
+        [Test]
+        public void ASyncedLayerIsWrittenWithTheBehavioursEffectiveOnIt()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            var nestedIndex = Array.FindIndex(fx.layers, l => l.name == "Nested");
+            var inner = fx.layers[nestedIndex].stateMachine.stateMachines.Single().stateMachine.states.Single().state;
+            var names = new[] { "No override", "Own driver", "Emptied" };
+            foreach (var name in names) fx.AddLayer(name);
+            var layers = fx.layers;
+            var first = layers.Length - names.Length;
+            for (var index = first; index < layers.Length; index++)
+            {
+                layers[index].defaultWeight = 0;
+                layers[index].syncedLayerIndex = nestedIndex;
+            }
+            fx.layers = layers;
+            // The driver is made on the state and moved to the synced layer.
+            var source = inner.behaviours;
+            var own = ParameterDriverExpressionTests.Driver(inner, ParameterDriverExpressionTests.Op("Set", "BlendX", 1));
+            inner.behaviours = source;
+            fx.SetStateEffectiveBehaviours(inner, first + 1, new[] { own });
+            fx.SetStateEffectiveBehaviours(inner, first + 2, Array.Empty<StateMachineBehaviour>());
+
+            var data = Captured(avatar);
+            var written = data.Controllers.Single().Layers;
+            string Sets(int layer) => string.Join(" ", written[layer].States.Single().Behaviours.Select(b => data.Parameters[b.Operations.Single().Parameter].Name));
+            Assert.That(Sets(nestedIndex), Is.EqualTo("BlendY"), "The layer that owns the machines keeps its own.");
+            Assert.That(names.Select((name, offset) => (name, fx.GetStateEffectiveBehaviours(inner, first + offset)?.Length ?? 0, Sets(first + offset))),
+                Is.EqualTo(new[] { ("No override", 0, ""), ("Own driver", 1, "BlendX"), ("Emptied", 0, "") }),
+                "The layer, how many behaviours Unity reports as effective for the state on it, and the parameters the written ones set.");
+        }
+
+        // A Parameter Driver sets only what Expression Parameters or the FX
+        // controller declare. The same operations are read without and with
+        // the declaration of Gone: without it, those that set Gone or copy from
+        // it are counted and not written, Gone is no parameter, and the rest
+        // are written as they are with it.
+        [Test]
+        public void ADriverOperationOnANameNothingDeclaresIsCountedNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var inner = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine.stateMachines.Single().stateMachine.states.Single().state;
+            ParameterDriverExpressionTests.Driver(inner,
+                ParameterDriverExpressionTests.Op("Set", "Gone", 1), ParameterDriverExpressionTests.Op("Add", "BlendX", 2),
+                ParameterDriverExpressionTests.Op("Copy", "BlendY", 0, "Gone"), ParameterDriverExpressionTests.Op("Copy", "Gone", 0, "BlendX"),
+                ParameterDriverExpressionTests.Op("Set", "Hat", 1), ParameterDriverExpressionTests.Op("Copy", "BlendX", 0, ""), ParameterDriverExpressionTests.Op("Copy", "BlendX"));
+
+            (string Operations, int NotWritten, bool Parameter) Written()
+            {
+                var data = Captured(avatar);
+                var driver = data.Controllers.Single().Layers.Single(l => l.Name == "Nested").States.Single().Behaviours[1];
+                string Name(int? index) => index == null ? "" : " " + data.Parameters[index.Value].Name;
+                return (string.Join(", ", driver.Operations.Select(o => o.Type + Name(o.Parameter) + " " + o.Value + Name(o.Source))),
+                    data.Omitted.Where(o => o.Kind == "operation").Sum(o => o.Count), data.Parameters.Any(p => p.Name == "Gone"));
+            }
+
+            // A copy from no name has nothing to read: it is counted either way.
+            Assert.That(Written(), Is.EqualTo(("add BlendX 2, set Hat 1", 5, false)));
+            avatar.Fx.AddParameter("Gone", AnimatorControllerParameterType.Float);
+            Assert.That(Written(), Is.EqualTo(("set Gone 1, add BlendX 2, copy BlendY 0 Gone, copy Gone 0 BlendX, set Hat 1", 2, true)));
+        }
+
+        // Unity never takes a transition with a condition it cannot read: on a
+        // name its controller does not declare, of a mode that is not one of
+        // the parameter type's (If and IfNot are a bool's, Greater and Less a
+        // float's and an int's, Equals and NotEqual an int's), or of a mode it
+        // has no name for. Such a transition is not written, whatever its
+        // other conditions, and the name becomes no parameter.
+        [Test]
+        public void ATransitionWithAConditionUnityCannotReadIsNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var states = avatar.Fx.layers.Single(l => l.name == "Hat").stateMachine.states.Select(s => s.state).ToArray();
+            var (off, on) = (states.Single(s => s.name == "Hat 0"), states.Single(s => s.name == "Hat 1"));
+            void Add(params (AnimatorConditionMode Mode, string Parameter)[] conditions)
+            {
+                var transition = off.AddTransition(on);
+                foreach (var (mode, parameter) in conditions) transition.AddCondition(mode, 0, parameter);
+            }
+            Add((AnimatorConditionMode.IfNot, "Hat"));
+            Add((AnimatorConditionMode.Less, "Gone"));
+            Add((AnimatorConditionMode.If, "Hat"), (AnimatorConditionMode.Greater, "Gone"));
+            Add((AnimatorConditionMode.If, "Blend"));
+            Add((AnimatorConditionMode.Equals, "Blend"));
+            Add((AnimatorConditionMode.Greater, "Hat"));
+            Add((AnimatorConditionMode.If, "GestureLeft"));
+            Add((AnimatorConditionMode.If, "Hat"), ((AnimatorConditionMode)5, "Hat"));
+            Add((AnimatorConditionMode.Less, "Blend"), (AnimatorConditionMode.Greater, "GestureLeft"), (AnimatorConditionMode.NotEqual, "GestureLeft"));
+            Assert.That(off.transitions[7].conditions.Select(c => (int)c.mode), Is.EqualTo(new[] { (int)AnimatorConditionMode.If, 5 }), "Unity keeps the mode as it is set.");
+
+            var data = Captured(avatar);
+            var written = data.Controllers.Single().Layers.Single(l => l.Name == "Hat").States.Single(s => s.Name == "Hat 0").Transitions;
+            Assert.That(written.Select(t => string.Join(" ", t.Conditions.Select(c => c.Mode + ":" + data.Parameters[c.Parameter].Name))),
+                Is.EqualTo(new[] { "ifNot:Hat", "less:Blend greater:GestureLeft notEqual:GestureLeft" }));
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+        }
+
+        // Unity never takes a muted transition, nor one that is not Solo
+        // beside one that is. Neither is written, so the written transitions
+        // are taken in order with nothing else to look at.
+        [Test]
+        public void MutedTransitionsAndThoseBesideASoloOneAreNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var states = avatar.Fx.layers.Single(l => l.name == "Hat").stateMachine.states.Select(s => s.state).ToArray();
+            var (off, on) = (states.Single(s => s.name == "Hat 0"), states.Single(s => s.name == "Hat 1"));
+            var first = off.AddTransition(on);
+            first.AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            var second = off.AddTransition(on);
+            second.AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            string Written() => string.Join(", ", Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Hat").States.Single(s => s.Name == "Hat 0")
+                .Transitions.Select(t => string.Join(" ", t.Conditions.Select(c => c.Mode))));
+            Assert.That(Written(), Is.EqualTo("ifNot, if"));
+            first.mute = true;
+            Assert.That(Written(), Is.EqualTo("if"));
+            first.mute = false; second.solo = true;
+            Assert.That(Written(), Is.EqualTo("if"));
+            second.mute = true;
+            Assert.That(Written(), Is.EqualTo(""), "A muted Solo transition still silences the others.");
+            second.mute = false; second.solo = false;
+            var gone = off.AddTransition(on);
+            gone.solo = true;
+            gone.AddCondition(AnimatorConditionMode.Greater, 0, "Gone");
+            Assert.That(Written(), Is.EqualTo(""), "So does a Solo transition with a condition Unity cannot read.");
+
+            var machine = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine;
+            var inner = machine.stateMachines.Single().stateMachine;
+            var after = machine.AddState("After");
+            machine.AddStateMachineTransition(inner, after).mute = true;
+            machine.AddStateMachineTransition(inner, after).solo = true;
+            Assert.That(Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Nested").Machines[1].ExitTransitions.Count, Is.EqualTo(3),
+                "Unity takes a transition out of a machine whatever its Mute and Solo.");
+
+            // The root's Any State and Entry transitions are written as Unity
+            // takes them too, and a trigger reads If alone.
+            var fx = avatar.Fx;
+            fx.AddParameter("Jump", AnimatorControllerParameterType.Trigger);
+            fx.AddLayer("Solo");
+            var root = fx.layers.Last().stateMachine;
+            var (a, b) = (root.AddState("A"), root.AddState("B"));
+            var anyMuted = root.AddAnyStateTransition(a);
+            anyMuted.AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            anyMuted.mute = true;
+            root.AddAnyStateTransition(b).AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            root.AddAnyStateTransition(a).AddCondition(AnimatorConditionMode.If, 0, "Jump");
+            root.AddAnyStateTransition(b).AddCondition(AnimatorConditionMode.IfNot, 0, "Jump");
+            root.AddEntryTransition(a).AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            var entrySolo = root.AddEntryTransition(b);
+            entrySolo.AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            entrySolo.solo = true;
+            var data = Captured(avatar);
+            var written = data.Controllers.Single().Layers.Single(l => l.Name == "Solo").Machines[0];
+            string Modes(IEnumerable<AvatarAnimatorData.Transition> transitions) =>
+                string.Join(", ", transitions.Select(t => string.Join(" ", t.Conditions.Select(c => c.Mode + ":" + data.Parameters[c.Parameter].Name))));
+            Assert.That(Modes(written.AnyStateTransitions), Is.EqualTo("ifNot:Hat, if:Jump"));
+            Assert.That(Modes(written.EntryTransitions), Is.EqualTo("ifNot:Hat"));
+        }
+
+        // Unity looks at the Any State transitions of a layer's root machine
+        // alone: it never takes one that a machine inside another holds.
+        [Test]
+        public void AnAnyStateTransitionOfAMachineInsideAnotherIsNotWritten()
+        {
+            using var avatar = new AnimatorAvatar();
+            var machine = avatar.Fx.layers.Single(l => l.name == "Nested").stateMachine;
+            var inner = machine.stateMachines.Single().stateMachine;
+            var state = inner.states.Single().state;
+            machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.If, 0, "Hat");
+            inner.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
+            var machines = Captured(avatar).Controllers.Single().Layers.Single(l => l.Name == "Nested").Machines;
+            Assert.That(machines.Select(m => string.Join(" ", m.AnyStateTransitions.Select(t => t.Conditions.Single().Mode))), Is.EqualTo(new[] { "if", "" }));
+        }
+
+        // What Unity plays when a motion or a state option names a parameter
+        // its controller does not declare as a float: a 1D or 2D tree plays
+        // nothing, a child of a direct tree has no weight, and the state
+        // option is off.
+        [Test]
+        public void ATreeOrStateOptionOnAParameterUnityCannotReadIsWrittenAsUnityPlaysIt()
+        {
+            using var avatar = new AnimatorAvatar();
+            var fx = avatar.Fx;
+            fx.AddLayer("Unreadable");
+            var layer = fx.layers.Length - 1;
+            var clip = avatar.Clip("Unreadable");
+            BlendTree Tree(string state, BlendTreeType type, string x, string y = null)
+            {
+                fx.CreateBlendTreeInController(state, out var tree, layer);
+                tree.blendType = type;
+                tree.blendParameter = x;
+                if (y != null) tree.blendParameterY = y;
+                tree.AddChild(clip, 0);
+                return tree;
+            }
+            Tree("1D gone", BlendTreeType.Simple1D, "Gone");
+            var onInt = Tree("1D int", BlendTreeType.Simple1D, "GestureLeft");
+            fx.layers[layer].stateMachine.AddState("1D int again").motion = onInt;
+            Tree("2D int", BlendTreeType.SimpleDirectional2D, "GestureLeft", "GestureLeft");
+            Tree("2D gone", BlendTreeType.SimpleDirectional2D, "Blend", "Gone");
+            var holder = Tree("Holder", BlendTreeType.Simple1D, "Blend");
+            holder.AddChild(Tree("1D gone again", BlendTreeType.Simple1D, "Gone"), 1);
+            var direct = Tree("Direct", BlendTreeType.Direct, "Blend");
+            direct.AddChild(clip);
+            var children = direct.children;
+            children[0].directBlendParameter = "Gone";
+            holder.AddChild(onInt, 2);
+            fx.layers[layer].stateMachine.AddState("Direct again").motion = direct;
+            children[1].directBlendParameter = "BlendX";
+            direct.children = children;
+            var machine = fx.layers[layer].stateMachine;
+            foreach (var (name, parameter) in new[] { ("Options gone", "Gone"), ("Options float", "Blend"), ("Options int", "GestureLeft") })
+            {
+                var state = machine.AddState(name);
+                state.motion = clip;
+                state.speedParameterActive = state.timeParameterActive = state.cycleOffsetParameterActive = true;
+                state.speedParameter = state.timeParameter = state.cycleOffsetParameter = parameter;
+            }
+
+            var data = Captured(avatar);
+            var states = data.Controllers.Single().Layers.Single(l => l.Name == "Unreadable").States.ToDictionary(s => s.Name);
+            Assert.That(new[] { "1D gone", "1D int", "1D int again", "2D int", "2D gone", "1D gone again" }.Select(name => states[name].Motion), Is.All.EqualTo(-1));
+            Assert.That(data.Motions[states["Holder"].Motion].Children.Select(child => child.Motion < 0 ? "none" : data.Motions[child.Motion].Type), Is.EqualTo(new[] { "clip", "none", "none" }));
+            Assert.That(data.Motions[states["Direct"].Motion].Children.Select(child => data.Parameters[child.DirectParameter.Value].Name), Is.EqualTo(new[] { "BlendX" }));
+            string Options(string name) => string.Join(" ", new[] { states[name].SpeedParameter, states[name].TimeParameter, states[name].CycleOffsetParameter }
+                .Select(index => index == null ? "off" : data.Parameters[index.Value].Name));
+            Assert.That((Options("Options gone"), Options("Options float"), Options("Options int")), Is.EqualTo(("off off off", "Blend Blend Blend", "off off off")));
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+            // Unity reads some other float for a parameter of another type, so
+            // each use is counted: the 1D tree on an int under two states and in
+            // the holder, the 2D tree on two ints once, and three options. A
+            // name nothing declares plays as written, but in a tree held by
+            // another tree, which Unity plays by what the others leave, and on
+            // a direct weight, which was not measured, here under two states:
+            // three more.
+            Assert.That(data.Omitted.Where(o => o.Kind == "unreadParameter").Sum(o => o.Count), Is.EqualTo(10));
+        }
+
+        // A clip keeps up to MaximumKeysPerClip keys. A curve that does not
+        // fit in what the curves before it left is counted and not written;
+        // one that fills the clip exactly is written.
+        [Test]
+        public void ACurveOverTheKeysLeftInItsClipIsCountedNotWritten()
+        {
+            foreach (var (keys, fits) in new[] { (AvatarAnimatorData.MaximumKeysPerClip - 2, true), (AvatarAnimatorData.MaximumKeysPerClip - 1, false) })
+            {
+                using var avatar = new AnimatorAvatar();
+                // No object has a node here: a curve that is kept is counted as missingNode.
+                (int Other, int Kept) Counts()
+                {
+                    var data = Captured(avatar);
+                    int Count(string kind) => data.Omitted.Where(o => o.Kind == kind).Sum(o => o.Count);
+                    return (Count("other"), Count("missingNode"));
+                }
+                var before = Counts();
+                // Two curves, of 2 keys and of the keys given, whichever Unity lists first.
+                var clip = avatar.Clip("Long", ("Glasses", true));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive"),
+                    new AnimationCurve(Enumerable.Range(0, keys).Select(index => new Keyframe(index / 60f, index % 2)).ToArray()));
+                avatar.Fx.AddLayer("Long");
+                avatar.Fx.layers.Last().stateMachine.AddState("Long").motion = clip;
+                var after = Counts();
+                Assert.That((after.Other - before.Other, after.Kept - before.Kept), Is.EqualTo(fits ? (0, 2) : (1, 1)), keys + " keys");
+            }
+        }
+
+        // A tree is written once and played under each tree that holds it.
+        // Eleven trees, each holding the next twice and the last a clip
+        // twice, expand to 4095 motions. With one more clip under the first
+        // they are 4096, the most the format allows; a second clip leaves the
+        // stage out, and the export still succeeds.
+        [Test]
+        public void BlendTreesExpandingOverTheLimitLeaveTheStageOut()
+        {
+            Assert.That(AvatarAnimatorData.MaximumExpandedMotions, Is.EqualTo(4096));
+            foreach (var clips in new[] { 1, 2 })
+            {
+                using var avatar = new AnimatorAvatar();
+                var fx = avatar.Fx;
+                fx.AddLayer("Wide");
+                fx.CreateBlendTreeInController("Wide", out var top, fx.layers.Length - 1);
+                var clip = avatar.Clip("Wide");
+                var tree = top;
+                for (var level = 0; level < 11; level++)
+                {
+                    tree.blendType = BlendTreeType.Simple1D;
+                    tree.blendParameter = "Blend";
+                    if (level == 10) { tree.AddChild(clip, 0); tree.AddChild(clip, 1); break; }
+                    var child = tree.CreateBlendTreeChild(0);
+                    tree.AddChild(child, 1);
+                    tree = child;
+                }
+                for (var extra = 0; extra < clips; extra++) top.AddChild(clip, 2 + extra);
+
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
+                var json = Unpacked(GlbDocument.Read(avatar.Export(warnings, report)));
+                var written = ((List<object>)json["extensionsUsed"]).Contains(AvatarAnimatorData.Extension);
+                Assert.That(written, Is.EqualTo(clips == 1), clips + " clips");
+                if (written)
+                {
+                    Assert.That(Read(json).Motions.Count, Is.LessThan(64), "A tree that two places hold is written once.");
+                    Assert.That(report.Fallbacks.Results.Any(result => result.Stage != null), Is.False);
+                }
+                else
+                {
+                    var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                    Assert.That(entry.Stage, Is.EqualTo(ExportStage.AvatarAnimator));
+                    Assert.That(entry.Reason, Is.EqualTo(AvatarAnimatorCapture.TooManyMotions));
+                    Assert.That(entry.Reason, Does.Contain(AvatarAnimatorData.MaximumExpandedMotions.ToString()));
+                    Assert.That(warnings.Count(warning => warning.Contains(ExportStageGuard.DisplayName(ExportStage.AvatarAnimator))), Is.EqualTo(1));
+                }
+            }
+        }
+
+        // A control sets only what Expression Parameters declare, as VRChat's
+        // menu does. One that names a parameter of the FX controller alone,
+        // or a name nothing declares, is written without a parameter.
+        [Test]
+        public void AMenuControlNamesOnlyWhatExpressionParametersDeclare()
+        {
+            using var avatar = new AnimatorAvatar();
+            AnimatorAvatar.Control(avatar.RootMenu, "Animator only", "Toggle", "BlendX", 1);
+            AnimatorAvatar.Control(avatar.RootMenu, "Nothing", "Toggle", "Gone", 1);
+            AnimatorAvatar.SubParameters(AnimatorAvatar.Control(avatar.RootMenu, "Puppet", "TwoAxisPuppet"), "Blend", "BlendX");
+
+            var data = Captured(avatar);
+            Assert.That(data.Parameters.Select(p => p.Name), Has.No.Member("Gone"));
+            var controls = data.Menus[0].Controls.ToDictionary(c => c.Name);
+            Assert.That(data.Parameters[controls["Hat"].Parameter.Value].Name, Is.EqualTo("Hat"));
+            Assert.That(controls["Animator only"].Parameter, Is.Null);
+            Assert.That(controls["Nothing"].Parameter, Is.Null);
+            Assert.That(controls["Puppet"].SubParameters.Select(index => index < 0 ? "" : data.Parameters[index].Name), Is.EqualTo(new[] { "Blend", "" }));
+        }
+
+        // What the stage reads from the avatar as it stands, through the
+        // format's own checks. No object has a node here, so no activeSelf
+        // curve is kept; parameter curves are.
+        static AvatarAnimatorData Captured(AnimatorAvatar avatar) =>
+            AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null).Resolve(_ => -1)));
+
+        // Every object is a node, numbered in the order it is asked for, so
+        // activeSelf tracks are kept.
+        static AvatarAnimatorData CapturedWithNodes(AnimatorAvatar avatar, Func<SkinnedMeshRenderer, string, IReadOnlyList<AvatarAnimatorCapture.MorphSource>> sources = null)
+        {
+            var nodes = new Dictionary<GameObject, int>();
+            return AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, sources)));
+        }
+
+        // Every shape has one source that shows a change.
+        static IReadOnlyList<AvatarAnimatorCapture.MorphSource> EveryShape(SkinnedMeshRenderer renderer, string shape) =>
+            new[] { new AvatarAnimatorCapture.MorphSource(35, 35, 100) };
+
+        // The file's JSON with the extension's document unpacked in its place
+        // (AvatarAnimatorPacking.Document), so that Read below reads it.
+        static Dictionary<string, object> Unpacked(GlbDocument glb)
+        {
+            if (AvatarAnimatorPacking.Document(glb) is object document) glb.Find("extensions")[AvatarAnimatorData.Extension] = document;
+            return glb.Json;
+        }
+
+        static AvatarAnimatorData Read(Dictionary<string, object> json) =>
+            AvatarAnimatorData.Read(((Dictionary<string, object>)json["extensions"])[AvatarAnimatorData.Extension]);
+
+        static readonly EditorCurveBinding FrontDetail = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+        static readonly EditorCurveBinding BackDetail = EditorCurveBinding.FloatCurve("Back", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+
+        // The name of the mesh target a morph target names.
+        static string TargetName(Dictionary<string, object> json, AvatarAnimatorData.Target target)
+        {
+            var node = (Dictionary<string, object>)((List<object>)json["nodes"])[target.Node];
+            var mesh = (Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])];
+            return (string)((List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"])[target.Morph];
+        }
+
+        // The POSITION deltas of the morph target a morph target names, dense or sparse.
+        static Vector3[] TargetPositions(GlbDocument glb, AvatarAnimatorData.Target target)
+        {
+            var json = glb.Json;
+            var node = (Dictionary<string, object>)((List<object>)json["nodes"])[target.Node];
+            var mesh = (Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])];
+            var primitive = (Dictionary<string, object>)((List<object>)mesh["primitives"])[0];
+            var morph = (Dictionary<string, object>)((List<object>)primitive["targets"])[target.Morph];
+            var accessor = (Dictionary<string, object>)((List<object>)json["accessors"])[Convert.ToInt32(morph["POSITION"])];
+            var views = (List<object>)json["bufferViews"];
+            int Start(object view, Dictionary<string, object> part) =>
+                (((Dictionary<string, object>)views[Convert.ToInt32(view)]).TryGetValue("byteOffset", out var offset) ? Convert.ToInt32(offset) : 0) +
+                (part.TryGetValue("byteOffset", out var own) ? Convert.ToInt32(own) : 0);
+            Vector3 Vec(int at) => new Vector3(BitConverter.ToSingle(glb.Binary, at), BitConverter.ToSingle(glb.Binary, at + 4), BitConverter.ToSingle(glb.Binary, at + 8));
+            var result = new Vector3[Convert.ToInt32(accessor["count"])];
+            if (accessor.TryGetValue("bufferView", out var dense))
+                for (var i = 0; i < result.Length; i++) result[i] = Vec(Start(dense, accessor) + 12 * i);
+            if (accessor.TryGetValue("sparse", out var raw))
+            {
+                var sparse = (Dictionary<string, object>)raw;
+                var indices = (Dictionary<string, object>)sparse["indices"];
+                var values = (Dictionary<string, object>)sparse["values"];
+                var size = Convert.ToInt32(indices["componentType"]) switch { 5121 => 1, 5123 => 2, _ => 4 };
+                for (var k = 0; k < Convert.ToInt32(sparse["count"]); k++)
+                {
+                    var at = Start(indices["bufferView"], indices) + size * k;
+                    var index = size == 1 ? glb.Binary[at] : size == 2 ? BitConverter.ToUInt16(glb.Binary, at) : (int)BitConverter.ToUInt32(glb.Binary, at);
+                    result[index] = Vec(Start(values["bufferView"], values) + 12 * k);
+                }
+            }
+            return result;
+        }
+
+        static List<string> Nodes(Dictionary<string, object> json) =>
+            ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().Select(node => node.TryGetValue("name", out var name) ? (string)name : null).ToList();
+
+        // The file without the extension, its packed document's bufferView
+        // and bytes gone as well, written and read again.
+        static GlbDocument Strip(GlbDocument glb)
+        {
+            Assert.That(AvatarAnimatorPacking.Remove(glb), Is.True);
+            var extras = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["asset"])["extras"];
+            ((Dictionary<string, object>)extras[AvatarFormatVersions.RequiredAppVersionsKey]).Remove(AvatarAnimatorData.Extension);
+            return GlbDocument.Read(glb.Write());
+        }
+
+        static byte[] Export(GameObject source, ICollection<string> warnings, ExportRecoveryReport report) =>
+            UniVrmOneClickExporter.Export(source, "Avatar animator", "Tests", warnings: warnings,
+                exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
+                gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
+
+        // A humanoid avatar with a VRChat descriptor, an Expression Menu with a
+        // submenu, parameters and an FX controller of three layers:
+        //   Hat: Hat (off by default) on and off from Any State; on also moves
+        //     a blend shape and a material property.
+        //   Nested: the entry goes into a sub-state machine whose state sets
+        //     BlendY with a Parameter Driver and leaves through the exit.
+        //   Blend: Glasses (on by default) in a 1D and a 2D blend tree.
+        sealed class AnimatorAvatar : IDisposable
+        {
+            readonly AttachmentConnectionTests.Fixture avatar;
+            internal GameObject Source => avatar.Source;
+            internal AnimatorController Fx => fx;
+            internal ScriptableObject RootMenu { get; private set; }
+            readonly string directory;
+            readonly List<Object> owned = new List<Object>();
+            readonly Type menuType;
+            readonly AnimatorController fx;
+            int serial;
+
+            internal AnimatorAvatar()
+            {
+                var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
+                var descriptorType = VrcAvatar.DescriptorType;
+                menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+                var parameterType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+                if (descriptorType == null || menuType == null || parameterType == null || VrcAvatar.ComponentType("VRCAvatarParameterDriver") == null)
+                    Assert.Ignore("Install the real VRChat SDK to read the FX controller and menus.");
+                avatar = new AttachmentConnectionTests.Fixture();
+                try
+                {
+                    directory = TempAssetFolder.Create("__VRVlogAvatarAnimatorTests_");
+                    var material = new Material(shader) { name = "Animator" };
+                    owned.Add(material);
+                    foreach (var renderer in Source.GetComponentsInChildren<Renderer>(true)) renderer.sharedMaterial = material;
+                    var mesh = new Mesh { name = "Animated part" };
+                    mesh.vertices = new[] { new Vector3(-.1f, 1.6f, .1f), new Vector3(.1f, 1.6f, .1f), new Vector3(0, 1.8f, .1f) };
+                    mesh.triangles = new[] { 0, 1, 2 };
+                    mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.up };
+                    mesh.normals = Enumerable.Repeat(Vector3.forward, 3).ToArray();
+                    owned.Add(mesh);
+                    foreach (var (name, active) in new[] { ("Hat", false), ("Glasses", true) })
+                    {
+                        var part = new GameObject(name);
+                        part.transform.SetParent(Source.transform, false);
+                        part.AddComponent<MeshFilter>().sharedMesh = mesh;
+                        part.AddComponent<MeshRenderer>().sharedMaterial = material;
+                        part.SetActive(active);
+                    }
+
+                    var root = Menu();
+                    RootMenu = root;
+                    var more = Menu();
+                    Control(root, "Hat", "Toggle", "Hat", 1);
+                    Control(root, "More", "SubMenu", subMenu: more);
+                    SubParameters(Control(more, "Size", "RadialPuppet"), "Blend");
+                    EditorUtility.SetDirty(more);
+
+                    var parameters = ScriptableObject.CreateInstance(parameterType);
+                    owned.Add(parameters);
+                    AssetDatabase.CreateAsset(parameters, directory + "/Parameters.asset");
+                    var declared = new[] { ("Hat", "Bool", 0f), ("Blend", "Float", .5f) };
+                    var parameterField = parameterType.GetField("parameters");
+                    var rowType = parameterField.FieldType.GetElementType();
+                    var rows = Array.CreateInstance(rowType, declared.Length);
+                    for (var i = 0; i < declared.Length; i++)
+                    {
+                        var row = Activator.CreateInstance(rowType);
+                        VrcAvatar.Set(row, "name", declared[i].Item1);
+                        VrcAvatar.Set(row, "valueType", declared[i].Item2);
+                        VrcAvatar.Set(row, "defaultValue", declared[i].Item3);
+                        VrcAvatar.Set(row, "saved", i == 0);
+                        rows.SetValue(row, i);
+                    }
+                    parameterField.SetValue(parameters, rows);
+
+                    fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
+                    owned.Add(fx);
+                    fx.AddParameter("Hat", AnimatorControllerParameterType.Bool);
+                    fx.AddParameter(new AnimatorControllerParameter { name = "Blend", type = AnimatorControllerParameterType.Float, defaultFloat = .5f });
+                    fx.AddParameter("BlendX", AnimatorControllerParameterType.Float);
+                    fx.AddParameter("BlendY", AnimatorControllerParameterType.Float);
+                    fx.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+
+                    // Hat: one state per value, entered from Any State.
+                    fx.AddLayer("Hat");
+                    var machine = fx.layers.Last().stateMachine;
+                    var hatOff = Clip("Hat off", ("Hat", false));
+                    var hatOn = Clip("Hat on", ("Hat", true));
+                    AnimationUtility.SetEditorCurve(hatOn, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1f / 60, 80));
+                    AnimationUtility.SetEditorCurve(hatOn, EditorCurveBinding.FloatCurve("Hat", typeof(MeshRenderer), "material._Color.r"), AnimationCurve.Constant(0, 1f / 60, .5f));
+                    // Outside the contract (a key past an hour): left out alone.
+                    AnimationUtility.SetEditorCurve(hatOn, EditorCurveBinding.FloatCurve("", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 7200, 1));
+                    foreach (var (value, clip) in new[] { (0, hatOff), (1, hatOn) })
+                    {
+                        var state = machine.AddState("Hat " + value);
+                        state.motion = clip;
+                        state.writeDefaultValues = false;
+                        if (value == 0) machine.defaultState = state;
+                        var transition = machine.AddAnyStateTransition(state);
+                        transition.canTransitionToSelf = false;
+                        transition.hasExitTime = false;
+                        transition.duration = 0;
+                        transition.AddCondition(value != 0 ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0, "Hat");
+                    }
+
+                    // Nested: entry -> Inner (a sub-state machine) -> exit.
+                    fx.AddLayer("Nested");
+                    machine = fx.layers.Last().stateMachine;
+                    var sub = machine.AddStateMachine("Inner");
+                    var inner = sub.AddState("Inner");
+                    sub.defaultState = inner;
+                    machine.AddEntryTransition(sub);
+                    machine.AddStateMachineExitTransition(sub);
+                    inner.AddExitTransition().hasExitTime = true;
+                    ParameterDriverExpressionTests.Driver(inner, ParameterDriverExpressionTests.Op("Set", "BlendY", 1));
+
+                    // Blend: the same two clips in a 1D and a 2D tree.
+                    fx.AddLayer("Blend");
+                    var blendLayer = fx.layers.Length - 1;
+                    var glassesOff = Clip("Glasses off", ("Glasses", false));
+                    var glassesOn = Clip("Glasses on", ("Glasses", true));
+                    fx.CreateBlendTreeInController("1D", out var oneD, blendLayer);
+                    oneD.blendType = BlendTreeType.Simple1D;
+                    oneD.blendParameter = "Blend";
+                    oneD.AddChild(glassesOff, 0);
+                    oneD.AddChild(glassesOn, 1);
+                    fx.CreateBlendTreeInController("2D", out var twoD, blendLayer);
+                    twoD.blendType = BlendTreeType.SimpleDirectional2D;
+                    twoD.blendParameter = "BlendX";
+                    twoD.blendParameterY = "BlendY";
+                    twoD.AddChild(glassesOn, new Vector2(1, 0));
+                    twoD.AddChild(glassesOff, new Vector2(-1, 0));
+
+                    var layers = fx.layers;
+                    foreach (var layer in layers) layer.defaultWeight = 1;
+                    fx.layers = layers;
+
+                    var descriptor = Source.AddComponent(descriptorType);
+                    VrcAvatar.Set(descriptor, "customExpressions", true);
+                    VrcAvatar.Set(descriptor, "customizeAnimationLayers", true);
+                    VrcAvatar.Set(descriptor, "expressionsMenu", root);
+                    VrcAvatar.Set(descriptor, "expressionParameters", parameters);
+                    Layers(descriptor, "baseAnimationLayers", new[] { "Base", "Additive", "Gesture", "Action", "FX" });
+                    Layers(descriptor, "specialAnimationLayers", new[] { "Sitting", "TPose", "IKPose" });
+                    foreach (var asset in owned.Where(EditorUtility.IsPersistent))
+                    {
+                        EditorUtility.SetDirty(asset);
+                        AssetDatabase.SaveAssetIfDirty(asset);
+                    }
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
+            }
+
+            internal byte[] Export(ICollection<string> warnings, ExportRecoveryReport report) => AvatarAnimatorCaptureTests.Export(Source, warnings, report);
+
+            ScriptableObject Menu()
+            {
+                var menu = ScriptableObject.CreateInstance(menuType);
+                owned.Add(menu);
+                AssetDatabase.CreateAsset(menu, directory + "/Menu" + serial++ + ".asset");
+                return menu;
+            }
+
+            internal static void SubParameters(object control, params string[] names)
+            {
+                var field = control.GetType().GetField("subParameters");
+                var rows = Array.CreateInstance(field.FieldType.GetElementType(), names.Length);
+                for (var i = 0; i < names.Length; i++)
+                {
+                    var row = Activator.CreateInstance(field.FieldType.GetElementType());
+                    VrcAvatar.Set(row, "name", names[i]);
+                    rows.SetValue(row, i);
+                }
+                field.SetValue(control, rows);
+            }
+
+            internal static object Control(ScriptableObject menu, string name, string type, string parameterName = null, float value = 0, ScriptableObject subMenu = null)
+            {
+                var controls = (IList)VrChatExpressionMenu.Member(menu, "controls");
+                var control = Activator.CreateInstance(controls.GetType().GetGenericArguments()[0]);
+                controls.Add(control);
+                VrcAvatar.Set(control, "name", name);
+                VrcAvatar.Set(control, "type", type);
+                VrcAvatar.Set(control, "value", value);
+                VrcAvatar.Set(control, "subMenu", subMenu);
+                if (parameterName != null)
+                {
+                    var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType);
+                    VrcAvatar.Set(parameter, "name", parameterName);
+                    VrcAvatar.Set(control, "parameter", parameter);
+                }
+                EditorUtility.SetDirty(menu);
+                return control;
+            }
+
+            internal AnimationClip Clip(string name, params (string Path, bool Active)[] objects)
+            {
+                var clip = new AnimationClip { name = name };
+                foreach (var (path, active) in objects)
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive"),
+                        AnimationCurve.Constant(0, 1f / 60, active ? 1 : 0));
+                owned.Add(clip);
+                AssetDatabase.CreateAsset(clip, directory + "/Clip" + serial++ + ".anim");
+                clips[name] = clip;
+                return clip;
+            }
+
+            // An asset in the fixture's folder, deleted with it.
+            internal T Asset<T>(T asset, string file) where T : Object
+            {
+                owned.Add(asset);
+                AssetDatabase.CreateAsset(asset, directory + "/" + file);
+                return asset;
+            }
+
+            internal AnimatorController Controller(string name)
+            {
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/" + name + ".controller");
+                owned.Add(controller);
+                return controller;
+            }
+
+            // Sets the descriptor's playable layers of these types, each custom
+            // with its controller, or default without one.
+            internal void Playables(params (string Type, RuntimeAnimatorController Controller)[] rows)
+            {
+                var descriptor = Source.GetComponent(VrcAvatar.DescriptorType);
+                var field = descriptor.GetType().GetField("baseAnimationLayers");
+                var values = Array.CreateInstance(field.FieldType.GetElementType(), rows.Length);
+                for (var i = 0; i < rows.Length; i++)
+                {
+                    var row = Activator.CreateInstance(values.GetType().GetElementType());
+                    VrcAvatar.Set(row, "type", rows[i].Type);
+                    VrcAvatar.Set(row, "isDefault", rows[i].Controller == null);
+                    VrcAvatar.Set(row, "animatorController", rows[i].Controller);
+                    values.SetValue(row, i);
+                }
+                field.SetValue(descriptor, values);
+            }
+
+            // CreateAsset renames a clip after its file, so clips are found by the name they were made with.
+            readonly Dictionary<string, AnimationClip> clips = new Dictionary<string, AnimationClip>();
+
+            internal AnimationClip ClipNamed(string name) => clips[name];
+
+            void Layers(Component descriptor, string fieldName, string[] types)
+            {
+                var field = descriptor.GetType().GetField(fieldName);
+                var rowType = field.FieldType.GetElementType();
+                var rows = Array.CreateInstance(rowType, types.Length);
+                for (var i = 0; i < types.Length; i++)
+                {
+                    var row = Activator.CreateInstance(rowType);
+                    VrcAvatar.Set(row, "type", types[i]);
+                    VrcAvatar.Set(row, "isDefault", types[i] != "FX");
+                    VrcAvatar.Set(row, "animatorController", types[i] == "FX" ? fx : null);
+                    rows.SetValue(row, i);
+                }
+                field.SetValue(descriptor, rows);
+            }
+
+            public void Dispose()
+            {
+                avatar?.Dispose();
+                if (!string.IsNullOrEmpty(directory)) AssetDatabase.DeleteAsset(directory);
+                foreach (var value in owned.Where(value => value != null && !EditorUtility.IsPersistent(value)).Reverse()) Object.DestroyImmediate(value);
+                owned.Clear();
+            }
+        }
+
+        static EditorCurveBinding Slot(string path, int slot) => EditorCurveBinding.PPtrCurve(path, typeof(MeshRenderer), $"m_Materials.Array.data[{slot}]");
+
+        // A curve that swaps a renderer's material slot is a materialSlot
+        // target of its node and slot, last in the target table and in the
+        // clip, each key the glTF index of the material it sets, which the
+        // file writes for another renderer, and rest the slot's material. One
+        // that sets a material of another shader is counted as
+        // materialSlotShader, one that sets a material the file does not
+        // write as material, and one on an object the avatar does not have
+        // as missingNode.
+        [Test]
+        public void MaterialSlotCurvesAreWrittenAndTheOthersCounted()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var hat = avatar.Source.transform.Find("Hat").GetComponent<MeshRenderer>();
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var swap = new Material(animator.shader) { name = "Swap" };
+            var loose = new Material(animator.shader) { name = "Loose" };
+            var plain = new Material(Shader.Find("Hidden/InternalErrorShader")) { name = "Plain" };
+            try
+            {
+                hat.sharedMaterial = swap;
+                void Add(string name, string path, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetEditorCurve(clip, Cutoff("Glasses"), AnimationCurve.Constant(0, 1f / 60, .25f));
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot(path, 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Swap", "Glasses", swap, null);
+                var materials = new List<Material> { animator, swap };
+                AvatarAnimatorData Captured(Dictionary<GameObject, int> nodes) =>
+                    AvatarAnimatorData.Read(AvatarAnimatorData.Write(AvatarAnimatorCapture.Capture(avatar.Source, null)
+                        .Resolve(gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, null, materials.IndexOf)));
+
+                var found = new Dictionary<GameObject, int>();
+                var data = Captured(found);
+                var kinds = data.Targets.Select(t => t.Property).ToList();
+                Assert.That(kinds, Is.EqualTo(kinds.OrderBy(kind => Array.IndexOf(AvatarAnimatorData.Properties, kind)).ToList()), "Each new kind follows the kinds written before.");
+                var target = data.Targets.Single(t => t.Property == "materialSlot");
+                Assert.That((target.Node, target.Slot, target.Rest), Is.EqualTo((found[glasses], 0, 0d)));
+                var tracks = ClipOf(data, "Swap").Tracks;
+                Assert.That(tracks.Select(t => data.Targets[t.Target].Property), Is.EqualTo(new[] { "materialFloat", "materialSlot" }));
+                Assert.That(tracks.Last().Curves.Single().Keys.Select(k => (k.Value, k.InTangent)), Is.EqualTo(new[] { (1d, (double?)null), (-1d, (double?)null) }));
+                Assert.That(Omitted(data, "materialSlotShader"), Is.Zero);
+
+                var material = Omitted(data, "material");
+                var missingNode = Omitted(data, "missingNode");
+                Add("Plain", "Glasses", plain);
+                Add("Loose", "Glasses", loose);
+                Add("Nowhere", "Nowhere", swap);
+                data = Captured(new Dictionary<GameObject, int>());
+                Assert.That(data.Targets.Count(t => t.Property == "materialSlot"), Is.EqualTo(1));
+                Assert.That(new[] { "Plain", "Loose", "Nowhere" }.Select(name => ClipOf(data, name).Tracks.Count(t => data.Targets[t.Target].Stepped)), Is.All.Zero);
+                Assert.That(Omitted(data, "materialSlotShader"), Is.EqualTo(1));
+                Assert.That(Omitted(data, "material"), Is.EqualTo(material + 1));
+                Assert.That(Omitted(data, "missingNode"), Is.EqualTo(missingNode + 1));
+                Assert.That(data.Omitted.Select(o => o.Kind), Is.EqualTo(data.Omitted.Select(o => o.Kind).OrderBy(kind => Array.IndexOf(AvatarAnimatorData.OmittedKinds, kind))));
+
+                // Without the file's materials the swap reaches no material and
+                // is counted as material.
+                var before = CapturedWithNodes(avatar);
+                Assert.That(before.Targets.Any(t => t.Property == "materialSlot"), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(swap);
+                Object.DestroyImmediate(loose);
+                Object.DestroyImmediate(plain);
+            }
+        }
+
+        // A lilToon material that slot curves set and no written slot holds is
+        // an unbound swap, named once however many curves set it; with the
+        // copy the export added, every curve's key is the copy's glTF index.
+        // A material a slot holds, another shader's material and a curve on a
+        // renderer the file does not write add nothing.
+        [Test]
+        public void UnboundSwapsResolveToTheAddedCopies()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var loose = new Material(animator.shader) { name = "Loose" };
+            var hidden = new Material(animator.shader) { name = "Hidden" };
+            var plain = new Material(Shader.Find("Hidden/InternalErrorShader")) { name = "Plain" };
+            var copy = new Material(animator.shader) { name = "Loose copy" };
+            try
+            {
+                void Add(string name, string path, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot(path, 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Loose", "Glasses", loose, animator);
+                Add("Loose again", "Glasses", null, loose);
+                Add("Held", "Glasses", animator);
+                Add("Plain", "Glasses", loose, plain);
+                // Hat is off, so the file has no mesh for it here.
+                Add("Hidden", "Hat", hidden);
+                var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+                var shown = avatar.Source.GetComponentsInChildren<Renderer>();
+                Assert.That(capture.UnboundSwaps(shown), Is.EqualTo(new[] { loose }));
+
+                capture.AddedMaterials = new Dictionary<Material, Material> { [loose] = copy };
+                var materials = new List<Material> { animator, copy };
+                var nodes = new Dictionary<GameObject, int>();
+                var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(
+                    gameObject => gameObject.activeInHierarchy ? nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count : -1,
+                    null, materials.IndexOf)));
+                var target = data.Targets.Single(t => t.Property == "materialSlot");
+                Assert.That((target.Node, target.Slot, target.Rest), Is.EqualTo((nodes[glasses], 0, 0d)));
+                double[] Keys(string layer) => ClipOf(data, layer).Tracks.Single(t => data.Targets[t.Target].Stepped).Curves.Single().Keys.Select(k => k.Value).ToArray();
+                Assert.That(Keys("Loose"), Is.EqualTo(new[] { 1d, 0d }));
+                Assert.That(Keys("Loose again"), Is.EqualTo(new[] { -1d, 1d }));
+                Assert.That(Keys("Held"), Is.EqualTo(new[] { 0d }));
+                Assert.That(ClipOf(data, "Plain").Tracks.Any(t => data.Targets[t.Target].Stepped), Is.False);
+                Assert.That(Omitted(data, "materialSlotShader"), Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(loose);
+                Object.DestroyImmediate(hidden);
+                Object.DestroyImmediate(plain);
+                Object.DestroyImmediate(copy);
+            }
+        }
+
+        // The export copies a slot's material before the curves are read
+        // (AudioLink off, recovery) while the curves name the original: with
+        // SourceOf the original is held by that slot, so it is not added and
+        // its keys are the copy's glTF index.
+        [Test]
+        public void ASwapToTheOriginalOfAHeldCopyIsNotUnbound()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var renderer = glasses.GetComponent<MeshRenderer>();
+            var original = renderer.sharedMaterial;
+            var copy = new Material(original) { name = "Copy" };
+            var other = new Material(original.shader) { name = "Other" };
+            try
+            {
+                var clip = avatar.Clip("Toggle");
+                AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0), new[]
+                {
+                    new ObjectReferenceKeyframe { time = 0, value = other },
+                    new ObjectReferenceKeyframe { time = 1 / 60f, value = original },
+                });
+                AddLayer(avatar, "Toggle", clip);
+                foreach (var each in avatar.Source.GetComponentsInChildren<MeshRenderer>(true))
+                    each.sharedMaterials = each.sharedMaterials.Select(m => m == original ? copy : m).ToArray();
+                var capture = AvatarAnimatorCapture.Capture(avatar.Source, null);
+                capture.SourceOf = material => material == copy ? original : material;
+                Assert.That(capture.UnboundSwaps(avatar.Source.GetComponentsInChildren<Renderer>()), Is.EqualTo(new[] { other }));
+
+                var added = new Material(original.shader) { name = "Other copy" };
+                try
+                {
+                    capture.AddedMaterials = new Dictionary<Material, Material> { [other] = added };
+                    var materials = new List<Material> { copy, added };
+                    var nodes = new Dictionary<GameObject, int>();
+                    var data = AvatarAnimatorData.Read(AvatarAnimatorData.Write(capture.Resolve(
+                        gameObject => nodes.TryGetValue(gameObject, out var node) ? node : nodes[gameObject] = nodes.Count, null, materials.IndexOf)));
+                    Assert.That(ClipOf(data, "Toggle").Tracks.Single(t => data.Targets[t.Target].Stepped).Curves.Single().Keys.Select(k => k.Value), Is.EqualTo(new[] { 1d, 0d }));
+                }
+                finally { Object.DestroyImmediate(added); }
+            }
+            finally
+            {
+                Object.DestroyImmediate(copy);
+                Object.DestroyImmediate(other);
+            }
+        }
+
+        // In a real export, a swap to a material a mesh already draws with adds
+        // nothing. A swap to a lilToon material no mesh draws with, set by two
+        // layers, adds one material at the end of the glTF materials, which no
+        // primitive uses and the materialSlot keys name, with its lilToon
+        // record in VRVLOG_materials_liltoon_unbound only: the app's reader of
+        // VRVLOG_materials_liltoon (LilToonFullContract.Validate), which
+        // rejects an unbound record, still accepts the file.
+        [Test]
+        public void AnUnboundSwapIsAddedAtTheEndWithItsRecordApart()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var loose = new Material(animator) { name = "Loose" };
+            loose.SetColor("_Color", Color.red);
+            try
+            {
+                void Add(string name, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Held", animator);
+                var warnings = new List<string>();
+                var before = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
+                Assert.That(((Dictionary<string, object>)before["extensions"]).ContainsKey(LilToonFullContract.UnboundExtensionName), Is.False, string.Join("\n", warnings));
+                var count = ((List<object>)before["materials"]).Count;
+
+                Add("Loose", loose, animator);
+                Add("Loose again", animator, loose);
+                warnings.Clear();
+                var bytes = Export(avatar.Source, warnings, null);
+                var glb = GlbDocument.Read(bytes);
+                var json = Unpacked(glb);
+                var materials = (List<object>)json["materials"];
+                Assert.That(materials.Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
+                var added = count;
+                var primitives = ((List<object>)json["meshes"]).Cast<Dictionary<string, object>>()
+                    .SelectMany(mesh => ((List<object>)mesh["primitives"]).Cast<Dictionary<string, object>>());
+                Assert.That(primitives.Select(p => Convert.ToInt32(p["material"])), Has.No.Member(added));
+                Assert.That(((Dictionary<string, object>)((Dictionary<string, object>)materials[added])["extensions"]).ContainsKey("VRMC_materials_mtoon"), Is.True);
+
+                var data = Read(json);
+                var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
+                double[] Keys(string layer) => ClipOf(data, layer).Tracks.Single(t => t.Target == slot).Curves.Single().Keys.Select(k => k.Value).ToArray();
+                var rest = data.Targets[slot].Rest;
+                Assert.That(Keys("Loose"), Is.EqualTo(new[] { (double)added, rest }));
+                Assert.That(Keys("Loose again"), Is.EqualTo(new[] { rest, (double)added }));
+
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                var unbound = (Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName];
+                Assert.That(Convert.ToInt32(unbound["schemaVersion"]), Is.EqualTo(LilToonFullContract.UnboundSchemaVersion));
+                var record = (Dictionary<string, object>)((List<object>)unbound["materials"]).Single();
+                Assert.That(Convert.ToInt32(record["materialIndex"]), Is.EqualTo(added));
+                Assert.That(record["name"], Is.EqualTo("Loose"));
+                var full = (Dictionary<string, object>)extensions[LilToonFullContract.ExtensionName];
+                Assert.That(((List<object>)full["materials"]).Cast<Dictionary<string, object>>().Select(m => Convert.ToInt32(m["materialIndex"])), Has.No.Member(added));
+                Assert.That((List<object>)json["extensionsUsed"], Has.Member(LilToonFullContract.UnboundExtensionName));
+                var required = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)json["asset"])["extras"])[AvatarFormatVersions.RequiredAppVersionsKey];
+                Assert.That(required[LilToonFullContract.UnboundExtensionName], Is.EqualTo("1.2.8"));
+                Assert.DoesNotThrow(() => LilToonFullContract.Validate(json, bytes.LongLength, glb.Binary.Length));
+            }
+            finally
+            {
+                Object.DestroyImmediate(loose);
+            }
+        }
+
+        // Added materials count toward the app's 64 materials. With the
+        // meshes' materials one short of it, the first swap the curves name is
+        // added and the second is left out (its curve counted as material),
+        // so the lilToon extension stays rather than the whole file dropping it.
+        [Test]
+        public void AddedMaterialsPastTheLimitAreLeftOutAndTheLilToonExtensionStays()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var made = new List<Material>();
+            Material Copy(string name, Color color) { var copy = new Material(animator) { name = name }; copy.SetColor("_Color", color); made.Add(copy); return copy; }
+            try
+            {
+                void Add(string name, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Held", animator);
+                var warnings = new List<string>();
+                var baseline = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
+                var count = ((List<object>)baseline["materials"]).Count;
+                var lostBefore = Omitted(Read(baseline), "material");
+                var mesh = glasses.GetComponent<MeshFilter>().sharedMesh;
+                for (var i = count; i < LilToonMobileProfile.MaximumMaterials - 1; i++)
+                {
+                    var part = new GameObject("Part " + i);
+                    part.transform.SetParent(avatar.Source.transform, false);
+                    part.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    part.AddComponent<MeshRenderer>().sharedMaterial = Copy("Part " + i, new Color(i / 64f, .5f, .5f));
+                }
+                var first = Copy("First", Color.red);
+                var second = Copy("Second", Color.blue);
+                Add("First", first, animator);
+                Add("Second", second, animator);
+                warnings.Clear();
+                var bytes = Export(avatar.Source, warnings, null);
+                var glb = GlbDocument.Read(bytes);
+                var json = Unpacked(glb);
+                var materials = (List<object>)json["materials"];
+                Assert.That(materials.Count, Is.EqualTo(LilToonMobileProfile.MaximumMaterials), string.Join("\n", warnings));
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                Assert.That(extensions.ContainsKey(LilToonFullContract.ExtensionName), Is.True, string.Join("\n", warnings));
+                var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
+                Assert.That(((string)record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("First", LilToonMobileProfile.MaximumMaterials - 1)));
+
+                var data = Read(json);
+                var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
+                Assert.That(ClipOf(data, "First").Tracks.Single(t => t.Target == slot).Curves.Single().Keys.Select(k => k.Value).First(),
+                    Is.EqualTo((double)(LilToonMobileProfile.MaximumMaterials - 1)));
+                Assert.That(ClipOf(data, "Second").Tracks.Any(t => t.Target == slot), Is.False);
+                Assert.That(Omitted(data, "material"), Is.EqualTo(lostBefore + 1));
+                Assert.DoesNotThrow(() => LilToonFullContract.Validate(json, bytes.LongLength, glb.Binary.Length));
+            }
+            finally
+            {
+                foreach (var material in made) Object.DestroyImmediate(material);
+            }
+        }
+
+        // A swap target whose lilToon record cannot be read (AudioLink on) is
+        // left out alone: the other is still added with its record, and only
+        // the unreadable one's curve is counted as material.
+        [Test]
+        public void AnUnreadableSwapIsLeftOutAlone()
+        {
+            using var avatar = new AnimatorAvatar();
+            var glasses = avatar.Source.transform.Find("Glasses").gameObject;
+            var animator = glasses.GetComponent<MeshRenderer>().sharedMaterial;
+            var loud = new Material(animator) { name = "Loud" };
+            var loose = new Material(animator) { name = "Loose" };
+            if (!loud.HasProperty("_UseAudioLink")) Assert.Ignore("This lilToon has no AudioLink switch.");
+            loud.SetFloat("_UseAudioLink", 1);
+            try
+            {
+                void Add(string name, params Material[] values)
+                {
+                    var clip = avatar.Clip(name);
+                    AnimationUtility.SetObjectReferenceCurve(clip, Slot("Glasses", 0),
+                        values.Select((value, i) => new ObjectReferenceKeyframe { time = i / 60f, value = value }).ToArray());
+                    AddLayer(avatar, name, clip);
+                }
+                Add("Held", animator);
+                var warnings = new List<string>();
+                var baseline = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
+                var count = ((List<object>)baseline["materials"]).Count;
+                var lostBefore = Omitted(Read(baseline), "material");
+                Add("Loud", loud, animator);
+                Add("Loose", loose, animator);
+                warnings.Clear();
+                // AddUnbound logs why the record could not be read.
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new Regex("AudioLink"));
+                var json = Unpacked(GlbDocument.Read(Export(avatar.Source, warnings, null)));
+                Assert.That(((List<object>)json["materials"]).Count, Is.EqualTo(count + 1), string.Join("\n", warnings));
+                var extensions = (Dictionary<string, object>)json["extensions"];
+                var record = (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)extensions[LilToonFullContract.UnboundExtensionName])["materials"]).Single();
+                Assert.That(((string)record["name"], Convert.ToInt32(record["materialIndex"])), Is.EqualTo(("Loose", count)));
+                var data = Read(json);
+                var slot = data.Targets.FindIndex(t => t.Property == "materialSlot");
+                Assert.That(ClipOf(data, "Loud").Tracks.Any(t => t.Target == slot), Is.False);
+                Assert.That(ClipOf(data, "Loose").Tracks.Any(t => t.Target == slot), Is.True);
+                Assert.That(Omitted(data, "material"), Is.EqualTo(lostBefore + 1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(loud);
+                Object.DestroyImmediate(loose);
+            }
+        }
+
+        [Test]
+        public void AMaterialSlotCurveIsAMeshRenderersMaterialsElement()
+        {
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.data[2]")), Is.EqualTo(2));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("Body", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[0]")), Is.EqualTo(0));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(ParticleSystemRenderer), "m_Materials.Array.data[0]")), Is.EqualTo(-1));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.size")), Is.EqualTo(-1));
+            Assert.That(AvatarAnimatorCapture.MaterialSlot(EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.data[x]")), Is.EqualTo(-1));
+        }
+    }
+}

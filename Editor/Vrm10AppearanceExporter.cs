@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter
             IMaterialExporter materialExporter, ITextureSerializer textureSerializer, VRM10ObjectMeta vrmMeta,
             IDictionary<Material, int> materialIndices = null,
             Action<ModelExporter, Model, ExportingGltfData> afterExport = null,
-            ICollection<string> warnings = null)
+            ICollection<string> warnings = null, IReadOnlyList<Material> addedMaterials = null)
         {
             using var arrays = new NativeArrayManager();
             using var meshPreparation = VrmMeshAttributePreparation.Prepare(avatar, warnings);
@@ -24,6 +24,12 @@ namespace VRVlog.LilToonExporter
             // afterExport see the same node TRS as ModelExporter did.
             using var rootScale = RootScaleBake.Apply(avatar);
             var model = converter.Export(settings, arrays, avatar);
+            // Materials no mesh draws with (a slot curve sets them) come after
+            // the meshes' own, so the indices of those stay as they were.
+            var firstAdded = model.Materials.Count;
+            if (addedMaterials != null)
+                foreach (var material in addedMaterials)
+                    if (material != null && !model.Materials.Contains(material)) model.Materials.Add(material);
             PreserveMorphNormals(converter, arrays, settings);
             meshPreparation.RestoreSourceMeshKeys(converter);
             // ModelExporter accepts meshes without UV0, but the pinned
@@ -43,13 +49,28 @@ namespace VRVlog.LilToonExporter
             ConvertCoordinateKeepingZeroScale(model);
             using var exporter = new Vrm10Exporter(settings, materialExporter, textureSerializer);
             exporter.Export(avatar, model, converter, new ExportArgs { removeMorphNormal = settings.ExportOnlyBlendShapePosition }, vrmMeta);
+            // Added materials past the app's limits are left out before
+            // afterExport, which then finds no index for them (the curves
+            // count them as material), and out of the file below.
+            var written = model.Materials.Count;
+            var keep = written;
+            if (keep > firstAdded)
+            {
+                keep = firstAdded + AddedMaterialLimit.Fitting(GlbDocument.Read(exporter.Storage.ToGlbBytes()).Json, firstAdded);
+                if (keep < model.Materials.Count)
+                {
+                    Debug.Log($"VR Vlog: left {model.Materials.Count - keep} materials only expressions swap in out of the VRM; the app's material or image limit would be exceeded.");
+                    model.Materials.RemoveRange(keep, model.Materials.Count - keep);
+                }
+            }
             // Vrm10Exporter emits materials in model.Materials order. Preserve
             // object identity for extension injection, even with duplicate names.
             if (materialIndices != null)
                 for (var i = 0; i < model.Materials.Count; i++) materialIndices.Add((Material)model.Materials[i], i);
             if (settings.ExportVertexColor) PreserveVertexColors(model, exporter.Storage);
             afterExport?.Invoke(converter, model, exporter.Storage);
-            return exporter.Storage.ToGlbBytes();
+            var bytes = exporter.Storage.ToGlbBytes();
+            return keep < written ? AddedMaterialLimit.Trim(bytes, keep) : bytes;
         }
 
         // ConvertCoordinate rebuilds every node from its parent's inverse world

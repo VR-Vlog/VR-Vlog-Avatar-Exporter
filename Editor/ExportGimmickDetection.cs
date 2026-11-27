@@ -63,9 +63,13 @@ namespace VRVlog.LilToonExporter
             var skin = renderer as SkinnedMeshRenderer;
             if (skin == null && !(renderer is MeshRenderer)) return null;
             var mesh = skin != null ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
+            // Without its mesh asset it draws nothing to judge. A build pass may still make its mesh,
+            // so the export reports the part only if it is still missing on the final copy
+            // (UniVrmOneClickExporter.DisableEmptyMeshRenderers).
+            if (mesh == null) return null;
             var materials = renderer.sharedMaterials;
             var finding = new ExportGimmickFinding { Target = renderer.gameObject, Renderer = renderer };
-            if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
+            if (mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
                 materials.Length == 0 || materials.Any(m => m == null || m.shader == null))
                 finding.Reason = "メッシュまたはマテリアルが不足しているため自動判定できません。";
             else if (materials.All(Portable)) return null;

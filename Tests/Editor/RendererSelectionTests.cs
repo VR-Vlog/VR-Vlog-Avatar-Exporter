@@ -43,9 +43,13 @@ namespace VRVlog.LilToonExporter.Tests
                 var glb = GlbDocument.Read(bytes);
                 Assert.That(((List<object>)glb.Json["meshes"]).Count, Is.EqualTo(2), "Both renderers with geometry must still be written.");
                 Assert.That(logs.Where(message => message.Contains("mesh is null")), Is.Empty);
-                var omitted = warnings.Where(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.EmptyMeshRenderersOmitted), StringComparison.Ordinal)).ToArray();
-                Assert.That(omitted.Length, Is.EqualTo(1));
-                StringAssert.EndsWith("Empty skin, Empty skin/Empty static", omitted[0]);
+                // Neither has a mesh asset, so each gets the note that the part is not in the VRM.
+                Assert.That(warnings.Where(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.EmptyMeshRenderersOmitted), StringComparison.Ordinal)), Is.Empty);
+                Assert.That(warnings.Where(warning => warning.StartsWith(UniVrmOneClickExporter.MissingMeshKind + ": ", StringComparison.Ordinal)), Is.EqualTo(new[]
+                {
+                    UniVrmOneClickExporter.MissingMeshKind + ": Empty skin — " + UniVrmOneClickExporter.MissingMeshReason,
+                    UniVrmOneClickExporter.MissingMeshKind + ": Empty skin/Empty static — " + UniVrmOneClickExporter.MissingMeshReason,
+                }));
                 // Only the export copy is changed.
                 Assert.That(emptySkin.enabled && emptyStaticRenderer.enabled, Is.True);
                 Assert.That(emptySkin.sharedMesh, Is.Null);
@@ -98,6 +102,43 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 UnityEngine.Object.DestroyImmediate(mesh);
                 foreach (var material in materials) UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void AMissingMeshIsANotePerPartAndAnEmptyMeshKeepsTheOneLine()
+        {
+            var copy = new GameObject("avatar");
+            var drawn = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };
+            var empty = new Mesh { name = "Empty" };
+            try
+            {
+                SkinnedMeshRenderer Skin(string name, Mesh mesh)
+                {
+                    var skin = new GameObject(name).AddComponent<SkinnedMeshRenderer>();
+                    skin.transform.SetParent(copy.transform, false);
+                    skin.sharedMesh = mesh;
+                    return skin;
+                }
+                var face = Skin("Face", drawn);
+                var body = Skin("Body", null);
+                var hair = Skin("Hair", null);
+                var cut = Skin("Cut", empty);
+                var warnings = new List<string>();
+                UniVrmOneClickExporter.DisableEmptyMeshRenderers(copy, warnings);
+                Assert.That(face.enabled && !body.enabled && !hair.enabled && !cut.enabled, Is.True);
+                Assert.That(warnings, Is.EqualTo(new[]
+                {
+                    "メッシュが見つからず省略: Body — メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。",
+                    "メッシュが見つからず省略: Hair — メッシュのアセットが無いため、この部分はVRMに入りません。元のモデル（FBX）がプロジェクトにあるか確かめてください。",
+                    ExporterLocalization.T(UniVrmOneClickExporter.EmptyMeshRenderersOmitted) + "Cut",
+                }));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(copy);
+                UnityEngine.Object.DestroyImmediate(drawn);
+                UnityEngine.Object.DestroyImmediate(empty);
             }
         }
 

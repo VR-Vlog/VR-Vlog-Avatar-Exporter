@@ -28,7 +28,7 @@ listing = json.loads((root / "source.json").read_text(encoding="utf-8"))
 assert package["name"] == "com.vrvlog.liltoon-vrm-exporter"
 assert package["unity"] == "2022.3"
 number = r"(?:0|[1-9][0-9]*)"
-assert re.fullmatch(rf"{number}\.{number}\.{number}(?:-beta\.{number})?", package["version"])
+assert re.fullmatch(rf"{number}\.{number}\.{number}(?:-(?:alpha|beta)\.{number})?", package["version"])
 assert one_click.index("AvatarBaseShape.Preserve(clone, clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
 assert "foreach (var mesh in temporaryMeshes) UnityEngine.Object.DestroyImmediate(mesh);" in one_click
 # UniVRM is bundled under Editor/Vendor/UniVRM; the Unity modules it needs come from the Unity registry.
@@ -338,8 +338,8 @@ assert (root / "Tests/Editor/ExportRecoveryTests.cs").is_file()
 assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone)') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
-assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
-assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
+assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight, movedFloats: movedFloats)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
+assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage, addedMaterials));' in one_click
 assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
 assert 'var read = VrChatExpressionMenu.Read(source);' in one_click

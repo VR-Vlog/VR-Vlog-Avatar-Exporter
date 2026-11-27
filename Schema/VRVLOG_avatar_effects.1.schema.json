@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_avatar_effects/1/schema.json",
+  "title": "VRVLOG_avatar_effects 1",
+  "description": "Effects of the avatar that the VRM itself cannot carry, for the app to build under the output nodes: ParticleSystems, TrailRenderers, LineRenderers and Lights. The exporter writes the extension only when at least one effect is written, lists it in extensionsUsed and never in extensionsRequired, so readers that do not know it read the file as before. An effect hangs from the nearest node written for its own object or an ancestor, with its pose relative to that node in Unity's coordinates as the app sees the node after loading (position in meters, rotation as a quaternion, scale); with no such node it hangs from the avatar root (node -1), its pose in the VRM model space. The pose is taken after the export build has moved and removed objects. Component values keep Unity's serialized names and values: integers and enums as numbers, colors as [r, g, b, a], vectors as arrays, curves as keys, gradients as keys, structs as objects; object references (meshes, textures) are left out. Per avatar at most 16 particle systems and 2000 particles (the sum of maxParticles), 16 trails and lines together, and 2 lights; the exporter leaves the rest out in hierarchy order and counts them as effectLimit. Effect images live in the extension's own images table, not in the glTF images and textures, so the app's texture count and limit stay as before.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "particles",
+    "trails",
+    "lines",
+    "lights",
+    "materials",
+    "images",
+    "omitted"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "particles": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/particle"
+      }
+    },
+    "trails": {
+      "description": "TrailRenderers. With lines, at most 16.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/trail"
+      }
+    },
+    "lines": {
+      "description": "LineRenderers. With trails, at most 16.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/line"
+      }
+    },
+    "lights": {
+      "description": "Realtime and mixed point, spot and directional lights; area lights and baked lights, which light nothing on an avatar at run time, are not written.",
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/light"
+      }
+    },
+    "materials": {
+      "description": "The unlit approximation of the particle, trail and line materials. A shared material is one entry.",
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/material"
+      }
+    },
+    "images": {
+      "description": "PNG images of the effect materials, each in a bufferView of the GLB binary chunk, at most 512 pixels on the long side, sRGB.",
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/image"
+      }
+    },
+    "omitted": {
+      "description": "What the exporter left out, in this order of kinds, each kind at most once. particleModule: modules a written particle system has enabled other than those written (Noise, Collision, Sub Emitters, Trails, Texture Sheet Animation and the rest), one per module. effectLimit: effects over the limits. effectTexture: written materials whose main texture could not be read (an unreadable texture exported without a graphics device). missingNode: effects whose objects and ancestors the export build removed all the way up.",
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "count"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "particleModule",
+              "effectLimit",
+              "effectTexture",
+              "missingNode"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "module": {
+      "description": "A module as Unity serializes it, keyed by the serialized property names.",
+      "type": "object"
+    },
+    "particle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "position",
+        "rotation",
+        "scale",
+        "active",
+        "material",
+        "system",
+        "InitialModule",
+        "EmissionModule",
+        "ShapeModule",
+        "ColorModule",
+        "SizeModule",
+        "VelocityModule"
+      ],
+      "properties": {
+        "node": {
+          "description": "The glTF node the effect hangs from; -1 for the avatar root, the VRM model space.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "position": {
+          "$ref": "#/$defs/vector3"
+        },
+        "rotation": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "scale": {
+          "$ref": "#/$defs/vector3"
+        },
+        "active": {
+          "description": "Whether the system's object is active in the avatar as exported. An inactive system does not play until something turns it on.",
+          "type": "boolean"
+        },
+        "material": {
+          "description": "Index into materials; -1 when the renderer has none.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "system": {
+          "description": "The ParticleSystem's own serialized fields outside its modules (lengthInSec, looping, prewarm, startDelay, moveWithTransform, scalingMode, simulationSpeed, playOnAwake and the rest): the settings of the Main module that Unity keeps on the system.",
+          "type": "object"
+        },
+        "InitialModule": {
+          "description": "The Main module's per-particle start values (startLifetime, startSpeed, startSize, startColor, startRotation, gravityModifier, maxNumParticles and the rest).",
+          "$ref": "#/$defs/module"
+        },
+        "EmissionModule": {
+          "$ref": "#/$defs/module"
+        },
+        "ShapeModule": {
+          "$ref": "#/$defs/module"
+        },
+        "ColorModule": {
+          "description": "Color over Lifetime.",
+          "$ref": "#/$defs/module"
+        },
+        "SizeModule": {
+          "description": "Size over Lifetime.",
+          "$ref": "#/$defs/module"
+        },
+        "VelocityModule": {
+          "description": "Velocity over Lifetime.",
+          "$ref": "#/$defs/module"
+        },
+        "ParticleSystemRenderer": {
+          "description": "The renderer's serialized fields other than scene, lighting, sorting and object references (m_RenderMode, m_SortMode, m_MinParticleSize, m_MaxParticleSize, m_RenderAlignment, m_Pivot, m_Flip and the rest), and m_Enabled. Absent when the system has no renderer.",
+          "type": "object"
+        }
+      }
+    },
+    "trail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "position",
+        "rotation",
+        "scale",
+        "active",
+        "material",
+        "TrailRenderer"
+      ],
+      "properties": {
+        "node": {
+          "description": "The glTF node the effect hangs from; -1 for the avatar root, the VRM model space.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "position": {
+          "$ref": "#/$defs/vector3"
+        },
+        "rotation": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "scale": {
+          "$ref": "#/$defs/vector3"
+        },
+        "active": {
+          "description": "Whether the system's object is active in the avatar as exported. An inactive system does not play until something turns it on.",
+          "type": "boolean"
+        },
+        "material": {
+          "description": "Index into materials; -1 when the renderer has none.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "TrailRenderer": {
+          "description": "The TrailRenderer's serialized fields other than scene, lighting, sorting and object references (m_Time, m_MinVertexDistance, m_Autodestruct, m_Emitting, m_Parameters with widthMultiplier, widthCurve, colorGradient, alignment, textureMode and the rest), and m_Enabled.",
+          "type": "object"
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "position",
+        "rotation",
+        "scale",
+        "active",
+        "material",
+        "LineRenderer"
+      ],
+      "properties": {
+        "node": {
+          "description": "The glTF node the effect hangs from; -1 for the avatar root, the VRM model space.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "position": {
+          "$ref": "#/$defs/vector3"
+        },
+        "rotation": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "scale": {
+          "$ref": "#/$defs/vector3"
+        },
+        "active": {
+          "description": "Whether the system's object is active in the avatar as exported. An inactive system does not play until something turns it on.",
+          "type": "boolean"
+        },
+        "material": {
+          "description": "Index into materials; -1 when the renderer has none.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "LineRenderer": {
+          "description": "The LineRenderer's serialized fields other than scene, lighting, sorting and object references (m_Positions, m_Loop, m_UseWorldSpace, m_Parameters with widthMultiplier, widthCurve, colorGradient, alignment, textureMode and the rest), and m_Enabled. A line in world space is written with its points in its own space as they were in the avatar and m_UseWorldSpace false.",
+          "type": "object"
+        }
+      }
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "position",
+        "rotation",
+        "scale",
+        "active",
+        "enabled",
+        "type",
+        "color",
+        "intensity",
+        "range",
+        "spotAngle"
+      ],
+      "properties": {
+        "node": {
+          "description": "The glTF node the effect hangs from; -1 for the avatar root, the VRM model space.",
+          "type": "integer",
+          "minimum": -1
+        },
+        "position": {
+          "$ref": "#/$defs/vector3"
+        },
+        "rotation": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "scale": {
+          "$ref": "#/$defs/vector3"
+        },
+        "active": {
+          "description": "Whether the system's object is active in the avatar as exported. An inactive system does not play until something turns it on.",
+          "type": "boolean"
+        },
+        "enabled": {
+          "description": "Light.enabled.",
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "point",
+            "spot",
+            "directional"
+          ]
+        },
+        "color": {
+          "description": "Light.color [r, g, b, a] as stored.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "intensity": {
+          "type": "number"
+        },
+        "range": {
+          "description": "Meters.",
+          "type": "number"
+        },
+        "spotAngle": {
+          "description": "Degrees.",
+          "type": "number"
+        }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "blend",
+        "softParticles"
+      ],
+      "properties": {
+        "texture": {
+          "description": "Index into the extension's images: the material's main texture (_MainTex or _BaseMap). Absent when it has none, or when it could not be read (counted as effectTexture).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "color": {
+          "description": "Tint [r, g, b, a] as the material stores it: _TintColor doubled for the legacy Particles shaders, else _Color or _BaseColor, else white.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "blend": {
+          "enum": [
+            "alpha",
+            "additive",
+            "opaque"
+          ]
+        },
+        "softParticles": {
+          "const": false
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bufferView",
+        "mimeType"
+      ],
+      "properties": {
+        "bufferView": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mimeType": {
+          "const": "image/png"
+        }
+      }
+    }
+  }
+}

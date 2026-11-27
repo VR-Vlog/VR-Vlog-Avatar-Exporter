@@ -9,6 +9,8 @@ using UnityEditor;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using VRVlog.AvatarAnimator;
+using VRVlog.Expressions;
 using F = VRVlog.LilToon.LilToonFullContract;
 using Object = UnityEngine.Object;
 
@@ -92,6 +94,164 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(F.List(glb.Json, "accessors").Count, Is.EqualTo(4));
         }
 
+        // The menu may put material 1 on node 0, whose mesh draws material 0:
+        // when material 1 reads the colours, mesh 0 keeps them too.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AMaterialTheMenuSetsOnAnotherMeshCounts(bool readsColours)
+        {
+            var glb = GlbDocument.Read(Build(new[] { Record("lilToon", 0, 0, 0, true), Record("Hidden/lilToonOutline", readsColours ? 1 : 0, 0, 0, true) }, splitMeshes: true));
+            glb.Json["nodes"] = new List<object> { new Dictionary<string, object> { { "mesh", 0L } }, new Dictionary<string, object> { { "mesh", 1L } } };
+            var source = glb.Write();
+            var menu = new Dictionary<int, IReadOnlyCollection<int>> { { 0, new[] { 0, 1, -1 } } };
+            var result = VertexDataLightweight.Apply(source, null, out _, menu);
+            var after = Consistent(source, result);
+            foreach (var primitive in AllPrimitives(after))
+                Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(readsColours));
+        }
+
+        // A value the menu moves counts with every value it may take: an
+        // outline width or fur direction the menu turns on keeps the colours
+        // a material at rest leaves unread.
+        [TestCase("Hidden/lilToonOutline", "_OutlineVertexR2Width", new[] { 0d }, false)]
+        [TestCase("Hidden/lilToonOutline", "_OutlineVertexR2Width", new[] { 0d, 1d }, true)]
+        [TestCase("Hidden/lilToonOutline", "_OutlineDeleteMesh", new[] { 0d, 1d }, false)]
+        [TestCase("Hidden/lilToonFur", "_VertexColor2FurVector", new[] { 0d, 1d }, true)]
+        [TestCase("lilToon", "_OutlineVertexR2Width", new[] { 0d, 2d }, false)]
+        public void AValueTheMenuMovesCountsWithEveryValue(string shader, string name, double[] values, bool reads)
+        {
+            var moved = new Dictionary<string, IReadOnlyCollection<double>> { { name, values } };
+            Assert.That(VertexDataLightweight.ReadsVertexColor(MToonMaterial(), Record(shader, 0, 0, 0, true), moved), Is.EqualTo(reads));
+        }
+
+        // The menu may turn on the outline width of material 1, which reads no
+        // colours at rest: the mesh drawing it keeps them.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AMeshKeepsTheColoursAValueTheMenuMovesReads(bool widthMoves)
+        {
+            var source = Build(new[] { Record("lilToon", 0, 0, 0, true), Record("Hidden/lilToonOutline", 0, 0, 0, true) });
+            var values = new Dictionary<int, IReadOnlyDictionary<string, IReadOnlyCollection<double>>>
+            {
+                { 1, new Dictionary<string, IReadOnlyCollection<double>> { { "_OutlineVertexR2Width", widthMoves ? new[] { 0d, 1d } : new[] { 0d } } } },
+            };
+            var result = VertexDataLightweight.Apply(source, null, out _, null, values);
+            var after = Consistent(source, result);
+            foreach (var primitive in AllPrimitives(after))
+                Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(widthMoves));
+        }
+
+        // The rest and every key of each materialFloat target, by its material
+        // and name; other targets add nothing.
+        [Test]
+        public void MenuValuesAreTheFloatTargetsRestAndKeys()
+        {
+            var data = new AvatarAnimatorData();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = -1, Property = "materialFloat", Material = 2, Name = "_OutlineVertexR2Width", Rest = 0 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "materialSlot", Slot = 0, Rest = 2 });
+            var clip = new AvatarAnimatorData.Clip();
+            foreach (var t in new[] { 0, 1 })
+            {
+                var track = new AvatarAnimatorData.Track { Target = t };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 1 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = 2 });
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+            }
+            data.Clips.Add(clip);
+            var menu = VertexDataLightweight.MenuValues(data);
+            Assert.That(menu.Keys, Is.EquivalentTo(new[] { 2 }));
+            Assert.That(menu[2].Keys, Is.EquivalentTo(new[] { "_OutlineVertexR2Width" }));
+            Assert.That(menu[2]["_OutlineVertexR2Width"], Is.EquivalentTo(new[] { 0d, 1d, 2d }));
+            Assert.That(VertexDataLightweight.MenuValues(null), Is.Null);
+        }
+
+        // Through the export: an outline that reads no colours at rest, whose
+        // width the menu sets from them, keeps the colours as authored; with
+        // the width left alone they go.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheExportKeepsTheColoursAnOutlineTheMenuTurnsOnReads(bool menuMovesWidth)
+        {
+            if (VrcAvatar.ComponentType("VRCAvatarDescriptor") == null) Assert.Ignore("Install the real VRChat SDK.");
+            var shader = OptionalTools.RequireShader("Hidden/lilToonOutline", "Install lilToon for the outline shader.");
+            var folder = TempAssetFolder.Create("__VertexColorMenu_");
+            var colors = new[] { new Color(0, 1, 1, 1), Color.white, new Color(.5f, 1, 1, 1) };
+            var materials = new List<Material>();
+            try
+            {
+                using var fixture = new AttachmentConnectionTests.Fixture();
+                fixture.Mesh.colors = colors;
+                foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    var material = new Material(shader) { name = renderer.name + " outline" };
+                    material.SetFloat("_OutlineVertexR2Width", 0);
+                    materials.Add(material);
+                    renderer.sharedMaterials = new[] { material };
+                }
+                var fx = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                fx.AddParameter("Outline", AnimatorControllerParameterType.Bool);
+                var off = FxGraph.StartState(fx.layers[0].stateMachine, "Off");
+                var clip = new AnimationClip { name = "Outline from colours" };
+                foreach (var path in new[] { "Front", "Back" })
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer),
+                        "material." + (menuMovesWidth ? "_OutlineVertexR2Width" : "_OutlineWidth")), AnimationCurve.Constant(0, 1, 1));
+                AssetDatabase.AddObjectToAsset(clip, fx);
+                FxGraph.Transition(off, FxGraph.State(fx.layers[0].stateMachine, "On", clip), "Outline", UnityEditor.Animations.AnimatorConditionMode.If, 0);
+                var descriptor = fixture.Source.AddComponent(VrcAvatar.ComponentType("VRCAvatarDescriptor"));
+                using (var data = new SerializedObject(descriptor))
+                {
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
+                    var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
+                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = fx;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vertex colour menu", "Tests", exporterVersion: "tests", lilToonVersion: "2.3.4", warnings: warnings,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, autoLightweight: true);
+                var glb = GlbDocument.Read(bytes);
+                var primitives = AllPrimitives(glb).ToList();
+                Assert.That(primitives, Is.Not.Empty);
+                Assert.That(F.List(F.Object(F.Object(glb.Json["extensions"])[F.ExtensionName]), "materials"), Is.Not.Empty, "The lilToon records are written.");
+                foreach (var primitive in primitives)
+                    Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(menuMovesWidth), string.Join("\n", warnings));
+            }
+            finally
+            {
+                foreach (var material in materials) Object.DestroyImmediate(material);
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
+        // The rest and every key of each material slot target, by its node;
+        // other targets add nothing.
+        [Test]
+        public void MenuMaterialsAreTheSlotTargetsRestAndKeys()
+        {
+            var data = new AvatarAnimatorData();
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 3, Property = "materialSlot", Slot = 1, Rest = 2 });
+            data.Targets.Add(new AvatarAnimatorData.Target { Node = 4, Property = "active", Rest = 1 });
+            var clip = new AvatarAnimatorData.Clip();
+            foreach (var t in new[] { 0, 1 })
+            {
+                var track = new AvatarAnimatorData.Track { Target = t };
+                var curve = new ExpressionAnimationData.Curve();
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 5 });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = -1 });
+                track.Curves.Add(curve);
+                clip.Tracks.Add(track);
+            }
+            data.Clips.Add(clip);
+            var menu = VertexDataLightweight.MenuMaterials(data);
+            Assert.That(menu.Keys, Is.EquivalentTo(new[] { 3 }));
+            Assert.That(menu[3], Is.EquivalentTo(new[] { 2, 5, -1 }));
+            Assert.That(VertexDataLightweight.MenuMaterials(null), Is.Null);
+        }
+
         // Each vertex adds up to exactly 65535, a zero stays zero, and each
         // weight is within 1/65535 of the float one when at most three are not
         // zero. With four the remainder put on the largest reaches 1.5/65535.
@@ -164,6 +324,34 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VertexDataLightweight.Apply(unknown, warnings, out saved), Is.SameAs(unknown));
             Assert.That(saved, Is.Zero);
             Assert.That(warnings, Is.EqualTo(new[] { string.Format(VertexDataLightweight.UnknownExtensionWarning, "EXT_unknown") }));
+        }
+
+        // The extension for the materials only the menu sets does not keep
+        // the file, and its record is written as it was. Its material is on
+        // no primitive and has no record in the full extension; the menu can
+        // put it on any mesh, so when it reads the colours every mesh keeps
+        // them, while the weights are packed either way.
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile(bool readsColours)
+        {
+            var glb = GlbDocument.Read(Build(new[] { Record("lilToon", 0, 0, 0, true), Record("lilToon", 0, 0, 0, true) }));
+            F.List(glb.Json, "materials").Add(MToonMaterial());
+            var record = Record("Hidden/lilToonOutline", readsColours ? 1 : 0, 0, 0, true);
+            record["materialIndex"] = 2L;
+            record["textures"] = new List<object>();
+            F.Object(glb.Json["extensions"])[F.UnboundExtensionName] = new Dictionary<string, object> { { "schemaVersion", 1L }, { "materials", new List<object> { record } } };
+            glb.Json["extensionsUsed"] = new List<object> { "VRMC_materials_mtoon", F.ExtensionName, F.UnboundExtensionName };
+            var source = glb.Write();
+            var warnings = new List<string>();
+            var result = VertexDataLightweight.Apply(source, warnings, out var saved);
+            Assert.That(warnings, Is.Empty);
+            Assert.That(saved, Is.EqualTo(source.Length - result.Length).And.GreaterThan(0));
+            var after = Consistent(source, result);
+            foreach (var primitive in AllPrimitives(after))
+                Assert.That(Attributes(primitive).ContainsKey("COLOR_0"), Is.EqualTo(readsColours));
+            Assert.That(JsonDom.Serialize(F.Object(after.Json["extensions"])[F.UnboundExtensionName]),
+                Is.EqualTo(JsonDom.Serialize(F.Object(glb.Json["extensions"])[F.UnboundExtensionName])));
         }
 
         // Through the exporter and back through the vendored importer. Off, the

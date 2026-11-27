@@ -13,9 +13,15 @@ namespace VRVlog.LilToonExporter
     // decodes these images, so only other VRM apps show them, at a lower
     // resolution. Which materials count follows the app
     // (LilToonLoadSession.FullyBoundMaterials): a material with an extension
-    // record that no node without a binding draws. An image anything else
-    // uses (another material, the thumbnail) keeps its size. A file this
-    // class cannot fully account for is returned unchanged.
+    // record that no node without a binding draws. The materials only the
+    // menu sets count too: no mesh draws them, and the app draws them from
+    // their lilToon record, using the MToon images only when that record
+    // fails to load. A material the menu puts on a mesh that draws none of
+    // the first kind does not count: the app draws a mesh with no lilToon
+    // material in MToon (AvatarAnimatorPlayer), the menu's materials too,
+    // whether or not the mesh has a binding. An image
+    // anything else uses (another material, the thumbnail) keeps its size.
+    // A file this class cannot fully account for is returned unchanged.
     internal static class FallbackImageLightweight
     {
         internal const int Maximum = 256;
@@ -27,7 +33,10 @@ namespace VRVlog.LilToonExporter
         internal const string UnknownExtensionWarning = "Kept the MToon images because the file has extensions this step has not checked: {0}";
         internal const string StorageWarning = "Kept the MToon images because the file's binary data is not one GLB chunk this step can pack again";
 
-        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions.Append(LilToonFullContract.ExtensionName).ToArray();
+        // The one for the materials only the menu sets points to materials and
+        // to the full one's textures by index, never to an image.
+        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions
+            .Append(LilToonFullContract.ExtensionName).Append(LilToonFullContract.UnboundExtensionName).ToArray();
 
         // The MToon and glTF texture slots and whether each holds colour
         // (sRGB). A slot not listed here keeps its image unchanged.
@@ -40,7 +49,10 @@ namespace VRVlog.LilToonExporter
 
         // Returns the input array itself when nothing changes. count receives
         // how many images became smaller, saved how many bytes the file lost.
-        internal static byte[] Apply(byte[] bytes, ICollection<string> warnings, out int count, out long saved)
+        // menuMaterials holds, by node, the materials the menu may put on that
+        // node's mesh (VertexDataLightweight.MenuMaterials).
+        internal static byte[] Apply(byte[] bytes, ICollection<string> warnings, out int count, out long saved,
+            IReadOnlyDictionary<int, IReadOnlyCollection<int>> menuMaterials = null)
         {
             count = 0;
             saved = 0;
@@ -60,7 +72,7 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(StorageWarning);
                 return bytes;
             }
-            var plan = Plan(json);
+            var plan = Plan(json, menuMaterials);
             if (plan.Count == 0) return bytes;
             var images = List(json, "images");
             var views = List(json, "bufferViews");
@@ -100,7 +112,8 @@ namespace VRVlog.LilToonExporter
 
         // The images this step may make smaller, each with whether it holds
         // colour and its maximum long side.
-        internal static Dictionary<int, (bool Srgb, int Maximum)> Plan(Dictionary<string, object> json)
+        internal static Dictionary<int, (bool Srgb, int Maximum)> Plan(Dictionary<string, object> json,
+            IReadOnlyDictionary<int, IReadOnlyCollection<int>> menuMaterials = null)
         {
             var result = new Dictionary<int, (bool Srgb, int Maximum)>();
             var images = List(json, "images");
@@ -108,7 +121,20 @@ namespace VRVlog.LilToonExporter
             var materials = List(json, "materials");
             if (images == null || textures == null || materials == null) return result;
             var fully = FullyBoundMaterials(json);
+            // None, or a node FullyBoundMaterials cannot account for.
+            if (fully.Count == 0) return result;
+            var lilToonNodes = NodesDrawing(json, fully);
+            fully.UnionWith(MenuOnlyMaterials(json));
             var face = FaceMaterials(json);
+            if (menuMaterials != null)
+            {
+                var faceNodes = FaceNodes(json);
+                foreach (var pair in menuMaterials)
+                {
+                    if (!lilToonNodes.Contains(pair.Key)) fully.ExceptWith(pair.Value);
+                    if (faceNodes.Contains(pair.Key)) face.UnionWith(pair.Value);
+                }
+            }
             var kept = new HashSet<int>();
             var vrm = Object(Object(json, "extensions"), "VRMC_vrm");
             if (Object(vrm, "meta") is Dictionary<string, object> meta && meta.TryGetValue("thumbnailImage", out var thumbnail) && Index(thumbnail) is int thumbnailImage)
@@ -161,9 +187,7 @@ namespace VRVlog.LilToonExporter
             var result = new HashSet<int>();
             foreach (var record in Objects(List(root, "materials")))
                 if (record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index) result.Add(index);
-            var bound = new HashSet<int>();
-            foreach (var binding in Objects(List(root, "bindings")))
-                if (binding.TryGetValue("node", out var raw) && Index(raw) is int node) bound.Add(node);
+            var bound = BoundNodes(json);
             var nodes = List(json, "nodes") ?? new List<object>();
             var meshes = List(json, "meshes") ?? new List<object>();
             for (var n = 0; n < nodes.Count; n++)
@@ -176,32 +200,85 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
+        // The nodes whose mesh draws one of these materials: the app's
+        // FullRenderer, which draws the menu's materials from their records.
+        static HashSet<int> NodesDrawing(Dictionary<string, object> json, HashSet<int> drawn)
+        {
+            var result = new HashSet<int>();
+            var nodes = List(json, "nodes") ?? new List<object>();
+            var meshes = List(json, "meshes") ?? new List<object>();
+            for (var n = 0; n < nodes.Count; n++)
+            {
+                if (!(nodes[n] is Dictionary<string, object> node) || !(node.TryGetValue("mesh", out var rawMesh) && Index(rawMesh) is int mesh) || mesh >= meshes.Count) continue;
+                foreach (var primitive in Objects(List(meshes[mesh] as Dictionary<string, object>, "primitives")))
+                    if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material && drawn.Contains(material)) result.Add(n);
+            }
+            return result;
+        }
+
+        // The nodes with a binding in the full extension.
+        static HashSet<int> BoundNodes(Dictionary<string, object> json)
+        {
+            var bound = new HashSet<int>();
+            foreach (var binding in Objects(List(Object(Object(json, "extensions"), LilToonFullContract.ExtensionName), "bindings")))
+                if (binding.TryGetValue("node", out var raw) && Index(raw) is int node) bound.Add(node);
+            return bound;
+        }
+
+        // The materials with a record in the extension for the materials only
+        // the menu sets, less any a primitive draws: a drawn one is shown in
+        // MToon by a reader that has no record for it.
+        internal static HashSet<int> MenuOnlyMaterials(Dictionary<string, object> json)
+        {
+            var result = new HashSet<int>();
+            var materials = List(json, "materials");
+            if (materials == null) return result;
+            var root = Object(Object(json, "extensions"), LilToonFullContract.UnboundExtensionName);
+            foreach (var record in Objects(List(root, "materials")))
+                if (record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index && index < materials.Count) result.Add(index);
+            foreach (var mesh in Objects(List(json, "meshes")))
+                foreach (var primitive in Objects(List(mesh, "primitives")))
+                    if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Remove(material);
+            return result;
+        }
+
         // The materials of the meshes the expressions move, and the ones they
         // recolour or move the UVs of.
         internal static HashSet<int> FaceMaterials(Dictionary<string, object> json)
         {
             var result = new HashSet<int>();
-            var expressions = Object(Object(Object(json, "extensions"), "VRMC_vrm"), "expressions");
             var nodes = List(json, "nodes") ?? new List<object>();
             var meshes = List(json, "meshes") ?? new List<object>();
-            foreach (var group in new[] { Object(expressions, "preset"), Object(expressions, "custom") })
+            foreach (var n in FaceNodes(json))
             {
-                if (group == null) continue;
-                foreach (var expression in group.Values.OfType<Dictionary<string, object>>())
-                {
-                    foreach (var bind in Objects(List(expression, "morphTargetBinds")))
-                    {
-                        if (!(bind.TryGetValue("node", out var rawNode) && Index(rawNode) is int n) || n >= nodes.Count) continue;
-                        if (!(nodes[n] is Dictionary<string, object> node) || !(node.TryGetValue("mesh", out var rawMesh) && Index(rawMesh) is int mesh) || mesh >= meshes.Count) continue;
-                        foreach (var primitive in Objects(List(meshes[mesh] as Dictionary<string, object>, "primitives")))
-                            if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Add(material);
-                    }
-                    foreach (var key in new[] { "materialColorBinds", "textureTransformBinds" })
-                        foreach (var bind in Objects(List(expression, key)))
-                            if (bind.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Add(material);
-                }
+                if (n >= nodes.Count || !(nodes[n] is Dictionary<string, object> node) || !(node.TryGetValue("mesh", out var rawMesh) && Index(rawMesh) is int mesh) || mesh >= meshes.Count) continue;
+                foreach (var primitive in Objects(List(meshes[mesh] as Dictionary<string, object>, "primitives")))
+                    if (primitive.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Add(material);
             }
+            foreach (var expression in Expressions(json))
+                foreach (var key in new[] { "materialColorBinds", "textureTransformBinds" })
+                    foreach (var bind in Objects(List(expression, key)))
+                        if (bind.TryGetValue("material", out var rawMaterial) && Index(rawMaterial) is int material) result.Add(material);
             return result;
+        }
+
+        // The nodes the expressions move.
+        static HashSet<int> FaceNodes(Dictionary<string, object> json)
+        {
+            var result = new HashSet<int>();
+            foreach (var expression in Expressions(json))
+                foreach (var bind in Objects(List(expression, "morphTargetBinds")))
+                    if (bind.TryGetValue("node", out var raw) && Index(raw) is int node) result.Add(node);
+            return result;
+        }
+
+        static IEnumerable<Dictionary<string, object>> Expressions(Dictionary<string, object> json)
+        {
+            var expressions = Object(Object(Object(json, "extensions"), "VRMC_vrm"), "expressions");
+            foreach (var group in new[] { Object(expressions, "preset"), Object(expressions, "custom") })
+                if (group != null)
+                    foreach (var expression in group.Values.OfType<Dictionary<string, object>>())
+                        yield return expression;
         }
 
         // The PNG at maximum long side, or null when it already fits or

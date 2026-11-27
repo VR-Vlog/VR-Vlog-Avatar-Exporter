@@ -40,6 +40,15 @@ namespace VRVlog.LilToonExporter
         readonly List<DeflatePayload> payloads = new List<DeflatePayload>();
         readonly List<object> bindings = new List<object>();
         readonly Dictionary<int, Dictionary<string, object>> indexedRecords = new Dictionary<int, Dictionary<string, object>>();
+        // Materials no mesh draws with, which a slot curve sets (AddUnbound):
+        // the record of each, and the output copy the export adds for it.
+        // VRVLOG_materials_liltoon_unbound carries them by glTF index, since
+        // the app's reader of VRVLOG_materials_liltoon rejects a record no
+        // primitive binds.
+        readonly List<(Material Source, Dictionary<string, object> Record)> unbound = new List<(Material, Dictionary<string, object>)>();
+        readonly Dictionary<int, Dictionary<string, object>> unboundRecords = new Dictionary<int, Dictionary<string, object>>();
+        internal const string UnboundExtensionName = LilToonFullContract.UnboundExtensionName;
+        internal const int UnboundSchemaVersion = LilToonFullContract.UnboundSchemaVersion;
         readonly HashSet<Texture> resizedWarnings = new HashSet<Texture>();
         // Outline width masks of Delete Mesh materials (DeleteMeshMasks).
         HashSet<Texture> deleteMeshMasks = new HashSet<Texture>();
@@ -54,14 +63,15 @@ namespace VRVlog.LilToonExporter
         // 自動で軽量化する: write a slot whose feature is switched off as
         // unassigned. The references left out, by texture key; false when off.
         bool omitInactiveSlots;
+        ICollection<string> movedFloats;
         readonly HashSet<(Texture, bool)> inactiveReferences = new HashSet<(Texture, bool)>();
         readonly string sourceColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear ? "linear" : "gamma";
 
         internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null,
-            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false)
+            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false, ICollection<string> movedFloats=null)
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
-                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots};
+                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots, movedFloats=movedFloats};
             var selected = new List<(Renderer renderer, Material[] materials)>();
             // Materials of renderers UniVRM does not write as meshes must not
             // create bindings to absent glTF meshes. Their transforms and bones
@@ -201,8 +211,9 @@ namespace VRVlog.LilToonExporter
                         warnings?.Add(source.name + ": 無効なlilToonレイヤーで使われない動的画像の参照を省略しました: " + name);
                     }
                     // 自動で軽量化する: the shader never samples this slot. A
-                    // texture another slot samples is still written once.
-                    if (texture != null && omitInactiveSlots && !LilToonInactiveSlots.Sampled(source, name))
+                    // texture another slot samples is still written once. A
+                    // switch an FX curve moves keeps its slots.
+                    if (texture != null && omitInactiveSlots && !LilToonInactiveSlots.Sampled(source, name, movedFloats))
                     {
                         inactiveReferences.Add((texture, normal));
                         texture = null;
@@ -500,9 +511,51 @@ namespace VRVlog.LilToonExporter
             return "rgba32";
         }
 
-        // Called while UniVRM's exact Unity-object/node/mesh mapping is alive.
-        internal void Bind(VRVlog.LilToonExporter.Vendor.UniVRM10.ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, VRVlog.LilToonExporter.Vendor.UniGLTF.ExportingGltfData storage)
+        // Reads the records of official lilToon materials no mesh draws with,
+        // in the order given, before fallback baking as Capture does. One
+        // already read for a slot, approximated, or of another shader is not
+        // added; the app then shows its MToon copy.
+        // Gives back the materials the export may add: one whose record could
+        // not be read (AudioLink, a value the app cannot take) is left out
+        // alone, and its curves are counted as material.
+        internal IReadOnlyList<Material> AddUnbound(IEnumerable<Material> materials)
         {
+            var added = new List<Material>();
+            foreach (var material in materials ?? Array.Empty<Material>())
+            {
+                if (material == null || material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)) continue;
+                if (!records.ContainsKey(material) && !approximated.Contains(material) && !unbound.Any(each => each.Source == material))
+                {
+                    Dictionary<string, object> record;
+                    try { record = ReadMaterial(material); }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); continue; }
+                    if (record != null) unbound.Add((material, record));
+                }
+                added.Add(material);
+            }
+            return added;
+        }
+
+        // Called while UniVRM's exact Unity-object/node/mesh mapping is alive.
+        // The three-argument form stays usable as an afterExport method group.
+        internal void Bind(VRVlog.LilToonExporter.Vendor.UniVRM10.ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, VRVlog.LilToonExporter.Vendor.UniGLTF.ExportingGltfData storage) =>
+            Bind(converter, model, storage, null);
+
+        // added maps each AddUnbound material to the copy the export added to
+        // model.Materials.
+        internal void Bind(VRVlog.LilToonExporter.Vendor.UniVRM10.ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, VRVlog.LilToonExporter.Vendor.UniGLTF.ExportingGltfData storage,
+            IReadOnlyDictionary<Material, Material> added)
+        {
+            if (added != null)
+                foreach (var (source, record) in unbound)
+                {
+                    if (!added.TryGetValue(source, out var copy) || copy == null) continue;
+                    var index = model.Materials.IndexOf(copy);
+                    if (index < 0 || index >= storage.Gltf.materials.Count || unboundRecords.ContainsKey(index)) continue;
+                    var indexed = new Dictionary<string, object>(record);
+                    indexed["materialIndex"] = index;
+                    unboundRecords.Add(index, indexed);
+                }
             foreach (var entry in sources)
             {
                 var renderer = entry.Key;
@@ -604,11 +657,17 @@ namespace VRVlog.LilToonExporter
             };
             if (!glb.Json.TryGetValue("extensions", out var raw)) glb.Json["extensions"] = raw = new Dictionary<string, object>();
             ((Dictionary<string, object>)raw)[LilToonMobileProfile.ExtensionName] = extension;
+            // A copy a primitive draws with after all keeps its record here only.
+            var bound = new HashSet<int>(bindings.SelectMany(binding => (List<object>)((Dictionary<string, object>)binding)["materials"]).Select(Convert.ToInt32));
+            var unboundList = unboundRecords.Where(p => !bound.Contains(p.Key) && !indexedRecords.ContainsKey(p.Key)).OrderBy(p => p.Key).Select(p => (object)p.Value).ToList();
+            if (unboundList.Count > 0)
+                ((Dictionary<string, object>)raw)[UnboundExtensionName] = new Dictionary<string, object> { {"schemaVersion", UnboundSchemaVersion}, {"materials", unboundList} };
             var asset = LilToonFullContract.Object(glb.Json["asset"]);
             if (!asset.TryGetValue("extras", out var extras)) asset["extras"] = extras = new Dictionary<string, object>();
             LilToonFullContract.Object(extras)[LilToonFullContract.SourceColorSpaceKey] = sourceColorSpace;
             LilToonFullContract.Object(extras)[InstalledLilToonVersionKey] = installedLilToonVersion;
             var used = List(glb.Json, "extensionsUsed"); if (!used.Contains(LilToonMobileProfile.ExtensionName)) used.Add(LilToonMobileProfile.ExtensionName);
+            if (unboundList.Count > 0 && !used.Contains(UnboundExtensionName)) used.Add(UnboundExtensionName);
             GlbBinaryOptimizer.Compact(glb);
             if (System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(glb.Json)) > 8 * 1024 * 1024) throw new InvalidDataException("JSONが8MB上限を超えています。");
             var output = glb.Write();

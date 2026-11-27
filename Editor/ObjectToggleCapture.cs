@@ -219,10 +219,98 @@ namespace VRVlog.LilToonExporter
             result.items.Sort((left, right) => left.Index.CompareTo(right.Index));
             // Meshes that are off by default are written; the default state
             // in the extension hides them. Only the targets are turned on.
+            var turnedOn = new HashSet<GameObject>();
             foreach (var target in result.groups.SelectMany(group => group.Targets))
-                if (!target.activeSelf) target.SetActive(true);
+                if (!target.activeSelf) { target.SetActive(true); turnedOn.Add(target); }
+            result.ReadCopiedEnablement(clone, turnedOn);
             return result;
         }
+
+        const string MergeSkinnedMeshType = "Anatawa12.AvatarOptimizer.MergeSkinnedMesh";
+
+        // AAO's Merge Skinned Mesh with copyEnablementAnimation runs after the
+        // targets were turned on above. It removes the meshes it merges and
+        // moves the one activeness animation on the way from them up to the
+        // object that holds them and the merged renderer (a renderer's m_Enabled
+        // or an object's m_IsActive) to the merged renderer's m_Enabled, whose
+        // value it sets from that object then. A target on the way is
+        // animated, so it is that object: the FX turns the merged renderer on
+        // and off for it (AvatarAnimatorCapture writes an enabled target), and
+        // one turned on above leaves the renderer on where VRChat has it off.
+        // AAO 1.8 looks for that object under a common root that skips the
+        // second of the renderers, so with one source it copies no object's
+        // m_IsActive (only the source renderer's own m_Enabled): Resolve
+        // hands a target over only when the FX does switch the renderer.
+        void ReadCopiedEnablement(GameObject clone, HashSet<GameObject> turnedOn)
+        {
+            var targets = new HashSet<GameObject>(Targets);
+            foreach (var component in clone.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null || component.GetType().FullName != MergeSkinnedMeshType) continue;
+                var type = component.GetType();
+                if (!(Field(type, "copyEnablementAnimation")?.GetValue(component) is bool copies) || !copies) continue;
+                var merged = component.GetComponent<SkinnedMeshRenderer>();
+                if (merged == null) continue;
+                var sources = Sources(component, "renderersSet").Concat(Sources(component, "staticRenderersSet")).ToList();
+                var top = CommonRoot(sources.Select(source => source.transform).Append(merged.transform));
+                if (sources.Count == 0 || top == null) continue;
+                var off = false;
+                foreach (var source in sources)
+                    for (var at = source.transform; at != top && at != clone.transform; at = at.parent)
+                    {
+                        if (targets.Contains(at.gameObject))
+                        {
+                            var id = at.gameObject.GetInstanceID();
+                            if (!copiedEnablement.TryGetValue(id, out var mergedInto)) copiedEnablement[id] = mergedInto = new List<Renderer>();
+                            mergedInto.Add(merged);
+                        }
+                        off |= turnedOn.Contains(at.gameObject);
+                    }
+                if (off) copiedEnablementRest[merged] = false;
+            }
+        }
+
+        static System.Reflection.FieldInfo Field(Type type, string name)
+        {
+            for (; type != null; type = type.BaseType)
+                if (type.GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic) is
+                    System.Reflection.FieldInfo field) return field;
+            return null;
+        }
+
+        // The renderers of one of the component's PrefabSafeSet fields.
+        static IEnumerable<Renderer> Sources(Component component, string name)
+        {
+            var set = Field(component.GetType(), name)?.GetValue(component);
+            var list = set?.GetType().GetMethod("GetAsList", Type.EmptyTypes)?.Invoke(set, null) as System.Collections.IEnumerable;
+            return list == null ? Enumerable.Empty<Renderer>() : list.OfType<Renderer>().Where(renderer => renderer != null);
+        }
+
+        // The deepest transform that holds them all, each counting as holding itself.
+        static Transform CommonRoot(IEnumerable<Transform> transforms)
+        {
+            List<Transform> common = null;
+            foreach (var transform in transforms)
+            {
+                var chain = new List<Transform>();
+                for (var at = transform; at != null; at = at.parent) chain.Insert(0, at);
+                if (common == null) { common = chain; continue; }
+                var same = 0;
+                while (same < common.Count && same < chain.Count && common[same] == chain[same]) same++;
+                common.RemoveRange(same, common.Count - same);
+            }
+            return common == null || common.Count == 0 ? null : common[common.Count - 1];
+        }
+
+        // Targets on the way to the meshes such a merge removes, by instance
+        // ID, which outlives the object, and the merged renderers, whose
+        // enabled target shows and hides what they did.
+        readonly Dictionary<int, List<Renderer>> copiedEnablement = new Dictionary<int, List<Renderer>>();
+        readonly Dictionary<Renderer, bool> copiedEnablementRest = new Dictionary<Renderer, bool>();
+
+        // The merged renderers that VRChat has off at rest though the copy
+        // has them on, since a target turned on above was their animated object.
+        internal IReadOnlyDictionary<Renderer, bool> CopiedEnablementRest => copiedEnablementRest;
 
         // The objects the toggles show and hide.
         internal IEnumerable<GameObject> Targets => groups.SelectMany(group => group.Targets);
@@ -301,12 +389,14 @@ namespace VRVlog.LilToonExporter
         }
 
         // Maps the targets to output nodes. A target the build passes or the
-        // export removed is left out with a warning; an item that no longer
+        // export removed is left out with a warning, unless a merge that
+        // copies enablement removed it and `switches` says the FX turns the
+        // merged renderer on and off (see ReadCopiedEnablement); an item that no longer
         // changes any kept target is left out, and so is a group left without
         // targets or items.
         // The moved bones are mapped the same way into Transforms; a bone left
         // out only drops its transforms.
-        internal ObjectToggleData Resolve(Func<GameObject, int> node, ICollection<string> warnings)
+        internal ObjectToggleData Resolve(Func<GameObject, int> node, ICollection<string> warnings, Func<Renderer, bool> switches = null)
         {
             var data = new ObjectToggleData();
             var moved = new ObjectToggleTransformData();
@@ -318,7 +408,13 @@ namespace VRVlog.LilToonExporter
                 for (var i = 0; i < group.Targets.Count; i++)
                 {
                     var index = group.Targets[i] != null ? node(group.Targets[i]) : -1;
-                    if (index < 0) { warnings?.Add(ExporterLocalization.T(MissingWarning) + group.Paths[i]); continue; }
+                    if (index < 0)
+                    {
+                        if (group.Targets[i] is null || switches == null ||
+                            !(copiedEnablement.TryGetValue(group.Targets[i].GetInstanceID(), out var mergedInto) && mergedInto.Any(switches)))
+                            warnings?.Add(ExporterLocalization.T(MissingWarning) + group.Paths[i]);
+                        continue;
+                    }
                     output.Targets.Add(index);
                     columns.Add(i);
                 }

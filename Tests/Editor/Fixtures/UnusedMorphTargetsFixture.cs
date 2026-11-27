@@ -420,9 +420,41 @@ namespace VRVlog.LilToonExporter.Tests
             check(ReferenceEquals(UnusedMorphTargets.Strip(input, new List<string>()), input), "Nothing to remove returns the same bytes");
         }
 
+        // The avatar animator extension is placed after the strip: its
+        // targets come in as binds the strip keeps and renumbers in place.
+        public static void KeepsAndRenumbersTheBindsItIsGiven(Action<bool, string> check)
+        {
+            var builder = new Builder();
+            var face = builder.Mesh("Face", new[] { "u0", "u1", "moved", "u3" });
+            var bind = D("node", (long)face, "index", 2L);
+            var doc = Valid(UnusedMorphTargets.Strip(builder.Build(), new List<string>(), extraBinds: new[] { bind }), check);
+            check(Names(doc, face).SequenceEqual(new[] { "moved" }), "A target the caller names stays");
+            check(Int(bind["index"]) == 0, "Its bind follows it");
+
+            // Nothing removed: the bytes and the bind are as they were.
+            builder = new Builder();
+            face = builder.Mesh("Face", new[] { "moved", "Blink" });
+            bind = D("node", (long)face, "index", 0L);
+            var input = builder.Build();
+            check(ReferenceEquals(UnusedMorphTargets.Strip(input, new List<string>(), extraBinds: new[] { bind }), input), "Nothing to remove returns the same bytes");
+            check(Int(bind["index"]) == 0, "The bind is left alone");
+
+            // A soft bind follows a target something else keeps and gets -1
+            // for one that goes; it keeps nothing by itself.
+            builder = new Builder();
+            face = builder.Mesh("Face", new[] { "u0", "Blink", "held" });
+            var kept = D("node", (long)face, "index", 1L);
+            var held = D("node", (long)face, "index", 2L);
+            doc = Valid(UnusedMorphTargets.Strip(builder.Build(), new List<string>(), softBinds: new[] { kept, held }), check);
+            check(Names(doc, face).SequenceEqual(new[] { "Blink" }), "A soft bind keeps no target");
+            check(Int(kept["index"]) == 0, "A soft bind follows a kept target");
+            check(Int(held["index"]) == -1, "A soft bind on a removed target gets -1");
+        }
+
         public static void Run(Action<bool, string> check)
         {
             KeepsTargetsBoundByVrmExpressions(check);
+            KeepsAndRenumbersTheBindsItIsGiven(check);
             KeepsTargetsOfExpressionAnimations(check);
             KeepsNamesTheAppDrives(check);
             KeepsTheShapesOfTheCameraGaze(check);

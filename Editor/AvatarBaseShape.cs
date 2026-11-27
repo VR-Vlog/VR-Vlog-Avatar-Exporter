@@ -475,6 +475,19 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
+        // What Rebase leaves of a shape at the weight it bakes: the weight the
+        // base geometry holds (0 when the shape is copied as authored) and
+        // the weight the exported target shows at 1, its last frame's.
+        internal static (double Baked, double End) MorphEndpoints(Mesh mesh, int shape, float weight)
+        {
+            var frames = mesh.GetBlendShapeFrameCount(shape);
+            var end = frames > 0 ? mesh.GetBlendShapeFrameWeight(shape, frames - 1) : 0f;
+            if (weight == 0f) return (0, end);
+            try { Evaluate(mesh, shape, weight); }
+            catch (InvalidOperationException) { return (0, end); }
+            return (weight, end);
+        }
+
         static Deltas Evaluate(Mesh mesh, int shape, double weight)
         {
             var result = new Deltas(mesh.vertexCount);

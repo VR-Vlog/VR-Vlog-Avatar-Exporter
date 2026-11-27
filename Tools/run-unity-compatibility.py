@@ -964,10 +964,17 @@ BEHAVIOR_CASES = {
         'AnythingNotKnownCountsAsReading': 1,
         'AMeshLosesItsColoursOnlyWhenNoMaterialReadsThem': 3,
         'AColourAccessorAnotherMeshUsesStays': 1,
+        'AMaterialTheMenuSetsOnAnotherMeshCounts': 2,
+        'AValueTheMenuMovesCountsWithEveryValue': 5,
+        'AMeshKeepsTheColoursAValueTheMenuMovesReads': 2,
+        'TheExportKeepsTheColoursAnOutlineTheMenuTurnsOnReads': 2,
+        'MenuValuesAreTheFloatTargetsRestAndKeys': 1,
+        'MenuMaterialsAreTheSlotTargetsRestAndKeys': 1,
         'WeightsAddUpToExactly65535': 7,
         'RandomWeightsRoundTripWithin1Over65535': 1,
         'WeightsThatDoNotAddUpTo1StayFloat': 1,
         'AFileWithNothingToChangeOrAnUnknownExtensionIsKept': 1,
+        'TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile': 2,
         'DrawIndicesBecomeUnsignedShortsOnlyUpTo65534': 4,
         'SparseMorphIndicesBecomeUnsignedShortsUpTo65535': 2,
         'IndicesInAViewAnotherAccessorReadsStay': 1,
@@ -981,6 +988,8 @@ BEHAVIOR_CASES = {
         'TheMaterialsFollowTheAppsFullyBoundRule': 1,
         'AnImageAMaterialWithoutTheExtensionAlsoUsesIsKept': 1,
         'AFileWithoutTheExtensionOrWithAnUnknownOneIsKept': 1,
+        'TheExtensionForMaterialsOnlyTheMenuSetsDoesNotKeepTheFile': 4,
+        'AMaterialTheMenuPutsOnAMeshFollowsHowTheAppDrawsIt': 5,
         'TheExportShrinksTheImagesOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
@@ -992,6 +1001,7 @@ BEHAVIOR_CASES = {
     # 自動で軽量化する: textures of switched-off lilToon features are left out.
     'LilToonInactiveSlotsTests': {
         'ASlotIsSampledOnlyWhileItsSwitchIsOn': 29,
+        'ASlotOfAMovedSwitchIsSampled': 1,
         'AMissingSwitchCountsAsSampled': 1,
         'DissolveSlotsFollowTheDissolveMode': 3,
         'OutlineSlotsNeedAnOutlinePassThatIsDrawn': 4,
@@ -1110,7 +1120,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 5, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
 def table_cases():

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using VRVlog.AvatarAnimator;
 
 namespace VRVlog.LilToonExporter
 {
@@ -21,14 +22,24 @@ namespace VRVlog.LilToonExporter
 
         const long Float = 5126, UnsignedShort = 5123, UnsignedInt = 5125;
 
-        // The extensions UnusedMorphTargets checked, and the lilToon one: it
-        // points to bufferViews (moved like any other) and to meshes and
-        // materials by index, never to an accessor.
-        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions.Append(LilToon.LilToonFullContract.ExtensionName).ToArray();
+        // The extensions UnusedMorphTargets checked, and the lilToon ones: the
+        // full one points to bufferViews (moved like any other) and to meshes
+        // and materials by index, never to an accessor; the one for the
+        // materials only the menu sets points to materials and to the full
+        // one's textures by index.
+        static readonly string[] KnownExtensions = UnusedMorphTargets.KnownExtensions
+            .Append(LilToon.LilToonFullContract.ExtensionName).Append(LilToon.LilToonFullContract.UnboundExtensionName).ToArray();
 
         // Returns the input array itself when nothing changes. saved receives
-        // how many bytes the file lost.
-        internal static byte[] Apply(byte[] bytes, ICollection<string> warnings, out long saved)
+        // how many bytes the file lost. menuMaterials holds, by node, the
+        // materials the menu may put on that node's mesh (MenuMaterials): the
+        // FX is written after this step, so the file does not tell them yet.
+        // A negative index (no material, not written) is left out.
+        // menuValues holds, by material, the values the menu may give its
+        // float properties (MenuValues).
+        internal static byte[] Apply(byte[] bytes, ICollection<string> warnings, out long saved,
+            IReadOnlyDictionary<int, IReadOnlyCollection<int>> menuMaterials = null,
+            IReadOnlyDictionary<int, IReadOnlyDictionary<string, IReadOnlyCollection<double>>> menuValues = null)
         {
             saved = 0;
             if (bytes == null) return bytes;
@@ -47,7 +58,7 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(StorageWarning);
                 return bytes;
             }
-            var removed = RemoveColors(json, meshes.OfType<Dictionary<string, object>>());
+            var removed = RemoveColors(json, meshes, menuMaterials, menuValues);
             var replacedViews = PackWeights(glb);
             replacedViews.UnionWith(PackIndices(glb));
             replacedViews.UnionWith(PackSparseIndices(glb));
@@ -63,10 +74,60 @@ namespace VRVlog.LilToonExporter
         internal static string ResultLine(long saved) => saved <= 0 ? null :
             string.Format(CultureInfo.InvariantCulture, ExporterLocalization.T(ExportNoteText.VertexDataLightened), TexelDensity.Plan.Megabytes(saved));
 
-        // Takes COLOR_0 off every primitive of a mesh whose materials all leave
-        // it unread; the primitives of a mesh share their attribute accessors.
-        // Returns the accessors taken off.
-        static HashSet<int> RemoveColors(Dictionary<string, object> json, IEnumerable<Dictionary<string, object>> meshes)
+        // The materials the FX's material slot targets may set, by node: the
+        // rest and every key. Null without the FX.
+        internal static Dictionary<int, IReadOnlyCollection<int>> MenuMaterials(AvatarAnimatorData data)
+        {
+            if (data == null) return null;
+            var result = new Dictionary<int, HashSet<int>>();
+            var slots = new Dictionary<int, HashSet<int>>();
+            for (var t = 0; t < data.Targets.Count; t++)
+            {
+                var target = data.Targets[t];
+                if (target.Property != "materialSlot") continue;
+                if (!result.TryGetValue(target.Node, out var materials)) result[target.Node] = materials = new HashSet<int>();
+                materials.Add((int)target.Rest);
+                slots[t] = materials;
+            }
+            foreach (var clip in data.Clips)
+                foreach (var track in clip.Tracks)
+                    if (slots.TryGetValue(track.Target, out var materials))
+                        foreach (var curve in track.Curves)
+                            foreach (var key in curve.Keys) materials.Add((int)key.Value);
+            return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyCollection<int>)pair.Value);
+        }
+
+        // The values the FX's materialFloat targets may give, by material and
+        // property: the rest and every key. Null without the FX.
+        internal static Dictionary<int, IReadOnlyDictionary<string, IReadOnlyCollection<double>>> MenuValues(AvatarAnimatorData data)
+        {
+            if (data == null) return null;
+            var result = new Dictionary<int, Dictionary<string, HashSet<double>>>();
+            var moved = new Dictionary<int, HashSet<double>>();
+            for (var t = 0; t < data.Targets.Count; t++)
+            {
+                var target = data.Targets[t];
+                if (target.Property != "materialFloat" || target.Name == null) continue;
+                if (!result.TryGetValue(target.Material, out var properties)) result[target.Material] = properties = new Dictionary<string, HashSet<double>>(StringComparer.Ordinal);
+                if (!properties.TryGetValue(target.Name, out var values)) properties[target.Name] = values = new HashSet<double>();
+                values.Add(target.Rest);
+                moved[t] = values;
+            }
+            foreach (var clip in data.Clips)
+                foreach (var track in clip.Tracks)
+                    if (moved.TryGetValue(track.Target, out var values))
+                        foreach (var curve in track.Curves)
+                            foreach (var key in curve.Keys) values.Add(key.Value);
+            return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, IReadOnlyCollection<double>>)pair.Value
+                .ToDictionary(entry => entry.Key, entry => (IReadOnlyCollection<double>)entry.Value, StringComparer.Ordinal));
+        }
+
+        // Takes COLOR_0 off every primitive of a mesh whose materials, and
+        // those the menu may put on it, all leave it unread; the primitives
+        // of a mesh share their attribute accessors. Returns the accessors
+        // taken off.
+        static HashSet<int> RemoveColors(Dictionary<string, object> json, List<object> meshes, IReadOnlyDictionary<int, IReadOnlyCollection<int>> menuMaterials,
+            IReadOnlyDictionary<int, IReadOnlyDictionary<string, IReadOnlyCollection<double>>> menuValues)
         {
             var materials = List(json, "materials") ?? new List<object>();
             var records = new Dictionary<int, Dictionary<string, object>>();
@@ -74,14 +135,38 @@ namespace VRVlog.LilToonExporter
             foreach (var record in Objects(List(extension, "materials")))
                 if (record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index) records[index] = record;
             var removed = new HashSet<int>();
-            foreach (var mesh in meshes)
+            IReadOnlyDictionary<string, IReadOnlyCollection<double>> Moved(int index) =>
+                menuValues != null && menuValues.TryGetValue(index, out var values) ? values : null;
+            bool Reads(int index) => ReadsVertexColor(materials[index] as Dictionary<string, object>, records.TryGetValue(index, out var record) ? record : null, Moved(index));
+            // A material only the menu sets is drawn on a mesh the file does
+            // not name; when one reads the colours, every mesh keeps them.
+            var unbound = Object(Object(json, "extensions"), LilToon.LilToonFullContract.UnboundExtensionName);
+            foreach (var record in Objects(List(unbound, "materials")))
+                if (!(record.TryGetValue("materialIndex", out var raw) && Index(raw) is int index && index < materials.Count) ||
+                    ReadsVertexColor(materials[index] as Dictionary<string, object>, record, Moved(index)))
+                    return removed;
+            // A node's mesh can show any material the menu sets on that node;
+            // a negative one is an empty slot or one the file does not write.
+            var swapped = new Dictionary<int, List<int>>();
+            var nodes = List(json, "nodes") ?? new List<object>();
+            if (menuMaterials != null)
+                foreach (var pair in menuMaterials)
+                    if (pair.Key >= 0 && pair.Key < nodes.Count && nodes[pair.Key] is Dictionary<string, object> node &&
+                        node.TryGetValue("mesh", out var rawMesh) && Index(rawMesh) is int index)
+                    {
+                        if (!swapped.TryGetValue(index, out var list)) swapped[index] = list = new List<int>();
+                        list.AddRange(pair.Value.Where(material => material >= 0));
+                    }
+            for (var m = 0; m < meshes.Count; m++)
             {
+                if (!(meshes[m] is Dictionary<string, object> mesh)) continue;
                 var primitives = Objects(List(mesh, "primitives")).ToList();
                 if (!primitives.Any(p => Object(p, "attributes")?.ContainsKey("COLOR_0") == true)) continue;
                 // A morph target of the colours would be left without them.
                 if (primitives.Any(p => Objects(List(p, "targets")).Any(t => t.ContainsKey("COLOR_0")))) continue;
-                if (primitives.Any(p => !(p.TryGetValue("material", out var raw) && Index(raw) is int index && index < materials.Count) ||
-                                        ReadsVertexColor(materials[index] as Dictionary<string, object>, records.TryGetValue(index, out var record) ? record : null)))
+                if (primitives.Any(p => !(p.TryGetValue("material", out var raw) && Index(raw) is int index && index < materials.Count) || Reads(index)))
+                    continue;
+                if (swapped.TryGetValue(m, out var set) && set.Any(index => index >= materials.Count || Reads(index)))
                     continue;
                 foreach (var primitive in primitives)
                 {
@@ -100,17 +185,21 @@ namespace VRVlog.LilToonExporter
         // width with _OutlineDeleteMesh) and for the fur direction
         // (_VertexColor2FurVector). lilToonMulti chooses its outline by
         // keyword, so any _OutlineVertexR2Width counts. A property the shader
-        // does not declare is 0. The app's MToon never reads COLOR_0; a
-        // material with neither (unlit, PBR) counts as reading it even with a
-        // lilToon record, as does a primitive with no material.
-        internal static bool ReadsVertexColor(Dictionary<string, object> material, Dictionary<string, object> record)
+        // does not declare is 0. A property the menu moves (moved, by name:
+        // MenuValues) counts with every value it may take. The app's MToon
+        // never reads COLOR_0; a material with neither (unlit, PBR) counts as
+        // reading it even with a lilToon record, as does a primitive with no
+        // material.
+        internal static bool ReadsVertexColor(Dictionary<string, object> material, Dictionary<string, object> record,
+            IReadOnlyDictionary<string, IReadOnlyCollection<double>> moved = null)
         {
             if (material == null) return true;
             if (Object(Object(material, "extensions"), "VRMC_materials_mtoon") == null) return true;
             if (record == null) return false;
-            if (Value(record, "_VertexColor2FurVector") != 0) return true;
-            if (Value(record, "_OutlineVertexR2Width") == 0) return false;
-            if (Value(record, "_OutlineDeleteMesh") != 0) return true;
+            bool Set(string name) => Value(record, name) != 0 || moved != null && moved.TryGetValue(name, out var values) && values.Any(value => value != 0);
+            if (Set("_VertexColor2FurVector")) return true;
+            if (!Set("_OutlineVertexR2Width")) return false;
+            if (Set("_OutlineDeleteMesh")) return true;
             if (!(record.TryGetValue("sourceShader", out var shader) && shader is string name) || name.IndexOf("lilToonMulti", StringComparison.Ordinal) >= 0) return true;
             if (!(record.TryGetValue("passes", out var raw) && raw is List<object> passes)) return true;
             return Objects(passes).Any(pass => pass.TryGetValue("name", out var passName) && passName is string text &&
