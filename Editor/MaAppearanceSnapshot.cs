@@ -226,7 +226,7 @@ namespace VRVlog.LilToonExporter
                     case "SetMaterial": value = Field(action.Value, "Material"); break;
                     case "HideMeshSection": value = Field(action.Value, "Selector"); break;
                     // Other actions (Reactive Move, parameter drivers) are not frozen.
-                    // A newly listed pre-release must be checked for new action types.
+                    // A new MA release must be checked for new action types.
                     default: continue;
                 }
                 result.Add(new KeyValuePair<object, object>(action.Key, value));
