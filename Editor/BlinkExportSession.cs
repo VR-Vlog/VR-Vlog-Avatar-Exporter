@@ -83,10 +83,12 @@ namespace VRVlog.LilToonExporter
         internal bool RequiresUnifiedEvidence => state.AllowMissingAutomaticBlink && !PreserveAuthored && Slots[0].Count == 0 && Slots[1].Count == 0;
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
         // The shapes that move the eyes on each mesh the blink closes
-        // (VRVLOG_eye_shapes), with a binding of that mesh: it follows the
-        // renderer through optimization. A shape keeps its name in the final
-        // mesh, or it is left out of the file.
-        readonly List<(BlinkShapeBinding Binding, string Shape)> eyeShapes = new List<(BlinkShapeBinding, string)>();
+        // (VRVLOG_eye_shapes), with a binding of that mesh. Optimization moves a
+        // shape it knows to its merged mesh and name, and one it does not know
+        // follows the binding's renderer under its own name. A shape keeps its
+        // name in the final mesh, or it is left out of the file.
+        readonly List<(BlinkShapeBinding Binding, SkinnedMeshRenderer Renderer, string Shape)> eyeShapes =
+            new List<(BlinkShapeBinding, SkinnedMeshRenderer, string)>();
 
         // A shape is an eye shape when at least this share of its movement
         // falls on the vertices the blink moves, as a mouth shape is found from
@@ -660,8 +662,16 @@ namespace VRVlog.LilToonExporter
             {
                 var renderer = group.Key;
                 var original = renderer.sharedMesh;
-                foreach (var shape in EyeShapes(original, group.Select(item => item.binding.Shape)))
-                    eyeShapes.Add((group.First().binding, shape));
+                // The eye shapes are an optional hint for the app: failing to find them leaves them out
+                // and never fails the blink (Documentation~/decisions/2026-11-28-eye-shapes.md).
+                List<string> found;
+                try { found = EyeShapes(original, group.Select(item => item.binding.Shape)); }
+                catch (Exception exception)
+                {
+                    UnityEngine.Debug.LogWarning("VR Vlog: eye shapes left out of " + renderer.name + ": " + exception.Message);
+                    found = new List<string>();
+                }
+                foreach (var shape in found) eyeShapes.Add((group.First().binding, renderer, shape));
                 var generated = Object.Instantiate(original); owned.Add(generated);
                 foreach (var (binding, slot) in group)
                 {
@@ -706,12 +716,21 @@ namespace VRVlog.LilToonExporter
 
         internal void Remap(ExportOptimizationBindings mappings)
         {
+            // An eye shape the optimization moved or renamed follows it; one it was never told about
+            // keeps its name on the blink's renderer, and InjectEyeShapes writes it only if the final
+            // mesh still has it.
+            var follow = new List<int>();
+            for (var i = 0; i < eyeShapes.Count; i++)
+                if (mappings.TryMapMorph(eyeShapes[i].Renderer, eyeShapes[i].Shape, out var moved))
+                    eyeShapes[i] = (eyeShapes[i].Binding, moved.Renderer, moved.Shape);
+                else follow.Add(i);
             foreach (var binding in Slots.SelectMany(slot => slot))
             {
                 var mapped = mappings.MapMorph(binding.Renderer, binding.Shape);
                 binding.Renderer = mapped.Renderer;
                 binding.Shape = mapped.Shape;
             }
+            foreach (var i in follow) eyeShapes[i] = (eyeShapes[i].Binding, eyeShapes[i].Binding.Renderer, eyeShapes[i].Shape);
         }
 
         internal void Bind(ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, ExportingGltfData storage)
@@ -822,14 +841,17 @@ namespace VRVlog.LilToonExporter
             var meshes = (List<object>)glb.Json["meshes"];
             var data = new VRVlog.Expressions.EyeShapeData();
             var seen = new HashSet<(int, string)>();
-            foreach (var (binding, shape) in eyeShapes)
+            foreach (var (_, renderer, shape) in eyeShapes)
             {
-                if (binding.Renderer == null || !nodes.TryGetValue(binding.Renderer, out var node) || node < 0 || node >= outputNodes.Count) continue;
+                if (renderer == null || !nodes.TryGetValue(renderer, out var node) || node < 0 || node >= outputNodes.Count) continue;
                 if (!(outputNodes[node] is Dictionary<string, object> output) || !output.TryGetValue("mesh", out var rawMesh)) continue;
                 var meshIndex = Convert.ToInt32(rawMesh);
                 if (meshIndex < 0 || meshIndex >= meshes.Count || !(meshes[meshIndex] is Dictionary<string, object> mesh) ||
                     !mesh.TryGetValue("extras", out var rawExtras) || !(rawExtras is Dictionary<string, object> extras) ||
                     !extras.TryGetValue("targetNames", out var rawNames) || !(rawNames is List<object> names)) continue;
+                // The table takes 1 to 1024 characters (ContractJson.Text): a name it cannot hold is left out
+                // instead of dropping the table.
+                if (string.IsNullOrEmpty(shape) || shape.Length > 1024) continue;
                 if (names.Count(name => name is string text && string.Equals(text, shape, StringComparison.Ordinal)) != 1) continue;
                 if (!seen.Add((node, shape))) continue;
                 if (data.Shapes.Count == VRVlog.Expressions.EyeShapeData.MaximumShapes) break;
