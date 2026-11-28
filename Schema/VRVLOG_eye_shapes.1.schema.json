@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_eye_shapes/1/schema.json",
+  "title": "VRVLOG_eye_shapes 1",
+  "description": "The BlendShapes that move the eyes: on a mesh the blink closes, the shapes whose movement falls mostly on the vertices the blink moves, the shapes the blink was made from among them. The blink, blinkLeft and blinkRight expressions bind morph targets the exporter adds, so a player cannot tell from them alone that the avatar's own FX closes or shapes the eyes when it moves one of these. Each shape names a morph target of the node's mesh by its name in the mesh's extras.targetNames; a name the mesh does not have is nothing. The shared reader (EyeShapeData.Read) rejects the whole extension when anything is outside this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "shapes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "shapes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "node",
+          "name"
+        ],
+        "properties": {
+          "node": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      }
+    }
+  }
+}

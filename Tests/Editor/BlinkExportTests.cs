@@ -706,7 +706,28 @@ namespace VRVlog.LilToonExporter.Tests
                 var names = (List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"];
                 Assert.That((string)names[Convert.ToInt32(binding["index"])], Does.StartWith("__VRVlog_Blink_"));
             }
+            // The blink shape has no movement here, so no eye shape is found and
+            // the file gets no VRVLOG_eye_shapes (EyeShapesFollowTheVerticesTheBlinkMoves covers the choice).
+            Assert.That(((Dictionary<string, object>)glb.Json["extensions"]).ContainsKey(VRVlog.Expressions.EyeShapeData.Extension), Is.False);
             Assert.That(fixture.Mesh.blendShapeCount, Is.EqualTo(2));
+        }
+
+        // An eye shape is chosen by where it moves, not by its name: a shape
+        // mostly on the vertices the blink moves (another closing, a narrowed
+        // eye) is one; a mouth or a shape moving the whole face is not.
+        [Test] public void EyeShapesFollowTheVerticesTheBlinkMoves()
+        {
+            var mesh = new Mesh { vertices = Enumerable.Range(0, 10).Select(i => new Vector3(i, 0, 0)).ToArray() }; owned.Add(mesh);
+            Vector3[] Moves(params int[] moved) => Enumerable.Range(0, 10).Select(i => moved.Contains(i) ? Vector3.down * .01f : Vector3.zero).ToArray();
+            mesh.AddBlendShapeFrame("Blink", 100, Moves(0, 1, 2, 3), null, null);
+            mesh.AddBlendShapeFrame("まばたき", 100, Moves(0, 1, 2, 3), null, null);
+            mesh.AddBlendShapeFrame("じと目", 100, Moves(1, 2), null, null);
+            mesh.AddBlendShapeFrame("Mouth", 100, Moves(7, 8, 9), null, null);
+            mesh.AddBlendShapeFrame("Whole", 100, Moves(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), null, null);
+            mesh.AddBlendShapeFrame("__VRVlog_Blink_x", 100, Moves(0, 1, 2, 3), null, null);
+            mesh.AddBlendShapeFrame("Empty", 100, Moves(), null, null);
+            Assert.That(BlinkExportSession.EyeShapes(mesh, new[] { "Blink" }), Is.EqualTo(new[] { "Blink", "まばたき", "じと目" }));
+            Assert.That(BlinkExportSession.EyeShapes(mesh, new[] { "Missing" }), Is.Empty);
         }
 
         [TestCase(false)][TestCase(true)]

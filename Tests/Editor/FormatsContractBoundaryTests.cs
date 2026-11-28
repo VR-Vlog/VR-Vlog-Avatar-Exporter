@@ -61,6 +61,44 @@ namespace VRVlog.LilToonExporter.Tests
             Rejects(LipSyncInvalid, () => LipSyncData.Read(new List<object>()));
         }
 
+        const string EyeShapeInvalid = "Eye shape data is invalid or exceeds the supported limits.";
+
+        static Dictionary<string, object> EyeShapes(Action<Dictionary<string, object>, Dictionary<string, object>> change = null)
+        {
+            var shape = new Dictionary<string, object> { ["node"] = 3L, ["name"] = "まばたき" };
+            var root = new Dictionary<string, object> { ["schemaVersion"] = 1L, ["shapes"] = new List<object> { shape } };
+            change?.Invoke(root, shape);
+            return root;
+        }
+
+        static List<object> ManyEyeShapes(int count) => Enumerable.Range(0, count)
+            .Select(i => (object)new Dictionary<string, object> { ["node"] = 0L, ["name"] = "eye_" + i }).ToList();
+
+        [Test]
+        public void EyeShapeBoundaries()
+        {
+            var read = EyeShapeData.Read(EyeShapes());
+            Assert.That((read.Shapes.Single().Node, read.Shapes.Single().Name), Is.EqualTo((3, "まばたき")));
+            Assert.DoesNotThrow(() => EyeShapeData.Read(EyeShapes((r, s) => s["name"] = Long)));
+            Assert.DoesNotThrow(() => EyeShapeData.Read(EyeShapes((r, s) => ((List<object>)r["shapes"]).Add(
+                new Dictionary<string, object> { ["node"] = 4L, ["name"] = "まばたき" }))), "The same name may be on another node.");
+            Assert.DoesNotThrow(() => EyeShapeData.Read(EyeShapes((r, s) => r["shapes"] = ManyEyeShapes(EyeShapeData.MaximumShapes))));
+            Assert.That(EyeShapeData.Read(EyeShapeData.Write(read)).Shapes.Single().Name, Is.EqualTo("まばたき"));
+
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => ((List<object>)r["shapes"]).Add(
+                new Dictionary<string, object> { ["node"] = 3L, ["name"] = "まばたき" }))));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => r["shapes"] = new List<object>())));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => r["shapes"] = ManyEyeShapes(EyeShapeData.MaximumShapes + 1))));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => s["node"] = -1L)));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => s["node"] = 1.5)));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => s["name"] = "")));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => s["name"] = TooLong)));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => s["extra"] = 1L)));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => r["schemaVersion"] = 2L)));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(EyeShapes((r, s) => r.Remove("shapes"))));
+            Rejects(EyeShapeInvalid, () => EyeShapeData.Read(new List<object>()));
+        }
+
         static Dictionary<string, object> Limits(Action<Dictionary<string, object>, Dictionary<string, object>> change = null)
         {
             var bone = new Dictionary<string, object>

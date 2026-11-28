@@ -82,6 +82,18 @@ namespace VRVlog.LilToonExporter
         internal bool HasBilateralPreset => state.Authored[0] || Slots[0].Count > 0;
         internal bool RequiresUnifiedEvidence => state.AllowMissingAutomaticBlink && !PreserveAuthored && Slots[0].Count == 0 && Slots[1].Count == 0;
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
+        // The shapes that move the eyes on each mesh the blink closes
+        // (VRVLOG_eye_shapes), with a binding of that mesh: it follows the
+        // renderer through optimization. A shape keeps its name in the final
+        // mesh, or it is left out of the file.
+        readonly List<(BlinkShapeBinding Binding, string Shape)> eyeShapes = new List<(BlinkShapeBinding, string)>();
+
+        // A shape is an eye shape when at least this share of its movement
+        // falls on the vertices the blink moves, as a mouth shape is found from
+        // the Lip Sync shapes (AvatarBaseShape.MouthMovementShare); a vertex
+        // belongs fully to the eyes from AvatarBaseShape.MouthFullShare of a
+        // blink shape's largest move.
+        internal const float EyeMovementShare = .5f;
         readonly List<Object> expressionCopies = new List<Object>();
 
         internal static BlinkExportSession Resolve(GameObject source, BlinkExportOptions options = null,
@@ -648,6 +660,8 @@ namespace VRVlog.LilToonExporter
             {
                 var renderer = group.Key;
                 var original = renderer.sharedMesh;
+                foreach (var shape in EyeShapes(original, group.Select(item => item.binding.Shape)))
+                    eyeShapes.Add((group.First().binding, shape));
                 var generated = Object.Instantiate(original); owned.Add(generated);
                 foreach (var (binding, slot) in group)
                 {
@@ -760,6 +774,69 @@ namespace VRVlog.LilToonExporter
                         if (presets.TryGetValue(ExpressionPresetGroups.Blinks[slot].ToString(), out var value) || presets.TryGetValue("blink", out value))
                             custom[key] = value;
                     }
+            return glb.Write();
+        }
+
+        // The shapes of mesh whose movement falls mostly on the vertices the
+        // blink shapes move, the blink shapes themselves among them. Chosen by
+        // geometry, not by name; generated shapes and shapes that cannot be
+        // read are left out.
+        internal static List<string> EyeShapes(Mesh mesh, IEnumerable<string> blinkShapes)
+        {
+            var result = new List<string>();
+            if (mesh == null) return result;
+            var names = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray();
+            var seeds = blinkShapes.Select(shape => BlinkShapeNames.Unique(names, shape, StringComparison.Ordinal)).Where(index => index >= 0).Distinct().ToList();
+            if (seeds.Count == 0) return result;
+            var eyes = AvatarBaseShape.MouthVertices(mesh, seeds);
+            var vertices = new Vector3[mesh.vertexCount];
+            for (var shape = 0; shape < names.Length; shape++)
+            {
+                if (names[shape].StartsWith("__VRVlog_", StringComparison.Ordinal)) continue;
+                var last = mesh.GetBlendShapeFrameCount(shape) - 1;
+                if (last < 0) continue;
+                mesh.GetBlendShapeFrameVertices(shape, last, vertices, null, null);
+                double total = 0d, onEyes = 0d;
+                for (var vertex = 0; vertex < vertices.Length; vertex++)
+                {
+                    var move = vertices[vertex];
+                    if (float.IsNaN(move.x) || float.IsNaN(move.y) || float.IsNaN(move.z) ||
+                        float.IsInfinity(move.x) || float.IsInfinity(move.y) || float.IsInfinity(move.z)) { total = 0d; break; }
+                    total += move.magnitude;
+                    onEyes += move.magnitude * eyes[vertex];
+                }
+                if (total > 0d && onEyes >= total * EyeMovementShare) result.Add(names[shape]);
+            }
+            return result;
+        }
+
+        // VRVLOG_eye_shapes: the eye shapes by node and name in the finished
+        // file. A shape whose node or name the file does not have (left out as
+        // unused, renamed by a merge) is not written; a file with none gets no
+        // extension.
+        internal byte[] InjectEyeShapes(byte[] bytes)
+        {
+            if (Disabled || eyeShapes.Count == 0) return bytes;
+            var glb = GlbDocument.Read(bytes);
+            var outputNodes = (List<object>)glb.Json["nodes"];
+            var meshes = (List<object>)glb.Json["meshes"];
+            var data = new VRVlog.Expressions.EyeShapeData();
+            var seen = new HashSet<(int, string)>();
+            foreach (var (binding, shape) in eyeShapes)
+            {
+                if (binding.Renderer == null || !nodes.TryGetValue(binding.Renderer, out var node) || node < 0 || node >= outputNodes.Count) continue;
+                if (!(outputNodes[node] is Dictionary<string, object> output) || !output.TryGetValue("mesh", out var rawMesh)) continue;
+                var meshIndex = Convert.ToInt32(rawMesh);
+                if (meshIndex < 0 || meshIndex >= meshes.Count || !(meshes[meshIndex] is Dictionary<string, object> mesh) ||
+                    !mesh.TryGetValue("extras", out var rawExtras) || !(rawExtras is Dictionary<string, object> extras) ||
+                    !extras.TryGetValue("targetNames", out var rawNames) || !(rawNames is List<object> names)) continue;
+                if (names.Count(name => name is string text && string.Equals(text, shape, StringComparison.Ordinal)) != 1) continue;
+                if (!seen.Add((node, shape))) continue;
+                if (data.Shapes.Count == VRVlog.Expressions.EyeShapeData.MaximumShapes) break;
+                data.Shapes.Add(new VRVlog.Expressions.EyeShapeData.Shape { Node = node, Name = shape });
+            }
+            if (data.Shapes.Count == 0) return bytes;
+            glb.PlaceExtension(VRVlog.Expressions.EyeShapeData.Extension, VRVlog.Expressions.EyeShapeData.Write(data));
             return glb.Write();
         }
 

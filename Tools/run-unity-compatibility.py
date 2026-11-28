@@ -79,6 +79,7 @@ BEHAVIOR_CASES = {
         'UnsupportedImagesOutsideTheProvenLayerSetAreNotOmitted': 2,
     },
     'BlinkExportTests': {
+        'EyeShapesFollowTheVerticesTheBlinkMoves': 1,
         'ACompleteBilateralShapeCanCoverAnIncompleteAlternativePair': 1,
         'ACompleteRendererPairKeepsPriorityOverAlternatePartialFamilies': 1,
         'ACompleteUnifiedPairDoesNotAdoptAnUnrelatedLegacyPartial': 1,

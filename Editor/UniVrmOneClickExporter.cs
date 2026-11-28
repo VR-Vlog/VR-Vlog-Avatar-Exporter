@@ -1344,6 +1344,9 @@ namespace VRVlog.LilToonExporter
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData, objectToggles.Transforms), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
+                // After the BlendShapes left out as unused, so a shape it names
+                // is one the finished file has. New data: a failure leaves it out.
+                exported = guard.Optional(ExportStage.BlinkOutput, () => blink.InjectEyeShapes(exported), () => exported);
                 // The constraints before the FX: when they cannot be written, the
                 // FX is built again without the targets that name their entries,
                 // which is the file written before the extension.
