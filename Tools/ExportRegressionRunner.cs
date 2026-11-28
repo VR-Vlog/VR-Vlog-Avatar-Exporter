@@ -123,7 +123,11 @@ namespace VRVlog.LilToonExporter.ExportRegression
             }
             Application.logMessageReceived += OnLog;
             routine = Arg("-regressionShotsOnly") != null ? ShotsOnly(jobs) : Run(jobs);
-            EditorApplication.update += Tick;
+            // First in the list: Unity stops calling the rest of the update
+            // handlers when one throws, and a package that throws in every
+            // update (one that wraps the toolbar, which batch mode has not)
+            // would never let the runner start.
+            EditorApplication.update = Tick + EditorApplication.update;
         }
 
         static void Tick()
