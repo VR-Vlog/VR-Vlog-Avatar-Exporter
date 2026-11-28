@@ -13,6 +13,46 @@ namespace VRVlog.LilToonExporter
     // Read that authored data; do not run build plugins or modify its assets.
     internal static class FaceEmoExpressions
     {
+        internal const string AlternativeChannelsSkipped =
+            "FaceEmoのほかの表情が動かすBlendShapeを共通の顔に戻せなかったため、この表情が動かすBlendShapeだけで書き出しました。";
+
+        // The probe rewrites an entry in place. Keep what it held so a refused
+        // addition can fall back to the clip's own channels.
+        private sealed class EntrySnapshot
+        {
+            private List<VrChatExpressionMenu.MorphValue> values;
+            private List<(VrChatExpressionMenu.AnimatedMorph Morph, List<VRVlog.Expressions.ExpressionAnimationData.Key> Keys)> animation;
+            private List<string> messages;
+            private double duration;
+            private bool loop, projection;
+
+            internal static EntrySnapshot Take(VrChatExpressionMenu.Entry entry) => new EntrySnapshot
+            {
+                values = entry.Values.Select(value => new VrChatExpressionMenu.MorphValue { Path = value.Path, Shape = value.Shape, Weight = value.Weight }).ToList(),
+                animation = entry.Animation.Select(morph => (morph, morph.Curve.Keys.Select(key => new VRVlog.Expressions.ExpressionAnimationData.Key
+                {
+                    Time = key.Time, Value = key.Value, InWeight = key.InWeight, OutWeight = key.OutWeight,
+                    InTangent = key.InTangent, OutTangent = key.OutTangent
+                }).ToList())).ToList(),
+                messages = entry.Messages.ToList(),
+                duration = entry.Duration, loop = entry.Loop, projection = entry.UsesFacialProjection
+            };
+
+            internal void Restore(VrChatExpressionMenu.Entry entry)
+            {
+                entry.Values.Clear(); entry.Values.AddRange(values);
+                entry.Animation.Clear();
+                foreach (var (morph, keys) in animation)
+                {
+                    morph.Curve.Keys.Clear(); morph.Curve.Keys.AddRange(keys);
+                    entry.Animation.Add(morph);
+                }
+                entry.Messages.Clear(); entry.Messages.AddRange(messages);
+                entry.Duration = duration; entry.Loop = loop; entry.UsesFacialProjection = projection;
+                entry.Error = null;
+            }
+        }
+
         // FaceEmo's mode default and branch animations are alternative states
         // on FACE EMOTE PLAYER. Only DEFAULT FACE is their common underlay.
         // Read the prepared clip after NDMF has retargeted its object paths, then
@@ -22,22 +62,24 @@ namespace VRVlog.LilToonExporter
         {
             if (bindings == null) throw new ArgumentNullException(nameof(bindings));
             var deferred = registeredBindings?.DeferPermanentOverrides == true;
-            ApplyPreparedDefaultFace(prepared, source, bindings.AuthoringPaths, path => bindings.Get(path)?.Renderer, excludedPath,
+            var underlay = ApplyPreparedDefaultFace(prepared, source, bindings.AuthoringPaths, path => bindings.Get(path)?.Renderer, excludedPath,
                 composeValues: !deferred);
-            registeredBindings?.ApplyDeferredOverrides(prepared, source);
+            registeredBindings?.ApplyDeferredOverrides(prepared, source, underlay);
         }
 
-        private static void ApplyPreparedDefaultFace(GameObject prepared, VrChatExpressionMenu.Source source,
+        // Returns the common DEFAULT FACE morphs on the prepared copy, or null
+        // when there is no generated FaceEmo FX or it cannot be read.
+        private static List<VrChatExpressionMenu.MorphValue> ApplyPreparedDefaultFace(GameObject prepared, VrChatExpressionMenu.Source source,
             Func<string, string[]> toAuthoringPaths, Func<string, SkinnedMeshRenderer> toPreparedRenderer,
             Func<string, bool> excludedPath, bool composeValues = true)
         {
             var entries = source.Entries.Where(entry => entry.Error == null && entry.Source == VRVlog.Expressions.ExpressionSource.FaceEmo).ToArray();
-            if (entries.Length == 0) return;
+            if (entries.Length == 0) return null;
             var metadata = VrChatExpressionMenu.Read(prepared, new VrChatMenuImportPolicy { SkipAll = true });
-            if (metadata.Controller == null) return;
+            if (metadata.Controller == null) return null;
             var controller = ExpressionDependencies.Controller(metadata.Controller);
             var layers = controller.layers.Where(layer => layer.name == "[ USER EDIT ] DEFAULT FACE").ToArray();
-            if (layers.Length == 0) return; // Authored registrations may exist without generated FaceEmo FX.
+            if (layers.Length == 0) return null; // Authored registrations may exist without generated FaceEmo FX.
             try
             {
                 if (layers.Length != 1 || layers[0].syncedLayerIndex >= 0 || layers[0].stateMachine == null)
@@ -62,11 +104,61 @@ namespace VRVlog.LilToonExporter
                 // layer with its actual weight and order. Copying its raw value
                 // into the selected clip would bypass fractional layer blending.
                 if (composeValues) ComposeCommonValues(prepared, entries, underlay, toAuthoringPaths, toPreparedRenderer);
+                return underlay;
             }
             catch (InvalidOperationException error)
             {
                 foreach (var entry in entries) entry.Error = error.Message;
+                return null;
             }
+        }
+
+        // FaceEmo's mode default and branches are alternative states of one
+        // PLAYER layer over the common DEFAULT FACE. A channel that another
+        // state of that layer keys, but the selected clip does not, shows the
+        // common face in VRChat. The export's rest face, however, is whichever
+        // state plays with neutral input, so such a channel must be read back
+        // from the native probe too; otherwise the neutral state's value stays
+        // in the expression (a both-hands-neutral branch's mouth under every
+        // other branch). Blink and viseme channels stay with their own drivers.
+        internal static HashSet<EditorCurveBinding> AlternativeChannels(GameObject prepared, RuntimeAnimatorController runtime,
+            AnimatorStateMachine player, IEnumerable<VrChatExpressionMenu.MorphValue> underlay, VrChatExpressionMenu.Entry entry,
+            Func<string, bool> excludedPath, ISet<EditorCurveBinding> automatic = null)
+        {
+            var result = new HashSet<EditorCurveBinding>();
+            if (prepared == null || runtime == null || player == null || underlay == null) return result;
+            var common = new HashSet<EditorCurveBinding>(underlay.Select(value =>
+                EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape)));
+            if (common.Count == 0) return result;
+            var keyed = new HashSet<EditorCurveBinding>();
+            var replacements = ExpressionDependencies.Overrides(runtime);
+            var visited = new HashSet<AnimatorStateMachine>();
+            void Visit(AnimatorStateMachine machine)
+            {
+                if (machine == null || !visited.Add(machine)) return;
+                foreach (var child in machine.states)
+                {
+                    if (!(child.state?.motion is AnimationClip original)) continue;
+                    var clip = replacements.TryGetValue(original, out var replacement) ? replacement : original;
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                        if (binding.type == typeof(SkinnedMeshRenderer) && PoseSampling.IsBlendShape(binding)) keyed.Add(binding);
+                }
+                foreach (var child in machine.stateMachines) Visit(child.stateMachine);
+            }
+            Visit(player);
+            var own = new HashSet<EditorCurveBinding>(entry.Values.Select(value =>
+                EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape)));
+            automatic = automatic ?? NeutralShapeSampler.AutomaticChannels(prepared);
+            foreach (var binding in keyed)
+            {
+                if (!common.Contains(binding) || own.Contains(binding) || automatic.Contains(binding) || excludedPath?.Invoke(binding.path) == true) continue;
+                var target = string.IsNullOrEmpty(binding.path) ? prepared.transform : prepared.transform.Find(binding.path);
+                var renderer = target == null ? null : target.GetComponent<SkinnedMeshRenderer>();
+                if (renderer == null || renderer.sharedMesh == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                    renderer.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) < 0) continue;
+                result.Add(binding);
+            }
+            return result;
         }
 
         // Normalize the prepared common clip by final channel before overlay.
@@ -311,10 +403,12 @@ namespace VRVlog.LilToonExporter
             internal void Defer(VrChatExpressionMenu.Entry entry, PlayerSelection selected)
                 => deferredEntries.Add(entry, selected);
 
-            internal void ApplyDeferredOverrides(GameObject prepared, VrChatExpressionMenu.Source source)
+            internal void ApplyDeferredOverrides(GameObject prepared, VrChatExpressionMenu.Source source,
+                IReadOnlyCollection<VrChatExpressionMenu.MorphValue> underlay = null)
             {
                 if (!DeferPermanentOverrides) return;
                 if (prepared != clone) throw new InvalidOperationException("FaceEmoの表情参照は書き出し用コピーと一致していません。");
+                HashSet<EditorCurveBinding> automatic = null;
                 foreach (var pair in deferredEntries)
                 {
                     var entry = pair.Key; var captured = pair.Value;
@@ -334,8 +428,36 @@ namespace VRVlog.LilToonExporter
                             entry.Values.Clear(); entry.Values.AddRange(completed);
                             entry.Animation.Clear(); entry.Duration = 0;
                         }
-                        else VrChatExpressionSampler.ApplyPermanentOverrides(prepared, captured.Runtime, entry,
-                            captured.Layer, captured.WriteDefaults, PreparedExcludedPath, metadata: source, sourceState: captured.State);
+                        else
+                        {
+                            var alternatives = captured.State == null || underlay == null ? new HashSet<EditorCurveBinding>() :
+                                AlternativeChannels(prepared, captured.Runtime, captured.Machine, underlay, entry, PreparedExcludedPath,
+                                    automatic ??= NeutralShapeSampler.AutomaticChannels(prepared));
+                            if (alternatives.Count == 0)
+                                VrChatExpressionSampler.ApplyPermanentOverrides(prepared, captured.Runtime, entry,
+                                    captured.Layer, captured.WriteDefaults, PreparedExcludedPath, metadata: source, sourceState: captured.State);
+                            else
+                            {
+                                var saved = EntrySnapshot.Take(entry);
+                                try
+                                {
+                                    VrChatExpressionSampler.ApplyPermanentOverrides(prepared, captured.Runtime, entry,
+                                        captured.Layer, captured.WriteDefaults, PreparedExcludedPath, metadata: source, sourceState: captured.State,
+                                        alternativeMorphs: alternatives);
+                                }
+                                catch (InvalidOperationException)
+                                {
+                                    // Reading the other states' channels is an
+                                    // addition. If its probe is refused, keep the
+                                    // result the clip's own channels give.
+                                    saved.Restore(entry);
+                                    VrChatExpressionSampler.ApplyPermanentOverrides(prepared, captured.Runtime, entry,
+                                        captured.Layer, captured.WriteDefaults, PreparedExcludedPath, metadata: source, sourceState: captured.State);
+                                    var warning = ExporterLocalization.T(AlternativeChannelsSkipped);
+                                    if (!entry.Messages.Contains(warning)) entry.Messages.Add(warning);
+                                }
+                            }
+                        }
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }

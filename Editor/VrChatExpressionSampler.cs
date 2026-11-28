@@ -109,7 +109,8 @@ namespace VRVlog.LilToonExporter
         // response is affine and preserves weighted/stepped tangent timing.
         internal static void ApplyPermanentOverrides(GameObject avatar, RuntimeAnimatorController runtime,
             VrChatExpressionMenu.Entry entry, int? layerIndex = null, bool writeDefaults = false, Func<string, bool> excludedPath = null,
-            VrChatExpressionMenu.Source metadata = null, AnimatorState sourceState = null, IDictionary<string, float> nativeInputs = null, FxAnalysis analysis = null)
+            VrChatExpressionMenu.Source metadata = null, AnimatorState sourceState = null, IDictionary<string, float> nativeInputs = null, FxAnalysis analysis = null,
+            IEnumerable<EditorCurveBinding> alternativeMorphs = null)
         {
             if (runtime == null || entry.Error != null || entry.Values.Count == 0) return;
             // Inspect the authored graph before any early exit: a layer control
@@ -264,6 +265,12 @@ namespace VRVlog.LilToonExporter
             var explicitMorphs = new HashSet<EditorCurveBinding>(entry.Values.Select(value =>
                 EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape)));
             var intendedMorphs = new HashSet<EditorCurveBinding>(stationaryBindings); intendedMorphs.UnionWith(explicitMorphs);
+            // Channels an alternative state of the selected native slot keys
+            // (FaceEmo's other branches) are read back from this same probe,
+            // so the selected face shows the lower layers' value for them, as
+            // VRChat does, instead of the neutral state's value.
+            if (alternativeMorphs != null && nativeSlot && sourceState != null)
+                intendedMorphs.UnionWith(alternativeMorphs.Where(binding => !explicitMorphs.Contains(binding)));
             var ownershipMessages = new List<string>();
             var scalarPlan = NeutralShapePlan.Create(avatar, runtime, new[] { intendedMorphs }, excludedPath,
                 requiredMorphs: explicitMorphs, warnings: ownershipMessages, source: metadata, fixedContext: context, allowUnchangedAppearance: true, analysis: analysis);

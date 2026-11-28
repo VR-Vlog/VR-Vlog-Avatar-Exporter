@@ -550,6 +550,7 @@ BEHAVIOR_CASES = {
         'RegisteredPlayerRejectsUnprovedOrAmbiguousPreparedAugmentation': 2,
         'RegisteredPlayerRejectsPreparedMotionChangesBeforeDeferredEvaluation': 1,
         'RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce': 2,
+        'RegisteredBranchReadsTheCommonValueOfAChannelOnlyAnotherStateKeys': 2,
     },
     'MergedFixedNeutralSamplingTests': {
         'FractionalNeutralRetainsNativeBaseActivityAndLeavesAutomaticBlinkLive': 4,

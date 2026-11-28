@@ -46,6 +46,39 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Skin.GetBlendShapeWeight(0), Is.EqualTo(20), "Native sampling must leave the prepared base untouched.");
         }
 
+        // The mode default keys Open; the registered branch does not. In
+        // VRChat the branch shows the common DEFAULT FACE's Open, not the mode
+        // default's, also when DEFAULT FACE has FaceEmo's BYPASS state and so
+        // is not a stationary layer.
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void RegisteredBranchReadsTheCommonValueOfAChannelOnlyAnotherStateKeys(bool fractionalCommon, bool writeDefaults)
+        {
+            using var fixture = new Fixture(fractionalCommon, writeDefaults, bypass: true);
+            var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered,
+                deferPermanentOverrides: true);
+            var old = fixture.Skin;
+            fixture.ReplaceRenderer();
+            snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer);
+            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller };
+            FaceEmoPreparedFxIntegrationTests.ReadListed(fixture.Avatar, fixture.Registered, source, bindings: snapshot);
+            var entry = source.Entries.Single();
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Values.Any(value => value.Shape == "Open"), Is.False, "The branch clip does not key Open.");
+            using var bindings = new PreparedExpressionBindings(fixture.Avatar, source);
+            var expected = fixture.NativeSelectedWeights();
+            FaceEmoExpressions.ApplyPreparedDefaultFace(fixture.Avatar, source, bindings, registeredBindings: snapshot);
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Messages, Has.None.EqualTo(ExporterLocalization.T(FaceEmoExpressions.AlternativeChannelsSkipped)));
+            var open = entry.Values.Where(value => value.Shape == "Open").ToArray();
+            Assert.That(open, Has.Length.EqualTo(1), "Open must be read back from the native evaluation.");
+            Assert.That(open[0].Weight, Is.EqualTo(expected["Open"]).Within(.02f));
+            Assert.That(open[0].Weight, Is.Not.EqualTo(60).Within(.5f), "The mode default's Open is an alternative, not an underlay.");
+            foreach (var shape in new[] { "Smile", "Pupil" })
+                Assert.That(entry.Values.Single(value => value.Shape == shape).Weight, Is.EqualTo(expected[shape]).Within(.02f), shape);
+            Assert.That(fixture.Skin.GetBlendShapeWeight(0), Is.EqualTo(20), "Native sampling must leave the prepared base untouched.");
+        }
+
         [TestCase("ambiguous")]
         [TestCase("missing")]
         [TestCase("callback-changed")]
@@ -213,7 +246,7 @@ namespace VRVlog.LilToonExporter.Tests
             private readonly Mesh mesh;
             private readonly string folder;
 
-            internal Fixture(bool fractionalCommon, bool writeDefaults)
+            internal Fixture(bool fractionalCommon, bool writeDefaults, bool bypass = false)
             {
                 var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
                 folder = TempAssetFolder.Create("__FaceEmoPreparedFx_");
@@ -232,6 +265,18 @@ namespace VRVlog.LilToonExporter.Tests
                 Controller.AddLayer("[ USER EDIT ] DEFAULT FACE");
                 SetState(1, "DEFAULT", Clip("Common", ("Open", 80), ("Smile", 40), ("Pupil", 0)), false,
                     fractionalCommon ? .5f : 1);
+                if (bypass)
+                {
+                    // FaceEmo generates DEFAULT FACE as DEFAULT ⇄ BYPASS on
+                    // FaceEmo_CN_BYPASS, so the layer is not stationary.
+                    Controller.AddParameter("FaceEmo_CN_BYPASS", AnimatorControllerParameterType.Bool);
+                    var common = Controller.layers[1].stateMachine;
+                    var skip = common.AddState("BYPASS"); skip.writeDefaultValues = false;
+                    var enter = common.defaultState.AddTransition(skip); enter.hasExitTime = false; enter.duration = 0;
+                    enter.AddCondition(AnimatorConditionMode.If, 0, "FaceEmo_CN_BYPASS");
+                    var leave = skip.AddTransition(common.defaultState); leave.hasExitTime = false; leave.duration = 0;
+                    leave.AddCondition(AnimatorConditionMode.IfNot, 0, "FaceEmo_CN_BYPASS");
+                }
                 Controller.AddLayer("[ USER EDIT ] FACE EMOTE PLAYER");
                 SetState(2, "Alternative mode default", Clip("Mode", ("Open", 60), ("Smile", 90), ("Pupil", 80)), writeDefaults);
                 PreparedBranch = Clip("Prepared registered branch", ("Smile", 75), ("Pupil", 0));
