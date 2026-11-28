@@ -62,16 +62,35 @@ namespace VRVlog.LilToonExporter.Tests
 
             var toggle = ExporterLocalization.Format(AvatarAnimatorCrossCheck.MenuInput, "Hat");
             var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
-            Assert.That(result.Mismatches.Select(m => m.Input), Is.EqualTo(new[] { toggle, fist }));
-            var hat = result.Mismatches[0];
+            Assert.That(result.Mismatches.Select(m => m.Input), Is.EqualTo(new[] { fist, toggle }));
+            var hat = result.Mismatches[1];
             // The toggle is set after the settling frames and shows in that frame.
             Assert.That((hat.Frame, hat.Target, hat.Unity, hat.Evaluator), Is.EqualTo((AvatarAnimatorCrossCheck.SettleFrames, 0, 1d, 0d)));
-            Assert.That(result.Mismatches[1].Target, Is.EqualTo(1));
+            Assert.That(result.Mismatches[0].Target, Is.EqualTo(1));
             Assert.That(AvatarAnimatorCrossCheck.ResultLine(result),
-                Is.EqualTo(ExporterLocalization.Format(AvatarAnimatorCrossCheck.MismatchNote, toggle + ExporterLocalization.T("、") + fist, 2, 9)));
+                Is.EqualTo(ExporterLocalization.Format(AvatarAnimatorCrossCheck.MismatchNote, fist + ExporterLocalization.T("、") + toggle, 2, 9)));
             var lines = AvatarAnimatorCrossCheck.LogLines(result, t => "T" + t).ToList();
             Assert.That(lines[0], Does.StartWith(AvatarAnimatorCrossCheck.LogPrefix + "inputs 9 compared 9 mismatched 2 skipped 0 outOfTime 0 targets 2 unbound 0 "));
-            Assert.That(lines[1], Is.EqualTo(AvatarAnimatorCrossCheck.LogPrefix + $"mismatch \"{toggle}\" frame 30 T0 unity 1 evaluator 0"));
+            Assert.That(lines[2], Is.EqualTo(AvatarAnimatorCrossCheck.LogPrefix + $"mismatch \"{toggle}\" frame 30 T0 unity 1 evaluator 0"));
+        }
+
+        [Test]
+        public void TheWayBackFromAnInputIsCompared()
+        {
+            // The app would drop the smile at once when the Fist is let go,
+            // where Unity blends it back to the rest over 0.25 s: only the way
+            // back differs, from the frame the Fist is let go in.
+            var (root, controller, data, bindings) = Build();
+            data.Controllers[0].Layers[1].States[1].Transitions[0].Duration = 0;
+            var result = AvatarAnimatorCrossCheck.Run(root, controller, data, bindings, null);
+
+            var fist = ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.LeftHand), "Fist");
+            Assert.That(result.Compared, Is.EqualTo(9));
+            Assert.That(result.Mismatches.Select(m => m.Input), Is.EqualTo(new[] { fist }));
+            var smile = result.Mismatches[0];
+            Assert.That((smile.Frame, smile.Target, smile.Evaluator), Is.EqualTo((AvatarAnimatorCrossCheck.SettleFrames + AvatarAnimatorCrossCheck.InputFrames, 1, 0d)));
+            // Unity starts the blend in that frame, still at (or near) the smile.
+            Assert.That(smile.Unity, Is.GreaterThan(50));
         }
 
         [Test]
@@ -175,9 +194,9 @@ namespace VRVlog.LilToonExporter.Tests
         // each frame, frame 0 included, first while the evaluator alone
         // plays it (Controls), then while both play it: with 0 frames of
         // Controls before, the 12th read is frame 10 of Controls; with all
-        // 180, it is frame 10 of the play.
+        // 240, it is frame 10 of the play.
         [TestCase(0)]
-        [TestCase(AvatarAnimatorCrossCheck.SettleFrames + AvatarAnimatorCrossCheck.InputFrames)]
+        [TestCase(AvatarAnimatorCrossCheck.SettleFrames + AvatarAnimatorCrossCheck.InputFrames + AvatarAnimatorCrossCheck.ReleaseFrames)]
         public void AnInputUnderWayWhenTheTimeRunsOutStops(int controlled)
         {
             var (root, controller, data, bindings) = Build();
@@ -226,16 +245,17 @@ namespace VRVlog.LilToonExporter.Tests
             string Right(string name) => ExporterLocalization.Format(AvatarAnimatorCrossCheck.GestureInput, ExporterLocalization.T(AvatarAnimatorCrossCheck.RightHand), name);
             Assert.That(inputs.Select(input => input.Name), Is.EqualTo(new[]
             {
-                ExporterLocalization.T(AvatarAnimatorCrossCheck.StartInput), Menu("On"), Menu("More"), Menu("More/Outfit 2"), Menu("More/Size"), Menu("More/Move"),
+                ExporterLocalization.T(AvatarAnimatorCrossCheck.StartInput),
                 Right("Fist"), Right("HandOpen"), Right("FingerPoint"), Right("Victory"), Right("RockNRoll"), Right("HandGun"), Right("ThumbsUp"),
-            }), "The second way into the submenu and the same values again are listed once; a GestureLeft that is not an int is no gesture.");
+                Menu("On"), Menu("More"), Menu("More/Outfit 2"), Menu("More/Size"), Menu("More/Move"),
+            }), "The hands come before the menu; the second way into the submenu and the same values again are listed once; a GestureLeft that is not an int is no gesture.");
             Assert.That(inputs[0].Values, Is.Empty);
-            Assert.That(inputs[1].Values, Is.EqualTo(new[] { (on, 0d) }), "A toggle on at the start turns off.");
-            Assert.That(inputs[2].Values, Is.EqualTo(new[] { (open, 1d) }));
-            Assert.That(inputs[3].Values, Is.EqualTo(new[] { (outfit, 2d) }));
-            Assert.That(inputs[4].Values, Is.EqualTo(new[] { (size, 0d) }), "A radial from 0.5 up goes to 0.");
-            Assert.That(inputs[5].Values, Is.EqualTo(new[] { (x, 1d), (y, 1d) }));
-            Assert.That(inputs[6].Values, Is.EqualTo(new[] { (right, 1d), (rightWeight, 1d) }));
+            Assert.That(inputs[1].Values, Is.EqualTo(new[] { (right, 1d), (rightWeight, 1d) }));
+            Assert.That(inputs[8].Values, Is.EqualTo(new[] { (on, 0d) }), "A toggle on at the start turns off.");
+            Assert.That(inputs[9].Values, Is.EqualTo(new[] { (open, 1d) }));
+            Assert.That(inputs[10].Values, Is.EqualTo(new[] { (outfit, 2d) }));
+            Assert.That(inputs[11].Values, Is.EqualTo(new[] { (size, 0d) }), "A radial from 0.5 up goes to 0.");
+            Assert.That(inputs[12].Values, Is.EqualTo(new[] { (x, 1d), (y, 1d) }));
         }
 
         // Smile on also turns the Body renderer off and fades the float

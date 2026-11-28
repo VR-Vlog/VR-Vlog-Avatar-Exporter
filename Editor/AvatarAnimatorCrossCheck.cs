@@ -24,9 +24,10 @@ namespace VRVlog.LilToonExporter
     // local channel of each translation, rotation and scale target, and the
     // muscle of each muscle target as HumanPoseHandler reads the copy's
     // humanoid pose back, against the evaluator's muscles put on the bones and
-    // read back the same way (MuscleReader). The inputs are the start alone, each menu control and
-    // each hand gesture. Each input starts from the rest: SettleFrames without
-    // input, then InputFrames with it.
+    // read back the same way (MuscleReader). The inputs are the start alone, each hand gesture and
+    // each menu control. Each input starts from the rest: SettleFrames without
+    // input, InputFrames with it, then ReleaseFrames with its parameters back
+    // at their defaults, so the way back to the start is compared too.
     //
     // Unity runs VRChat's behaviours only through the SDK's hooks; these are
     // hooked for the run: a Parameter Driver applies its operations as the
@@ -49,7 +50,7 @@ namespace VRVlog.LilToonExporter
     {
         // Off skips the check; the file is the same either way.
         internal static bool Enabled = true;
-        internal const int SettleFrames = 30, InputFrames = 150;
+        internal const int SettleFrames = 30, InputFrames = 150, ReleaseFrames = 60;
         internal const double FrameSeconds = (float)(1.0 / 60);
         // Unity blends BlendShape weights (0 to 100) in single precision.
         internal const double WeightTolerance = 0.05;
@@ -116,7 +117,8 @@ namespace VRVlog.LilToonExporter
             internal string Path;
         }
 
-        // Values by parameter index, set after SettleFrames.
+        // Values by parameter index, set after SettleFrames and set back to
+        // the parameters' defaults after InputFrames.
         internal sealed class Input
         {
             internal string Name;
@@ -184,7 +186,8 @@ namespace VRVlog.LilToonExporter
                     if (control.Type == "subMenu" && control.Menu is int child) Walk(child, name);
                 }
             }
-            Walk(0, "");
+            // The hands before the menu: they make the faces, and a long menu
+            // would leave them past the time budget.
             foreach (var (side, label) in new[] { ("Left", LeftHand), ("Right", RightHand) })
             {
                 var gesture = Index(data, "Gesture" + side, "int");
@@ -198,6 +201,7 @@ namespace VRVlog.LilToonExporter
                     Add(input);
                 }
             }
+            Walk(0, "");
             return inputs;
         }
 
@@ -528,11 +532,13 @@ namespace VRVlog.LilToonExporter
         {
             var random = new System.Random(Seed(input));
             var evaluator = new AvatarAnimatorEvaluator(data, () => random.NextDouble());
-            for (var frame = 0; frame < SettleFrames + InputFrames; frame++)
+            for (var frame = 0; frame < SettleFrames + InputFrames + ReleaseFrames; frame++)
             {
                 if (late != null && late()) return null;
                 if (frame == SettleFrames)
                     foreach (var (parameter, value) in input.Values) evaluator.Set(parameter, value);
+                if (frame == SettleFrames + InputFrames)
+                    foreach (var (parameter, _) in input.Values) evaluator.Set(parameter, data.Parameters[parameter].Default);
                 evaluator.Advance(FrameSeconds);
                 if (evaluator.FxControlled) return true;
             }
@@ -551,7 +557,7 @@ namespace VRVlog.LilToonExporter
             ToRest(data, bindings, shown, shapes);
             player.Start(new System.Random(seed));
             Mismatch first = null;
-            for (var frame = 0; frame < SettleFrames + InputFrames; frame++)
+            for (var frame = 0; frame < SettleFrames + InputFrames + ReleaseFrames; frame++)
             {
                 // Stopped part way, the input is not compared.
                 if (late != null && late()) { outOfTime = true; return null; }
@@ -560,6 +566,12 @@ namespace VRVlog.LilToonExporter
                     {
                         evaluator.Set(parameter, value);
                         player.Set(parameter, value);
+                    }
+                if (frame == SettleFrames + InputFrames)
+                    foreach (var (parameter, _) in input.Values)
+                    {
+                        evaluator.Set(parameter, data.Parameters[parameter].Default);
+                        player.Set(parameter, data.Parameters[parameter].Default);
                     }
                 player.Advance(FrameSeconds);
                 evaluator.Advance(FrameSeconds);
